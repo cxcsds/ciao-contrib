@@ -1,0 +1,191 @@
+#!/usr/bin/env python
+# 
+# Copyright (C) 2013 Smithsonian Astrophysical Observatory
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+
+from __future__ import print_function
+
+toolname = "search_csc"
+__revision__ = "13 Sep 2016"
+
+import sys
+
+# This is only needed for development.
+import os
+try:
+    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib/python2.7/site-packages'))
+        if os.path.isdir(_pathdir):
+            os.sys.path.insert(1, _pathdir)
+        else:
+            print("*** WARNING: no {}".format(_pathdir))
+        del _pathdir
+        del _thisdir        
+except KeyError:
+    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+
+
+import ciao_contrib.logger_wrapper as lw
+lw.initialize_logger(toolname)
+lgr = lw.get_logger(toolname)
+verb0 = lgr.verbose0
+verb1 = lgr.verbose1
+verb2 = lgr.verbose2
+verb3 = lgr.verbose3
+verb5 = lgr.verbose5
+
+import ciao_contrib.cda.csccli as csc
+from ciao_contrib.param_soaker import *
+
+
+def parse_inputs( pars ):
+    """
+    Parse parameter inputs
+    """
+
+    import coords.resolver as resolver
+    retval = {}
+
+    if not ',' in pars["pos"]:        
+        (ra_deg,dec_deg,csys) = resolver.identify_name( pars["pos"] )
+        if not 'ICRS' == csys:
+            raise ValueError("Unsupported format '{}' returned by the name resolver. Please contact the CXC HelpDesk.".format(csys))
+        verb2("Resolved {} to ra={} dec={}".format(pars["pos"],ra_deg, dec_deg))
+    else:
+        ra_deg,dec_deg = pars["pos"].split(',') #map(float, pars["pos"].split(",")) 
+    retval["ra_deg"] = str(ra_deg).strip()
+    retval["dec_deg"] = str(dec_deg).strip()
+
+    retval["radius_arcmin"] = float(pars["radius"])
+    if pars["radunit"] == "deg":
+        retval["radius_arcmin"] *= 60.0
+    if pars["radunit"] == "arcsec":
+        retval["radius_arcmin"] /= 60.0
+
+    retval["radunit"] = pars["radunit"]
+
+    if "INDEF" == pars["columns"] or len(pars["columns"]) == 0:
+        retval["columns"] = csc.get_default_columns()
+    else:
+        import stk as stk
+        retval["columns"] = stk.build( pars["columns"] )
+        retval["columns"] = csc.check_required_names( retval["columns"] )
+    
+    if 'none' == pars["outfile"].lower():
+        retval["outfile"] = None
+    else:
+        retval["outfile"] = pars["outfile"]
+
+    #-- Check energy bands, now being used for limiting sensitivity too
+    if len(pars["bands"]) == 0:
+        # if bands is blank, use all of them
+        retval["mybands"] = ",".join(csc.all_bands())
+    else:
+        retval["mybands"] = csc.check_bandtypes( pars["bands"] )
+        if len(retval["mybands"]) == 0:
+            raise ValueError("No recognized energy band supplied")
+
+    retval["limsens"] = ("yes" == pars["sensitivity"] )
+    
+    if "none" == pars["download"]:
+        retval["getfiles"] = False
+        retval["myfiles"] = None
+        retval["root"] = None
+    else:
+        retval["getfiles"] = pars["download"]
+        retval["root"] = pars["root"]
+
+        #-- Check file types
+        if len(pars["filetypes"] ) == 0:
+            # if filetypes is blank, use all of them 
+            retval["myfiles"] = ",".join( csc.fileTypes.keys() )
+        else:
+            retval["myfiles"] = csc.check_filetypes( pars["filetypes"] )
+            if len(retval["myfiles"]) == 0:
+                raise ValueError("No recognized file types supplied")
+    
+    retval["clobber"] = ( pars["clobber"] == "yes" )
+    
+    return retval
+
+def summarize_sensitivity( ra, dec, bands ):
+    """
+    
+    """
+    from coords.format import sex2deg
+    ra_deg,dec_deg = sex2deg(ra, dec ) 
+    
+    page = csc.query_csc1_limsens( ra_deg, dec_deg )
+    vals, units = csc.parse_limsens( page )
+
+    verb0("CSC Sensitivity for position: {},{}".format(ra,dec))
+    for b in bands.split(","):
+        if b in vals:
+            verb0("  "+b+' band : {} [{}]'.format( vals[b], units ))
+    
+    
+
+    
+
+    
+    
+
+#
+# Main Routine
+#
+@lw.handle_ciao_errors( toolname, __revision__)
+def main():
+    """
+    """
+    # get parameters
+    pars = get_params(toolname, "rw", sys.argv, 
+      verbose={"set":lw.set_verbosity, "cmd":verb1} )
+    pp = parse_inputs( pars )
+
+    #
+    # Query catalog by position
+    #
+    mypage = csc.search_src_by_ra_dec( pp["ra_deg"], pp["dec_deg"], pp["radius_arcmin"], pp["columns"] )
+    csc.save_results( mypage, pp["outfile"], pp["clobber"] )    
+
+    #
+    # Print results
+    #
+    if pp["limsens"]:
+        summarize_sensitivity( pp["ra_deg"], pp["dec_deg"], pp["mybands"])
+
+
+    mysrcs = csc.parse_csc_result( mypage )
+    xtra = csc.extra_cols_to_summarize( mysrcs, pars["columns"])
+    csc.summarize_results( mysrcs, units=pp["radunit"], extracols=xtra )
+
+    #
+    # Retrieve the files if asked
+    # 
+    if pp["getfiles"]:
+        csc.retrieve_files( mysrcs, pp["root"], pp["myfiles"], pp["mybands"], pp["getfiles"] )
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as E:
+        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+    

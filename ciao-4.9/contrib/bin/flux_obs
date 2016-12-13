@@ -1,0 +1,507 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2012, 2013, 2014, 2015, 2016
+#           Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 USA.
+#
+
+"""
+Given a set of reprojected observations, create a fluxed image.
+
+So,
+
+  merge_obs @in.lis out/
+
+can be broken down into
+
+  reproject_obs @in.lis out/
+  flux_obs out/ out/
+
+"""
+
+toolname = 'flux_obs'
+__revision__ = '12 September 2016'
+
+import os
+import sys
+
+import paramio
+
+# This is only needed for development.
+try:
+    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
+        if os.path.isdir(_pathdir):
+            os.sys.path.insert(1, _pathdir)
+        else:
+            print("*** WARNING: no {}".format(_pathdir))
+
+        del _libname
+        del _pathdir
+        del _thisdir
+
+except KeyError:
+    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+
+import ciao_contrib.logger_wrapper as lw
+
+from ciao_contrib.param_wrapper import open_param_file
+
+import ciao_contrib._tools.bands as bands
+import ciao_contrib._tools.fileio as fileio
+import ciao_contrib._tools.fluximage as fi
+import ciao_contrib._tools.merging as merging
+import ciao_contrib._tools.utils as utils
+
+from ciao_contrib._tools.aspsol import AspectSolution
+from ciao_contrib._tools.taskrunner import TaskRunner
+
+lw.initialize_logger(toolname)
+lgr = lw.get_logger(toolname)
+v1 = lgr.verbose1
+v2 = lgr.verbose2
+v3 = lgr.verbose3
+
+
+def get_par(argv):
+    """ Get the parameters from parameter file """
+
+    pfile = open_param_file(argv, toolname=toolname)["fp"]
+
+    def is_set(name):
+        return paramio.pgetb(pfile, name) == 1
+
+    # Common parameters:
+    params = {}
+    pars = {}
+
+    # set verbosity level (intentionally breaking the order of the
+    # parameters since we need the verbose level fairly early, and
+    # any user who has decided to change verbose to an automatic parameter
+    # can handle this break in UI behavior).
+    #
+    pars["verbose"] = params["verbose"] = paramio.pgeti(pfile, "verbose")
+
+    lw.set_verbosity(pars['verbose'])
+    utils.print_version(toolname, __revision__)
+
+    # files with information to reproject
+    pars['infiles'] = paramio.pgetstr(pfile, 'infiles')
+
+    # done out of order since need the background setting to filter the
+    # input files
+    pars['background'] = paramio.pgetstr(pfile, 'background')
+    pars['tmpdir'] = paramio.pgetstr(pfile, 'tmpdir')
+    params["tmpdir"] = utils.process_tmpdir(pars['tmpdir'])
+
+    obsinfos = merging.validate_obsinfo(pars['infiles'], colcheck=False)
+    nobs = len(obsinfos)
+    instrume = obsinfos[0].instrument
+
+    if pars['background'] != "none" and instrume == 'HRC' and \
+       obsinfos[0].detector == 'HRC-I':
+        bgfiles = merging.find_hrci_backgrounds(obsinfos,
+                                                tmpdir=params['tmpdir'])
+        if bgfiles is None:
+            pars['background'] = 'none'
+            params['bgfiles'] = [None] * nobs
+
+        else:
+            chk = [bgfile is None for bgfile in bgfiles]
+            if any(chk):
+                v3("Stripping out observations with no HRC-I background file.")
+
+                obsinfos = [obsinfo for (obsinfo, bgfile) in
+                            zip(obsinfos, bgfiles) if bgfile is not None]
+                params['bgfiles'] = [bgfile for bgfile in bgfiles
+                                     if bgfile is not None]
+
+            else:
+                params['bgfiles'] = bgfiles
+
+    else:
+        params['bgfiles'] = [None] * nobs
+
+    params['obsinfos'] = obsinfos
+    params['background'] = pars['background']
+
+    pars['bkgparams'] = paramio.pgetstr(pfile, 'bkgparams')
+    params['bkgparams'] = fi.validate_bkgparams(pars['background'],
+                                                pars['bkgparams'])
+
+    # only used (at present) for background subtraction
+    params['random'] = paramio.pgeti(pfile, 'random')
+
+    params['instrume'] = instrume
+
+    # root of merged output files
+    pars['outroot'] = params["outroot"] = paramio.pgetstr(pfile, "outroot")
+    if params["outroot"] == ".":
+        params["outroot"] = ""
+
+    (params["outdir"], params["outhead"]) = utils.split_outroot(params["outroot"])
+    if params["outdir"] != "":
+        fileio.validate_outdir(params["outdir"])
+
+    # energy bands, defined by a comma separated string in eV;
+    # i.e. "300:2000,2000:5000,5000:8000"
+    pars['bands'] = params["bands"] = paramio.pgetstr(pfile, "bands")
+
+    # Process the xygrid paramater, decide what other parameters are needed.
+    merging.handle_xygrid(pfile, instrume, pars, params)
+
+    pars['asolfiles'] = paramio.pgetstr(pfile, 'asolfiles')
+    pars['badpixfiles'] = paramio.pgetstr(pfile, 'badpixfiles')
+    pars['maskfiles'] = paramio.pgetstr(pfile, 'maskfiles')
+
+    # As of CIAO 4.6 there is no need for the pbkfiles parameter.
+    if instrume == 'ACIS':
+        pars['dtffiles'] = None
+    elif instrume == 'HRC':
+        pars['dtffiles'] = paramio.pgetstr(pfile, 'dtffiles')
+    else:
+        raise ValueError("Internal error: unrecognized INSTRUME keyword {}".format(instrume))
+
+    pars['units'] = params['units'] = paramio.pgetstr(pfile, 'units')
+
+    pars['expmapthresh'] = params['thresh'] = paramio.pgetstr(pfile,
+                                                              'expmapthresh')
+
+    # Note: access the value as a string and a boolean
+    pars['parallel'] = paramio.pgetstr(pfile, 'parallel')
+    params['parallel'] = is_set('parallel')
+    if params['parallel']:
+        pars['nproc'] = paramio.pgetstr(pfile, 'nproc')
+        if pars['nproc'] == 'INDEF':
+            params['nproc'] = None
+        else:
+            params['nproc'] = paramio.pgeti(pfile, 'nproc')
+    else:
+        pars['nproc'] = 'INDEF'
+        params['nproc'] = 1
+
+    pars['cleanup'] = paramio.pgetstr(pfile, 'cleanup')
+    params['cleanup'] = is_set('cleanup')
+
+    pars['clobber'] = paramio.pgetstr(pfile, 'clobber')
+    params['clobber'] = is_set('clobber')
+
+    paramio.paramclose(pfile)
+
+    return (params, pars)
+
+
+def data_products(taskrunner,
+                  instrume,
+                  process_flags,
+                  obsinfos,
+                  bkgfiles,
+                  chiplists,
+                  bands,
+                  binval,
+                  units,
+                  thresh,
+                  xygrids,
+                  outdir,
+                  outhead,
+                  background="default",
+                  bkgparams="",
+                  random=0,
+                  cleanup=True,
+                  tmpdir="/tmp/",
+                  clobber=False,
+                  verbose=0,
+                  parallel=False):
+    "Run fluximage on the individual observations"
+
+    # try running fluximage with one less than the script
+    tverbose = verbose - 1
+    if tverbose < 0:
+        tverbose = 0
+    elif tverbose == 4:
+        tverbose = 5
+
+    # Strip out observations that are to be ignored
+    args = zip(obsinfos, bkgfiles, chiplists, xygrids)
+    args = [arg for (flag, arg) in zip(process_flags, args) if flag]
+    nargs = len(args)
+
+    if nargs == 1:
+        v1("\nCreating the fluxed image.")
+
+    elif parallel:
+        v1("\nCreating the fluxed images for {} observations in parallel.".format(nargs))
+
+    else:
+        v1("\nCreating the fluxed images for {} observations.".format(nargs))
+
+    for (obs, bkgfile, chips, xygrid) in args:
+        outroot = "{}{}{}_".format(outdir, outhead, obs.obsid)
+
+        (xrng, yrng) = xygrid
+        grid = "x={},y={}".format(xrng, yrng)
+        # ox = xrng.nbins
+        # oy = yrng.nbins
+        binsize = xrng.size
+
+        if bkgfile is None:
+            bkginfo = None
+        else:
+            bkginfo = (background, bkgparams, bkgfile)
+
+        asolobj = AspectSolution(obs.get_asol(), tmpdir=tmpdir)
+        fi.run_fluximage_tasks(taskrunner,
+                               lambda s: "{}-obsid{}".format(s, obs.obsid),
+                               obs,
+                               bkginfo,
+                               chips,
+                               asolobj,
+                               outroot,
+                               grid,
+                               binsize,
+                               bands,
+                               units,
+                               thresh,
+                               random=random,
+                               tmpdir=tmpdir,
+                               verbose=tverbose,
+                               clobber=clobber,
+                               cleanup=cleanup,
+                               parallel=parallel)
+
+"""
+TODO:
+
+clean up the headers of the combined images by removing some, or all, of
+
+ASOLFILE
+THRFILE
+MJD_OBS
+DS_IDENT
+TLMVER
+REVISION
+SUBPIXFL
+RAND_SKY ?
+RAND_PI  ?
+PIX_ADJ  ?
+MJDREF
+OBS_MODE
+TIMEZERO
+TIMEUNIT
+DATACLAS
+TIMEREF
+TASSIGN
+CLOCKAPP
+SIM_X / Y / Z
+FOC_LEN
+TIERRELA
+TIERABSO
+GRATING
+DETNAM
+RA_TARG
+DEC_TARG
+DEFOCUS
+RA_NOM
+DEC_NOM
+STARTMJF
+STARTMNF
+STARTOBT
+STOPMJF
+STOPMNF
+TIMEPIXR ?
+TIMEDEL  ?
+GAINFILE
+CTI_CORR ?
+CTI_APP  ?
+CTIFILE
+MTLFILE
+TGAINCIRR ?
+TGAINFIL
+GRD_FILE
+CORNERS
+GRADESYS
+BPIXFILE
+READMODE
+DATAMODE
+RUN_ID
+FSW_VERS
+STARTBEP
+STOPBEP
+FEP_ID
+CCD_ID
+TIMEDELA
+TIMEDELB
+FIRSTROW
+NROWS
+FLSHTIMA
+FLSHTIMB
+CYCLE
+OBS_ID
+SEQ_NUM
+ONTIME0-9   ? if they are correct then possibly useful
+LIVTIME0-9  ? ditto
+EXPOSUR0-9  ? ditto
+DTCOR
+ASPTYPE
+BIASFIL0-9
+AIMPFILE
+GEOMFILE
+SKYFILE
+TDETFILE
+SHELLFIL
+FLTFILE
+MASKFILE
+PBKFILE
+CALDBVER ?
+CLSTBITS
+
+subspace filters?
+
+"""
+
+
+def setup_output_names(outdir, outhead, obsinfos, enbands,
+                       threshold=False):
+    """Set up entries in params that give the file names
+    that the code creates.
+    """
+
+    v3("Setting up output names")
+
+    obsids = [obs.obsid for obs in obsinfos]
+    out = fi.fluximage_output(outdir, outhead, obsids, enbands,
+                              threshold=threshold)
+
+    if threshold:
+        img_label = 'out_thresh_images'
+        emap_label = 'out_thresh_expmaps'
+        ifunc = merging.name_coadd_thresh_img
+        efunc = merging.name_coadd_thresh_expmap
+    else:
+        img_label = 'out_images'
+        emap_label = 'out_expmaps'
+        ifunc = merging.name_coadd_img
+        efunc = merging.name_coadd_expmap
+
+    out[img_label] = []
+    out[emap_label] = []
+    out['out_fluxmaps'] = []
+    for enband in enbands:
+        eband = enband.bandlabel
+        out[img_label].append(ifunc(outdir, outhead, eband))
+        out[emap_label].append(efunc(outdir, outhead, eband))
+        fmap = merging.name_coadd_flux(outdir, outhead, eband)
+        out['out_fluxmaps'].append(fmap)
+
+    return out
+
+
+@lw.handle_ciao_errors(toolname, __revision__)
+def fluxobs():
+    "Run the tool."
+
+    args = lw.preprocess_arglist(sys.argv)
+    (params, pars) = get_par(args)
+
+    obsinfos = params['obsinfos']
+    instrume = params['instrume']
+    merging.validate_obsinfo_params(obsinfos,
+                                    pars['asolfiles'],
+                                    pars['badpixfiles'],
+                                    pars['maskfiles'],
+                                    dtffiles=pars['dtffiles'])
+    params['enbands'] = bands.validate_bands(instrume, params['bands'])
+
+    outdir = params['outdir']
+    outhead = params['outhead']
+
+    enbands = params['enbands']
+
+    clobber = params['clobber']
+    verbose = params['verbose']
+    parallel = params['parallel']
+    tmpdir = params['tmpdir']
+
+    is_thresh = utils.thresh_is_set(params['thresh'])
+
+    xygrid = params['xygrid']
+    bin = params['bin']
+
+    outfiles = setup_output_names(outdir, outhead, obsinfos, enbands,
+                                  threshold=is_thresh)
+    fi.clobber_checks(outfiles, clobber=clobber)
+
+    if xygrid == "":
+        (xygrids, chipslist, process) = merging.matchup_xygrids_auto(obsinfos,
+                                                                     bin,
+                                                                     params['maxsize'],
+                                                                     tmpdir=tmpdir)
+    else:
+        (xygrids, chipslist, process) = merging.matchup_xygrids_user(xygrid,
+                                                                     obsinfos,
+                                                                     bin,
+                                                                     params['sizes'],
+                                                                     params['xrange'],
+                                                                     params['yrange'],
+                                                                     tmpdir=tmpdir)
+
+    taskrunner = TaskRunner()
+    data_products(taskrunner,
+                  instrume,
+                  process,
+                  obsinfos,
+                  params['bgfiles'],
+                  chipslist,
+                  enbands,
+                  bin,
+                  params['units'],
+                  params['thresh'],
+                  xygrids,
+                  outdir,
+                  outhead,
+                  background=params['background'],
+                  bkgparams=params['bkgparams'],
+                  random=params['random'],
+                  cleanup=params["cleanup"],
+                  tmpdir=tmpdir,
+                  clobber=clobber,
+                  verbose=verbose,
+                  parallel=parallel)
+    taskrunner.run_tasks(processes=params['nproc'], label=False)
+
+    merging.merge(process,
+                  enbands,
+                  pars,
+                  outfiles,
+                  obsinfos,
+                  toolname,
+                  __revision__,
+                  verbose=verbose,
+                  threshold=is_thresh,
+                  clobber=clobber,
+                  tmpdir=tmpdir)
+
+
+# doit
+if __name__ == "__main__":
+    fluxobs()

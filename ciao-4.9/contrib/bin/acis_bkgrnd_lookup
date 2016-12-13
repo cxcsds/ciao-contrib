@@ -1,0 +1,358 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2007-2011, 2013, 2015, 2016  Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Usage:
+  acis_bkgrnd_lookup infile
+
+Aim:
+  find the ACIS blank-sky datasets for a given observation
+
+  The input event file is used to find the aimpoint and ccd_id
+  values.
+
+  The script prints the matching background file(s) to the screen.
+  This value is also stored in the outfile parameter value; multiple
+  file names are stored as a comma-separated list.
+
+"""
+
+toolname = "acis_bkgrnd_lookup"
+version = "12 December 2016"
+
+import os
+import sys
+
+import numpy as np
+
+import paramio as pio
+import pycrates
+import caldb4
+
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib.cxcdm_wrapper import convert_block_number
+from ciao_contrib.param_wrapper import open_param_file
+
+lw.initialize_logger(toolname)
+
+v1 = lw.make_verbose_level(toolname, 1)
+v2 = lw.make_verbose_level(toolname, 2)
+v5 = lw.make_verbose_level(toolname, 5)
+
+
+def process_command_line(argv):
+    """Handle the parameter input for this script."""
+
+    if argv is None or argv == []:
+        raise ValueError("argv argument is None or empty")
+
+    pinfo = open_param_file(argv, toolname=toolname)
+    fp = pinfo["fp"]
+
+    infile = pio.pget(fp, "infile")
+    if infile.strip() == "":
+        raise ValueError("infile parameter is empty")
+
+    blname = pio.pget(fp, "blname")
+    verbose = pio.pgeti(fp, "verbose")
+
+    # Ensure outfile is cleared in case of an error
+    pio.pset(fp, "outfile", "")
+
+    pio.paramclose(fp)
+
+    # Set tool and module verbosity
+    lw.set_verbosity(verbose)
+
+    return {"progname": pinfo["progname"],
+            "parname": pinfo["parname"],
+            "infile": infile,
+            "blname": blname,
+            "verbose": verbose}
+
+
+def get_ccd_ids_from_subspace(cr):
+    """Returns an array of ccd_id values matching the ccd_id
+    filter recorded in the data subspace of the crate.
+    The return value is given in numerically-ascending order,
+    rather than recorded in the subspace.
+
+    Returns None if there is no subspace information or
+    the ccd_id column is not found in the subspace block(s).
+
+    The subspace components are expected to be such that a
+    union of the ranges is correct.
+    """
+
+    v5("What CCDs are available?")
+
+    # There is currently (CIAO 4.8) no way to get the number of
+    # subspace components, so loop over until there's an IndexError
+    # (which is either no column or no component). The assumption is
+    # that if there's a ccd_id filter in any component then there's
+    # one in all components.
+    i = 1
+    out = set()
+    while True:
+        try:
+            sinfo = cr.get_subspace_data(i, 'ccd_id')
+        except IndexError:
+            if i == 1:
+                v5("  -- no subspace information!")
+                return None
+            else:
+                break
+
+        los = sinfo.range_min
+        his = sinfo.range_max
+        v5("Moved to subspace #{} - lo={} hi={}".format(i, los, his))
+        for (lo, hi) in zip(los, his):
+            for j in range(lo, hi + 1):
+                out.add(j)
+
+        i += 1
+
+    if len(out) == 0:
+        v5(" -- no ccd_id filter record in subspace")
+        return None
+
+    else:
+        # why not 'out = out[:]'?
+        out = [x for x in out]
+        out.sort()
+        v5(" -- subspace ccd_id filter = {0}".format(out))
+        return out
+
+
+def get_ccd_ids_from_column(cr):
+    """Returns an array of ccd_id values matching the ccd_id
+    values from the ccd_id column (unique, sorted).
+
+    Returns None if there is no ccd_id column in the
+    crate. Raises an error if the column contains invalid
+    data (ie values in the range 0 to 9 inclusive).
+    """
+
+    v5("Finding out what CCDs are on using the CCD_ID column")
+
+    try:
+        col = cr.get_column('ccd_id')
+    except ValueError:
+        v5("  -- no ccd_id column found!")
+        return None
+
+    # np.unique returns the sorted elements
+    ccds = np.unique(col.values)
+    if len(ccds) == 0:
+        v5("  -- no ccd_id data found; a bit odd")
+        return None
+
+    if ccds[0] < 0 or ccds[-1] > 9:
+        raise ValueError("invalid set of ccd_id values: {0}".format(ccds))
+
+    v5(" -- ccd_id values from column = {0}".format(ccds))
+    return ccds
+
+
+def get_ccd_ids(cr):
+    """Returns a list of the CCD_ID values in the crate.
+    Returns an empty array if no valid range for CCD_ID is found.
+
+    After checking for data (non-zero number of pixels or rows),
+    we first check for ccd_id filters in the subspace of the crate.
+    If the crate is an image then we stop here.
+
+    If the crate is a table then we stop if there is only one ccd_id
+    in the subspace filter, otherwise we find the unique values in the
+    ccd_id table column (if it exists).
+
+    We want to be able to support an infile of something like
+
+      evt.fits[sky=region(src.reg)]
+
+    so that we can not guarantee that the ccd_id subspace value
+    is correct, hence the check on the ccd_id column if it exists.
+
+    Note:
+      We should check for the image pixels to contain non-zero
+      values, rather than just to check we have some pixels,
+      but leave that for now.
+    """
+
+    v5("Check input file contains data")
+    is_image = cr.is_image()
+    if is_image:
+        dims = list(cr.get_shape())
+        npix = np.prod(dims)
+        if npix == 0:
+            raise IOError("infile is an image with no pixels: infile={}".format(cr.get_filename()))
+
+        v5(" -- image contains {0} pixels".format(npix))
+
+    else:
+        nrows = cr.get_nrows()
+        if nrows == 0:
+            raise IOError("infile contains no rows!")
+
+        v5("  -- table contains {0} rows".format(nrows))
+
+    v5("Find out what CCDs are on in this file")
+    subspaceinfo = get_ccd_ids_from_subspace(cr)
+
+    if is_image:
+        if subspaceinfo is not None:
+            return subspaceinfo
+        else:
+            raise IOError("Unable to choose ccd_id values: infile is an image and has no ccd_id subspace information! infile={}".format(cr.get_filename()))
+
+    # Check the actual data if there's no info *or* more than one CCD.
+    if subspaceinfo is not None and len(subspaceinfo) == 1:
+        return subspaceinfo
+
+    colinfo = get_ccd_ids_from_column(cr)
+    if colinfo is None:
+        return subspaceinfo
+    else:
+        return colinfo
+
+
+def display_start_info(opts):
+    v1("Running: {0}".format(opts["progname"]))
+    v1("  version: {0}".format(version))
+
+    v2("with parameters:")
+    v2("  infile={0}".format(opts["infile"]))
+    v2("  blname={0}".format(opts["blname"]))
+    v2("  verbose={0}".format(opts["verbose"]))
+    v2("  and CALDB is set to  {0}".format(os.getenv("CALDB")))
+    v2("  and ASCDS_INSTALL is {0}".format(os.getenv("ASCDS_INSTALL")))
+
+
+# This hard codes the knowledge of the CALDB query, which is not
+# ideal, but leave for now as the CALDB set up has not changed significantly
+# over time.
+#
+def display_keyword_values(cr, opts, ccdids):
+
+    def key(keyname):
+        rval = cr.get_key_value(keyname)
+        if rval is None:
+            raise IOError("No {0} keyword found in {1}".format(keyname, cr.get_filename()))
+        else:
+            return rval
+
+    v2("  SIM_Z    = {0}".format(key('SIM_Z')))
+    v2("  FP_TEMP  = {0}".format(key('FP_TEMP')))
+    v2("  CTI_APP  = {0}".format(key('CTI_APP')))
+    v2("  Chip Ids = {0}".format(ccdids))
+    v2("  DATE     = {0}  to  {1}".format(key('DATE-OBS'),
+                                          key('DATE-END')))
+
+
+def find_bkgrnd_files(opts):
+    """Does all the work; opts should be a dictionary
+    with the following keys
+
+      progname
+      parname
+      infile
+      blname
+      verbose
+    """
+
+    display_start_info(opts)
+
+    inf = opts["infile"]
+    v5("Opening file {}".format(inf))
+    cr = pycrates.read_file(inf)
+    instrument = cr.get_key_value('INSTRUME')
+    if instrument is None:
+        raise IOError("No INSTRUME keyword found in {0}".format(inf))
+    elif instrument != "ACIS":
+        raise ValueError("Expected INSTRUME keyword of ACIS but found {0} in {1}".format(instrument, inf))
+
+    ccdids = get_ccd_ids(cr)
+    display_keyword_values(cr, opts, ccdids)
+    cr = None
+
+    bn = opts["blname"]
+    if bn == "number":
+        bn = "cxcdm"
+    fnames = []
+
+    v5("Setting up CALDB query")
+    cdb = caldb4.Caldb(telescope='CHANDRA', instrume="ACIS", product="BKGRND", infile=inf)
+    v5("{}".format(cdb))
+
+    for ccd in ccdids:
+        v5("  -- running the query for CCD_ID={}".format(ccd))
+
+        # In CIAO 4.9 it appears that there is a problem when
+        # ccd=0 (an int), so cast to a string as a work around.
+        #
+        # cdb.CCD_ID = ccd
+        cdb.CCD_ID = str(ccd)
+
+        v5("CALDB query:\n{}".format(cdb))
+        matches = cdb.search
+        v5("CALDB result:\n{0}".format(matches))
+
+        nmatches = len(matches)
+        if nmatches == 0:
+            raise IOError("Unable to find an ACIS background file for:\n  infile={0}\n  CCD_ID={1}\n".format(inf, ccd))
+
+        elif nmatches > 1:
+            # Try the .allneeded field to indicate missing fields;
+            # in CIAO 4.6 and later this field will now contain only
+            # those fields missing in infile since .search has been called.
+            missing = [i[0] for i in cdb.allneeded]
+            emsg = "Multiple ACIS background files found for:\n  infile={0}\n  CCD_ID={1}\n".format(inf, ccd)
+            if missing != []:
+                emsg += "  Missing keys={}\n".format(", ".join(missing))
+
+            raise ValueError(emsg)
+
+        else:
+            match = convert_block_number(matches[0], system=bn, insystem="cfitsio")
+            v2("Background file for ccd_id={0} is {1}".format(ccd, match))
+            fnames.append(match)
+
+    v5("Finished")
+    print("\n".join(fnames))
+
+    pn = opts["parname"]
+    mode = "wL"
+    v5("Opening parameter file (mode={0}) using name={1}".format(mode, pn))
+    fp = pio.paramopen(pn, mode)
+    pio.pset(fp, "outfile", ",".join(fnames))
+    pio.paramclose(fp)
+
+
+@lw.handle_ciao_errors(toolname, version)
+def acis_bkgrnd_lookup(args):
+    "Run the tool"
+    opts = process_command_line(args)
+    find_bkgrnd_files(opts)
+
+
+if __name__ == "__main__":
+    acis_bkgrnd_lookup(sys.argv)

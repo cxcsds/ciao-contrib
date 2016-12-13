@@ -1,0 +1,1018 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+
+ <!ENTITY pr "unix&#37;">
+
+]>
+
+<cxchelptopics>
+  <ENTRY key="chandra_repro" context="tools" refkeywords="repro reprocessing createl2">
+
+    <SYNOPSIS>
+      Reprocess a Chandra dataset
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+	The chandra_repro reprocessing script automates the
+	recommended data processing steps presented in the CIAO
+	analysis threads.  The script reads data from the standard
+	data distribution (e.g. primary and secondary directories) and
+	creates a new bad pixel file, a new level=2 event file, and a
+	new level=2 Type II PHA file with the appropriate response files (grating data only).
+      </PARA>
+
+      <PARA>
+	chandra_repro may be used to reprocess any ACIS and HRC imaging
+	or grating data.  
+      </PARA>
+
+      <PARA> 
+	There are parameters to control certain reprocessing steps,
+	such as creating the new bad pixel file or destreaking the
+	data.  Users who wish to have finer-grained control over the
+	reprocessing parameters should instead follow the
+	step-by-step instructions in
+	the <HREF link="http://cxc.harvard.edu/ciao/threads/data.html">CIAO
+	Data Preparation Threads</HREF>.
+      </PARA>
+
+      <PARA title="Where are the processed files?">
+	The chandra_repro script stores the processed files in the location
+	given by the outdir parameter. This can be relative to the input directory
+	- e.g. a repro/ directory within each obsid - or everything can be
+	placed into a single directory (when processing multiple directories).
+	The grating products - PHA2, grating ARFs, and RMFs - 
+	are placed in the tg/ subdirectory of the outroot
+	directory.
+      </PARA>
+ 
+     <PARA title="CALDB Version">
+     The chandra_repro script does not overwrite the CALDBVER keyword in
+     the event header since not all calibrations may have been applied.
+     However, it does record the version of the CALDB in comments that 
+     users can check to verify that they applied the intended 
+     calibration updates.     
+     </PARA>
+<VERBATIM>
+&pr; dmlist acis_repro_evt2.fits header | grep 'chandra_repro was run' 
+ --  COMMENT               chandra_repro was run with CALDB 4.5.1
+ --  HISTORY               PARM  :value=chandra_repro was run with CALDB 4.5.1            ASC00639
+</VERBATIM>
+ 
+ 
+   </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<DESC>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; chandra_repro</LINE>
+	    </SYNTAX>
+	  </PARA>
+
+	  <PARA>
+	    Reprocess the dataset in the current working directory
+	    with the default script settings. The default verbosity of
+	    1 means that status messages will be printed to the
+	    screen. 
+	  </PARA>
+
+	  <PARA>
+	    The script should be run from directory which contains the
+	    contains the primary/ and secondary/ data directories from
+	    a standard Chandra Data Archive download tarfile:
+	  </PARA>
+
+<VERBATIM>
+&pr; pwd
+/data/1838/
+
+&pr; ls
+primary/  secondary/
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<DESC>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; chandra_repro verbose=0</LINE>
+	    </SYNTAX>
+	  </PARA>
+
+	  <PARA>
+	    Reprocess the dataset in the current working directory
+	    with the default settings.  Nothing will be printed to the
+	    screen, unless the script detects an error. 
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<DESC>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; chandra_repro indir=/data/1838 outdir=/data/1838/new cleanup=no</LINE>
+	    </SYNTAX>
+	  </PARA>
+
+	  <PARA>
+	    Reprocess the dataset in directory /data/1838, writing the
+	    new files to /data/1838/new .  Save all of the
+	    intermediate files (cleanup=no).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<DESC>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; chandra_repro set_ardlib=no</LINE>
+	    </SYNTAX>
+	  </PARA>
+
+	  <PARA>
+	    The data will be reprocessed, but the bad pixel filename
+	    will not be set in ardlib.par.  
+	  </PARA>
+
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <DESC>
+<!-- use a verbatim block to retain the spacing/blank characters -->
+<VERBATIM>
+&pr; chandra_repro verbose=1 mode=h
+Resetting afterglow status bits in evt1.fits file...
+
+Running acis_build_badpix and acis_find_afterglow to create a new bad pixel file...
+
+Running acis_process_events to reprocess the evt1.fits file...
+Filtering the evt1.fits file by grade and status...
+Applying the good time intervals from the flt1.fits file...
+The new evt2.fits file is: /data/1838/repro/acisf01838_repro_evt2.fits
+
+Updating the event file header with chandra_repro HISTORY record
+Setting observation-specific bad pixel file in local ardlib.par.
+
+Cleaning up intermediate files
+
+WARNING: Observation-specific bad pixel file set for session use:
+         /data/1838/repro/acisf01838_repro_bpix1.fits
+         Run 'punlearn ardlib' when analysis of this dataset completed.
+
+The data have been reprocessed.
+Start your analysis with the new products in
+/data/1838/repro
+</VERBATIM>
+	<PARA>
+	  At the verbose=0 setting, only critical warnings and
+	  errors are printed to the terminal.  At verbose=1 (and above) 
+	  additional information about each data set is printed.
+	</PARA>
+	</DESC>
+      </QEXAMPLE>
+
+
+
+      <QEXAMPLE>
+        <DESC>
+          <PARA>
+            <SYNTAX>
+             <LINE>&pr; chandra_repro indir=1838,1839 outdir="" </LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    Will reprocess the data in directories 1838/ and 1839/.  The outputs will be
+	     placed in 1838/repro and 1839/repro.  A warning will be issued since multiple 
+	     indir are used and the default set_ardlib=yes are incompatible (see details below).
+	     The data are not reprojected to the tangent plane, nor are they corrected for 
+	     any small astrometric shifts.
+	  </PARA>
+
+
+
+	</DESC>
+      </QEXAMPLE>
+
+
+      <QEXAMPLE>
+        <DESC>
+          <PARA>
+            <SYNTAX>
+             <LINE>&pr; chandra_repro "*" outdir="" </LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+        chandra_repro will try to process all the obsids in the
+        current directory.  The "*" must be in quotes (single or double)
+        or must be escaped, \*, from the shell.  All other stack
+        expansion rules also apply (see ahelp stack).
+	  </PARA>
+      <PARA>
+        The default outroot parameter is set such that a "repro" directory
+        will be created in each obsid's subdirectory. 
+      </PARA>
+<VERBATIM>
+&pr; download_chandra_obsid 1838 
+...
+&pr; /bin/ls 
+1838
+&pr; chandra_repro "*" mode=h verb=1
+
+Processing input directory '/data/1838'
+
+Resetting afterglow status bits in evt1.fits file...
+
+Running acis_build_badpix and acis_find_afterglow to create a new bad pixel file...
+
+Running acis_process_events to reprocess the evt1.fits file...
+...
+&pr; /bin/ls 1838/*
+1838/axaff01838N002_VV001_vv2.pdf  1838/oif.fits
+
+1838/primary:
+acisf01838_000N003_bpix1.fits.gz  acisf01838N003_full_img2.fits.gz
+acisf01838_000N003_fov1.fits.gz   acisf01838N003_full_img2.jpg
+acisf01838N003_cntr_img2.fits.gz  orbitf084197100N001_eph1.fits.gz
+acisf01838N003_cntr_img2.jpg      pcadf084244404N003_asol1.fits.gz
+acisf01838N003_evt2.fits.gz
+
+1838/repro:
+acisf01838_000N003_bpix1.fits  acisf01838_asol1.lis
+acisf01838_000N003_fov1.fits   acisf01838_repro_bpix1.fits
+acisf01838_000N003_msk1.fits   acisf01838_repro_evt2.fits
+acisf01838_000N003_mtl1.fits   acisf084245776N003_pbk0.fits
+acisf01838_000N003_stat1.fits  pcadf084244404N003_asol1.fits
+
+1838/secondary:
+acisf01838_000N003_evt1.fits.gz     acisf084244478N003_3_bias0.fits.gz
+acisf01838_000N003_flt1.fits.gz     acisf084244478N003_4_bias0.fits.gz
+acisf01838_000N003_msk1.fits.gz     acisf084244478N003_5_bias0.fits.gz
+acisf01838_000N003_mtl1.fits.gz     acisf084245776N003_pbk0.fits.gz
+acisf01838_000N003_stat1.fits.gz    aspect
+acisf084244478N003_0_bias0.fits.gz  axaff01838N002_VV001_vvref2.pdf.gz
+acisf084244478N003_1_bias0.fits.gz  ephem
+acisf084244478N003_2_bias0.fits.gz
+</VERBATIM>
+
+
+	</DESC>
+      </QEXAMPLE>
+
+
+    </QEXAMPLELIST>
+
+
+    <PARAMLIST>
+      <PARAM name="indir" def="./" type="file" reqd="yes" stacks="yes">
+        <SYNOPSIS>
+	  Input directory
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    The directory which contains the primary/ and secondary/
+	    data directories from a standard Chandra Data Archive
+	    download tarfile.   It may also be a directory which
+	    contains all of the downloaded data files (i.e. not
+	    organized into primary/ and secondary/ subdirectories).
+          </PARA>
+
+	  <PARA title="Special Input Case: multi-OBI data">
+	    In order to run chandra_repro on observations that
+	    have multiple observation intervals
+	    (<HREF link="http://cxc.harvard.edu/ciao/dictionary/obi.html">OBIs</HREF>), 
+	    the input data
+	    has to be separated into different input directories.  
+	    Users can refer to the
+            <HREF link="http://cxc.harvard.edu/ciao/why/multiobi.html">Multi-OBI
+	      Observations why topic</HREF> for information on what
+	    these datasets are, and the
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/splitobs.html">splitobs</HREF>
+	    script to create separate directories for the different OBIs.
+	  </PARA>	  
+	  <PARA title="Interleaved-mode datasets">
+	    The chandra_repro script can be run on
+	    <HREF link="http://cxc.harvard.edu/ciao/dictionary/altexp.html">interleaved mode</HREF>
+	    datasets. In this case, the output files will use the
+	    labels "e1" and "e2" to separate the two sets of outputs.
+	    Alternately, the
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/splitobs.html">splitobs</HREF>
+	    script can be used to create separate directories for the 
+	    primary (e1) and secondary (e2) data periods, after which the
+	    data can be processed as separate datasets.
+	  </PARA>
+	  <PARA title="Multiple Datasets">
+	    indir can be a 
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/stack.html">stack</HREF> 
+	    of input directories.  Each subdirectory will be processed one at a time; 
+	    each must have the primary and secondary directories.  See the outdir 
+	    parameter for details on where reprocessed products will be created.  
+	    Note:  since there is only one ardlib.par, the set_ardlib parameter 
+	    is forced to be "no" since it cannot be set correctly for all 
+	    directories.  Multiple inputs are NOT reprojected to the same
+	     tangent plane nor are they corrected for astrometric shifts.  
+
+	  </PARA>
+
+        </DESC>
+      </PARAM>
+
+      <PARAM name="outdir" def="&quot;&quot;" type="file" reqd="yes">
+        <SYNOPSIS>
+	  Output directory
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    The output directory for the reprocessed data files.  This
+	    directory will also contain symbolic links to the files
+	    which are required for data analysis, e.g. the aspect
+	    solution and the mask file.  If the file system does not
+	    support symbolic links then copies are made.
+          </PARA>
+	  <PARA>
+	  The default, outdir="", will create a "repro" subdirectory underneath the indir directory.
+	  </PARA>
+	  <PARA title="Multiple Datasets">
+	  	    When the indir parameter is a stack, the outdir must 
+		    be specified in one of the following ways.  If outdir="", then a
+		     "repro" subdirectory will be created in each indir in the stack.
+		       If outdir="./repro", or any other single directory name, then
+		        all the outputs from all the indirs will be put into the same 
+			directory.  Finally, users can specify a stack of outdirs that 
+			match one-to-one with the indirs for the most control over the 
+			location of where each indir goes.
+	  </PARA>
+
+        </DESC>
+      </PARAM>
+
+      <PARAM name="root" type="string" reqd="no">
+        <SYNOPSIS>
+	  Root for output filenames
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    If not specified, the script uses the first section of the 
+	    level=1 event filename (up to the first underscore) to
+	    define the root, e.g. "acisf01838" is the root of
+	    acisf01838_000N002_evt1.fits. 
+          </PARA>
+
+	  <PARA>
+	    New files that are created by the script have the filename
+	    format &lt;root&gt;_repro_&lt;type&gt;.fits,
+	    e.g. acisf01838_repro_evt2.fits or
+	    acisf01838_000N003_bpix1.fits.
+	  </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="badpixel" def="yes" type="boolean" reqd="no">
+        <SYNOPSIS>
+	  Create a new bad pixel file?
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    If "badpixel=yes" (the default), a new bad pixel file is
+	    created for the dataset. 
+          </PARA>
+
+	  <LIST>
+	    <CAPTION>ACIS Data:</CAPTION>
+	    <ITEM>status bits 1-5, 14-20 and 23 in the input event
+	    file are reset by the acis_clear_status_bits script to
+	    remove any previous bad pixel identification and
+	    destreaking.</ITEM>   
+
+	    <ITEM>destreak is run to identify streak events, if the
+	      observation used ACIS-S4 (ccd_id=8) and destreak=yes.
+	      Flagging the streaks first prevents the misidentification of
+              pixels with a lot of streak events as being hot pixels.</ITEM> 
+	    
+	    <ITEM>acis_build_badpix and acis_find_afterglow are run to
+	    create a new bad pixel file which flags hot pixel and
+	    afterglow events in the event file.</ITEM>  
+	  </LIST>
+
+	  <LIST>
+	    <CAPTION>HRC Data:</CAPTION>
+	    <ITEM>hrc_run_hotpix is run to define the valid coordinate
+	      regions in the detectors and to identify hot pixels in
+	      the event file.</ITEM>  
+	  </LIST>
+
+	  <PARA>
+	    The new bad pixel that is created is used in reprocessing
+	    the data, assuming "process_events=yes".
+	  </PARA>
+
+	  <PARA title="ACIS continuous-clocking mode">
+	    This parameter setting does not apply when the input data
+	    were taken in ACIS continuous-clocking mode, as the
+	    ACIS afterglow and hot pixel tool cannot be used with this data mode.
+	  </PARA>
+
+	  <PARA title="Related webpages:">
+	    o) <HREF link="http://cxc.cfa.harvard.edu/ciao/threads/acisbadpixels/">
+        Customizing an ACIS Bad Pixel File (experts only)
+        </HREF>
+	  </PARA>
+
+	  <PARA>
+	    o) <HREF link="http://cxc.harvard.edu/ciao/threads/hrc_badpix/">New
+	     Observation-Specific HRC Bad Pixel File thread</HREF>
+	  </PARA>
+
+        </DESC>
+
+      </PARAM>
+
+      <PARAM name="process_events" def="yes" type="boolean" reqd="no">
+        <SYNOPSIS>
+	  Create a new level=2 event file?
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    If "process_events=yes" (the default), then the
+	    acis_process_events or hrc_process_events tool is run to
+	    create a new level=1 event file with the latest
+	    calibration applied.  
+	  </PARA>
+
+	  <PARA>
+	    The standard grade, status, and good time filters are
+	    applied by the tool dmcopy to create a new level=2 event
+	    file.  This
+	    includes <HREF link="http://cxc.cfa.harvard.edu/cal/Letg/Hrc_bg/">the
+	    pulse-height filter to reduce background in LETG/HRC-S
+	    observations</HREF>.  
+          </PARA>
+
+	  <PARA>
+	    For grating data, a new level=2 Type II PHA file is extracted along
+        with the ARF and RMF files which are stored in the tg/ subdirectory.
+        
+	  </PARA>
+          
+	  <LIST>
+	    <CAPTION>ACIS Reprocessing Steps</CAPTION>
+            <ITEM>the latest charge transfer inefficiency (CTI) correction</ITEM>
+            <ITEM>the latest time-dependent gain adjustment</ITEM>
+            <ITEM>the latest gain map</ITEM>
+            <ITEM>a new bad pixel file</ITEM>
+            <ITEM>PHA randomization</ITEM>
+            <ITEM>a sub-pixel adjustment (if specified, see "pix_adj" parameter)</ITEM>
+            <ITEM>clean the VFAINT background  (see "check_vf_pha" parameter)</ITEM>
+            <ITEM>continuous clocking mode times of arrival and pulse heights</ITEM>
+          </LIST>
+          
+	  <LIST>
+	    <CAPTION>HRC Reprocessing Steps</CAPTION>
+	    <ITEM>the latest time-dependent gain adjustment</ITEM>
+	    <ITEM>the AMP_SF correction</ITEM>
+	    <ITEM>the degap correction</ITEM>
+	    <ITEM>recomputing average HRC dead time corrections</ITEM>
+            <ITEM>pixel randomization (if specified, see "pix_adj" parameter)</ITEM>
+          </LIST>
+
+	  <PARA title="Related webpages:">
+	    o) <HREF link="http://cxc.harvard.edu/ciao/threads/createL2/">Reprocessing Data to Create a New Level=2 Event File thread</HREF> 
+          </PARA>
+	  <PARA>
+	    o) <HREF link="http://cxc.harvard.edu/ciao/ahelp/acis_process_events.html">acis_process_events
+	    help file</HREF>
+	  </PARA>
+	  <PARA>
+	    o) <HREF link="http://cxc.harvard.edu/ciao/ahelp/hrc_process_events.html">hrc_process_events
+	    help file</HREF>
+	  </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="destreak" def="yes" type="boolean" reqd="no">
+        <SYNOPSIS>
+	  Destreak the ACIS-8 chip?
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    There is a flaw in the serial readout of the ACIS chips,
+	    causing a significant amount of charge to be randomly
+	    deposited along pixel rows as they are read out. 
+	    If "destreak=yes" (the default), the destreak tool is run
+	    on the ACIS-S4 chip to detect probable streak events.  The  
+	    flagged events are then filtered out of the new level=2
+	    event file. 
+          </PARA>
+
+	  <PARA title="Related webpages:">
+	    o) <HREF link="http://cxc.harvard.edu/ciao/why/destreak.html">Destreaking ACIS Data why topic</HREF>
+	  </PARA>
+	  <PARA>
+	    o) <HREF link="http://cxc.harvard.edu/ciao/ahelp/destreak.html">destreak
+	    help file</HREF>
+	  </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="set_ardlib" def="yes" type="boolean" reqd="no">
+        <SYNOPSIS>
+	  Set ardlib.par with the bad pixel file?
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    If "set_ardlib=yes" (the default), the
+	    observation-specific bad pixel file is set in
+	    the ardlib.par file so that it is available to the CIAO
+	    tools during data analysis.
+          </PARA>
+
+	  <PARA>
+	    Setting "set_ardlib=no" may be useful if you are analyzing 
+	    another dataset while chandra_repro is running.   In this
+	    case, you would not want ardlib.par to be modified until
+	    the other analysis tasks are finished.
+	  </PARA>
+
+	  <PARA>
+	    Remember to "punlearn" your ardlib.par file after
+	    completing analysis of this dataset to ensure that the
+	    proper bad pixel maps are used the next time that
+	    ardlib.par is referenced by a tool.  
+	  </PARA>
+
+	  <PARA title="Related webpages:">
+	    o) <HREF link="http://cxc.harvard.edu/ciao/threads/badpix/">Setting
+	    the Observation-specific Bad Pixel Files</HREF> 
+	  </PARA>
+
+	  <PARA title="Multiple datasets">
+	    If there are multiple input datasets, then the single
+	     ardlib.par cannot be setup correctly for all of them.  
+	     Therefore chandra_repro script will omit this step if 
+	     multiple input directories are used.
+	  </PARA>
+
+        </DESC>
+      </PARAM>
+
+      <PARAM name="check_vf_pha" def="no" type="boolean" reqd="no">
+        <SYNOPSIS>
+	  Clean ACIS background in VFAINT data?
+        </SYNOPSIS>
+        <DESC>
+	  <PARA>
+	    In ACIS very faint mode, acis_process_events can use the
+	    pulse heights in the outer 16 pixels of the 5x5 event
+	    island to help distinguish between good X-ray events and
+	    bad events that are most likely associated with cosmic
+	    rays.
+	  </PARA>
+
+          <PARA>
+	    If "check_vf_pha=yes" (not the default), then the ACIS particle
+	    background for very faint mode observations is cleaned.
+	    The potential background event - events where one or more
+	    of those outer pixels is greater than the default split
+	    threshold - is flagged and filtered out of the event file.
+          </PARA>
+
+	  <PARA>
+	  Prior to the June 2012 release, the default for check_vf_pha was
+	  set to "yes".  It has been determined that this could remove
+	  good events in observations with modestly bright point sources.
+	  Therefore, the default is now set to "no".
+	  </PARA>
+
+
+          <PARA>
+	    The value of this parameter is passed to the
+	    "check_vf_pha" parameter of acis_process_events when
+	    "process_events=yes".   
+	  </PARA>
+
+	  <PARA title="Related webpages:">
+	    o) <HREF link="http://cxc.harvard.edu/ciao/why/aciscleanvf.html">ACIS
+	    VFAINT Background Cleaning why topic</HREF> 
+	  </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="pix_adj" def="default" type="string" reqd="no">
+        <SYNOPSIS>
+	  Pixel randomization: default|edser|none|randomize
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    If "pix_adj=default" (the default), then the default value of
+           the tool's pixel randomization parameter is used.  For ACIS
+           timed exposure mode data, a subpixel algorithm is applied
+           (acis_process_events pix_adj=EDSER).  For ACIS
+           continuous-clocking mode data, no subpixel adjustment is applied
+           (acis_process_events pix_adj=NONE). For HRC data, randomization
+           is not applied (hrc_process_events rand_pix_size=0.0).
+          </PARA>
+
+	  <PARA>
+	    The following table summarizes the chandra_repro pix_adj
+	    options and how each is passed to acis_process_events and
+	    hrc_process events (when "process_events=yes").
+	  </PARA>
+
+	  <TABLE>
+	    <ROW>
+	      <DATA>pix_adj value</DATA>
+	      <DATA>acis_process_events parameter</DATA>
+	      <DATA>hrc_process_events parameter</DATA>
+	    </ROW>
+
+	    <ROW>
+	      <DATA>default</DATA>
+	      <DATA>pix_adj=EDSER (TE) or pix_adj=NONE (CC)</DATA>
+	      <DATA>rand_pix_size=0.0</DATA>
+	    </ROW>
+
+	    <ROW>
+	      <DATA>edser</DATA>
+	      <DATA>pix_adj=EDSER</DATA>
+	      <DATA>not applicable</DATA>
+	    </ROW>
+
+	    <ROW>
+	      <DATA>none</DATA>
+	      <DATA>pix_adj=NONE</DATA>
+	      <DATA>rand_pix_size=0.0</DATA>
+	    </ROW>
+
+	    <ROW>
+	      <DATA>randomize</DATA>
+	      <DATA>pix_adj=RANDOMIZE</DATA>
+	      <DATA>rand_pix_size=0.5</DATA>
+	    </ROW>
+	  </TABLE>
+
+	  <PARA title="Related webpages:">
+	    o) <HREF link="http://cxc.harvard.edu/ciao/why/acispixrand.html">ACIS 
+	    Pixel Randomization why topic</HREF>
+	  </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="recreate_tg_mask" def="no" type="boolean" reqd="no">
+        <SYNOPSIS>
+      Re-run tgdetect2 and tg_create_mask rather than use the 
+      Level 2 region extension?
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            In some situations the correct zero-order location cannot be
+            correctly identified by tgdetect2. This happens when the
+            source is heavily piled up, or if it has been masked out.
+            Additionally, due to the incomplete calibration of the
+            continuous-clocking mode
+            gain, the default order sorting parameters may be in appropriate.
+            
+            </PARA>
+            <PARA>
+            These situations are usually identified as part of the Verification and
+            Validation step in standard data processing.  It results in the
+            data being reprocessed with a custom mask created by one
+            of the grating scientists.       
+            </PARA>
+
+        <PARA>
+        By default, chandra_repro re-runs tgdetect2 and thus would 
+        create an insufficient grating mask leading to incorrect
+        grating spectra.  With the recreate_tg_mask parameter set to "no",
+        the region used in standard processing is used.
+        </PARA>
+        <PARA>
+        The region is defined in physical coordinates.  If data has been
+        reprojected or if a fine astrometric shift has been added to 
+        the aspect solution, this may invalidate the region coordinates.
+        </PARA>
+         
+            <PARA title="Related webpages:">
+                <HREF link="http://cxc.harvard.edu/ciao/threads/tg_piled_zero/">
+                Source Position for Grating Data with a Piled or Blocked Zero Order 
+                </HREF>
+            </PARA>
+         
+        </DESC>
+
+      
+      </PARAM>
+
+
+      <PARAM name="cleanup" def="yes" type="boolean" reqd="no">
+        <SYNOPSIS>
+	  Cleanup intermediate files on exit
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    If "cleanup=yes" (the default), intermediate data files
+	    are deleted when the script ends.  When the parameter is
+	    set to "no", these files remain in the "outdir"
+	    directory. 
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="clobber" def="yes" type="boolean" reqd="no">
+        <SYNOPSIS>
+	  Clobber existing files?
+        </SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    Overwrite existing files with the same filename?
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="verbose" def="1" min="0" max="5" type="integer" reqd="no">
+        <SYNOPSIS>
+	  The amount of information printed to the screen
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    The default verbosity setting (1) prints status messages
+	    as the script runs.  Higher verbosity settings print the
+	    commands that are being run.  Setting verbose=0 turns off
+	    all screen output except errors.
+          </PARA>
+        </DESC>
+      </PARAM>
+    </PARAMLIST>
+
+
+
+<ADESC title="Changes in scripts 4.8.4 (September 2016) release">
+  <PARA>
+    For ACIS CC mode data, pix_adj="default" now sets acis_process_events pix_adj=NONE 
+    whereas before it would be set to "EDSER".
+  </PARA>
+</ADESC>
+
+<ADESC title="Changes in scripts 4.7.2 (April 2015) release">
+  <PARA>
+    The following changes are included
+  </PARA>
+  <LIST>
+    <ITEM>
+    For consistency with the TGCat catalog, only the -1 and +1 order ARF and RMF are now
+    created.  Users can run mktgresp to generate the response files for
+    higher orders.
+    </ITEM>
+    <ITEM>Errors out if the absolute path name 
+    for the input or output directories contains spaces.  </ITEM>
+    <ITEM>Added support for FAINT_BIAS mode datasets (only a few very 
+    early in the mission)</ITEM>
+    <ITEM>Compares the files in the primary/ and secondary/ directory to
+    the files listed in the event file header and issues a warning
+    if they are different.</ITEM>
+    <ITEM>Added a warning about using splitobs script for observations
+    with multiple level 1 event files.
+    </ITEM>
+    <ITEM>
+    ACIS TIME mode observations now have their GTIs aligned on
+    exposure frame time boundaries using the new gti_align script.
+    </ITEM>
+    <ITEM>An additional time filter has been added that goes from the first aspect 
+    record time to the last.  This is to address a rare condition where several
+    of the first or last events in the level 2 event file are inside the 
+    GTIs but occur outside the times covered by the aspect solution --
+    which results in invalid sky coordinates during those times.
+    </ITEM>
+  </LIST>
+
+</ADESC>
+
+
+<ADESC title="Changes in scripts 4.7.1 (December 2014) release">
+  <PARA>
+    The default verbose level is now set to 1.  Also there are internal 
+    changes to remove acis_process_events' calc_cc_times parameter.
+    
+  </PARA>
+
+</ADESC>
+
+
+<ADESC title="Changes in scripts 4.6.6 (September 2014) release">
+  <PARA>
+      The following changes were included
+    </PARA>
+    <LIST>
+<ITEM>The script will now create a FOV file - which ends in
+    _repro_fov1.fits - along with the other output products. This may
+    be especially useful if the input data have been reprojected to a
+    different tangent point or filtered exclude a different time range
+    than that used in the archival processing.
+</ITEM>
+<ITEM>
+   Added STATFILT keyword to event that gives the 32bit status that
+    was used to create the level 2 event file.
+</ITEM>
+
+</LIST>
+
+</ADESC>
+
+
+<ADESC title="Changes in the scripts 4.6.1 (December 2013) release">
+  <PARA>
+      The following changes were included
+    </PARA>
+    <LIST>
+<ITEM>The script now run r4_header_update to add the Repro-4 
+header keywords if needed.
+</ITEM>
+<ITEM>
+The centroid algorithm has been added as a pix_adj option.
+</ITEM>
+<ITEM>
+The script now runs tgdetect2 for grating data when recreate_tg_mask=yes
+</ITEM>
+</LIST>  
+
+</ADESC>
+
+  
+  <ADESC title="Change in the scripts 4.5.4 (August 2013) release">
+    <PARA>
+      The following changes were included
+    </PARA>
+    <LIST>
+<ITEM>
+    The pi=0:300 filter for HRC-S with no grating has been removed.  Users will
+    not see any difference unless they have processed their data with
+    CALDB 4.5.7.  The PI filter may optionally be used to reduce the background 
+    noise for some observations.
+</ITEM>
+<ITEM>
+    Bug fix when exactly 2 event files were present in the secondary 
+    directory, but it was not an interleaved observation.
+</ITEM>
+<ITEM>
+    Delay creation of output directory until the inputs have been verified.
+</ITEM>
+     
+    </LIST>
+
+  </ADESC>
+
+  <ADESC title="Changes in the scripts 4.5.2 (April 2013) release">
+    <PARA title="New recreate_tg_mask parameter">
+        The recreate_tg_mask parameter is has been added to direct
+        chandra_repro to use the existing REGION block attached the
+        original evt2 file rather than re-run tgdetect2 and tg_create_mask.
+        This is especially useful when the 0th order location was 
+        manually adjusted in standard data processing.    
+    </PARA>
+    <PARA title="Grating response (ARF and RMF) files">
+        chandra_repro will now create the appropriate ARF and RMF files
+        for each order and grating arm that is in the _repro_pha2.fits file.
+        It uses the default energy and channel grids.  These products are
+        stored in a "tg" subdirectory.        
+    </PARA>
+    <PARA title="Interleaved mode">
+        chandra_repro will now work on ACIS interleaved mode datasets without
+        the user needing to split them into separate directories.  The 
+        output products will have "e1" or "e2" in the file names that make
+        the original primary and secondary exposures.    
+    </PARA>
+    <PARA title="Skip directories with missing level 1 event files">
+        If chandra_repro encounters a directory where it cannot find
+        the level1 data products it requires it will now skip that
+        directory rather than exiting.    
+    </PARA>
+
+
+  </ADESC>
+
+
+  <ADESC title="Changes in the October 2012 Release">
+    <PARA title="Support for multiple observations">
+        The indir parameter can now take a stack of directories 
+	and the default outdir setting has changed to "".
+    </PARA>
+    <PARA title="Copying, rather than linking, files">
+      The archive files - such as the aspect solution and
+      mask files - are now copied rather than linked. This
+      reverses the change made in the April 2012 release.
+    </PARA>
+  </ADESC>
+
+
+
+    <ADESC title="Changes in the June 2012 Release">
+    <LIST>
+    <ITEM> The default for the check_vf_pha parameter has been changed from "yes" to "no".  It has been determined that this algorithm can remove good events for modestly bright point sources.</ITEM>
+
+    <ITEM>In the event that a file systems does not support symbolic links (some external hard drives and thumb/USB drives), copies of the auxiliary files will be made.</ITEM>
+    </LIST>
+    </ADESC>
+
+    <ADESC title="Changes in the April 2012 Release">
+      <PARA title="Warning messages">
+	Warnings produced by acis_process_events and hrc_process_events
+	are now written out instead of being hidden (this happens
+	even when verbose=0). Please see the Caveats section of the
+	<HREF link="http://cxc.harvard.edu/ciao/bugs/acis_process_events.html">acis_process_events</HREF>
+	and
+	<HREF link="http://cxc.harvard.edu/ciao/bugs/hrc_process_events.html">hrc_process_events</HREF>
+	bugs pages for information on whether these
+	warnings can be safely ignored.
+      </PARA>
+      <PARA title="Links are now used when possible">
+	The Archive data files necessary for data analysis are
+	linked from the output directory instead of being copied. 
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the February 2012 Release">
+      <LIST>
+	<ITEM>
+	  Improved error checking on the input directory.
+	</ITEM>
+      </LIST>
+    </ADESC>
+
+    <ADESC title="Changes in the December 2011 Release">
+      <LIST>
+	<ITEM>
+	  The tools acis_find_afterglow (new in CIAO 4.4) and
+	  acis_build_badpix are used in place of acis_run_hotpix
+	  because acis_find_afterglow is more efficient at identifying
+	  afterglows that have a small number (i.e. 4-10) of events. 
+	</ITEM>
+
+	<ITEM>
+	  The status bits that are set by destreak or
+	  acis_process_events are reset with the
+	  acis_clear_status_bits script before the data are
+	  reprocessed.  Previously, only the bits set by
+	  acis_detect_afterglow were reset. 
+	</ITEM>
+	
+	<ITEM>
+	  The destreak tool is run before acis_find_afterglow to
+	  improve the streak detection efficiency and to prevent
+	  pixels with several streak events from being misidentified
+	  as hot pixels. 
+	</ITEM>
+
+	<ITEM>
+	  The default filename root is chosen from the first segment
+	  of the level=1 event file, e.g. changed from
+	  "acisf01838_000N002" to "acisf01838". 
+	</ITEM>
+      </LIST>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+
+   <ADESC title="Caveats">
+     <LIST>
+       <ITEM>Large Datasets:  chandra_repro uncompresses files in memory before using them.
+       This may consume too much memory on some machines and cause 
+       chandra_repro to fail.  Since chandra_repro can work with files that
+       have already been gunziped, the work around is to gunzip all
+       the files before running this tool.
+       </ITEM>
+       <ITEM>Multi-obi datasets:  as noted above, multi-obi
+       obsids need to be separated before running chandra_repro,
+       which can be performed by the splitobs script.</ITEM>
+
+     </LIST>
+   </ADESC>
+
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/chandra_repro.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>August 2016</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

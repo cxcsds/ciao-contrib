@@ -1,0 +1,265 @@
+#!/usr/bin/env python
+
+#
+#  Copyright (C) 2014, 2015, 2016  Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Usage
+=====
+
+apply_fov_limits infile outfile [binsize] [fovfile] [clobber] [verbose]
+
+Aim
+===
+
+Calculate the optimal binning to use for the given Chandra event file, using
+the field-of-view (FOV) for the observation, and create an output image. If
+fovfile is blank then one is created, using the aspect solution file(s)
+and mask file stored in the ASOLFILE and MASKFILE keywords of infile
+(the ASOLFILE must exist; a warning is created if the MASKFILE does not
+exist but the FOV file will still be created).
+
+The choice of chips is made by filtering the input event file, using the
+Chandra Data Model syntax (this filtering should also include any energy
+filtering).
+
+Notes
+=====
+
+See also get_fov_limits, get_sky_limits
+
+"""
+
+toolname = "apply_fov_limits"
+version = "12 September 2016"
+
+import os
+import sys
+
+import paramio as pio
+
+# This is only needed for development.
+try:
+    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
+        if os.path.isdir(_pathdir):
+            os.sys.path.insert(1, _pathdir)
+        else:
+            print("*** WARNING: no {}".format(_pathdir))
+
+        del _libname
+        del _pathdir
+        del _thisdir
+
+except KeyError:
+    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib.param_wrapper import open_param_file
+import ciao_contrib.runtool as rt
+
+import ciao_contrib._tools.fileio as fileio
+import ciao_contrib._tools.fluximage as fluximage
+import ciao_contrib._tools.obsinfo as obsinfo
+import ciao_contrib._tools.utils as utils
+
+lw.initialize_logger(toolname)
+
+v1 = lw.make_verbose_level(toolname, 1)
+v2 = lw.make_verbose_level(toolname, 2)
+v3 = lw.make_verbose_level(toolname, 3)
+v4 = lw.make_verbose_level(toolname, 4)
+v5 = lw.make_verbose_level(toolname, 5)
+
+
+def process_command_line(argv):
+    """Handle the parameter input for this script."""
+
+    if argv is None or argv == []:
+        raise ValueError("argv argument is None or empty")
+
+    pinfo = open_param_file(argv, toolname=toolname)
+
+    fp = pinfo["fp"]
+
+    infile = pio.pget(fp, "infile")
+    if infile.strip() == "":
+        raise ValueError("infile parameter is empty")
+
+    outfile = pio.pget(fp, "outfile")
+    if outfile.strip() == "":
+        raise ValueError("outfile parameter is empty")
+
+    binsizestr = pio.pgetstr(fp, "binsize")
+    if binsizestr != 'INDEF':
+        binsize = pio.pgetd(fp, "binsize")
+        if binsize <= 0:
+            raise ValueError("binsize={} is not valid, ".format(binsizestr) +
+                             "it must be a number greater than zero.")
+
+    fovfile = pio.pget(fp, "fovfile")
+    tmpdir = pio.pget(fp, "tmpdir")
+    tmpdir = utils.process_tmpdir(tmpdir)
+
+    # I use pgetstr to be clear this is a string ('yes'/'no')
+    # not integer (1/0) for clobber
+    clobber = pio.pgetstr(fp, "clobber")
+    verbose = pio.pgeti(fp, "verbose")
+    mode = pio.pget(fp, "mode")
+
+    pio.paramclose(fp)
+
+    # Set tool and module verbosity
+    lw.set_verbosity(verbose)
+
+    return {"infile": infile,
+            "outfile": outfile,
+            "fovfile": fovfile,
+            "binsize": binsizestr,
+            "clobber": clobber,
+            "verbose": verbose,
+            "tmpdir": tmpdir,
+            "mode": mode}
+
+
+def display_start_info(opts):
+    "Display startup information to users"
+
+    v1("Running: {0}".format(toolname))
+    v1("  version: {0}".format(version))
+
+    v2("with parameters:")
+    v2("  infile={0}".format(opts["infile"]))
+    v2("  outfile={0}".format(opts["outfile"]))
+    v2("  binsize={0}".format(opts["binsize"]))
+    v2("  fovfile={0}".format(opts["fovfile"]))
+    v2("  tmpdir={0}".format(opts["tmpdir"]))
+    v2("  clobber={0}".format(opts["clobber"]))
+    v2("  verbose={0}".format(opts["verbose"]))
+
+
+@lw.handle_ciao_errors(toolname, version)
+def apply_fov_limits(args):
+    "Run the tool"
+
+    pars = process_command_line(args)
+    display_start_info(pars)
+    infile = pars["infile"]
+    outfile = pars["outfile"]
+    fovfile = pars["fovfile"]
+    binsizestr = pars["binsize"]
+
+    # Is this sufficient; e.g. if outfile contains "[opt kernel=text/dtf]"
+    # then this will likely not pick up if the file exists.
+    v3("Clobber check")
+    if pars["clobber"] == "no" and fileio.check_valid_file(outfile):
+        raise IOError("outfile={} exists and clobber=no.".format(outfile))
+
+    # We need to know the instrument (ACIS/HRC), chips/ccds
+    # that are on in this file, and (maybe) the ASOLFILE/MASKFILE
+    # keywords. To do this we shall use the ObsInfo object developed
+    # for fluximage/*_obs, to save on code, even though it is
+    # excessive for the task at hand.
+    #
+    v3("Processing input file")
+    obs = obsinfo.ObsInfo(infile)
+    ostr = "ObsId {} - {}".format(obs.obsid, obs.detector)
+    if obs.grating is not None and obs.grating != "NONE":
+        ostr += " grating={}".format(obs.grating)
+    v1("Observation: {}".format(ostr))
+
+    # Now we can validate the pixel size
+    if binsizestr == 'INDEF':
+        if obs.instrument == 'ACIS':
+            binsize = 8
+        else:
+            binsize = 32
+    else:
+        # This should not fail, since it has been checked earlier,
+        # but as the code path is slightly different, include the
+        # error handler just in case.
+        try:
+            binsize = float(binsizestr)
+        except ValueError:
+            raise ValueError("binsize should be a number or INDEF, " +
+                             "not '{}'".format(binsizestr))
+
+    v2("binsize = {}".format(binsize))
+
+    # Should the chip range be accessed from the subspace? This won't
+    # work for spatially-filtered files though, so for now just find
+    # the unique values.
+    v3("What chips are in the file?")
+    chipname = obs.get_chipname()
+    chips = fluximage.get_unique_vals(infile, chipname)
+    if chips is None:
+        raise IOError("Unable to find a {} column in {} ".format(chipname,
+                                                                 infile) +
+                      "(or the file is empty).")
+    chipstr = ",".join([str(c) for c in chips])
+    v1("Using {}={} from {}".format(chipname, chipstr, infile))
+
+    if fovfile.strip() == "":
+        v1("Calculating FOV file using:")
+        for afile in obs.get_asol():
+            v1("  Aspect solution {}".format(afile))
+        v1("  Mask file       {}".format(obs.get_ancillary_('mask')))
+
+        (xgrid, ygrid) = fileio.find_output_grid2(obs, binsize, chips,
+                                                  tmpdir=pars["tmpdir"])
+        if xgrid is None or ygrid is None:
+            raise ValueError("Are the ASOLFILE and MASKFILE keywords for " +
+                             "{} correct?".format(infile))
+
+    else:
+        v1("Using FOV file {}.".format(fovfile))
+
+        # Do FOV files use ccd_id even for HRC files?
+        chip_filter = "[ccd_id={}]".format(chipstr)
+        (xgrid, ygrid) = fileio.get_sky_range(infile, fovfile + chip_filter,
+                                              binsize)
+        if xgrid is None or ygrid is None:
+            raise ValueError("There is no overlap between " +
+                             "{} and {} for {}".format(infile, fovfile,
+                                                       chip_filter))
+
+    ox = xgrid.nbins
+    oy = ygrid.nbins
+    pixsize = utils.sky_to_arcsec(obs.instrument, xgrid.size)
+    v1("")
+    v1("The output image will have {} by {}".format(int(ox), int(oy)) +
+       " pixels, pixel size of {} arcsec,".format(pixsize))
+    v1("    and cover x={},y={}.".format(xgrid, ygrid))
+    v1("")
+
+    v2("Binning input file")
+    rt.dmcopy.punlearn()  # make sure opt != all
+    rt.dmcopy("{}[bin x={},y={}]".format(infile, xgrid, ygrid), outfile,
+              clobber=pars["clobber"], verbose=pars["verbose"])
+    rt.add_tool_history([outfile], toolname, pars, toolversion=version)
+    v1("Created: {}".format(outfile))
+
+
+if __name__ == "__main__":
+    apply_fov_limits(sys.argv)
+
+# End

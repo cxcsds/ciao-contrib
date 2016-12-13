@@ -1,0 +1,310 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY upr "unix&#37;">
+
+ <!ENTITY verdate "12 November 2015">
+]>
+<cxchelptopics>
+  <!--* seealsogroups is pretty random here *-->
+  <ENTRY key="apply_fov_limits" context="tools" 
+	 refkeywords="limit limits sky region bound bounding box
+		      filter filtering dmfilter xygrid fov field view
+		      fieldofview sky apply copy bin grid" 
+	 seealsogroups="bintools fovtools">
+    <SYNOPSIS>Create an image that matches the FOV file for the observation</SYNOPSIS>
+    <DESC>
+      <PARA>
+	The apply_fov_limits tool takes an event file and creates
+	an image from it in SKY coordinates, calculating the limits
+        from the Field-Of-View (FOV) file for the observation.
+	The default mode is to create the FOV based on the aspect
+        solution of the observation, filtered by the GTI of the
+	event file, but a FOV file can also be given.
+	It is essentially get_fov_limits followed by a dmcopy
+	call; the 
+        <HREF
+	    link="http://cxc.harvard.edu/ciao/ahelp/get_fov_limits.html">help
+	file for get_fov_limits</HREF>
+        describes how the limits are calculated.
+      </PARA>
+
+      <PARA title="Thread">
+	See the 
+	<HREF link="http://cxc.harvard.edu/ciao/threads/match_binning/">Match 
+	  the Binning of an Image thread</HREF>
+	on the CIAO web site for more information.
+      </PARA>
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; apply_fov_limits evt2.fits img.fits</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The tool creates the file img.fits, which is an image of
+	    the data in evt2.fits, binned to cover the spatial extent
+	    of the observation. The default binning is used (8 pixels
+	    for ACIS and 32 for HRC) and, as no Data Model filters
+	    were applied to the event file, all the data will be
+	    included in the output image.
+	    For an example ACIS-S dataset, the output is
+	  </PARA>
+
+<VERBATIM>
+Running: apply_fov_limits
+  version: &verdate;
+Observation: ObsId 5437 - ACIS-235678
+Using ccd_id=2,3,5,6,7,8 from evt2.fits
+Calculating FOV file using:
+  Aspect solution pcadf233357758N003_asol1.fits
+  Mask file       acisf05437_000N003_msk1.fits
+
+The output image will have 322 by 529 pixels, pixel size of 3.936 arcsec,
+    and cover x=2160.5:4736.5:8,y=2192.5:6424.5:8.
+
+Created: img.fits
+</VERBATIM>
+
+	  <PARA>
+	    Note that the aspect solution and mask file have been
+	    automatically identified from the header of the event file.
+	  </PARA>
+
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; apply_fov_limits "repro/acisf05437_repro_evt2.fits[ccd_id=7]" \</LINE>
+	  <LINE>chip7.img bin=1</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we restrict the event file to ACIS-S3 only, and
+	    reduce the bin size to 1, which changes the output image
+            sky range and number of pixels compared to the first example.
+	  </PARA>
+<VERBATIM>
+Running: apply_fov_limits
+  version: &verdate;
+Observation: ObsId 5437 - ACIS-235678
+Using ccd_id=7 from repro/acisf05437_repro_evt2.fits[ccd_id=7]
+Calculating FOV file using:
+  Aspect solution repro/pcadf233357758N003_asol1.fits
+  Mask file       repro/acisf05437_000N003_msk1.fits
+
+The output image will have 1102 by 1102 pixels, pixel size of 0.492 arcsec,
+    and cover x=3529.5:4631.5:1,y=3238.5:4340.5:1.
+
+Created: chip7.img
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; apply_fov_limits "evt2.fits[energy=500:900,ccd_id=7]" \</LINE>
+          <LINE>chip7.img bin=1 verbose=0</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example an energy filter has also been applied.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; apply_fov_limits evt2.fits img.out fovfile=fov.fits</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example the FOV file is explicitly given, rather
+	    than created by the script from the aspect solution and
+	    mask file.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; dmcopy "evt2.fits[sky=region(src.reg)]" src.fits</LINE>
+	  <LINE>&upr; apply_fov_limits src.fits src.img</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Since the event file sent to apply_fov_limits has already
+	    been filtered, then the output image area is determined by
+	    the intersection of the existing spatial filter with those
+	    from the FOV file.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+    <PARAMLIST>
+      <PARAM name="infile" type="string" filetype="input" reqd="yes">
+	<SYNOPSIS>
+	  Input event file
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The event file to bin up. Use
+            <HREF
+		link="http://cxc.harvard.edu/ciao/ahelp/dmfiltering.html">Data
+	    Model filters</HREF> to select the required rows, such
+            as a chip and energy filter:
+	    <EQUATION>evt2.fits[ccd_id=0:3,energy=500:7000]</EQUATION>
+	  </PARA>
+	  <PARA>
+	    Note that if the event file has been spatially filtered,
+	    then this information - taken from the 
+	    <HREF
+		link="http://cxc.harvard.edu/ciao/ahelp/subspace.html">data
+	    subspace of the file</HREF> - will be combined with the
+	    filter from the FOV file. This means that the output image
+	    may not cover the full chip area.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="outfile" type="string" filetype="output" reqd="yes">
+	<SYNOPSIS>
+	  Output image
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The name of the image created by this script.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="binsize" type="real" def="INDEF" min="0">
+	<SYNOPSIS>
+	  Image binning factor
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    When set to INDEF a default value is used: 
+	    8 for ACIS data and 32 for HRC data.
+	    The binning factor has units of the 
+	    SKY pixel (0.492" for ACIS and 0.1318" for HRC),
+	    so binsize=4 for an ACIS observation will create
+	    images with 1.968 arcsecond pixels.
+	    The value need not be an integer, and can be less
+	    than 1 if you want to look at small-scale structure near
+	    the aim point of the observation; in this case it is strongly
+	    suggested that a ccd_id filter is used to ensure
+	    manageable file sizes.
+	  </PARA>
+	</DESC>
+      </PARAM>    
+      <PARAM name="fovfile" type="file">
+	<SYNOPSIS>
+          Input FOV file
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If the parameter is not empty then it gives the name of the FOV
+	    file to use; this can either be generated using
+            skyfov or the *fov1.fits from the archive used.
+	  </PARA>
+	  <PARA>
+	    If the parameter is empty then the 
+	    ASOLFILE and MASKFILE keywords in the 
+	    event file (the infile parameter) will be 
+	    used to find the aspect solution and mask file,
+	    and these are then passed to the skyfov tool
+            to create a FOV file (with the aspect solution being
+            time filtered to match the GTI of the event file).
+	    Note that the file, or files, pointed to by the 
+	    ASOLFILE are required but the MASKFILE is optional;
+	    a warning will be displayed if it can not be found,
+	    and the full chip size will be used in calculating the
+	    bounding box.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="tmpdir" type="string" def="${ASCDS_WORK_PATH}">
+	<SYNOPSIS>
+	  Directory for temporary files. 
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Directory for storing temporary files that
+	    require further processing before becoming useful.
+	    If the directory does not exist then it will be created
+	    for use by the script, and then deleted.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="clobber" type="boolean" def="no">
+	<SYNOPSIS>
+	  OK to overwrite existing output file?
+	</SYNOPSIS>
+      </PARAM>
+      <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+	<SYNOPSIS>
+	  Verbose level
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If set to a non-zero value then the tool will
+	    print information to the screen when it is run.
+	    The extra information prduced when verbose is greater than 1
+	    is only likely to be useful when debugging the script.
+	  </PARA>
+          <PARA>
+            The script version is displayed when the verbose parameter is set
+            to 1 or higher.
+          </PARA>
+	</DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.7.2 (April 2015) release">
+      <PARA>
+	The output image is no-longer created with the dmcopy option=all
+	parameter, which means that some of the metadata of the output
+	file (such as position of the image block and the subspace of
+	the file) may change. This should make no difference for
+	most uses of the output image.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.7.1 (December 2014) release">
+      <PARA title="The mask file is now optional">
+	The script will now no-longer exit if the file pointed to by
+	the MASKFILE keyword in the infile can not be found; instead,
+	a warning will be displayed as resulting bounds may be too
+	large (for example, if a sub-array was used).  This is only
+	relevant when the fovfile parameter is not set.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+	This script is not an official part of the CIAO release but is
+	made available as "contributed" software via the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+	Please see this page for installation instructions - such as how to
+	ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+   <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/get_fov_limits.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

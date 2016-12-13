@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr "unix&#37;">
+]>
+<cxchelptopics>
+  <ENTRY key="acis_bkgrnd_lookup" context="tools"
+	 refkeywords="ACIS background blank sky blank-sky subtract lookup find cosmic cxb instrumental"
+	 seealsogroups="resptools">
+
+    <SYNOPSIS>
+      Find the matching ACIS "blank-sky" dataset for an observation
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+	The acis_bkgrnd_lookup script is used to find the ACIS
+	background (i.e. "blank sky") dataset from the CALDB that
+	matches your observation. It is suggested that you the read
+	the following before using the background files in your
+	analysis:
+      </PARA>
+
+      <!--//
+	    can't use a list because links aren't allowed in ITEM tag
+	  //-->
+
+      <PARA>
+        - <HREF
+	link="http://cxc.harvard.edu/cal/Acis/Cal_prods/bkgrnd/current/background.html">ACIS
+	Background Memos page</HREF> 
+      </PARA>
+      
+      <PARA>
+        - Maxim Markevitch's <HREF
+	link="http://cxc.harvard.edu/contrib/maxim/bg/">ACIS
+	background discussion</HREF> 
+      </PARA>
+      
+      <PARA>
+        - The <HREF
+	link="http://cxc.harvard.edu/ciao/threads/acisbackground/">ACIS
+	Background Subtraction thread</HREF> 
+      </PARA>
+
+      <PARA>
+	The results of the CALDB search are written to the outfile
+	parameter as well as being written to the screen, making them
+	accessible by calling <EQUATION>pget acis_bkgrnd_lookup
+	outfile</EQUATION>.
+      </PARA>
+
+      <PARA title="Output">
+	If more than one file is found then they are listed on the
+	screen one to a line and written to the parameter file as a
+	comma-separated list (i.e. a stack).  This will be the case,
+	for instance, if the input file contains data from more than
+	one CCD. See "ahelp stack" for more information on handling
+	stacks.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; acis_bkgrnd_lookup evt2.fits</LINE>
+	  <LINE>&pr; set bfile = `pget acis_bkgrnd_lookup outfile`</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The script finds the aimpoint, focal plane temperature,
+	    and details on the CTI correction from information in the
+	    header of the file and uses the ccd_id column of 
+	    the event file to select the chips which contain data.
+	  </PARA>
+
+	  <PARA>
+	    The matching file(s) are printed to the screen and stored
+	    in the outfile parameter of the script. We use the pget
+	    command to get this value from the parameter file.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; acis_bkgrnd_lookup "evt2.fits[sky=region(source.reg)]"</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The input file can include any Data Model expression (see
+	    "ahelp dmsyntax") as long as the resulting file is still a
+	    table with a ccd_id column.  Here we use a spatial filter
+	    to filter the events file: the resulting background
+	    file(s) will be chosen to match only the CCDs that cover
+	    the region source.reg.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; acis_bkgrnd_lookup img.fits</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this case the input file is an image, rather than an event
+	    file. The list of CCDs to use in the search is taken from
+	    the ccd_id filter recorded in the data subspace of the file; this
+	    can be seen by using the "subspace" option of dmlist, such as in
+	    this example
+	  </PARA>
+<!--
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; dmlist img.fits subspace | grep ccd_id</LINE>
+	    </SYNTAX>
+	  </PARA>
+-->
+<VERBATIM>
+&pr; dmlist img.fits subspace | grep ccd_id
+   2 ccd_id               Int2                3:3
+   2 ccd_id               Int2                2:2
+   2 ccd_id               Int2                1:1
+   2 ccd_id               Int2                0:0
+</VERBATIM>
+
+          <PARA>
+	    See "ahelp subspace" for more information on the subspace information
+	    recorded in files.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" reqd="yes">
+	<SYNOPSIS>
+	  The file for which you want background files
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The file must contain a CTI_APP keyword.
+	  </PARA>
+	  <PARA>
+	    If the input file is an image then the ccd_id subspace
+	    filter is used to determine which ACIS chips
+	    should be searched for. If the input file is a table
+            then a combination of the ccd_id subspace and ccd_id
+            column are used to determine which chips to use.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="outfile" type="file"  stacks="yes">
+	<SYNOPSIS>
+	  ACIS background file(s) to use
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter will be set to the name(s) of the ACIS
+	    background files selected from the CALDB to match your
+	    observation.  The file names include the full path.
+	    If more than one file is selected then they will
+	    be stored as a comma-separated stack.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="blname" type="string" def="none">
+	<SYNOPSIS>
+	  What block identifier should be added to the filename?
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter determines whether any block identifier
+	    should be included in the filename and, if so, what
+	    form should the identifier be in. The allowed
+	    values are:
+	  </PARA>
+
+	  <PARA title="blname=none">
+	    No identifier is added; this is the default value.
+	    The output will look something like
+	  </PARA>
+	  <VERBATIM>acis1sD2000-01-29bkgrnd_ctiN0005.fits</VERBATIM>
+
+	  <PARA title="blname=name">
+	    Add the name of the block to the file, so the
+	    output will look something like
+	  </PARA>
+	  <VERBATIM>acis1sD2000-01-29bkgrnd_ctiN0005.fits[EVENTS]</VERBATIM>
+
+	  <PARA title="blname=number">
+	    Add the number of the block to the file using the DataModel
+	    numbering scheme ([1] refers to the first block).
+	    The output will look something like
+	  </PARA>
+	  <VERBATIM>acis1sD2000-01-29bkgrnd_ctiN0005.fits[2]</VERBATIM>
+
+	  <PARA title="blname=cfitsio">
+	    Add the number of the block to the file using the CFITSIO
+	    numbering scheme ([0] refers to the first block).
+	    The output will look something like
+	  </PARA>
+	  <VERBATIM>acis1sD2000-01-29bkgrnd_ctiN0005.fits[1]</VERBATIM>
+
+	</DESC>
+      </PARAM>
+
+      <PARAM name="verbose" type="integer" def="0" min="0" max="5">
+	<SYNOPSIS>
+	  Debug level (0=no debug information)
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    In most cases the default verbose level (of 0)
+	    is the correct value to use. Higher values may prove
+	    useful when trying to track down problems with the
+	    script. Two useful values are:
+	  </PARA>
+	  <PARA title="Verbose=2">
+	    Setting verbose=2 will display the version of the
+	    script being used together with basic information
+	    derived from the input file.
+	    It also lists the equivalent calquiz call (or calls)
+	    that you would need to make to select the files.
+	  </PARA>
+	  <PARA title="Verbose=5">
+	    Setting verbose=5 lists the CALDB lookup that the
+	    script is using to select the background file.
+	  </PARA>
+	</DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Changes in the CIAO scrips 4.9.1 (December 2016) Release">
+      <PARA>
+	The code has been updated for changes in CIAO in this release.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the CIAO 4.8.1 (December 2015) Release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the CIAO 4.6.1 (December 2013) Release">
+      <PARA>
+        It is now possible to set infile to an image which contains
+        data from multiple ACIS chips (bug fix).
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA title="Downloading the script">
+	This script is not an official part of the CIAO release but is
+	made available as "contributed" software via the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF>
+	for help on installing the package.
+      </PARA>
+
+      <PARA title="Downloading the CALDB background files">
+	The ACIS background files are packaged separately from the
+	main CALDB download file and are available from the <HREF
+	link="http://cxc.harvard.edu/ciao/download/caldb.html">CALDB
+	download page</HREF>. 
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/acis_bkgrnd_lookup.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>December 2016</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

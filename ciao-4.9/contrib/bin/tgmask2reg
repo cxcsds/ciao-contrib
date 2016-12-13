@@ -1,0 +1,203 @@
+#!/usr/bin/env python
+# 
+# Copyright (C) 2013,2016 Smithsonian Astrophysical Observatory
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+from __future__ import print_function
+
+toolname = "tgmask2reg"
+__revision__ = "02 Nov 2016"
+
+# This is only needed for development.
+import os
+try:
+    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib/python2.7/site-packages'))
+        if os.path.isdir(_pathdir):
+            os.sys.path.insert(1, _pathdir)
+        else:
+            print("*** WARNING: no {}".format(_pathdir))
+        del _pathdir
+        del _thisdir        
+except KeyError:
+    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+
+
+
+
+import ciao_contrib.logger_wrapper as lw
+lw.initialize_logger(toolname)
+lgr = lw.get_logger(toolname)
+verb0 = lgr.verbose0
+verb1 = lgr.verbose1
+verb2 = lgr.verbose2
+verb3 = lgr.verbose3
+verb5 = lgr.verbose5
+
+
+def locate_caldb_file():
+    """
+    Locate the TGMASK2 file in the CALDB
+    """
+    import caldb4 as cal
+    
+    mycal = cal.Caldb("chandra", "hrc", product="TGMASK2")
+    myfiles = mycal.search
+    if len(myfiles) != 1:
+        raise IOError("Unexpected number of CALDB files found")
+    myfile = myfiles[0].split("[")
+    
+    return myfile[0]
+
+
+def get_incols( tab ):
+    """
+    Get a list of the input table names, convert to lowercase
+    """
+    incols = [x.lower() for x in tab.get_colnames(vectors=False) ]
+    return incols
+
+
+def check_region_cols( tab, xcol="x", ycol="y" ):
+    """
+    Separate the columns between region "structural" columns and
+    other columns
+
+    Grating files use tg_r,tg_d instead of x,y so we make those f() parameters
+    
+    """
+
+    incols = get_incols( tab )
+    
+    region_cols = [ "shape", xcol, ycol, "r", "rotang", "component" ]
+    optcols = [x for x in incols if not x in region_cols ]
+    regcols = [x for x in incols if x in region_cols ]
+
+    # A valid region should have at least these columns though
+    # really only shape is required (eg for field())
+    if not all( [ x in regcols for x in ["shape", xcol, ycol] ]):
+        raise Exception("TG Mask file must contain at least shape, {}, and {} cols".format(xcol,ycol))
+    return optcols
+
+
+def read_crate_into_dict_rows( tab ):
+    """
+     Load the table, turn column-centric data into a series of rows
+     Each row is a dict with name=value pairs
+    """
+
+    incols = get_incols(tab)
+    # load each column into a dictionary
+    mytab = {}
+    for ii in incols:
+        mytab[ii] = tab.get_column(ii).values
+
+    # make a list, one item per row, with dictionary name=value pairs
+    mytab2 = []
+    for ii in range( tab.get_nrows() ):
+        me_row = {}
+        for jj in incols:
+            vv = mytab[jj][ii]
+            try:
+                val = vv.decode("ascii")
+            except:
+                val = vv
+            me_row[jj] = val
+        mytab2.append( me_row)
+
+    return mytab2
+
+
+def write_tagged_region( rows, optcols, outfile, xcol="x", ycol="y" ):
+    """
+    Write ds9 stle region file with tag={name=value} to
+    store the necessary grating data
+    """
+
+    def make_tag_string( row, cols ):
+        """
+        Turn optional cols in input into ds9 tags
+        """
+        tags = " ".join([ r"tag={{{}={}}}".format( c, row[c]) for c in cols ])
+        return tags
+
+    def make_xy_string( row ):
+        """
+        Turn xy pairs into a comma separated string
+        """        
+        xypairs = zip(row[xcol],row[ycol])
+        xy=",".join(["{},{}".format(m[0],m[1]) for m in xypairs ])
+        return xy
+
+    # disallow user to delete region.
+    reg_str =  '# Region file format: DS9 version 4.1\n'
+    reg_str += '# Filename:\n'
+    reg_str += 'global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=0 include=1 source=1\n'
+    reg_str += 'physical\n'
+    
+    with open( outfile, "w") as fp:
+        # write header line
+        fp.write( reg_str )
+        for row in rows:
+            # For the tg case we only support polygons 
+            if row["shape"] != "polygon":
+                continue
+            xy=make_xy_string( row )
+            tags = make_tag_string( row, optcols )
+            fp.write( "polygon({}) # {}\n".format( xy, tags ))
+
+
+@lw.handle_ciao_errors(toolname, __revision__)
+def main():
+    import pycrates as pyc
+
+    import ciao_contrib.param_soaker as ps
+    from ciao_contrib._tools.fileio import outfile_clobber_checks
+    import os as os
+
+    pars = ps.get_params( toolname, "rw", sys.argv, 
+        verbose={"set":lw.set_verbosity, "cmd":verb1} )
+
+    infile = pars["infile"]
+    outfile = pars["outfile"]
+    clobber = (pars["clobber"] == "yes")
+
+    outfile_clobber_checks( clobber, outfile )
+    if os.path.exists( outfile ):
+        os.remove( outfile )
+
+    if "CALDB" == infile:
+        infile = locate_caldb_file()
+
+    tab = pyc.read_file( infile )
+    optcols = check_region_cols(tab, xcol="tg_r", ycol="tg_d")
+    rows = read_crate_into_dict_rows( tab)
+    write_tagged_region( rows, optcols, outfile, xcol="tg_r", ycol="tg_d" )
+
+
+
+if __name__ == "__main__":
+    import sys as sys
+    try:
+        main()
+    except Exception as E:
+        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+    
+
+

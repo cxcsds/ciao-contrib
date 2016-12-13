@@ -1,0 +1,654 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr "unix&#37;">
+]>
+<cxchelptopics>
+  <ENTRY key="deflare" context="tools"
+	 refkeywords="deflare maxim markevitch lightcurve histogram
+	 timing time times background variability gti clean filter
+	 clip lc_sigma_clip lc_sigma_clean 
+         analyze_ltcrv sigma sigma-clip"
+	 seealsogroups="timingtools cleantools"> 
+	 <!-- for refkeywords: usigma uclip lc_sigma_uclip -->
+
+    <SYNOPSIS>
+      deflare - remove flares from light curves using lc_clean or
+      lc_sigma_clip
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>
+	deflare infile method [outfile] [nsigma] [minlength] [mean]
+	[stdev] [scale] [minfrac] [plot] [save] [rateaxis] [pattern] 
+	[good_color] [exclude_color] [verbose]
+      </LINE>
+    </SYNTAX>
+
+     <DESC>
+      <PARA>
+        The deflare routine is a Python script which allows the user
+        to run either lc_clean() or lc_sigma_clip() 
+	on an input light
+        curve file for filtering flares. These routines are called
+        from the CIAO contributed script lightcurves.py (ahelp -l
+        lightcurves), and can be run separately within a Python
+        interpreter, such as chips, sherpa, or ipython. It is not
+        necessary to load the deflare routine into a Python
+        interpreter; the script performs this step automatically when
+        it is run from the Unix command line, within the CIAO
+        environment.
+      </PARA>
+
+      <PARA title="lc_clean">	
+        The lc_clean() routine removes flares (and periods of
+        anomalously-low count rates) from light curves using the same
+        technique as used on the ACIS backgroud files; it is based on
+        the lc_clean program created by Maxim Markevitch. For more
+        information, see the CIAO lc_clean ahelp file (ahelp -l
+        lc_clean).
+      </PARA>
+
+      <PARA title="lc_sigma_clip">
+        The lc_sigma_clip() routine - which used to be called
+        analyze_ltcrv() prior to CIAO 4.1 - uses a simple iterative
+        sigma-clipping routine to detect and remove flares from a
+        light curve. For more information, see the CIAO lc_sigma_clip
+        ahelp file (ahelp -l lc_sigma_clip).
+      </PARA>
+
+      <!--
+      <PARA title="lc_sigma_uclip">
+        The lc_sigma_uclip() routine - which is new in CIAO 4.6
+	- uses the same iterative sigma-clipping approach as
+	lc_sigma_clip, but only removes those points that
+	are greater than the mean.
+        For more information, see the CIAO lc_sigma_uclip
+        ahelp file (ahelp -l lc_sigma_clip).
+      </PARA>
+      -->
+
+      <PARA title="Using lc_clean">
+	The lc_clean algorithm was designed to work with the ACIS
+	blank-sky datasets. The routine calculates - or is given - a
+	mean rate from which it deduces a minimum and maximum valid
+	count rate.  Since the calculations assume Poisson statistics
+	all the time bins are assumed to have the same width
+	(i.e. exposure value).  or further information, follow the
+	documentation links in the CIAO thread "<HREF
+	link="http://cxc.harvard.edu/ciao/threads/acisbackground/">The
+	ACIS "Blank-Sky" Background Files</HREF>".
+      </PARA>
+
+      <PARA>
+	The 'mean', 'clip', 'sigma', 'scale', and 'minfrac'
+	options control the behavior of the routine, and are
+	represented in deflare by the parameters 'mean', 'nsigma',
+	'stdev', 'scale', and 'minfrac', respectively.
+	If 'mean' is set then the value is taken as the initial
+	guess, otherwise the level is calculated from the data,
+	with outliers clipped using the 'nsigma' parameter
+	(which defaults to 3.0). This is not an iterative
+	clipping scheme - as used in lc_sigma_clip() - since the
+	variance of the lightcurve is assumed to be
+	<EQUATION>var = mean-rate / bin-width</EQUATION>
+	(where sqrt(var) represents 'sigma' in lc_clean and 'stdev' in
+	deflare). Once the mean level has been calculated, the limits
+	are given by (if 'stdev' is changed from its default
+	value of None).
+
+	<EQUATION>mean - nsigma * stdev</EQUATION>
+	to
+	<EQUATION>mean + nsigma * stdev</EQUATION>
+	otherwise they are
+	<EQUATION>mean / scale</EQUATION>
+	to
+	<EQUATION>mean * scale</EQUATION>
+	where scale defaults to 1.2.
+	The minfrac option determines the minimum fraction of
+	bins that must remain "good" for the routine to
+	finish.
+      </PARA>
+
+      <PARA title="Using lc_sigma_clip">
+	The lc_sigma_clip routine performs an iterative
+	sigma-clipping algorithm, removing those points that fall
+	outside the range
+	<EQUATION>mean - nsigma</EQUATION>
+	to
+	<EQUATION>mean + nsigma</EQUATION>
+	at each iteration until all 
+	data points are within this range.
+	This algorithm is robust but not perfect;
+	it can easily "overclean" a noisy lightcurve,
+	or fail to reject any points, 
+	and so should not be used blindly.
+      </PARA>
+
+      <PARA>
+	The two options for lc_sigma_clip are
+	'sigma' and 'minlength', and are represented by deflare
+	parameters 'nsigma' and 'minlength', respectively. The 'nsigma' argument
+	determines the value used to clip the count
+	rate data at each iteration, and defaults
+	to 3.0. The 'minlength' option, which defaults to
+	3, is the minimum number of consecutive bins
+	that must all lie within the final
+	rate limits for that range to be considered
+	good.
+      </PARA>
+
+      <!--
+      <PARA title="Using lc_sigma_uclip">
+	The lc_sigma_uclip routine performs an iterative
+	sigma-clipping algorithm, removing those points that are
+	greater than
+	<EQUATION>mean + nsigma</EQUATION>
+	at each iteration until all 
+	data points are within this range.
+	This algorithm may be better suited to 
+	background light curves observed by  
+	Chandra - and similar instruments - 
+	than the lc_sigma_clip routine, 
+	since the excess signal is preferentially located
+	at count rates above the mean (it is
+	not symmetric about the mean).
+	An extensive study of this approach has not been made,
+	so please compare your results to those obtained
+	with the lc_sigma_clip routine.
+      </PARA>
+
+      <PARA>
+	The sigma and minlength options have the same
+	meaning as for method=sigma.
+      </PARA>
+      -->
+
+      <PARA title="How do we use the output GTI file?">
+	If the outfile argument is set, then a GTI file
+	will be created listing those time periods which
+	are considered to be "good" by the algorithm.
+	This file can be used to filter an event file using
+	the following syntax (we assume here that the event file
+	to be filtered is evt2.fits and the output of the routine
+	is called evt.gti):
+      </PARA>
+
+<VERBATIM>
+&pr; dmcopy "evt2.fits[@evt.gti]" evt2_filt.fits
+</VERBATIM>
+
+      <PARA title="A warning about low count-rate lightcurves">
+	All the algorithms exclude bins which have a zero
+	count rate, whether it is because the exposure time
+	of the bin is zero or because no counts were detected
+	in this bin.
+	This is because the algorithms are not designed for use
+	with low count-rate data.
+	Therefore the routines should be used with 
+	extreme care when
+	applied to data for which zero-rate bins are
+	expected (for example a very-faint source).
+      </PARA>
+
+      <PARA title="A note on times for lc_sigma_clip">
+	When run with verbose set to 1,
+	durations may be displayed alongside time filters.
+	These durations refer to the length of the interval
+	and do not account for
+      </PARA>
+
+      <LIST>
+	<ITEM>
+	  the dead-time correction of the observation (DTCOR
+	  header keyword);
+	</ITEM>
+	<ITEM>
+	  exposure variations within the bin due to existing
+	  time filters (i.e. the time filters already applied
+	  to the observation).
+	</ITEM>
+      </LIST>
+
+      <PARA>
+	The sure way to find out what the final exposure time will
+	be is to create a GTI file, use it to filter the event file,
+	and then look at the EXPOSURE value of the filtered file.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>&pr; deflare lc.fits</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    The user is prompted to enter a flare-filtering method:
+	    'clean' for lc_clean and 'sigma' for lc_sigma_clip.
+	    The default parameters for the chosen method are used
+	    to analyze the light curve
+	    in the file lc.fits.
+	    <!--//A plot is created and information about
+	    the calculation, including the final filter range, is
+	    printed to the screen.//-->
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; deflare lc.fits sigma outfile=clip.gti plot=yes save=lcsc_plot</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Since the outfile parameter is set, the routine creates
+	    a GTI file (clip.gti) that represents the "good" times
+	    calculated by the lc_sigma_clip algorithm. After writing
+	    out the file, the filtered-out times will be displayed on
+	    the plot using red cross-hatched regions. We also save a
+	    PostScript plot of the light curve to the file lcsc_plot.ps.
+	  </PARA>
+	  <PARA>
+	    The output GTI file
+	    can be used to filter an event file (say evt2.fits) like
+	    so:
+	  </PARA>
+<VERBATIM>
+&pr; dmcopy "evt2.fits[@clip.gti]" evt2_filt.fits
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <!--
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; deflare lc.fits usigma outfile=uclip.gti plot=yes save=uclip</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    This is the same as the previous example except that the
+	    lc_sigma_uclip routine is used. This means that 
+	    points are only excluded if they are above the mean level,
+	    rather than above or below, as is done with method=sigma.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      -->
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; deflare lc.fits sigma outfile=out.gti nsigma=2.0 minlength=5 plot=yes</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Create a GTI file, out.gti, using the lc_sigma_clip
+	    method, where the number of sigma used to determine the clipping of
+	    the count rate data per iteration is 2.0, and the minimum
+	    number of consecutive bins that must all lie within the
+	    final rate limits for that range to be considered good is
+	    5.  The resulting light curve and histogram plot showing the
+	    'good' count rates and excluded time intervals are plotted to
+	    the screen. 
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>&pr; deflare lc.fits sigma outfile=out.gti plot=yes good_color=orange exclude_color=blue verbose=1</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Create a GTI file using lc_clean with the default
+	    filtering parameters. Plot the light curve and
+	    histogram using orange for the 'good' data points and blue
+	    for the
+	    excluded times. 
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>&pr; deflare lc.fits clean outfile=out.gti pattern=none plot=yes</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Create a GTI file using lc_clean and plot the light curve
+	    and histogram, but do not
+	    use regions to indicate the excluded times in the
+	    count-rate plot.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; deflare lc.fits clean outfile=out.gti nsigma=1.6 plot=no </LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Create a GTI file using the lc_clean method, where the
+	    number of sigma used to
+	    clip the data to calculate the mean for filtering is
+	    changed from the default 3.0 to 1.6.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+       <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; deflare lc.fits clean outfile= plot=yes save=lc_clean_plot</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Save the plot of the light curve filtered with
+	    lc_clean to a PostScript file
+	    named "lc_clean_plot.ps", using default filtering parameters, without
+	    creating a GTI file. Note that since no GTI file is
+	    specified, the saved plot will NOT display the
+	    excluded regions, which are defined by deflare parameters 'good_color' and 'pattern'.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes">
+         <SYNOPSIS>
+            The filename of the light curve to analyze.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+              The lc_clean and lc_sigma_clip routines are designed to
+              work with light curves that were created using the CIAO
+              dmextract tool, run with the opt parameter set to ltc1;
+              see the "FORMAT OF LIGHT CURVES" section of this
+              document for more details.
+            </PARA>
+         </DESC>
+      </PARAM>
+      <PARAM name="outfile" type="file" filetype="output" reqd="no" def="None">
+         <SYNOPSIS>
+            The name of the GTI file to create.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      If the outfile argument is set, then a GTI file will be
+	      created listing those time periods which are considered
+	      to be "good" by the algorithm. This file can be used to
+	      filter an event file.
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="method" type="string" reqd="yes" def="None">
+         <SYNOPSIS>
+            The lightcurves routine to use for filtering the input light curve.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      Either 'clean' for lc_clean or 'sigma' for lc_sigma_clip.
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="nsigma" type="real" reqd="no" def="3.0">
+         <SYNOPSIS>
+            Number of sigma about the mean count rate to use to clip outliers.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      This is the lc_clean 'clip' parameter and the
+	      lc_sigma_clip 'sigma' parameter. In lc_sigma_clip,
+	      'sigma' determines which points are to be rejected at
+	      each iteration (reject if they are more than 'sigma'
+	      times the standard deviation away from the mean). In
+	      lc_clean, if the 'mean' parameter is set to the default
+	      'None', then the mean count rate is calculted from the
+	      input data, using a single sigma clip of the data (so
+	      the 'clip' pararameter gives the number of standard
+	      deviations to retain).
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="minlength" type="real" reqd="no" def="3">
+         <SYNOPSIS>
+            Minimum number of consecutive time bins which must pass rate filter in lc_sigma_clip routine.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      The lc_sigma_clip minlength parameter determines the
+	      minimum number of consecutive time bins that must all
+	      pass the rate filter for the period to be considered
+	      'good'. This parameter is not used within the
+	      sigma-clipping iteration. If minlength=1 then a filter
+	      on the count rate is determined instead.
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="mean" type="real" reqd="no" def="None">
+         <SYNOPSIS>
+            Mean count rate (ct/s) of input light curve, as determined by lc_clean.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+             If 'mean' is 'None' (default), then the mean count rate
+             is calculted from the input light curve, using a single
+             sigma clip of the data (deflare 'nsigma' parameter, which
+             is the same as lc_clean 'clip'). Otherwise, the mean
+             count rate supplied should match the actual mean count
+             rate of the input light curve. The standard deviation is
+             calculated as sqrt(mean-rate/bin width). The mean value
+             is used to clip the light curve.
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="stdev" type="real" reqd="no" def="None">
+         <SYNOPSIS>
+            Standard deviation of signal, as determined by lc_clean.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+             The 'stdev' parameter is the lc_clean 'sigma' parameter,
+             which is calculated from the 'mean' value as
+             sqrt(mean-rate/bin width). When stdev is 'None', then the
+             limits used for clipping the light curve are mean/scale
+             to min*scale, otherwise they are mean - nsigma*stdev to
+             mean + nsigma*stddev.
+            </PARA>
+         </DESC>
+      </PARAM>    
+      <PARAM name="scale" type="real" reqd="no" def="1.2">
+         <SYNOPSIS>
+            The scale factor about the mean count rate to use for
+            light curve limits, as determined by lc_clean.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+              When the 'stdev' parameter is 'None', then the limits
+              used by lc_clean for clipping the light curve are
+              mean/scale to min*scale, otherwise they are mean -
+              nsigma*stdev to mean + nsigma*stddev.
+            </PARA>
+         </DESC>
+      </PARAM>      
+      <PARAM name="minfrac" type="real" reqd="no" def="0.1">
+         <SYNOPSIS>
+           Minimum fraction of light curve bins that must pass the count-rate filter, as determined by lc_clean.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+              The 'minfrac' parameter gives the minimum fraction of
+              the light curve bins that must pass the count-rate
+              filter (after ignoring the zero count-rate bins).
+            </PARA>
+         </DESC>
+      </PARAM>      
+      <PARAM name="plot" type="boolean" reqd="no" def="no">
+         <SYNOPSIS>
+            Plot light curve and histograms of values?
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+              If plot is 'yes' then plots of the light curve and
+              histograms of the values will be displayed. If a GTI
+              outfile has not been specified, then the plot will not
+              display excluded time intervals (as they won't be
+              calculated in this case). The plot may be saved to a
+              PostScript file with the 'save' parameter, whether
+              'plot' is set to 'yes' or 'no'.
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="save" type="file" filetype="output" reqd="no" def="None">
+         <SYNOPSIS>
+            Name of PostScript file to which to save light curve and histogram plot.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+              The light curve and histogram plot produced by deflare
+              (whether printed to the screen or not with the 'plot'
+              parameter) will be saved
+              to a PostScript file of the name specified in the
+              'save' parameter, unless set to the default "None".  
+            </PARA>
+         </DESC>
+      </PARAM>  
+      <PARAM name="rateaxis" type="string" reqd="no" def="y">
+         <SYNOPSIS>
+           Should count-rate be on 'y' or 'x' axis of top plot?
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+              The rateaxis option determines whether the light curve
+              plot is drawn as count-rate on the y axis and time on
+              the x axis (rateaxis='y') or the other way around
+              (rateaxis='x').
+            </PARA>
+         </DESC>
+      </PARAM>  
+      <PARAM name="pattern" type="string" reqd="no" def="solid">
+         <SYNOPSIS>
+            Pattern to use in plot for filled regions representing excluded time intervals.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+               If a GTI outfile is specified and plot is 'True', then
+               the time intervals excluded by the calculated GTI file
+               are drawn on the plot as filled regions, using the
+               pattern and color determined by the 'pattern' and
+               'pcol' options (setting pattern to 'none' stops this
+               display).
+	    </PARA>
+	    <PARA>
+	      The choices for this parameter are:
+              nofill, solid, updiagonal, downdiagonal, horizontal, vertical, crisscross, brick, grid, hexagon, zigzag, wave.
+            </PARA>
+         </DESC>
+      </PARAM>    
+       <PARAM name="good_color" type="string" reqd="no" def="green">
+         <SYNOPSIS>
+            Color to use in plot to draw 'good' data points.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+              The 'good_color' parameter gives the color to use to
+              draw points/histograms of the points that are considered
+              good by the lc_clean and lc_sigma_clip algorithms
+              (ignoring the minlength filter in lc_sigma_clip).
+            </PARA>
+         </DESC>
+      </PARAM>       
+      <PARAM name="exclude_color" type="string" reqd="no" def="red">
+         <SYNOPSIS>
+            Color to use in plot for excluded time intervals
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+              If a GTI output file is specified and plot is 'True',
+              then the time intervals excluded by the calculated GTI
+              file are drawn on the plot as filled regions, using the
+              'pattern' and color determined by the 'pattern' and
+              'good_color' options.
+            </PARA>
+         </DESC>
+      </PARAM>      
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5" reqd="no">
+         <SYNOPSIS>
+            Verbose can be from 0 to 5, generating different amounts of output.
+         </SYNOPSIS>
+      </PARAM>       
+     </PARAMLIST>
+     
+     <ADESC title="Format of Lightcurves">
+      <PARA>
+	The lc_clean routine is designed to work with light curves that were
+	created using the CIAO dmextract tool, run with the opt parameter set
+	to ltc1. They should however also work with any file which has the 
+	following columns:
+      </PARA>
+      <LIST>
+	<ITEM>TIME</ITEM>
+	<ITEM>TIME_MIN and TIME_MAX (both columns are optional)</ITEM>
+	<ITEM>COUNT_RATE or, if not present, RATE</ITEM>
+	<ITEM>EXPOSURE</ITEM>
+      </LIST>
+      <PARA>
+	If the file contains OBJECT and OBS_ID keywords then these will be
+	used to label the plot.
+      </PARA>
+    </ADESC>
+
+    <!--
+       The following code is not ready for use, so is not available yet
+    <ADESC title="Changes in the scripts 4.X.Y (XXXX 201X) release">
+      <PARA title="New method: usigma">
+	The method=usigma option, which uses lc_sigma_uclip, has
+	been added in this release.
+      </PARA>
+    </ADESC>
+    -->
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+     <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/lightcurves.html">bugs page
+        for the lightcurves.py module</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

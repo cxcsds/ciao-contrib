@@ -1,0 +1,170 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="renorm" context="contrib" pkg="sherpa"
+	 refkeywords="guess change renormalizae renormalise
+		      normalize normalise norm parameter
+		      level
+		      "
+	 seealsogroups="sh.par" displayseealsogroups="">
+
+    <SYNOPSIS>
+      Change the normalization of a model to match the data.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>renorm(id=None, cpt=None, bkg_id=None, names=None, limscale=1000)</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The renorm() function adjusts the normalization parameter of
+	components in the source model so that the sum of the
+	predicted data matches the sum of the observed data.
+	It is similar to the guess() function but works only on
+	the normalization parameters.
+	It should only be used to set the parameter values before
+	a fit, and not as a replacement for fitting a model
+	to a dataset.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.utils import *
+</VERBATIM>
+
+      <TABLE>
+	<CAPTION>Arguments</CAPTION>
+	<ROW>
+	  <DATA>Name</DATA><DATA>Default value</DATA><DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>id</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    Which dataset to use. If None then the default dataset,
+	    as given by get_default_id(), is used.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>cpt</DATA>
+	  <DATA>None</DATA>
+	  <DATA>If `None` then the full source expression for the dataset
+	    is used, otherwise it should contain the model component
+	    to change.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>bkg_id</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    If not None, then the normalization of the model being
+	    fit to the given background component is changed.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>names</DATA>
+	  <DATA>None</DATA>
+	  <DATA>The parameter names to change (a case-insensitive
+	  comparison is made, and only the parameter name itself, not
+	  the component name, is used). The default, used when names=None,
+	  is ['ampl', 'norm'].</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>limscale</DATA>
+	  <DATA>1000.0</DATA>
+	  <DATA>
+	    The minimum and maximum limits of the normalization
+	    parameter are set to newval / limscale and newval * limscale
+	    respectively (or set to the hard limits of the paramter,
+	    whichever is more restrictive).
+	  </DATA>
+	</ROW>
+      </TABLE>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; load_pha('src.pi')</LINE>
+          <LINE>&pr; subtract()</LINE>
+          <LINE>&pr; notice(0.5, 7)</LINE>
+          <LINE>&pr; set_source(xsphabs.gal * xsapec.gal)</LINE>
+          <LINE>&pr; renorm()</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Adjust the normalization of the gal component
+	    before fitting.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; load_image('src', 'img.fits')</LINE>
+          <LINE>&pr; set_source('src', gauss2d.src + const2d.bgnd)</LINE>
+          <LINE>&pr; renorm('src')</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Change the normalization of the src component used to
+	    fit dataset 'src'. The background component (bgnd) is
+	    not changed since const2d has no parameter called
+	    'ampl' or 'norm'.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; set_source(12, gauss2d.src12 + const2d.bgnd12)</LINE>
+          <LINE>&pr; renorm(12, names=['ampl', 'c0'])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    The normalizations of both components are changed,
+	    with each component contributing half of the signal.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; renorm(limscale=1e4)</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Change the minimum and maximum limits of the normalization
+	    parameter tp be equal to the new parameter value divided
+	    and multiplied by 1e4, respectively, rather than the
+	    default of 1e3.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Changes in the scripts 4.8.2 (January 2016) release">
+      <PARA>
+	This routine is new in this release.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>January 2016</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

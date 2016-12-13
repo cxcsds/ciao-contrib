@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="r4_header_update"
+         context="tools" 
+         refkeywords="keyword header meta data metadata pbk parameter block sum_2x2 fep_ccd orc_mode oclkpair dy_avg dz_avg dth_avg mean aspect offset"
+         >
+    <SYNOPSIS>Update file header with various keywords to match latest archive processing</SYNOPSIS>
+    <DESC>
+      <PARA>
+      
+        Most data in the Chandra archive was reprocessed starting in 
+        January 2012 -- an effort to bring uniformity to the calibrations and data
+        products.  The internal designation was known as 
+        <HREF link="http://cxc.harvard.edu/cda/repro4.html">Repro-4</HREF>.
+        All but the first few months of data in the mission were
+        included in this bulk processing.  The ASCDSVER keyword will 
+        be '8.4.2' or higher for data that has been through repro-4.
+        In addition to capturing the latest standard calibrations, there
+        were several calibration improvements to astrometry and absolute
+        timing.
+
+        At the same time, two sets of keywords were added to the 
+        Chandra event files and derived products that make data analysis
+        easier and more self-contained (ie requiring fewer auxiliary
+        files).          
+        </PARA>
+        
+        <PARA>
+        For ACIS and HRC, three new keywords were added to
+        capture the mean SIM offsets during an observation:  DY_AVG,
+        DZ_AVG, and DTH_AVG.   These numbers
+        are needed by tools like dmcoords, mkacisrmf, and mkwarf to
+        correctly map detector coordinates back to the location on the
+        instruments.  Previously each tool used the information in 
+        the asolfile parameter to compute the mean value, every time 
+        the tool was run.  With the mean values now simply encoded
+        as header keywords, the tools can run more efficiently.
+      </PARA>
+      <PARA>
+        For ACIS, the information in the Level 0 parameter block file, pbk0,
+        needed to compute the dead area calibration was also added to 
+        the event file headers.  The new keywords include:
+        SUM_2X2, FEP_CCD, ORCMODE, and OCLKPAIR.  This information
+        together with some existing keywords, is used by ARF and Exposure
+        map tools when creating response.
+      </PARA>
+
+      <PARA>
+        The r4_header_update script will examine the header of 
+        the infile, determine which of the above keywords are missing, and
+        will add them to the header.        
+      </PARA>
+
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>unix% dmkeypar my_old_evt.fits ASCDSVER echo+</LINE>
+          <LINE>7.6.8</LINE>
+          <LINE>unix% r4_header_update my_old_evt.fits</LINE>
+          <LINE>unix% dmkeypar my_old_evt.fits FEP_CCD echo+</LINE>
+          <LINE>x012346</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            This example shows and older version of an event file created
+            with ASCDSVER=7.6.8.  This file will not have the keywords
+            necessary to run all CIAO 4.6 tasks.            
+          </PARA>
+          <PARA>
+            The script will attempt to locate the auxiliary files it needs,
+            the parameter block and aspect solution files.  The 
+            file is updated in place.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+    
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>unix% r4_header_update my_old_evt.fits pkb=orig_pbk0.fits asol=@my_asol.lis</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            If data are very old, then the information relating an
+            event file to the parameter block and aspect solution
+            may not be available in the event file header.  In that case
+            users will need to specify the auxiliary files explicitly.
+          
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+    
+    </QEXAMPLELIST>
+
+   <BUGS><PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/r4_header_update.html">bugs page
+        for this tool</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA></BUGS>
+   <LASTMODIFIED>December 2013</LASTMODIFIED>
+
+
+  </ENTRY>
+  
+</cxchelptopics>

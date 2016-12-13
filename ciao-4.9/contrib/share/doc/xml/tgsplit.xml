@@ -1,0 +1,419 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY key="tgsplit" context="tools"
+         refkeywords="grating tg pha pi type:I type:II type2 type1 format arf rmf pi spectra spectrum split reformat"
+         seealsogroups="tgtools">
+
+    <SYNOPSIS>
+        Split a TYPE:II grating PHA file into several TYPE:I files
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+          Chandra grating spectrum files are by default created
+          in 'TYPE:II' format.  This is a standard FITS format in which each row 
+          has a different spectrum representing the grating arm and order.
+          This format is generally easy to read into Sherpa, ISIS and
+          XSPEC, however, some generic utilities cannot
+          process such files.        
+      </PARA>
+      <PARA>
+          tgsplit takes a TYPE:II pha file as input and 
+          converts it to a stack of TYPE:I files.  If a
+          stack of ARF and RMF are provided, it also
+          associates the correct response file to
+          each individual TYPE:I spectrum based on matching the
+          metadata in the various files.
+      </PARA>
+      <PARA>
+          Grating TYPE:II pha files created with either
+          tgextract or tgextract2 can be split using this script.
+      </PARA>
+
+      <PARA>
+          This script can also be used to split the background
+          spectrum from a TYPE:I grating pha file if the background is stored in a column.  
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+       <QEXAMPLE>
+         <SYNTAX>
+           <LINE>
+              % tgsplit acis_pha2.fits outroot=myobs
+           </LINE>
+         </SYNTAX>
+         <DESC>
+<VERBATIM>
+tgsplit
+          infile = acis_pha2.fits
+         arffile = 
+         rmffile = 
+         outroot = myobs
+         verbose = 1
+         clobber = no
+            mode = ql
+
+Created source spectrum: myobs_leg_m3.pha[SPECTRUM]
+Created source spectrum: myobs_leg_m2.pha[SPECTRUM]
+Created source spectrum: myobs_leg_m1.pha[SPECTRUM]
+Created source spectrum: myobs_leg_p1.pha[SPECTRUM]
+Created source spectrum: myobs_leg_p2.pha[SPECTRUM]
+Created source spectrum: myobs_leg_p3.pha[SPECTRUM]
+Created background spectrum: myobs_leg_m3_bkg.pha
+Created background spectrum: myobs_leg_m2_bkg.pha
+Created background spectrum: myobs_leg_m1_bkg.pha
+Created background spectrum: myobs_leg_p1_bkg.pha
+Created background spectrum: myobs_leg_p2_bkg.pha
+Created background spectrum: myobs_leg_p3_bkg.pha
+</VERBATIM>
+
+           <PARA>
+              This command splits the input TYPE:II pha file
+              into a series of source and background spectrum
+              files -- one each for every row in the
+              input file.
+           </PARA>
+           <PARA>
+              The example is for an ACIS+LETG observation which
+              contains 1 grating arm (leg) and 6 grating orders:
+              plus and minus each first, second, and third order.
+              The output is 12 TYPE:I pha files: 6 source and 6 background.
+          </PARA>
+          <PARA>
+              Each source specturm contains an updated BACKFILE
+              keyword that points to the correct background file.
+              By default, the background is 
+              loaded automatically with the source file
+              in Sherpa, ISIS, and XSPEC.
+          </PARA>
+         
+         </DESC>
+       </QEXAMPLE>
+    
+
+       <QEXAMPLE>
+         <SYNTAX>
+           <LINE>
+              % tgsplit "acis_pha2.fits[tg_m=-1,1]" outroot=myobs
+           </LINE>
+         </SYNTAX>
+         <DESC>
+           <PARA>
+              Same as above, but select only plus and minus first order
+              spectra.
+           </PARA>         
+         </DESC>
+       </QEXAMPLE>
+
+    
+       <QEXAMPLE>
+         <SYNTAX>
+           <LINE>
+              % tgsplit acisf05422_repro_pha2.fits "tg/*.arf" "tg/*.rmf" HETG_obs clob+
+           </LINE>
+         </SYNTAX>
+         <DESC>
+<VERBATIM>
+tgsplit
+          infile = acisf05422_repro_pha2.fits
+         arffile = tg/*.arf
+         rmffile = tg/*.rmf
+         outroot = HETG_obs
+         verbose = 1
+         clobber = yes
+            mode = ql
+
+Created source spectrum: HETG_obs_heg_m3.pha[SPECTRUM]
+Created source spectrum: HETG_obs_heg_m2.pha[SPECTRUM]
+Created source spectrum: HETG_obs_heg_m1.pha[SPECTRUM]
+Created source spectrum: HETG_obs_heg_p1.pha[SPECTRUM]
+Created source spectrum: HETG_obs_heg_p2.pha[SPECTRUM]
+Created source spectrum: HETG_obs_heg_p3.pha[SPECTRUM]
+Created source spectrum: HETG_obs_meg_m3.pha[SPECTRUM]
+Created source spectrum: HETG_obs_meg_m2.pha[SPECTRUM]
+Created source spectrum: HETG_obs_meg_m1.pha[SPECTRUM]
+Created source spectrum: HETG_obs_meg_p1.pha[SPECTRUM]
+Created source spectrum: HETG_obs_meg_p2.pha[SPECTRUM]
+Created source spectrum: HETG_obs_meg_p3.pha[SPECTRUM]
+Created background spectrum: HETG_obs_heg_m3_bkg.pha
+Created background spectrum: HETG_obs_heg_m2_bkg.pha
+Created background spectrum: HETG_obs_heg_m1_bkg.pha
+Created background spectrum: HETG_obs_heg_p1_bkg.pha
+Created background spectrum: HETG_obs_heg_p2_bkg.pha
+Created background spectrum: HETG_obs_heg_p3_bkg.pha
+Created background spectrum: HETG_obs_meg_m3_bkg.pha
+Created background spectrum: HETG_obs_meg_m2_bkg.pha
+Created background spectrum: HETG_obs_meg_m1_bkg.pha
+Created background spectrum: HETG_obs_meg_p1_bkg.pha
+Created background spectrum: HETG_obs_meg_p2_bkg.pha
+Created background spectrum: HETG_obs_meg_p3_bkg.pha
+</VERBATIM>
+
+           <PARA>
+  In this ACIS+HETG example, there are 12  spectrum in the TYPE:II pha
+  file which is split into 24 individual TYPE:I files.
+  Since the stack of ARF and RMF files is provided, they are
+  matched to the appropriate order and grating arm and the
+  source spectrum file is updated to point to the correct
+  location.
+
+           </PARA>         
+
+<VERBATIM>
+% dmlist HETG_obs_heg_m3.pha header,clean | grep FILE
+BACKFILE             HETG_obs_heg_m3_bkg.pha        Background file name
+CORRFILE             none                           Correction file name
+RESPFILE             tg/acisf05422_repro_heg_m3.rmf Grating Redistribution (LSF) file n
+ANCRFILE             tg/acisf05422_repro_heg_m3.arf Ancillary response file name (ARF)
+AREASCAL                     1.0                    Area scaling factor, if ANCRFILE needs a correc
+</VERBATIM>
+
+         </DESC>
+       </QEXAMPLE>
+
+       <QEXAMPLE>
+         <SYNTAX>
+           <LINE>
+              % tgsplit acisf05422_repro_pha2.fits "tg/*.arf" "tg/*.rmf" tg/HETG_obs clob+
+           </LINE>
+         </SYNTAX>
+         <DESC>
+           <PARA>Same as above but outroot is now the same as the
+           root name of the ARF and RMF files.  In this case
+           the directory name is omitted from the 
+        TYPE:I file keywords</PARA>
+<VERBATIM>
+% dmlist tg/HETG_obs_heg_m3.pha header,clean | grep FILE
+BACKFILE             HETG_obs_heg_m3_bkg.pha        Background file name
+CORRFILE             none                           Correction file name
+RESPFILE             acisf05422_repro_heg_m3.rmf    Grating Redistribution (LSF) file name
+ANCRFILE             acisf05422_repro_heg_m3.arf    Ancillary response file name (ARF)
+AREASCAL                     1.0                    Area scaling factor, if ANCRFILE needs a correc
+</VERBATIM>
+         
+         </DESC>
+    </QEXAMPLE>    
+
+
+    <QEXAMPLE>
+      <SYNTAX>
+        <LINE>% tgsplit obs_7435_tgid_4053/heg_1.pha.gz  obs_7435_tgid_4053/heg_1.arf.gz  \</LINE>
+        <LINE>obs_7435_tgid_4053/heg_1.rmf.gz  tgcat_obs7435 clob+ </LINE>
+      </SYNTAX>
+      <DESC>
+      <PARA>
+        In this example a single TYPE:I PHA file from the TGCat catalog
+        is split into its source and background files.  
+        The ARF and RMF files are provided so that the ANCRFILE
+        and RESPFILE keywords get updated correctly.      
+      </PARA>
+<VERBATIM>
+The file 'obs_7435_tgid_4053/heg_1.pha.gz' does not appear to be a TYPE:II spectrum.  The 'COUNTS' column is not an array column.
+Created source spectrum: tgcat_obs7435_heg_p1.pha[SPECTRUM]
+Created background spectrum: tgcat_obs7435_heg_p1_bkg.pha
+</VERBATIM>
+      
+      </DESC>
+    
+    
+    </QEXAMPLE>
+
+
+    </QEXAMPLELIST>
+
+   <PARAMLIST>
+     <PARAM name="infile" type="file" filetype="input" reqd="yes" stacks="no">
+       <SYNOPSIS>
+         Input Chandra grating pha file.
+       </SYNOPSIS>
+       <DESC>
+         <PARA>
+            The TYPE:II pha files created by tgextract or tgextract2 can
+            be split using this tool.
+         </PARA>
+         <PARA>
+            It may also be a single TYPE:I pha file that contains both
+            the source and background spectra (ie created by
+            dmtype2split or retrieved from TGCat).
+         </PARA>
+
+       </DESC>     
+     </PARAM>
+   
+     <PARAM name="arffile" type="file" filetype="input" reqd="yes" stacks="yes">
+       <SYNOPSIS>
+         Input stack of grating ARF files.
+       </SYNOPSIS>
+       <DESC>
+          <PARA>
+            If provided, the meta-data in the ARF files will be 
+            examined and used to match to the correct grating
+            arm and order.  The file name of the ARF will
+            be added to the source spectrum file (ANCRFILE).
+          </PARA>
+          <PARA>
+            The script only uses the arffile specified.  If it cannot
+            find the ARF for some grating arm/order combinations,
+            but can for others it will do so without complaint.  Likewise,
+            the script will not complain if there are ARFs supplied 
+            that do no match any of the grating spectra.
+          </PARA>
+          <PARA>
+            The ARFs are necessary to match the RMFs.
+          </PARA>
+       
+       </DESC>
+     </PARAM>
+   
+
+     <PARAM name="rmffile" type="file" filetype="input" reqd="yes" stacks="yes">
+       <SYNOPSIS>
+         Input stack of grating RMF files.
+       </SYNOPSIS>
+       <DESC>
+          <PARA>
+            If provided, the meta-data in the RMF files will be 
+            examined and used to match to the correct grating
+            arm and order.  The file name of the RMF will
+            be added to the source spectrum file (RESPFILE) .
+          </PARA>
+          <PARA>
+            The script only uses the rmffile specified.  If it cannot
+            find the RMF for some grating arm/order combinations,
+            but can for others it will do so without complaint.  Likewise,
+            the script will not complain if there are RMFs supplied 
+            that do no match any of the grating spectra.
+          </PARA>
+          <PARA>
+            The ARFs are necessary to match the RMFs.
+          </PARA>        
+       </DESC>
+     </PARAM>
+
+     <PARAM name="outroot" type="file" filetype="output" reqd="yes" stacks="no">
+       <SYNOPSIS>
+         Output root file name
+       </SYNOPSIS>
+       <DESC>
+          <PARA>
+            The output root file name.  The 
+            output names will look like ${outroot}_${part}${order}.pha
+            where ${part} will be 'heg', 'meg', or 'leg' and ${order}
+            is the signed order number 'p' for plus side and 'm' for
+            the minus side.
+          </PARA>
+
+            <PARA>
+            The background will are named ${outroot}_${part}${order}_bkg.pha            
+            </PARA>
+          
+       </DESC>
+     </PARAM>
+   
+     <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+       <SYNOPSIS>
+        Amount of tool chatter level.
+       </SYNOPSIS>
+     </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>
+            Overwrite output files if they already exist?
+        </SYNOPSIS>
+      </PARAM>
+
+
+
+   
+   </PARAMLIST>
+
+   <ADESC title="Caveats">
+        <PARA title="Multiple Sources">
+            The tool will likely not find the correct
+            ARF and RMF file if the spectrum was extracted
+            from multiple sources.  The 'TG_SRCID'
+            column in the input PHA file cannot be used
+            to match the response files.
+        </PARA>
+        <PARA title="Non-Chandra / Non-Gratings">
+            The tool only knows about Chandra datasets.
+            For generic conversion of a TYPE:II file to
+            TYPE:I please see the dmtype2split tool, which
+            is also used by this script. 
+            </PARA>
+            <PARA>
+             dmextract can
+            produce TYPE:II pha file appropriate for 
+            non-grating analysis. Those files are 
+            not compatible with this script.
+           </PARA>
+        <PARA title="Zero Order">
+            The grating 0 order is not extracted in the same
+            way as the dispersed spectrum; it is (typically)
+            not stored in a TYPE:II pha file.        
+        </PARA>
+   
+   </ADESC>
+   <ADESC title="Background and BACKSCAL">
+     <PARA>
+       The UP and DOWN background in the tgextract output
+       are summed to create the TYPE:I file.  Similarly
+       the BACKSCUP and BACKSDN are added to 
+       set the BACKSCAL keyword.
+     </PARA>
+   </ADESC>
+   <ADESC title="ONTIME, LIVETIME, EXPOSURE keywords">
+     <PARA>
+        For ACIS gratings data, the ONTIME, LIVETIME, and EXPOSURE keywords 
+        should be the average value of the per-chip values rather than 
+        simply the value for the aimpoint-chip.  This script will update
+        the keywords appropriate for the set of chips each order falls on.     
+     </PARA>
+   
+   </ADESC>
+
+    <ADESC title="Change in script 4.8.4 (September 2016) release">
+      <PARA>
+        Fix for tgextract2 output format when using error=gehrels.
+      </PARA>
+    </ADESC>
+
+
+
+    <ADESC title="Changes in September 2015 Release">
+      <PARA>
+        Added a work around for ACIS continuous clocking (CC) mode
+        datasets that prevented the ARF and RMF from being automatically
+        associated with the corresponding PHA files.      
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+    
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/tgsplit.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>July 2016</LASTMODIFIED>
+
+
+    </ENTRY>    
+</cxchelptopics>

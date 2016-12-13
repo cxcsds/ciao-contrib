@@ -1,0 +1,144 @@
+#! /bin/sh
+# Time-stamp: <2009-12-07 15:07:13 dph> 
+#
+#  Copyright (C) 2007-2011  Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+#
+# Directory: ~dph/bin
+# File: tg_bkg-v1.2
+# Author: D. Huenemoerder
+#
+# Version: 1.2 (2009.12.07) fixed dmcopy error - infile and outfile were same,
+#                           which led to a segv in ciao4.2 beta
+# Version: 1.1 (2005.07.22) fixed Mac OS X awk syntax problem
+#	   1.0 (2001.06.05)
+#          
+# Id: tg_bkg,v 1.2 2009/12/07 dph
+#
+#====================================================================
+#
+#
+#====================================================================
+
+# $1 = infile
+# $2 = outfile
+
+# test infile for backscup keyword
+# if present, 
+# add background_up, _down, result to counts column
+# delete background_up, background_down, stat_err columns
+# sum backscup, backscdn keywords, result to backscal keyword.
+
+# note: dmkeypar has an "exist" keyword,
+#      but dmkeypar returns an error message if a keyword does not
+#      exist.
+#
+# tools used:
+#  dmtcalc
+#  dmcopy
+#  dmkeypar
+#  dmhedit
+
+if [ "$1" = "" ]; then
+  echo ""
+  echo "USAGE: $0  tg_pha_in  [tg_bkg_pha_out]"
+  echo ""
+  echo "    Sum BACKGROUND_UP, BACKGROUND_DOWN from CXC TG PHA file"
+  echo "    Write out background PHA file (of same type as input)"
+  echo "     Adjust BACKSCAL"
+  echo ""
+  echo "  Input file may be compressed.  Output is never compressed."
+  echo "  If output filename is omitted, the ouput file has the input name with _bkg appended."
+  echo ""
+  echo "EXAMPLES:  "
+  echo ""
+  echo "tg_bkg  acisf0145N003_pha2.fits acisf0145N003_bkg_pha2.fits"
+  echo "tg_bkg  acisf0145N003_pha2.fits"
+  echo "tg_bkg  acisf0145N003_pha2.fits.gz acisf0145N003_bkg_pha2.fits"
+  echo "tg_bkg  acisf0145N003_pha2.fits.gz"
+  echo ""
+  echo " (This is a shell script; you can alter it to suit your own tastes.)"
+  echo ""
+  exit 1
+fi
+
+fin=$1
+
+# bail if infile does not exist:
+#
+if [ ! -f ${fin} -a ! -f ${fin}.gz ]; then
+  echo "Error.  No pha file ${fin}[.gz]"
+  exit 1
+fi 
+
+# minimal 2nd arg check:
+#
+fout=$2
+if [ "$2" = "" ]; then
+  fout=${fin}_bkg
+fi
+  
+
+# minimal check of file type ---  test for background_up column:
+#
+dmkeypar ${fin} backscup
+if [ `pget dmkeypar exist` = no ]; then
+  echo "No BACKSCUP keyword.  Probably not a CXO grating PHA file."
+  exit 1
+fi
+
+# too tricky.  Omit.
+#
+#  # if no 2nd argument, use basename from 1st:
+#  #
+#  fout=$2
+#  if [ "$2" = "" ]; then
+#    fout=`basename \`basename ${fin} .gz\` .fits`_bkg.fits
+#  fi
+
+
+# make a temporary file name using the process id:
+tmpfile=${fout}_$$
+
+# everything seems to be OK, so do the deed:
+
+dmtcalc ${fin} ${tmpfile} expression="COUNTS=(BACKGROUND_UP+BACKGROUND_DOWN)" # clobber+
+
+dmcopy ${tmpfile}"[cols -BACKGROUND_UP, -BACKGROUND_DOWN, -STAT_ERR, -GRP]" ${fout} clobber+
+rm ${tmpfile}
+
+
+# add the background regions' backscals:
+#
+dmkeypar ${fout} BACKSCUP
+bup=`pget dmkeypar value`
+
+dmkeypar ${fout} BACKSCDN
+bdn=`pget dmkeypar value`
+
+#dmhedit ${fout} filelist=none operation=add key=BACKSCAL value=`echo $bdn | awk '{print $1 + $bup}'`
+dmhedit ${fout} filelist=none operation=add key=BACKSCAL value=`echo $bdn | awk ' {print $1 + foo}' foo=$bup`
+dmhedit ${fout} filelist=none operation=add key=POISSERR value=T
+dmhedit ${fout} filelist=none operation=delete key=BACKSCUP
+dmhedit ${fout} filelist=none operation=delete key=BACKSCDN
+dmhedit ${fin} filelist=none operation=add key=BACKFILE value=${fout}
+
+echo "Input file has been changed, BACKFILE keyword has been added"
+
+
+exit 0

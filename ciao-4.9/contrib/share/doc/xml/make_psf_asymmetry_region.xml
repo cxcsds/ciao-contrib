@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+
+  <!ENTITY pr "unix&#37; ">
+  <!ENTITY psflink '<HREF link="http://cxc.harvard.edu/ciao/caveats/psf_artifact.html">PSF artifact page</HREF>'>
+
+]>
+<cxchelptopics>
+   <ENTRY key="make_psf_asymmetry_region" context="tools"
+	  refkeywords="response psf prf hrma mirror lsf off-axis focus defocus convolve deconvolve point spread function
+     artifact asymmetry anomaly anomalous region reg pie panda ds9 shape source hrc acis"
+	  seealsogroups="psftools"> 
+
+     <SYNOPSIS>
+       Create a region that shows the location of the HRMA PSF asymmetry for a source
+     </SYNOPSIS>
+
+     <DESC>
+       <PARA title="Note">
+	 Please check the &psflink;
+	 for the latest information on this feature.
+       </PARA>
+
+       <PARA>
+	 As part of the CXC efforts to push the spatial resolution of Chandra to the sub-ACIS-pixel regime,
+	 we have identified a feature in the Chandra/HRC point spread function within the central arcsecond 
+	 which may affect high fidelity deconvolutions. There is evidence that the feature is also present
+	 in Chandra/ACIS data. The problem does not affect images on scales larger than one arcsecond.
+       </PARA>
+
+       <PARA>
+	 This tool creates a region file that highlights the location of this
+	 artifact for a source.
+      </PARA>
+   </DESC>
+
+   <QEXAMPLELIST>
+     <QEXAMPLE>
+       <SYNTAX>
+         <LINE>
+	   &pr; make_psf_asymmetry_region hrc.fits artifact.reg 16277.518 16415.237
+	 </LINE>
+      </SYNTAX>
+      <DESC>
+	<PARA>
+	  A region file called artifact.reg will be created that 
+	  highlights the location of the PSF asymmetry for a source
+	  located at the sky coordinates of (16278.23,16415.09).
+	  The input file (hrc.fits) is used to determine the roll
+	  of the observation (the ROLL_NOM keyword) and the detector
+	  scale (the DETNAM keyword).
+	</PARA>
+	<PARA>
+	  The region file is in CIAO format (see "ahelp dmregions") and can
+	  be displayed in ds9 (see the next example for an example) or 
+	  used to filter the input file: e.g.
+	</PARA>
+	<PARA>
+	  <SYNTAX>
+	    <LINE>&pr; cat artifact.reg</LINE>
+	    <LINE>pie(16277.518,16415.237,4.55407969639,7.59013282732,41.6359383468,91.6359383468)</LINE>
+	    <LINE>&pr; dmcopy "hrc.fits[sky=region(artifact.reg)]" filt.fits</LINE>
+	  </SYNTAX>
+	</PARA>
+      </DESC>
+     </QEXAMPLE>
+
+     <QEXAMPLE>
+       <SYNTAX>
+         <LINE>
+	   &pr; make_psf_asymmetry_region hrc.fits artifact.reg 16278.23 16415.09 display=yes
+	 </LINE>
+      </SYNTAX>
+      <DESC>
+	<PARA>
+	  Setting the display parameter to yes causes ds9 to be
+	  launched, showing the contents of the output region file
+	  (artifact.reg) displayed on top of the data (hrc.fits).
+	</PARA>
+	<PARA>
+	  This can also be achieved by saying:
+	</PARA>
+	<PARA>
+	  <SYNTAX>
+	    <LINE>&pr; ds9 hrc.fits -region format ciao -region artifact.reg \</LINE>
+	    <LINE>-pan to 16278.23 16415.09 physical -zoom 4</LINE>
+	  </SYNTAX>
+	</PARA>
+      </DESC>
+     </QEXAMPLE>
+
+     <QEXAMPLE>
+       <SYNTAX>
+         <LINE>
+	   &pr; make_psf_asymmetry_region acis.fits artifact.reg 4083.21 4093.88 format=ds9
+	 </LINE>
+      </SYNTAX>
+      <DESC>
+	<PARA>
+	  Here we create a region file for an ACIS observation and use the DS9, rather
+	  than CIAO, format for the output, which produces a file that looks like:
+	</PARA>
+	<PARA>
+	  <SYNTAX>
+	    <LINE>&pr; cat artifact.reg</LINE>
+	    <LINE># Region file fomat: DS9 version 4.1</LINE>
+	    <LINE>physical</LINE>
+	    <LINE>panda(4083.21,4093.88,17.7744491318,67.7744491318,1,1.2195121951219512,2.0325203252032522)</LINE>
+	  </SYNTAX>
+	</PARA>
+      </DESC>
+     </QEXAMPLE>
+
+   </QEXAMPLELIST>
+   
+   <PARAMLIST>
+     <PARAM name="infile" type="file" filetype="input" reqd="yes">
+       <SYNOPSIS>
+	 Input dataset
+       </SYNOPSIS>
+       <DESC>
+	 <PARA>
+	   This file is used to determine the observation roll (the ROLL_NOM
+	   keyword) and the plate scale - the width of a sky pixel in arcseconds - 
+	   using the DETNAM keyword. It can be any file which contains these
+	   two keywords but it is suggested you use an image or event file
+	   (otherwise the display option will not work).
+	 </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+       <SYNOPSIS>
+	 Output region file name
+       </SYNOPSIS>
+       <DESC>
+	 <PARA>
+	   The name of the region file created by the tool. The
+	   format of the file is controlled by the format parameter.
+	 </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="x" type="float" min="0.5" max="65535.5" def="" reqd="yes">
+       <SYNOPSIS>
+	 X coordinate of source (SKY)
+       </SYNOPSIS>
+       <DESC>
+	 <PARA>
+	   The x coordinate of the source, in sky coordinates.
+	 </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="y" type="float" min="0.5" max="65535.5" def="" reqd="yes">
+       <SYNOPSIS>
+	 Y coordinate of source (SKY)
+       </SYNOPSIS>
+       <DESC>
+	 <PARA>
+	   The y coordinate of the source, in sky coordinates.
+	 </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="format" type="string" def="ciao" min="ciao|ds9">
+       <SYNOPSIS>
+	 Format for output region file
+       </SYNOPSIS>
+       <DESC>
+         <PARA>
+	   The region file can be written in CIAO format, as a PIE
+	   region, or in ds9 format, as a PANDA shape.
+         </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="display" type="boolean" def="no">
+       <SYNOPSIS>
+	 Dsiplay infile with region in ds9?
+       </SYNOPSIS>
+       <DESC>
+	 <PARA>
+	   If set, the tool will start a copy of ds9 and
+	   display the contents of infile, zoom in on the
+	   source and overlay the region showing the PSF
+	   asymmetry.
+	 </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+       <SYNOPSIS>
+	 Screen verbosity
+       </SYNOPSIS>
+       <DESC>
+	 <PARA>
+	   At a verbose level of 0 the tool will create no screen output
+	   (other than prompting for any required parameters). The
+	   default level of 1 displays messages to indicate that the
+	   region file has been created and ds9 started (if the display
+	   parameter is set). Higher values are used for debugging.
+	 </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="clobber" type="boolean" def="no">
+       <SYNOPSIS>
+         Clobber existing file?
+       </SYNOPSIS>
+       <DESC>
+	 <PARA>
+	   If outfile already exists then it will not be overwritten unless
+	   the clobber parameter is set.
+	 </PARA>
+       </DESC>
+     </PARAM>
+   </PARAMLIST>
+
+       <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+   <ADESC title="Changes in the December 2011 Release">
+      <PARA>
+        The script has been updated to run in CIAO 4.4.
+      </PARA>
+    </ADESC>
+
+   <ADESC title="About Contributed Software">
+     <PARA>
+       This script is not an official part of the CIAO release but is
+       made available as "contributed" software via the
+       <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+       Please see the
+       <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+       instructions page</HREF> for help on installing the package.
+     </PARA>
+   </ADESC>
+
+   <BUGS>
+     <PARA>
+       See the
+       &psflink;
+       for more information on this tool, including any bugs
+       and caveats.
+     </PARA>
+   </BUGS>
+   
+   <LASTMODIFIED>November 2015</LASTMODIFIED>
+ </ENTRY>
+</cxchelptopics>

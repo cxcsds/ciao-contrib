@@ -1,0 +1,233 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+  <!ENTITY npr '      '>
+]>
+<cxchelptopics>
+  <ENTRY key="add_fov_region" context="contrib" pkg="chips"
+         refkeywords="add create display show plot fov region field view boundary"
+	 seealsogroups=""
+	 displayseealsogroups="ch.region">
+
+    <SYNOPSIS>
+      Display a Chandra FOV (field-of-view) file as a region.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>add_fov_region(fov)</LINE>
+      <LINE>add_fov_region(fov, wcs)</LINE>
+      <LINE>add_fov_region(fov, attrs)</LINE>
+      <LINE>add_fov_region(fov, wcs, attrs)</LINE>
+
+      <LINE/>
+      <LINE>fov is either a filename or a Crate (the return value of read_file).</LINE>
+      <LINE>wcs defaults to "world"; it can be one of
+      "world", "eqpos", "physical", "pos", or "sky".</LINE>
+      <LINE>attrs is one of a ChipsRegion structure, an attribute list, or
+      an attribute string.</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	This routine provides a quick way to plot up a FOV file of
+	a Chandra observation, where each chip is displayed as a region
+	(at least as long as the shape for the chip is a Polygon).
+	Multiple FOV files can be plotted up, e.g. to show how a set of
+	observations overlap, or they can be added on top of an image,
+	to show what areas Chandra observered.
+      </PARA>
+      <PARA title="Loading the routine">
+	The routine can be loaded into a ChIPS, Sherpa 
+	or Python session by saying:
+      </PARA>
+
+<VERBATIM>
+from chips_contrib.regions import *
+from chips_contrib.all import *
+</VERBATIM>
+
+      <PARA>
+	where the second line will load in all the ChIPS contributed routines,
+	not just the regions module.
+      </PARA>
+
+      <PARA title="Adding axes and changing limits">
+	Unlike a normal add_region call, the add_fov_region command
+	will
+      </PARA>
+
+      <LIST>
+	<ITEM>
+	  create axes, if none are present, and set the data aspect
+	  ratio;
+	</ITEM>
+	<ITEM>
+	  change the axes limits to include the region, even if the
+	  axes have been set to display a fixed range.
+	</ITEM>
+      </LIST>
+
+      <PARA title="Limits and the data-aspect ratio">
+	The add_fov_region command takes advantage of the aspect-ratio
+	support added in CIAO 4.2 (see "ahelp aspectratio") to ensure
+	that the aspect ratio of the plot is maintained as new FOV
+	files are added to the plot.
+	This can result in the final display only showing a subset of the
+	full area, since ChIPS has to chose what limits to use to
+	maintain the aspect ratio.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; from chips_contrib.all import *</LINE>
+	  <LINE>&pr; clear()</LINE>
+	  <LINE>&pr; add_fov_region("acisf01234_000N001_fov1.fits")</LINE>
+	  <LINE>&pr; add_fov_region("acisf01235_000N001_fov1.fits",</LINE>
+	  <LINE>&npr; ["fill.color", "red"])</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The first line (from chips_contrib.all import *)
+	    loads the add_fov_region() routine; it
+	    only needs to be made once per ChIPS session.
+	  </PARA>
+	  <PARA>
+	    The remaining commands create a plot showing the FOV areas of two observations: obsid 1234 and
+	    obsid 1235. The first set of regions will be filled in green (the default
+	    values for a region), whereas the second observation use a red fill color.
+	  </PARA>
+	  <PARA>
+	    The last command could also have been written as either:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; add_fov_region("acisf01235_000N001_fov1.fits", "fill.color=red")</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>or</PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; r = ChipsRegion()</LINE>
+	      <LINE>&pr; r.fill.color = "red"</LINE>
+	      <LINE>&pr; add_fov_region("acisf01235_000N001_fov1.fits", r)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    If obsid 1234 contained data for ACIS CCD_IDs 0,1,2,3 and obsid 1235
+	    only contained ACIS CCD_IDs 6 and 7 then the output of the info command after the
+	    above would be:
+	  </PARA>
+<VERBATIM>
+Window [win1]
+  Frame [frm1]
+    Plot [plot1]   (0.15,0.15)  .. (0.90,0.90)
+      Border bottom [bx1]  top [bx2]  left [by1]  right [by2]
+      X Axis [ax1]
+      Y Axis [ay1]
+      Region [obsid1234-ccd0]
+      Region [obsid1234-ccd1]
+      Region [obsid1234-ccd2]
+      Region [obsid1234-ccd3]
+      Region [obsid1235-ccd6]
+      Region [obsid1235-ccd7]
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; clear()</LINE>
+	  <LINE>&pr; add_image("dss.fits")</LINE>
+	  <LINE>&pr; add_fov_region("acisf01234_000N001_fov1.fits",</LINE>
+	  <LINE>&npr; ["fill.style", "none"])</LINE>
+	  <LINE>&pr; add_fov_region("acisf01235_000N001_fov1.fits",</LINE>
+	  <LINE>&npr; ["fill.style", "none"])</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we plot up an image - "dss.fits", in this case an optical observation
+	    of the area from the STScI Digitized Sky Survey - and overlay on the
+	    Chandra field of views. Unlike the previous example we remove the
+	    solid fill, so only the chip edges are shown.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; cr1 = read_file("1234/primary/acisf01234_000N001_fov1.fits")</LINE>
+	  <LINE>&pr; cr2 = read_file("1235/primary/acisf01235_000N001_fov1.fits")</LINE>
+	  <LINE>&pr; clear()</LINE>
+	  <LINE>&pr; add_image("dss.fits")</LINE>
+	  <LINE>&pr; add_fov_region(cr1, ["opacity", 0.2])</LINE>
+	  <LINE>&pr; add_fov_region(cr2, ["opacity", 0.2, "fill.color", "orange"])</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example the two FOV files are read in using the Crates read_file command,
+	    and the return values (cr1 and cr2) sent to add_fov_region for plotting.
+	    In this case we reduce the opacity from the default value of 0.5 to 0.2 for both observations.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; clear()</LINE>
+	  <LINE>&pr; add_fov_region("fov1.fits[ccd_id&lt;4]")</LINE>
+	  <LINE>&pr; add_fov_region("fov1.fits[ccd_id>3]", ["fill.color", "red"])</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we plot up the chips from the ACIS-I array of an observation in green, and those
+	    chips in the ACIS-S array in red.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Changes in the December 2010 Release">
+      <PARA title="Module name change">
+	To load in all the ChIPS contributed modules you now have to say
+	one of
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>import chips_contrib.all</LINE>
+	  <LINE>from chips_contrib.all import *</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	rather than
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>import chips_contrib</LINE>
+	  <LINE>from chips_contrib import *</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	which no longer loads in any code.
+      </PARA>
+      <PARA title="WCS axis support">
+	The code has been updated to take advantage of the WCS axes support
+	in ChIPS. Users should not see any major changes in behavior.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+ 
+    <LASTMODIFIED>December 2010</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

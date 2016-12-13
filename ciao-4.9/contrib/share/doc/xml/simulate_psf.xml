@@ -1,0 +1,942 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="simulate_psf"
+         context="tools" 
+         refkeywords="saotrace chart marx psf_project_ray PSF point msc sperical off-axis theta phi spread HRMA mirror function PRF response simulate ecf eef encircled fraction"
+         seealsogroups="psftools">
+
+    <SYNOPSIS>Simulate the Chandra PSF</SYNOPSIS>
+    <DESC>
+       <PARA>
+         The Chandra Point Spread Function (PSF), or Point Response Function (PRF),
+         is highly variable across the field of view.  Near the optical
+         axis the FWHM is less then 0.5 arcsec while at 8 arcmin off-axis, it
+         grows to over 30 arcsec and continues to grow exponentially from there.
+         The PSF is also a function of energy
+         with the 90% encircled energy radius growing by about 10% across 
+         the Chandra energy range.  The PSF is also affected by the
+         detector geometry, placement in the focal plane, and detector readout. 
+       </PARA>
+        <PARA>
+          Given all these complexities, there is no analytic, 2D model 
+          of the PSF.  The only way to estimate the Chandra PSF is to simulate it.        
+        </PARA>
+
+        <PARA>
+          There are two tools available to simulate the Chandra PSF.
+          The most complete mirror simulator is  
+          <HREF link="http://cxc.cfa.harvard.edu/cal/Hrma/Raytrace/SAOTrace.html">SAOTrace</HREF>
+          which is
+          maintained by the CXC optics group.  It is the 
+          tool that is run by the 
+          <HREF link="http://cxc.cfa.harvard.edu/ciao/PSFs/chart2/index.html">ChaRT web service</HREF>.          
+          It produces the highest
+          fidelity simulation of the Chandra mirrors (HRMA), but 
+          does not include the instruments.  For that users typically
+          will run the SAOTrace output through 
+          <HREF link="http://space.mit.edu/ASC/MARX/">MARX</HREF>.   
+          However, MARX itself
+          has its own model of the HRMA and can directly produce highly accurate
+          simulations.  For most typical sources either tool will yield
+          statistically equivalent results.
+        </PARA>
+        <PARA>
+        The simulate_psf script simplifies the interface to MARX and to the 
+        rayfiles returned by ChaRT. It is useful to simulate a source PSF for 
+        an existing observation. The header information in the file for the existing 
+        observation is used to setup the simulation and the projection. Currently 
+        MARX is the only supported simulator for the Chandra mirror (HRMA), however 
+        the script also accepts a stack of rayfiles generated with ChaRT.  In case of 
+        ChaRT rayfiles both MARX or the CIAO tool psf_project_rays can be used to 
+        project the rays onto the detector.
+        </PARA>
+
+        <PARA title="Software Versions">
+        This script has only been tested with MARX versions 5.0 through 5.3.
+        Earlier versions of MARX are not supported.  Users are
+        encouraged to use the most recent version of MARX.  The
+        <HREF link="http://cxc.harvard.edu/ciao/ahelp/install_marx.html">install_marx</HREF>
+        script can be used to install the latest version.
+       <!-- 
+        SAOTrace version 2.0.4 
+        and MARX version 5.0.0 and 5.1.0. Other versions of those tools
+        are not supported.
+        -->
+        </PARA>
+
+
+    </DESC>
+
+
+    <QEXAMPLELIST>
+    
+      <QEXAMPLE> 
+        <SYNTAX>
+<!--         
+<LINE>unix% source /soft/saotrace-2.0.4/bin/saotrace_setup.csh</LINE>
+<LINE>unix% setenv SAOTRACE_DB /soft/saotrace-2.0.4/DB</LINE>
+<LINE>unix% setenv INSTALLDIR /soft/saotrace-2.0.4/</LINE>
+-->
+
+<LINE>unix% setenv MARX_ROOT /soft/marx-5.3.0/</LINE>
+<LINE>unix% setenv MARX_DATA_DIR ${MARX_ROOT}/share/marx/data</LINE>
+
+         </SYNTAX>
+        <DESC>
+            <PARA>
+          This example is to setup <!--SAOTrace and --> MARX.  This example needs to performed
+          once before the following examples are expected to work.
+        </PARA>
+         <PARA>
+         Bash shell users should replace the above setenv commands
+         with the equivalent export commands and source the saotrace_setup.bash
+         script.
+         </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+            unix% simulate_psf infile=acisf00635_repro_evt2.fits 
+               ra=246.88628 dec=-24.556762 monoenergy=2.3 flux=1e-6
+               spectrum=none outroot=simple_monoenergy
+          </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            This example will use MARX to simulate a source at
+            the specified RA and DEC.  It will have a monochromatic spectrum
+            at 2.3 keV with a flux of 1e-6 photon/cm^2/sec.  
+            The tool will locate the aspect solution file from
+            the ASOLFILE keyword in the infile.        The output image
+            will be named simple_monoenergy.psf
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+<!--
+      <QEXAMPLE>
+        <SYNTAX>
+<LINE>unix% sherpa</LINE>
+<LINE>sherpa&gt; load_data("source.pi")</LINE>
+<LINE>sherpa&gt; set_source(xspowerlaw.p1*xsphabs.abs1)</LINE>
+<LINE>sherpa&gt; p1.PhoIndex = 1.7</LINE>
+<LINE>sherpa&gt; p1.norm = 1e-7</LINE>
+<LINE>sherpa&gt; abs1.nh = 0.1</LINE>
+<LINE>sherpa&gt; notice(0.5,7)</LINE>
+<LINE>sherpa&gt; save_source( "tmp.dat")</LINE>
+<LINE>sherpa&gt; tab = read_file("tmp.dat[xlo=0.5:,xhi=:7.0]")</LINE>
+<LINE>sherpa&gt; tab.write("source.dat")</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+          This example shows how to create a spectrum file that can
+          be input to this tool.  
+          The spectral model in this case is an absorbed powerlaw
+          over the 0.5 to 7.0 keV range.
+          The output from this command
+          is a 3 column file that contains energy
+          and flux.  This file will be used in later examples.
+          The save_source command outputs the entire energy range so
+          the additional table read+write is necessary to apply an
+          energy filter.
+          </PARA>
+        
+        </DESC>
+      </QEXAMPLE>
+-->
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+            unix% simulate_psf infile=acisf00635_repro_evt2.fits 
+               ra=246.88628 dec=-24.556762  spectrum=source.dat
+               outroot=abs_powlaw </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+             This example uses the spectrum in the file source.dat
+             to create the PSF.  With the default parameter flux=INDEF, the 
+             flux values in the spectrum file are used directly without 
+             any modifications. 
+          </PARA>
+          <PARA>
+            Instructions for creating the spectrum in the correct format
+            are shown in the CIAO thread:
+            <HREF link="http://cxc.cfa.harvard.edu/ciao/threads/prep_chart/index.html#upload_spectrum">Preparing to Run ChaRT</HREF>
+          </PARA>
+        
+        </DESC>
+      </QEXAMPLE>
+<!--
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+            unix% simulate_psf infile=acisf00635_repro_evt2.fits 
+               ra=246.88628 dec=-24.556762  spectrum=source.dat
+               outroot=abs_powlaw flux=0.5 projector=psf_project_ray</LINE>          
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            This example shows how the flux parameter scales the
+            spectral model when SAOTrace is used as the simulator.
+            In this case, the spectral weights are each multiplied
+            by 0.5, yielding a simulation with fewer events.  Additionally,
+            the CIAO tool psf_project_ray is used to project the rays
+            onto idealized detectors.
+          </PARA>
+        
+        </DESC>
+      </QEXAMPLE>
+-->
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+            unix% simulate_psf infile=acisf00635_repro_evt2.fits 
+               ra=246.88628 dec=-24.556762  spectrum=source.dat
+               outroot=abs_powlaw flux=1e-6</LINE>          
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            The flux parameter is used to scale the input spectrum such 
+            that the total integrated flux is equal to the flux parameter.
+          </PARA>
+        
+        </DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+            unix% simulate_psf infile=acisf00635_repro_evt2.fits 
+               ra=246.88628 dec=-24.556762  spectrum=source.dat
+               outroot=abs_powlaw_mean numiter=10 minsize=256</LINE>          
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            Using numiter, the simulation will be repeated 10 times.
+            The output image will be at least 256 physical pixels
+            and will be the result of combining the 10 simulations together.            
+          </PARA>
+        
+        </DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+            unix% simulate_psf infile=acisf00635_repro_evt2.fits 
+               ra=246.88628 dec=-24.556762  spectrum=none mono=2.3 flux=1e-6
+                outroot=mono_mean numiter=10 keepiter=yes minsize=256</LINE>          
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            In this example 10 different monochromatic simulations will
+            be done for a 2.3 keV source with a flux of 1e-6 photon/cm^2/sec.
+            The final output image will be the combination of the 10
+            individual simulations, however, with keepiter=yes,
+            the individual files for each simulation are also retained
+            including the marx parameter files.
+          </PARA>
+        
+        </DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+            unix% simulate_psf infile=acisf00635_repro_evt2.fits 
+               ra=246.88628 dec=-24.556762  spectrum=none 
+                outroot=using_rayfile simulator=file
+                rayfile=HRMA_chart_output_i0000.fits pileup=yes 
+                readout_streak=yes  extend=no
+          </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+                This example shows how the ChaRT ray file can be
+                input to this tool.  This can be useful to test
+                different combination of MARX or psf_project_ray
+                parameters (blur, pileup, readout streak, etc.).
+          </PARA>
+          <PARA>
+                The spectrum of the source does not need
+                to be supplied since that information is already
+                determined from the input rayfile.
+          </PARA>
+        
+        </DESC>
+      </QEXAMPLE>
+    
+    </QEXAMPLELIST>
+
+
+
+
+      <PARAMLIST>
+          <PARAM name="infile" type="file" filetype="input" reqd="yes">
+                <SYNOPSIS>Input event file</SYNOPSIS>
+                <DESC>
+                  <PARA>
+                      The input event file or image.  Header information
+                      in the infile is used to setup the simulation
+                      and the projection.  It includes, but is 
+                      not necessarily limited to
+                      the following keywords: RA_NOM, DEC_NOM, ROLL_NOM, 
+                      RA_PNT, DEC_PNT, ROLL_PNT, DY_AVG, DZ_AVG, DTH_AVG,
+                      SIM_X, SIM_Y, SIM_Z, INSTRUME, DETNAM, 
+                      EXPTIME (ACIS), TIMEDEL, GRATING, TSTART, TSTOP, 
+                      DATE-OBS, NROWS (ACIS), and TIMEDELB (ACIS).
+                  </PARA>
+
+                </DESC>
+          </PARAM>
+
+          <PARAM name="outroot" type="file" filetype="output" reqd="yes">
+            <SYNOPSIS>Output directory plus root name</SYNOPSIS>
+            <DESC>
+              <PARA>
+                  The final output file name will be  ${outroot}.psf.
+              </PARA>
+              <PARA>
+                  The size of the output image will depend on the 
+                  size of the PSF and the following parameters: minsize,
+                  binsize, numsig.
+              </PARA>
+              <PARA>
+                  The PSF is normalized by the number of rays output
+                  by either marx or psf_project_ray.  Since some of the
+                  PSF rays will in general be outside the image boundary,
+                  the sum of the pixel values in the PSF image will be
+                  &lt;= 1.0
+              </PARA>
+
+
+              <PARA>
+                  MARX creates many temporary files.  This same outroot is used for 
+                  those files and directories.
+              </PARA>
+              <PARA>
+                  If the keepiter parameter (below) is set to yes, then
+                  several temporary files are kept from each iteration of the
+                  simulation.  The set of files will depend on 
+                  which simulator and projector was selected.
+              </PARA>
+
+            </DESC>
+          </PARAM>
+
+          <PARAM name="ra" type="real" reqd="yes" min="0" max="360" units="deg"> 
+            <SYNOPSIS>The Right Ascension of the source to simulate</SYNOPSIS>
+            <DESC>
+              <PARA>
+                Source positions must be in decimal degrees and in J2000
+                coordinates.
+              </PARA>
+            </DESC>
+          </PARAM>
+
+          <PARAM name="dec" type="real" reqd="yes" min="-90" max="90" units="deg"> 
+            <SYNOPSIS>The Declination of the source to simulate</SYNOPSIS>
+            <DESC>
+              <PARA>
+                Source positions must be in decimal degrees and in J2000
+                coordinates.
+              </PARA>
+            </DESC>
+          </PARAM>
+
+          <PARAM name="spectrum" type="file" reqd="yes" filetype="input">
+            <SYNOPSIS>File with spectral information</SYNOPSIS>
+            <DESC>
+               <PARA>
+                  The spectrum file is a 3 column ASCII file with
+                  energy low and high in keV vs. flux in photon/cm^2/sec.
+               </PARA>
+              <PARA>
+                 If spectrum is "none" or left blank, then the user 
+                 can specify a monochromatic energy via the monoenergy
+                 parameter.              
+              </PARA>
+              <PARA>
+                  The absolute normalization of the spectrum can be
+                  controlled by the flux parameter (below).              
+              </PARA> 
+                <PARA>
+                  The spectrum must only contain energies between 0.3 and 10 keV.
+                  The flux at all the energies must be &gt; 0.                
+                </PARA>
+
+
+            </DESC>
+          </PARAM>
+          
+          <PARAM name="monoenergy" type="real" reqd="no" def="INDEF" units="keV" min="0.1" max="10">
+            <SYNOPSIS>Monochromatic energy to simulate</SYNOPSIS>
+            <DESC>
+              <PARA>
+                A monochromatic energy must be supplied if the spectrum
+                parameter is blank or "none".  The flux parameter must also be supplied.
+                The flux must be in units of photon/cm^2/sec.
+              </PARA>
+              <PARA>
+                The monoenergy parameter is ignored for spectrum=file.              
+              </PARA>
+            </DESC>
+          </PARAM>
+          
+          <PARAM name="flux" type="real" reqd="no" def="INDEF" units="varies">
+            <SYNOPSIS>Absolute flux or flux scaling factor</SYNOPSIS>
+            <DESC>
+                <PARA>
+                  If using a monochromatic energy (spectrum is blank or "none")
+                  the flux parameter is the flux of the point source
+                  in units of photon/cm^2/sec.                
+                </PARA>
+                <PARA>
+                  If a spectrum is supplied, the default value of INDEF
+                  will instruct <!-- SAOTrace or--> MARX to use the unmodified 
+                  flux in the spectrum file.                
+                </PARA>
+<!--
+                <PARA>
+                  If spectrum is supplied and flux is not INDEF, the 
+                  effect is dependent on the simulator.
+                </PARA>
+                <PARA>
+                  With simulator=saotrace, the flux value is used to
+                  scale the spectrum at each energy. A value of flux=2.0 
+                  will double the flux at each energy.                
+                </PARA>
+-->
+                <PARA>
+                  With simulator=marx, the flux value is used to establish
+                  an absolute integrated flux scaling factor.  A value
+                  of flux=0.002 will scale the fluxes such that the 
+                  total integrated flux over the input energy range is
+                  0.002 photon/cm^2/sec.
+                </PARA>
+                <PARA>
+                The flux parameter is ignored with simulator=file.
+                </PARA>
+                
+              <PARA>
+                Users should be careful not to try to increase the
+                statistics in the PSF simulation by simply increasing
+                the flux.  Depending on the setting of 
+                pileup and readout_streak parameters, this can result in 
+                deformations of the PSF that are not present in the
+                observed data.
+              </PARA>
+            </DESC>          
+          </PARAM>
+
+          <PARAM name="simulator" type="string" def="marx" reqd="no">
+            <SYNOPSIS>Application to simulate the Chandra mirrors</SYNOPSIS>
+            <DESC>
+              <PARA>
+                 Selects whether to use "marx" to simulate the
+                 Chandra mirrors or to use "file"
+                 which will use the ChaRT rayfiles specified in the rayfile parameter.
+              </PARA>            
+<!--
+              <PARA>
+                 See the "SAOTrace vs. MARX" section below for a 
+                 discussion of the pro's and con's of each option.
+              </PARA>
+-->
+            </DESC>
+          </PARAM>
+          
+          <PARAM name="rayfile" type="file" filetype="input" reqd="no" stacks="yes">
+            <SYNOPSIS>Input ray file when simulator=file</SYNOPSIS>
+            <DESC>
+              <PARA>
+                  The ChaRT web service can be used to create the rayfiles.
+                    <!-- or from a previous
+                  run of simulate_psf with simulator=saotrace
+                  and keepiter=yes.     The rays are not available
+                  with simulator=marx.                  -->
+              </PARA>
+              <PARA>                 
+                  This allows the user to bypass the HRMA simulation 
+                  and generate different PSFs images with for example
+                  different readout_streak or pileup settings or
+                  at different image sizes.
+              </PARA>
+            </DESC>
+          </PARAM>
+            
+          <PARAM name="projector" type="string" def="marx" reqd="no">
+            <SYNOPSIS>Which application to use to project rays onto
+            the detectors</SYNOPSIS>
+            <DESC>
+              <PARA>
+                The rayfile files from ChaRT can be projected onto 
+                the appropriate instrument using either "marx" or
+                "psf_project_ray".  With simulator="marx"
+                this parameter must also be "marx".
+              </PARA>
+              <PARA>
+                While they produce the same basic format output file,
+                a pseduo Chandra event file, there are differences in
+                how each models the instruments.  There are use cases
+                for both that are described in the "MARX vs psf_project_ray"
+                section below.              
+              </PARA>            
+<!--
+              <PARA>
+                A special value of "none" can be used to just run saotrace
+                without projecting the results to a detector.              
+              </PARA>
+-->
+
+            </DESC>          
+          </PARAM>
+
+          <PARAM name="random_seed" type="integer" def="-1" reqd="no">
+            <SYNOPSIS>
+              Initial random seed for simulations.
+            </SYNOPSIS>
+            <DESC>
+              <PARA>
+                The random_seed is set to initialize the simulation.  
+                With random_seed equal to the default value of -1, the
+                script will use a random value for the
+                initial random_seed.
+              </PARA>
+              <PARA>
+                
+                The random_seed is automatically adjusted when multiple 
+                iterations, numiter>gt;1, are run.
+              </PARA>
+            </DESC>
+          </PARAM>
+
+          <PARAM name="blur" type="real" def="0.07" min="0" reqd="no" units="arcsec">
+            <SYNOPSIS>
+              PSF Blur
+            </SYNOPSIS>
+            <DESC>
+           <PARA>
+                It may be necessary to add an additional amount of blurring
+                to the PSF to account for detector effects and/or 
+                uncertainity in the aspect reconstruction.  The value
+                of the blur parameter is passed directly to 
+                MARX as the value for the "AspectBlur" parameter or to psf_project_ray
+                as the value for the "xblur" parameter.
+           </PARA>
+            </DESC>          
+          </PARAM>
+
+          <PARAM name="readout_streak" type="boolean" def="no" reqd="no">
+            <SYNOPSIS>Simulate the ACIS readout streak with MARX?</SYNOPSIS>
+            <DESC>
+              <PARA>
+                The ACIS readout streak is the result of events being
+                detected during the transfer of the pixel values to the
+                readout buffer (frame store).  This results in a 
+                line of events, in the CHIPY direction, that intersects
+                bright sources.  
+              </PARA>
+                <PARA>
+                Users may wish to include this effect in the PSF
+                for certain types of analysis especially when
+                measuring features in observed data that align
+                with the CCD readout.                
+                </PARA>            
+                <PARA>This parameter has no effect when 
+                projector=psf_project_ray.</PARA>
+
+            </DESC>         
+          </PARAM>
+
+          <PARAM name="pileup" type="boolean" def="no" reqd="no">
+            <SYNOPSIS>Simulate ACIS pileup with MARX?</SYNOPSIS>
+            <DESC>
+              <PARA>
+                 Pileup occurs when two or more photons hit the ACIS
+                 CCD during a single exposure.  Since the photons
+                 cannot be resolved into individual events, the 
+                 effect is to detect a single event with 
+                 energy equal to the sum of the input energies 
+                 and a loss of counts.
+              </PARA>
+              <PARA>
+                 As the incident flux increases, the detected flux
+                 will decrease and with sufficient pileup will
+                 go to zero -- resulting in the core of the
+                 PSF becoming a "crater".
+              </PARA>
+              <PARA>
+                 Including this effect in the PSF may be necessary
+                 when trying to match the wings of the PSF to
+                 observed data; however, given the loss of flux
+                 this results in an inability to provide an accurate
+                 PSF fraction.              
+              </PARA>            
+              <PARA>This parameter has no effect for projector=psf_project_ray.</PARA>
+            </DESC>          
+          </PARAM>
+
+          <PARAM name="ideal" type="boolean" def="yes" reqd="no">
+            <SYNOPSIS>Should MARX simulate ideal detectors?</SYNOPSIS>
+            <DESC>
+              <PARA>This parameter can be set to simulate events
+              hitting an ideal detector (QE=1).  This may be necessary
+              when using the PSF in conjunction with an exposure map
+              (eg when doing 2D fitting); otherwise the exposure variations maybe applied twice.
+              </PARA>
+            
+            
+              <PARA>This parameter has no effect for projector=psf_project_ray.</PARA>
+            </DESC>
+          </PARAM>
+
+          <PARAM name="extended" type="boolean" def="yes" reqd="no">
+            <SYNOPSIS>Should PSF extend beyond the edge of the detector?</SYNOPSIS>
+          
+            <DESC>
+              <PARA>
+              When fitting or convolving with the PSF, the edge of the detector 
+              should not be included.  The PSF should extended to "infinity" (or
+              a reasonably large size that is still practical to work with).  The
+              edge can be reintroduced by including the exposure map in the
+              analysis which properly accounts for loss of counts at the edges.
+              </PARA>
+            
+              <PARA>Extended chip coordinates cannot be used when 
+              simulating pileup (pileup=yes).</PARA>
+              <PARA>This parameter has no effect for projector=psf_project_ray.</PARA>
+            </DESC>
+          
+          </PARAM>
+
+          <PARAM name="binsize" type="real" def="1" min="0" units="pixel">
+            <SYNOPSIS>
+              Output PSF image pixel size.
+            </SYNOPSIS>
+            <DESC>
+                <PARA>
+                    The PSF image that is created will be centered 
+                    at the input RA,DEC.  This parameter
+                    controls the pixel size, in physical pixels. 
+                </PARA>
+            </DESC>
+          </PARAM>
+
+          <PARAM name="numsig" type="real" def="7" min="0">
+            <SYNOPSIS>
+              Size of the output image in number of standard
+              deviations 
+            </SYNOPSIS>
+ 
+            <DESC>
+              <PARA>
+                 The output image will be centered at the 
+                 input RA,DEC and will have a pixel size equal to
+                 binsize.  The image will be square with axis
+                 length equal to numsig times the maximum
+                standard deviation of the simulated
+                events' location along the X and Y axes.
+                
+              </PARA>
+              <PARA>
+                If minsize is set, the image will be at least 
+                minsize square.
+              </PARA>
+
+            </DESC>
+         
+          </PARAM>
+
+          <PARAM name="minsize" type="integer" def="INDEF" min="1" units="pixel">
+            <SYNOPSIS>Minimum PSF image size</SYNOPSIS>
+            <DESC>
+                <PARA>
+                  If set, this parameter controls the minimum
+                  output PSF image size.                
+                </PARA>
+                <PARA>
+                  minsize is in physical pixels.
+                </PARA>
+                <PARA>
+            If multiple iterations are requested, the image 
+            size is fixed to the
+            first simulation.
+                </PARA>
+
+            </DESC>
+          </PARAM>
+
+          <PARAM name="numiter" type="integer" def="1" min="1">
+            <SYNOPSIS>Number of PSFs to simulate and combine together</SYNOPSIS>
+            <DESC>
+                <PARA>
+                The PSF created with this tool is the result of running
+                random simulations and is therefore subject to 
+                statistical uncertainty.            
+                </PARA>
+                <PARA>
+                 To reduce these effects users may try to increase the
+                 flux; however doing so, especially when using
+                 either readout_streak=yes or pileup=yes
+                 will result in additional streak and/or pileup
+                 that may not match the actual observed dataset.
+                </PARA>
+                <PARA>
+                  ChaRT users may also have tried to increase the
+                  exposure time to generate more rays.  However, this
+                  is not a valid option when an aspect solution is
+                  used as the time range of the simulation must match
+                  the times in the ASOL file.
+                </PARA>
+                <PARA>
+                  The correct approach is to generate several 
+                  realizations of the simulation, each with a different
+                  random seed, and either combine them together or
+                  to repeat the analysis with each realization in
+                  order to quantify the simulation uncertainty/bias.
+                </PARA>
+                <PARA>
+                The numiter parameter is ignored for when rayfiles are
+                supplied.  The tool will loop over the stack of
+                rayfiles and produce the combined PSF.                
+                </PARA>
+
+            </DESC>
+          </PARAM>
+
+          <PARAM name="keepiter" type="boolean" def="no" reqd="no">
+            <SYNOPSIS>Keep various files from each PSF simulation</SYNOPSIS>
+            <DESC>
+                <PARA>
+                The primary output from this tool is the 
+                PSF image file, ${outroot}.psf.  This
+                parameter allows additional files to be
+                kept.  The files are
+                </PARA>
+
+<!--
+                <PARA>
+                  ${outroot}_iNNNN_rays.fits : The SAOTrace 
+                  output ray files, saved for each
+                  iteration (NNNN replace with iteration number).  These
+                  are not available with simulator=marx.  These files can
+                  be used as the input rayfile with simulator=file.
+                </PARA>
+-->
+                <PARA>
+                  ${outroot}_iNNNN_projrays.fits : The simulated
+                  event file output from either MARX or psf_project_ray.
+                  The contents (columns) in the output varies between
+                  the two tools, but both include X and Y columns 
+                  that are used to bin the data into an image.                
+                </PARA>
+                <PARA>
+                  ${outroot}_iNNNN.psf : The image of the PSF
+                  created at each iteration.  The final
+                  output PSF is the average of all the iterations.
+                </PARA>            
+                <PARA>
+                  ${outroot}_iNNNN_marx.par : The MARX parameter file, if 
+                  marx was used as the simulator and projector.                
+                </PARA>
+
+            </DESC>          
+          </PARAM>
+
+          <PARAM name="asolfile" type="file" filetype="input" reqd="no">
+            <SYNOPSIS>Input aspect solution file</SYNOPSIS>
+            <DESC>
+               <PARA>
+                 The aspect solution file for the observation.
+                 The optical axis dithers across the sky as a function of time.
+                 This means the observed PSF is actually a combination of
+                 the PSFs around the nominal pointing location.  The
+                 general effect is to slightly blur the PSF.
+                 To properly account for this blur, the aspect solution
+                 should be used with the simulation.
+               </PARA>
+
+               <PARA>
+               If the parameter is left blank or set to the string "INDEF", 
+               the script will try to locate the correct file by looking for the file(s) listed 
+               in the ASOLFILE keyword.  
+               </PARA>
+               <PARA>
+               If asolfile="none" or if no aspect soluiton file can be located,
+               then MARX will be configured to use an internal dither model 
+               consistent with the default dither pattern for the 
+               detector being used (ACIS or HRC).
+               </PARA>
+
+            </DESC>
+          </PARAM>
+
+<!--
+          <PARAM name="saotrace_install" type="file" reqd="no">
+            <SYNOPSIS>The directory where SAOTrace is installed.</SYNOPSIS>
+            <DESC>
+              <PARA>This script currently support SAOTrace v2.0.4</PARA>            
+            </DESC>
+          </PARAM>
+          <PARAM name="saotrace_db" type="file" reqd="no">
+            <SYNOPSIS>The directory where the SAOTrace mirror models
+            are installed</SYNOPSIS>
+          </PARAM>
+          <PARAM name="saotrace_mirror" type="string" reqd="no" def="orbit-200809-01f-a">
+            <SYNOPSIS>The name of the SAOTrace configuration/setup</SYNOPSIS>
+          </PARAM>
+-->
+
+          <PARAM name="marx_root" type="file" reqd="no">
+            <SYNOPSIS>The directory where MARX was installed.</SYNOPSIS>
+            <DESC>
+            <PARA>
+             This script
+            currently only supports MARX version 5.0.0, 5.1.0, and 5.2.0.
+            Users are encouraged to use the latest supporrted version of 
+            MARX which can be installed with the install_marx script.
+            
+            </PARA>
+            
+            </DESC> 
+            
+
+
+          </PARAM>
+
+
+
+
+      </PARAMLIST>
+
+<!--
+    <ADESC title="SAOTrace or MARX?">
+        <PARA>
+            SAOTrace is the official model of the Chandra mirrors (HRMA).
+            The source code is made available and maintained by the 
+            CXC Optics group.  It is a large package with many dependencies.
+            While currently tested on many platforms it may not
+            be compatible with the latest compilers and operating
+            systems.  
+        </PARA>
+        <PARA>
+           MARX is maintained by the CXC group at MIT.  It is the
+           official simulator for the HETG gratings and as such 
+           does include a high fidelity HRMA model, but does not
+           include all the scattering effects that SAOTrace does.
+           This results in differences in the structure in the
+           wings of the PSF.
+        </PARA>
+        <PARA>
+          For purposes of getting integrated PSF fractions where the
+          exact structure is less important, either simulator is
+          sufficient. 
+        </PARA>
+        <PARA>
+          For doing 2D modeling or trying to determine small scale
+          extent, users will likely want to use SAOTrace, though
+          given typical number of counts, the statistical uncertainty
+          in the observed data will dominate over the systematic
+          error of choosing MARX over SAOTrace.
+        </PARA>
+
+        <PARA>
+          Please be aware of the
+          <HREF link="http://cxc.cfa.harvard.edu/ciao/caveats/psf_artifact.html">PSF caveat</HREF>.          
+          
+          Neither marx nor SAOTrace model this feature.
+        </PARA>
+
+    </ADESC>
+-->
+    <ADESC title="MARX or psf_project_ray?">
+        <PARA>
+          This section is only relevant when using simulator=file and supplying
+          rayfiles.  
+        </PARA>
+
+        <PARA>
+            MARX provides a full simulator for the Chandra 
+            instruments as well as the transmission gratings.
+            This includes not only the detector geometry but also 
+            the event detection process in ACIS including the
+            EDSER subpixel event positions.  It can be used
+            to simulate pileup and the ACIS readout streak.
+        </PARA>
+        <PARA>
+            psf_project_ray is a CIAO tool that takes the
+            SAOTrace ray file and projects the rays onto semi-infinite
+            planes at the surface of the detectors. 
+            
+        </PARA>
+    </ADESC>
+
+    <ADESC title="Caveats">
+      <PARA>
+      Users should review the list of 
+      <HREF link="http://space.mit.edu/ASC/MARX/inbrief/caveats.html">MARX caveats</HREF>
+      for issues directly related to MARX. 
+      </PARA>
+
+      <PARA>
+      Below is a list of caveats related to PSF images created with
+      this tool:     
+      </PARA>
+
+
+      <PARA title="Subarray">
+            ACIS subarrays are not supported.  The MARX parameters
+            are adjusted to account for the decreased subarray frame
+            times; however, the spatial extent of the subarray is 
+            not modeled.  This may lead to differences in the PSF when
+            the parameter readout_streak=yes.
+      </PARA>
+      <PARA title="Windows">
+            ACIS windows are not supported.             
+            The CHIP coordinates are saved in the ray files (keepiter=yes) 
+            which users can use to filter on to approximate a 
+            window.  For example if all the PSF events fall on a single CCD
+            then the following type of filter can be used
+        </PARA>
+        <PARA>
+            <SYNTAX>
+            <LINE>unix% dmcopy "mysim_i0001_rays.fits[exclude chipx=100:200,chipy=300:600]" mysim_window_rays.fits</LINE>
+            </SYNTAX>
+        </PARA>
+        <PARA>
+            However, for grey filter windows (SAMP_CYC &gt; 1) 
+            it is more difficult to try to duplicate the event sampling
+            algorithm.
+      </PARA>
+      <PARA title="Continuous Clocking">
+            Observations of ACIS continuous clocking mode are not supported.
+      
+      </PARA>
+
+      <PARA title="PSF Artifact">
+          There is an artifact in the PSF on the scale of 0.2 arcsec.
+          The details of which are discussed in this
+<HREF link="http://cxc.cfa.harvard.edu/ciao/caveats/psf_artifact.html">PSF caveat</HREF>.          
+            Neither MARX nor SAOTrace currently model this artifact.
+      </PARA>
+      
+      <PARA title="HRC Pileup">
+        For high count-rate sources, there may be an additional blurring
+        of the data caused by
+        <HREF link="http://cxc.cfa.harvard.edu/contrib/juda/memos/hrc_pileup/index.html">pileup.</HREF>
+        This effect is not simulated by MARX.  The page also links to
+        a script users can run to filter out the piled up events at the
+        expense of loosing some detector sensitivity. 
+      </PARA>
+
+        
+    </ADESC>
+
+   <LASTMODIFIED>April 2016</LASTMODIFIED>
+
+
+  </ENTRY>
+</cxchelptopics>

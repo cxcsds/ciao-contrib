@@ -1,0 +1,263 @@
+#!/usr/bin/env python
+#
+#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016
+#            Smithsonian Astrophysical Observatory
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Usage:
+  download_chandra_obsid obsidlist [filetypelist]
+
+  Use the --help flag for more information
+
+Aim:
+
+Download, via anonymous FTP, Chandra observatinoal data using the
+ObsId value of the observation. Multiple observations can be given by
+giving a comma-separated list of obsid values (or a stack).
+
+Unlike most CIAO tools and scripts this does not use the CIAO parameter
+interface, instead it uses the standard UNIX command-line paradigm.
+Use --help for more information.
+
+By default all the data for a given observation is downloaded, but this
+can be restricted to a particular file type - e.g. fov, evt2, asol - or
+a comma-separated list (or stack) of such file types.
+
+The data is stored in the current directory using the archive data-storage
+scheme: e.g.
+
+  <obsid>/primary/...
+  <obsid>/secondary/...
+  ... etc ...
+
+This tool can only be used to download publicly-accessible
+data. Data that has not yet been made public has to be downloaded by
+other means.
+
+Download is, by default, from the Chandra Data Archive site, but it
+can be changed to use a mirror site using the --mirror command-line
+argument or the CDA_MIRROR_SITE environment variable (the command-line
+argument takes precedence if both are set). The mirror name should
+point to the location of the byobsid directory - e.g.  for the Chandra
+Data Archive itself you would use
+ftp://cdaftp.cfa.harvard.edu/pub/. The leading ftp:// is required.
+
+If you need to use a specific username and password then include it in
+the mirror setting - e.g.
+ftp://anonymous:anonymous@anonymous.com@cdaftp.cfa.harvard.edu/pub/. See
+http://tools.ietf.org/html/rfc3986 for more information.
+
+"""
+
+toolname = "download_chandra_obsid"
+version = "12 September 2016"
+
+import sys
+import os
+import textwrap
+import argparse
+
+import stk
+
+# This is only needed for development.
+try:
+    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
+        if os.path.isdir(_pathdir):
+            os.sys.path.insert(1, _pathdir)
+        else:
+            print("*** WARNING: no {}".format(_pathdir))
+
+        del _libname
+        del _pathdir
+        del _thisdir
+
+except KeyError:
+    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+
+import ciao_contrib.logger_wrapper as lw
+import ciao_contrib.cda.data as data
+
+lw.initialize_logger(toolname, verbose=1)
+v1 = lw.make_verbose_level(toolname, 1)
+v3 = lw.make_verbose_level(toolname, 3)
+
+help_str = """
+Download public Chandra observations.
+
+The observations to download are given as a comma-separated list of
+ObsId numbers, and an optional comma-separated list of file "types"
+can also be given, which will only download files that contain the
+type strings. So an argument of '9123,9124' will download all data for
+the obs ids 9123 and 9124, whereas '9123,9124 fov,vv,evt2' will only
+download the V&V, fov, and evt2 files for these observations. Stacks
+can also be used for these arguments (e.g. @obsids.txt where
+obsids.txt is a text file with one obsid per line). See 'ahelp stack'
+for more information on stacks.
+
+The data is written to the current directory, with each obsid being
+saved to its own directory (following the layout used by the Chandra
+archive).
+
+A mirror site of the Chandra Data Archive can be used by setting the
+--mirror option or by setting the CDA_MIRROR_SITE envrironment
+variable; the command-line option takes precedence if both are
+set. The mirror name should point to the location of the byobsid
+directory and start with ftp:// - e.g. using the Chandra Data is
+equivalent to using a setting of ftp://cdaftp.cfa.harvard.edu/pub/. A
+username and password can be included in this setting, following
+http://tools.ietf.org/html/rfc3986, e.g.
+ftp://anonymous:foo@bar.org@cdaftp.cfa.harvard.edu/pub/.
+"""
+
+
+copyright_str = """
+Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015
+          Smithsonian Astrophysical Observatory
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+"""
+
+
+def get_terminal_width():
+    """Find out the number of columns displayable by the terminal.
+
+    From
+
+    http://stackoverflow.com/questions/566746/how-to-get-console-window-width-in-python
+    """
+
+    # Should this use the processing module instead of os.popen?
+    try:
+        rows, columns = os.popen('stty size', 'r').read().split()
+    except:
+        columns = 80
+
+    return int(columns)
+
+
+def display_string(str, lwidth=3, rwidth=3):
+    """Return a string which is the contents of str broken up so that
+    if fits into the current display width and each line is indented:
+    the left side so that there are lwidth spaces and the right side
+    so that there are at least rwidth spaces.
+    """
+
+    indent = " " * lwidth
+    nwidth = get_terminal_width() - rwidth
+    wrapper = textwrap.TextWrapper(initial_indent=indent,
+                                   subsequent_indent=indent,
+                                   width=nwidth)
+    return wrapper.fill(str)
+
+
+@lw.handle_ciao_errors(toolname, version)
+def download_chandra_obsid():
+    "Run the code"
+
+    parser = argparse.ArgumentParser(description=help_str,
+                                     prog="download_chandra_obsid")
+
+    parser.add_argument("obsids", nargs='?',  # for now we do not
+                        help="Comma-separated list (or stack) of ObsId values")
+    parser.add_argument("filetypes", nargs='?',  # todo: enforce valid
+                        help="Optional comma-separated list (or stack) of file types")
+
+    parser.add_argument("--quiet", "-q", action="store_true",
+                        help="Download the files without any screen output? [default: %(default)s]")
+    parser.add_argument("--version", "-v", dest="list_version",
+                        action="store_true",
+                        help="List the version of the script and exit.")
+    parser.add_argument("--copyright", "-c", dest="list_copyright",
+                        action="store_true",
+                        help="List the copyright for the script and exit.")
+    parser.add_argument("--filetypes", "-t", dest="list_ft",
+                        action="store_true",
+                        help="List the valid file types and exit.")
+    parser.add_argument("--mirror", "-m", dest="mirror_site", action="store",
+                        help="Use this instead of the CDA FTP site")
+    parser.add_argument("--debug", "-d", dest="debug", action="store_true",
+                        help="Display diagnostic output? [default: %(default)s]")
+
+    arglist = lw.preprocess_arglist(sys.argv[1:])
+    args = parser.parse_args(arglist)
+
+    if args.list_version:
+        v1(version)
+        sys.exit(0)
+
+    if args.list_copyright:
+        v1(copyright_str)
+        sys.exit(0)
+
+    if args.list_ft:
+        v1("The list of valid file types is:\n")
+        v1(display_string(data.known_file_types_str))
+        v1("")
+        sys.exit(0)
+
+    if args.debug:
+        lw.set_verbosity(3)
+    elif args.quiet:
+        lw.set_verbosity(0)
+
+    v3("{}: {}".format(toolname, version))
+
+    olist = args.obsids
+    if olist is None:
+        parser.print_help()
+        sys.exit(0)
+
+    olist = stk.build(olist)
+    tlist = args.filetypes
+    if tlist is not None:
+        tlist = [t.lower() for t in stk.build(tlist)]
+        for t in tlist:
+            if t not in data.known_file_types:
+                raise ValueError("{0} is not a valid file type".format(t) +
+                                 " - must be one of:\n" +
+                                 "{0}".format(data.known_file_types_str))
+
+    if args.mirror_site:
+        mirror = args.mirror_site
+    else:
+        mirror = None
+
+    mirror = data.get_mirror_location(mirror)
+    data.download_chandra_obsids(olist, filetypes=tlist, mirror=mirror)
+
+
+if __name__ == "__main__":
+    download_chandra_obsid()
+
+# End

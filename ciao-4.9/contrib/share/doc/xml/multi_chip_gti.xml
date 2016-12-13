@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="multi_chip_gti"
+         context="tools" 
+         refkeywords="GTI good time interval ccd ccd_id chip ACIS background flare subspace perchip per-chip filter syntax"
+         seealsogroups="cleantools timingtools">
+
+    <SYNOPSIS>Create a combined GTI file for multiple ACIS chips</SYNOPSIS>
+
+    <DESC>
+      <PARA>
+	There are situations - such as filtering out background flares - 
+	when it is necessary to filter the ACIS chips
+	either individually, or in groups (e.g. 
+	<HREF link="http://cxc.harvard.edu/ciao/dictionary/fi.html">front-illuminated</HREF>
+	versus
+	<HREF link="http://cxc.harvard.edu/ciao/dictionary/bi.html">back-illuminated</HREF>).
+	The result of this is a set of separate
+	good-time interval
+	(<HREF link="http://cxc.harvard.edu/ciao/dictionary/gti.html">GTI</HREF>)
+	files. The multi_chip_gti script combines these separate files
+	into a single GTI file, which can then be used to filter
+	the event file.
+      </PARA>
+      <PARA>
+        This is for ACIS data only since HRC data does not make use of multiple GTIs.
+      </PARA>
+    
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>% multi_chip_gti infile=635_repro_evt.fits i0=acis-0.gti i1=acis-1.gti i2=acis-2.gti s2=acis-6.gti out=new_635.gti mode=h clob+</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            Combines the GTI files for 5 different chips into a single
+            file that can then be used to filter the event file.
+          </PARA>
+<VERBATIM>
+% dmcopy "635_repro_evt.fits[@new_635.gti]" 635_no_flares.gti
+% dmlist 635_no_flare.gti header,clean | grep ONTIME
+ONTIME                   58034.3591358210 [s]       Sum of GTIs
+ONTIME3                  58034.3591358210 [s]       Sum of GTIs
+ONTIME2                  55333.5180784310 [s]       Sum of GTIs
+ONTIME1                  45436.7591483740 [s]       Sum of GTIs
+ONTIME0                  61300.0 [s]                Sum of GTIs
+ONTIME6                  65477.6000949590 [s]       Sum of GTIs
+</VERBATIM>
+        </DESC>
+      </QEXAMPLE>
+    
+    
+    </QEXAMPLELIST>
+
+
+<PARAMLIST>
+    <PARAM name="infile" type="file" reqd="yes" filetype="input">
+      <SYNOPSIS>
+        Input event file (optional)
+      </SYNOPSIS>
+      <DESC>
+        <PARA>
+          The infile is used to determine the order of the 
+          GTIs.  Since the keywords ONTIME, LIVETIME, and EXPOSURE
+          are computed from the first GTI, preserving the order
+          may be important.
+        </PARA>
+      </DESC>
+    </PARAM>
+
+     <PARAM name="i0_gti" type="file" reqd="yes" filetype="input">
+       <SYNOPSIS>
+       The input GTI file for ACIS-I0 aka ACIS=0.
+       </SYNOPSIS>
+       <DESC>
+         <PARA>
+           Leave parameter blank or set to 'none' if no GTI file for this chip.
+         </PARA>
+       </DESC>
+       
+     </PARAM>
+
+     <PARAM name="i1_gti" type="file" reqd="yes" filetype="input">
+       <SYNOPSIS>
+       The input GTI file for ACIS-I1 aka ACIS=1.
+       </SYNOPSIS>
+     </PARAM>
+     <PARAM name="i2_gti" type="file" reqd="yes" filetype="input">
+       <SYNOPSIS>
+       The input GTI file for ACIS-I2 aka ACIS=2.
+       </SYNOPSIS>
+     </PARAM>
+     <PARAM name="i3_gti" type="file" reqd="yes" filetype="input">
+       <SYNOPSIS>
+       The input GTI file for ACIS-I3 aka ACIS=3.
+       </SYNOPSIS>
+     </PARAM>
+     <PARAM name="s0_gti" type="file" reqd="yes" filetype="input">
+       <SYNOPSIS>
+       The input GTI file for ACIS-S0 aka ACIS=4.
+       </SYNOPSIS>
+     </PARAM>
+     <PARAM name="s1_gti" type="file" reqd="yes" filetype="input">
+       <SYNOPSIS>
+       The input GTI file for ACIS-S1 aka ACIS=5.
+       </SYNOPSIS>
+     </PARAM>
+     <PARAM name="s2_gti" type="file" reqd="yes" filetype="input">
+       <SYNOPSIS>
+       The input GTI file for ACIS-S2 aka ACIS=6.
+       </SYNOPSIS>
+     </PARAM>
+     <PARAM name="s3_gti" type="file" reqd="yes" filetype="input">
+       <SYNOPSIS>
+       The input GTI file for ACIS-S3 aka ACIS=7.
+       </SYNOPSIS>
+     </PARAM>
+     <PARAM name="s4_gti" type="file" reqd="yes" filetype="input">
+       <SYNOPSIS>
+       The input GTI file for ACIS-S4 aka ACIS=8.
+       </SYNOPSIS>
+     </PARAM>
+     <PARAM name="s5_gti" type="file" reqd="yes" filetype="input">
+       <SYNOPSIS>
+       The input GTI file for ACIS-S5 aka ACIS=9.
+       </SYNOPSIS>
+     </PARAM>
+
+      <PARAM name="outfile" type="file" reqd="yes" filetype="output">
+        <SYNOPSIS>
+          The output GTI file name.
+        </SYNOPSIS>
+      </PARAM>
+
+      <PARAM name="tmpdir" type="file" reqd="no">
+        <SYNOPSIS>
+         The name of the temporary directory for intermediate files.
+        </SYNOPSIS>
+      </PARAM>
+
+      <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+        <SYNOPSIS>
+          Amount of tool chatter
+        </SYNOPSIS>
+
+      </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>
+          Overwrite the output file if it already exists?
+        </SYNOPSIS>
+      </PARAM>
+
+</PARAMLIST>
+
+
+
+
+
+<ADESC title="ONTIME, EXPOSURE, LIVETIME keywords">
+      <PARA >
+        The ONTIME, EXPOSURE, and LIVETIME keywords are computed from
+        the first GTI (or more precisely in datamodel terminology from
+        the first subspace component).  
+        Files that are retrieved from the Chandra archive come with the
+        GTIs ordered such that the 1st GTI is for the chip with the
+        target location (RA_TARG, DEC_TARG).
+        When a filter file is applied
+        using the "@" syntax, the order of the filters in that file
+        can re-order the GTI blocks which then may change the meaning
+        of these keywords.      
+      </PARA>
+      <PARA>
+        When an infile is specified, this script tries to preserve the 
+        order of the GTIs as best
+        as possible.  The first GTI in the infile should be the same;
+        however, the order of the other extensions may be different.
+      </PARA>
+</ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+   <BUGS><PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/multi_chip_gti.html">bugs page
+        for this tool</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA></BUGS>
+
+   <LASTMODIFIED>January 2015</LASTMODIFIED>
+
+
+</ENTRY>
+</cxchelptopics>

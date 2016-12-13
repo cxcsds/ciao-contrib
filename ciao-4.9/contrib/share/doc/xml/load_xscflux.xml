@@ -1,0 +1,166 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr "sherpa>">
+]>
+<cxchelptopics>
+  <ENTRY pkg="sherpa" key="load_xscflux"
+	 refkeywords="xscflux cflux load_cflux
+		      component flux measure calculate norm
+		      normalization sum lg10flux emin emax lgflux
+		      log10flux logflux convolution model
+		      x-spec xspec convolution model experimental
+		      "
+	 seealsogroups="sh.models "
+	 displayseealsogroups="" context="models">
+
+    <SYNOPSIS>
+      calculate flux.
+      XSpec convolution model 
+      *Experimental*.
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+	A convolution model to calculate the flux of other model
+	components.
+      </PARA>
+
+      <PARA>
+	The Sherpa commands
+	<HREF link="http://cxc.harvard.edu/shrepa/ahelp/calc_energy_flux.html">calc_energy_flux</HREF>,
+	<HREF link="http://cxc.harvard.edu/shrepa/ahelp/calc_photon_flux.html">calc_photon_flux</HREF>,
+	and
+	<HREF link="http://cxc.harvard.edu/shrepa/ahelp/sample_flux.html">sample_flux</HREF>,
+	as well as the 
+	<HREF link="http://cxc.harvard.edu/sherpa/threads/sample_flux/">Calculating 
+	Model Flux and Flux Uncertainty</HREF> thread
+	can also be used.
+      </PARA>
+
+      <TABLE>
+	<CAPTION>xscflux Parameters</CAPTION>
+	<ROW> 
+	  <DATA>Number</DATA>
+	  <DATA>Name</DATA>
+	  <DATA>Description</DATA> 
+	</ROW>
+	<ROW> 
+	  <DATA>1</DATA> <DATA>Emin</DATA>
+	  <DATA>Minimum energy over which flux is calculated (keV)</DATA>
+	</ROW>
+	<ROW> 
+	  <DATA>2</DATA> <DATA>Emax</DATA>
+	  <DATA>Maximum energy over which flux is calculated (keV)</DATA>
+	</ROW>
+
+	<ROW> 
+	  <DATA>3</DATA> <DATA>lg10Flux</DATA>
+	  <DATA>log (base 10) flux in erg/cm^2/s</DATA>
+	</ROW>
+      </TABLE>
+
+      <PARA title="Loading the X-Spec convolution models">
+	Please see
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/xsconvolve.html">ahelp xsconvolve</HREF>
+	for information on how to load the model.
+      </PARA>
+
+      <LIST>
+	<CAPTION>Notes</CAPTION>
+	<ITEM>
+	  This is an experimental release of the convolution models;
+	  please take care when using this model.
+	</ITEM>
+	<ITEM>
+	  When cflux is used with multiple additive models, the
+	  normalization of one of the additive models must be
+	  fixed to a non-zero value.
+	</ITEM>
+	<ITEM>
+	  The energy range defined by the Emin and Emax parameters
+	  must lie inside the energy range of the response matrix.
+	</ITEM>
+	<ITEM>
+	  If the model to which cflux is applied
+	  integrates to zero then a divide-by-zero error will occur
+	  and the fit will likely fail due to the presence of NaN
+	  values.
+	</ITEM>
+      </LIST>
+
+      <PARA title="XSpec version">
+	This information is taken from the
+	<HREF link="http://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/manual.html">XSpec
+	User's Guide</HREF>.
+	Version 12.8.0k of the XSpec
+	models is supplied with CIAO 4.6.
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; from sherpa_contrib.xspec.xsconvole import load_xscflux</LINE>
+	  <LINE>&pr; load_xscflux("cflux")</LINE>
+	  <LINE>&pr; xsphabs.gal()</LINE>
+	  <LINE>&pr; xspowerlaw.pl()</LINE>
+	  <LINE>&pr; xsgaussian.gs()</LINE>
+	  <LINE>&pr; set_source(cflux(gal * (pl + gs)))</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA title="Flux of the absorbed model">
+	    If the power-law or gaussian normalization is fixed to a non-zero
+	    value then the above will calculate
+	    the flux and error on the entire model (absorbed).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; set_source(gal * cflux(pl + gs)))</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA title="Flux of the un-absorbed model">
+	    If the power-law or gaussian normalization is fixed to a non-zero
+	    value then this calculates the unabsorbed flux and error.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; set_source(gal * (pl + cflux(gs)))</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA title="Flux of a component">
+	    If the gaussian normalization is fixed to a non-zero
+	    value then this calculates the unabsorbed flux and
+	    error of the gaussian component.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+	For a list of known bugs and issues with the XSPEC models, please visit
+	the <HREF link="http://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/bugs.html">XSPEC bugs page</HREF>.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>September 2014</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

@@ -1,0 +1,544 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016
+#           Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 USA.
+#
+
+"""
+fluximage - create exposure corrected images for an ObsId
+"""
+
+toolname = 'fluximage'
+__revision__  = '12 September 2016'
+
+import os
+import sys
+import cxcdm
+import paramio
+import stk
+import pycrates
+
+# This is only needed for development.
+try:
+    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
+        if os.path.isdir(_pathdir):
+            os.sys.path.insert(1, _pathdir)
+        else:
+            print("*** WARNING: no {}".format(_pathdir))
+
+        del _libname
+        del _pathdir
+        del _thisdir
+
+except KeyError:
+    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+
+import ciao_contrib.logger_wrapper as lw
+
+from ciao_contrib.param_wrapper import open_param_file
+
+import ciao_contrib.ancillaryfiles as ancillary
+
+import ciao_contrib._tools.run as run
+import ciao_contrib._tools.fileio as fileio
+import ciao_contrib._tools.bands as bands
+import ciao_contrib._tools.utils as utils
+import ciao_contrib._tools.merging as merging
+import ciao_contrib._tools.obsinfo as obsinfo
+
+from ciao_contrib._tools.aspsol import AspectSolution
+from ciao_contrib._tools.taskrunner import TaskRunner
+
+import ciao_contrib._tools.fluximage as fi
+
+lgr = lw.initialize_logger(toolname)
+v1 = lgr.verbose1
+v3 = lgr.verbose3
+
+def handle_ancillary_input(obs, anctype, ancfile):
+    """Handle the user inut for the given ancillary file type.
+    """
+
+    if anctype == 'mask':
+        warnmsg = ' Invalid data may be used.'
+    elif anctype == 'pbk':
+        # warnmsg = 'No dead-area correction will be performed.'
+        # The use of pbk files has been removed in CIAO 4.6
+        v3('NOTE: internal error - unexpected call to handle_ancillary_input with anctype=pbk')
+        return
+    elif anctype == 'dtf':
+        warnmsg = 'Exposure duration weighting will not be applied.'
+    else:
+        warnmsg = ''
+
+    if ancfile == "":
+        keyname = "{}FILE".format(anctype.upper())
+        filename = obs.get_ancillary_(anctype)
+        infile = obs.get_evtfile() # local, rather than absolute path that .evtfile would return
+
+        # if there is no file, then either the file does not exist or
+        # the header keyword does not exist
+        try:
+            hdrval = obs.get_keyword(keyname)
+        except KeyError:
+            hdrval = None
+
+        if hdrval is None:
+            v1("WARNING - {} keyword not found in {}.{}".format(keyname, infile, warnmsg))
+            obs.set_ancillary(anctype, 'NONE')
+
+        elif filename is None:
+            v1("WARNING - {}={} not found for {}.{}".format(keyname, hdrval, infile, warnmsg))
+            obs.set_ancillary(anctype, 'NONE')
+
+        elif filename.lower() == 'none':
+            v1("WARNING - {} set to NONE in {}.{}".format(keyname, infile, warnmsg))
+
+        else:
+            v1("{} file {} found.".format(anctype.capitalize(), filename))
+
+    elif ancfile.lower() == "none":
+        v1("WARNING - {}file parameter set to NONE.{}".format(anctype, warnmsg))
+        obs.set_ancillary(anctype, 'NONE')
+
+    else:
+        obs.set_ancillary(anctype, ancfile)
+
+_background_override = None
+
+def handle_background_override(argv):
+    """Look for --background=filename in argv and, if found, remove
+    it, setting the internal background flag.
+
+    Returns the remaining argv elements.
+
+    If there are multiple entries then the last one is used.
+    """
+
+    global _background_override
+
+    marker = "--background="
+    out = []
+    for arg in argv:
+        if arg == marker:
+            raise IOError("The {} option must be followed by a file name!")
+
+        if arg.startswith(marker):
+            # add in full path if necessary
+            bname = arg[len(marker):]
+            (dmname, dmfilter) = fileio.get_file_filter(bname)
+            _background_override = os.path.abspath(dmname) + dmfilter
+
+        else:
+            out.append(arg)
+
+    # Only check the "winner"
+    if _background_override is not None:
+        pycrates.read_file(_background_override + "[#row=1]")
+
+    return out
+
+def get_par(argv):
+    """ Get data_products parameters from parameter file """
+
+    argv = handle_background_override(argv)
+    pfile = open_param_file(argv, toolname=toolname)["fp"]
+
+    def is_set(name):
+        return paramio.pgetb(pfile, name) == 1
+
+    # Common parameters:
+    params = {}
+    pars = {}
+
+    # set verbosity level (intentionally breaking the order of the
+    # parameters since we need the verbose level fairly early, and any
+    # user who has decided to change verbose to an automatic parameter
+    # can handle this break in UI behavior).
+    #
+    pars['verbose'] = paramio.pgeti(pfile, 'verbose')
+    if pars['verbose'] == 1:
+        params['verbose'] = 0
+    else:
+        params['verbose'] = pars['verbose']
+
+    lw.set_verbosity(pars['verbose'])
+    utils.print_version(toolname, __revision__)
+
+    # Event file we are using
+    pars['infile'] = paramio.pgetstr(pfile, 'infile')
+    if pars["infile"] == "":
+        raise ValueError('The infile parameter is empty.')
+
+    evtfiles = fileio.expand_evtfiles_stack(pars['infile'])
+    if len(evtfiles) == 0:
+        raise IOError("Unable to find any event files matching {}.".format(pars['infile']))
+    elif len(evtfiles) > 1:
+        raise IOError("Found multiple matches to infile={}\n  {}\n".format(pars['infile'], " ".join(evtfiles)))
+
+    params['infile'] = evtfiles[0]
+    infile = params['infile']
+
+    if infile != pars['infile']:
+        v1("Using event file {}".format(infile))
+
+    # We assume that the first [ character indicates a DM filter,
+    # and so remove it and anything else after it. This is not
+    # guaranteed to be true but should be okay for our use case.
+    #
+    bpos = infile.find('[')
+    if bpos == -1:
+        indir = os.path.dirname(infile)
+    else:
+        indir = os.path.dirname(infile[:bpos])
+
+    # output root
+    pars["outroot"] = params["outroot"] = paramio.pgetstr(pfile, "outroot")
+    if params["outroot"] == ".":
+        params["outroot"] = ""
+
+    # Allow an empty root for now
+    #if params["outroot"] == "":
+    #    raise ValueError("The outroot parameter can not be empty.")
+
+    (outdir, outhead) = utils.split_outroot(params["outroot"])
+    params["outpath"] = outdir + outhead
+
+    pars["bands"] = paramio.pgetstr(pfile, "bands")
+    if pars["bands"] == "":
+        raise ValueError("The bands parameter can not be empty.")
+
+    params["enbands"] = pars['bands']
+
+    # Read in the event file (header) and extract useful information.
+    v3("Processing input file")
+    obs = obsinfo.ObsInfo(infile)
+    if obs.nrows == 0:
+        raise IOError("There are no events in {}".format(infile))
+
+    # Now we have the instrument, we can validate the bands
+    params["enbands"] = bands.validate_bands(obs.instrument, params["enbands"])
+
+    # grid size?
+    pars['xygrid'] = paramio.pgetstr(pfile, 'xygrid')
+    xygrid = pars['xygrid'].strip()
+
+    if xygrid == "":
+        pars['binsize'] = params['bin'] = paramio.pgetstr(pfile, 'binsize')
+        if params['bin'] == 'INDEF':
+            if obs.instrument == 'ACIS':
+                params['bin'] = 8
+            else:
+                params['bin'] = 32
+
+        else:
+            params['bin'] = paramio.pgetd(pfile, 'binsize')
+            if params['bin'] <= 0:
+                raise ValueError("binsize={} is not valid, it must be a number greater than zero.".format(params['bin']))
+
+        params['xrange'] = None
+        params['yrange'] = None
+        params['sizes']  = None
+
+    else:
+        (xygrid, binsize, xrng, yrng, sizes) = utils.parse_xygrid(xygrid)
+        pars['binsize'] = 'INDEF'
+        params['bin'] = binsize
+        params['xrange'] = xrng
+        params['yrange'] = yrng
+        params['sizes']  = sizes
+
+        # TODO: may decide to remove (for merge_all2)
+        fi.warn_unfilled_pixels(xrng, yrng, sizes, binsize)
+
+    params['xygrid'] = xygrid
+
+    # aspect solution files, listed in quotes.
+    pars['asolfile'] = paramio.pgetstr(pfile, 'asolfile')
+    if pars['asolfile'].lower() == "none":
+        raise ValueError("asolfile can not be NONE.")
+    elif pars['asolfile'] == "":
+        for afile in obs.get_asol():
+            v1("Aspect solution {} found.".format(afile))
+    else:
+        obs.set_asol(stk.build(pars['asolfile']))
+
+    # bad pixel files, listed in quotes.
+    pars["badpixfile"] = paramio.pgetstr(pfile, "badpixfile")
+    badpix = pars["badpixfile"].lower()
+    if badpix == "":
+        v3('Looking in header for BPIXFILE keyword')
+        badpix = obs.get_ancillary_('bpix')
+        if badpix is None:
+            v1("WARNING - BPIXFILE={} not found for {}. Using CALDB version instead.".format(obs.get_keyword('BPIXFILE'), infile))
+            obs.set_ancillary('bpix', 'CALDB')
+
+        elif badpix.lower() == 'none':
+            v1("WARNING - BPIXFILE set to NONE in {}. The exposure map will be too high for bad pixels and columns.".format(infile))
+
+        else:
+            v1("Bad-pixel file {} found.".format(badpix))
+
+    elif badpix == "caldb":
+        v1("CalDB bad-pixel file is being used.")
+        obs.set_ancillary('bpix', 'CALDB')
+
+    elif badpix == "none":
+        v1("No bad-pixel file is being used.")
+        obs.set_ancillary('bpix', 'NONE')
+
+    else:
+        # ARDLIB does not check for the presence of a *.gz version if the
+        # original file does not exist, so need to manually set the correct
+        # file name here.
+        badpix = pars['badpixfile']
+        if not os.path.isfile(badpix):
+            badpix += '.gz'
+            if not os.path.isfile(badpix):
+                raise IOError("Unable to find bad pixel file={} (or .gz version)".format(pars['badpixfile']))
+
+            v3("Found .gz version of badpixfile.")
+
+        v1("Bad-pixel file {}".format(badpix))
+        obs.set_ancillary('bpix', badpix)
+
+    # Both BPIX and MASK files depend on the cycle of an interleaved observation
+    if obs.obsid.cycle is None:
+        v3("The cycle value is empty/missing.")
+        checkval = obs.obsid.obsid
+        get_obsid_fn = fileio.get_obsid
+    else:
+        v3("This appears to be an interleaved observation: cycle={}".format(obs.obsid.cycle))
+        checkval = obs.obsid
+        get_obsid_fn = fileio.get_obsid_object
+
+    v3("Validating BPIX")
+    badpix = obs.get_ancillary('bpix')
+    if badpix not in ["CALDB", "NONE"]:
+        badpixobsid = get_obsid_fn(badpix)
+        if badpixobsid != checkval:
+            raise ValueError("The ObsID of the badpix and event files do not match: {} vs {}".format(badpixobsid, checkval))
+
+    v3("Validating MASKFILE")
+    pars["maskfile"] = paramio.pgetstr(pfile, "maskfile")
+    handle_ancillary_input(obs, 'mask', pars['maskfile'])
+    mask = obs.get_ancillary('mask')
+    if mask != "NONE":
+        maskobsid = get_obsid_fn(mask)
+        if maskobsid != checkval:
+            raise ValueError("The ObsID of the mask and event files do not match: {} vs {}".format(maskobsid, checkval))
+
+    # As of CIAO 4.6 there is no need for the pbkfile parameter.
+    if obs.instrument == "HRC":
+        v3("Validating DTFFILE")
+        pars["dtffile"] = paramio.pgetstr(pfile, "dtffile")
+        handle_ancillary_input(obs, 'dtf', pars['dtffile'])
+    else:
+        pars["dtffile"] = ""
+
+    # Units for the instrument and exposure maps
+    pars["units"] = params["units"] = paramio.pgetstr(pfile, "units")
+
+    # threshold cut exposure maps?
+    pars["expmapthresh"] = params["thresh"] = paramio.pgetstr(pfile, "expmapthresh")
+
+    # Background subtraction
+    pars['background'] = paramio.pgetstr(pfile, 'background')
+    params['background'] = pars['background']
+
+    pars['bkgparams'] = paramio.pgetstr(pfile, 'bkgparams')
+
+    # only used (at present) for background subtraction
+    params['random'] = paramio.pgeti(pfile, 'random')
+
+    # parallelize?
+    pars['parallel'] = params['parallel'] = is_set('parallel')
+    if pars['parallel']:
+        pars['nproc'] = paramio.pgetstr(pfile, 'nproc')
+        if pars['nproc'] == 'INDEF':
+            params['nproc'] = None
+        else:
+            params['nproc'] = paramio.pgeti(pfile, 'nproc')
+    else:
+        pars['nproc'] = 'INDEF'
+        params['nproc'] = 1
+
+    pars["tmpdir"] = paramio.pgetstr(pfile, "tmpdir")
+    params["tmpdir"] = utils.process_tmpdir(pars['tmpdir'])
+
+    pars["cleanup"] = params["cleanup"] = is_set("cleanup")
+    pars["clobber"] = params["clobber"] = is_set("clobber")
+
+    fileio.validate_outdir(outdir)
+
+    # Do we create a background-subtracted image?
+    #
+    if params['background'] != 'none' and obs.detector == "HRC-I":
+        if _background_override is None:
+            bmap = None
+        else:
+            bmap = { }
+            bmap[obs.get_evtfile()] = _background_override
+
+        params['bkgparams'] = fi.validate_bkgparams(params['background'],
+                                                    pars['bkgparams'])
+
+        bsky = fi.find_blanksky_hrci(obs, bgndmap=bmap,
+                                     tmpdir=params['tmpdir'])
+        if bsky is None:
+            params['background_info'] = None
+        else:
+            params['background_info'] = (params['background'],
+                                         params['bkgparams'],
+                                         bsky
+                                         )
+
+    else:
+        params['background_info'] = None
+
+    paramio.paramclose(pfile)
+    return (params, pars, obs)
+
+@lw.handle_ciao_errors(toolname, __revision__)
+def fluximage():
+    "The fluximage task."
+
+    (params, pars, obs) = get_par(sys.argv)
+
+    # set parameters in CIAO tools to use a level one less that set
+    if params['verbose'] > 0 and params['verbose'] < 5:
+        params['verbose'] -= 1
+
+    evtfile  = obs.get_evtfile()
+
+    # We need the CCD/Chip list to validate the files.
+    #
+    xrng = params['xrange']
+    yrng = params['yrange']
+    chips = fi.get_unique_vals(evtfile, obs.get_chipname(),
+                               xrange=xrng, yrange=yrng)
+    if chips is None:
+        if xrng is None and yrng is None:
+            # this should have been caught earlier
+            raise ValueError("Unexpected: infile={} is empty.".format(evtfile))
+
+        emsg = "Observation {} does not cover".format(evtfile)
+        if xrng is not None:
+            emsg += " x={}:{}".format(*xrng)
+        if yrng is not None:
+            emsg += " y={}:{}".format(*yrng)
+
+        raise ValueError(emsg)
+
+    # NOTE: at present we do NOT want to use obs.get_asol() since this does not
+    #       return an AspectSolution, but it it really necessary now, since
+    #       obs.get_asol does ensure time order, and it can then be used
+    #       to create an AspectSolution object where it is actually needed?
+    #
+    asol = AspectSolution(obs.get_asol(), tmpdir=params["tmpdir"])
+
+    bkginfo = params['background_info']
+    outpath = params['outpath']
+
+    binval = params['bin']
+
+    enbands = params['enbands']
+    thresh = params['thresh']
+    units = params['units']
+
+    parallel = params['parallel']
+    verbose = params['verbose']
+    clobber = params['clobber']
+    cleanup = params['cleanup']
+    tmpdir  = params['tmpdir']
+
+    if units == 'default':
+        normflag = 'no'
+    elif units == 'area':
+        normflag = 'yes'
+    elif units == 'time':
+        normflag = 'no'
+    else:
+        raise ValueError("Internal error: invalid setting units=" + units)
+
+    # What files are we going to create?
+    outputs = fi.get_output_filenames(outpath, enbands, chips,
+                                      blanksky=(bkginfo is not None),
+                                      thresh=utils.thresh_is_set(thresh))
+
+    fi.clobber_checks(outputs[0], clobber=clobber)
+    v1("")
+
+    xygrid = params['xygrid']
+    if xygrid == "":
+        (xgrid, ygrid) = fileio.find_output_grid2(obs,
+                                                  binval,
+                                                  chips,
+                                                  tmpdir=tmpdir
+            )
+
+        grid = "x={0},y={1}".format(xgrid, ygrid)
+        ox = xgrid.nbins
+        oy = ygrid.nbins
+        pixsize = utils.sky_to_arcsec(obs.instrument, xgrid.size)
+
+        v1("The output images will have {} by {} pixels, pixel size of {} arcsec,".format(int(ox), int(oy), pixsize))
+        v1("    and cover {}.".format(grid))
+
+    else:
+        grid = xygrid
+        (ox, oy) = params['sizes']
+
+        v1("The output images will have {} by {} pixels,".format(int(ox), int(oy)))
+        v1("    and cover {}.".format(grid))
+
+    v1("")
+    taskrunner = TaskRunner()
+
+    fi.run_fluximage_tasks(taskrunner, lambda s: s,
+                           obs,
+                           bkginfo,
+                           chips,
+                           asol,
+                           outpath, grid, binval, enbands, units,
+                           thresh,
+                           tmpdir=tmpdir,
+                           verbose=verbose,
+                           random=params['random'],
+                           clobber=clobber,
+                           cleanup=cleanup,
+                           parallel=parallel)
+
+    taskrunner.run_tasks(processes=params['nproc'])
+
+    fi.add_history(outputs, pars, toolname, __revision__,
+                   cleanup=cleanup)
+
+    v3("{} has run to completion.".format(sys.argv[0]))
+    fi.print_output(outputs, cleanup=cleanup)
+
+# do it
+if __name__ == '__main__':
+    fluximage()

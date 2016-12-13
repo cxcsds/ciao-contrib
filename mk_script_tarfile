@@ -1,0 +1,140 @@
+#!/usr/bin/env python
+
+"""
+Usage:
+  ./mk_script_tarfile <number or dev>
+
+Aim:
+
+Create the tar file for the contributed scripts package, using
+either the identifier "dev" or the number (the main CIAO version
+is picked up automatically from the ciao-x.y/ directory).
+
+For CIAO 4.9 one version is created, which has both Python 2.7 and
+3.5 directory names in it. This may turn out to be a bad idea,
+in which case two versions will be created.
+
+Whilst we could automate the choice of number, it seems safer
+to make the user specify it manually.
+
+Note that there is currently no change made to the mercurial
+repository when a release is built (i.e. a number is used). This
+is a change to the old behavior and may be reverted real-soon-now.
+Apparently not.
+
+The copy argument has been removed.
+
+"""
+
+import sys
+import os
+import glob
+import time
+import subprocess as sbp
+
+def get_ciao_version():
+    """Set up the CIAO version values based on the ciao-x.y/
+    directory in the current working directory.
+    """
+
+    dnames = [dname for dname in glob.glob("ciao-*.*")
+              if os.path.isdir(dname)]
+    if len(dnames) == 0:
+        sys.stderr.write("ERROR: no directory matching ciao-*.* found\n")
+        sys.exit(1)
+
+    elif len(dnames) != 1:
+        sys.stderr.write("ERROR: found {} ".format(len(dnames)) +
+                         "directories matching ciao-*.*!\n")
+        sys.exit(1)
+
+    toks = dnames[0][5:].split('.')
+    if len(toks) != 2:
+        raise IOError("Unexpected directory name {}".format(dnames[0]))
+
+    majver = toks[0]
+    minver = toks[1]
+    return { "minver": minver,
+             "majver": majver,
+             "version_dotted": "%s.%s" % (majver, minver),
+             "root": dnames[0] }
+
+if __name__ == "__main__":
+
+    nargs = len(sys.argv)
+    if nargs != 2:
+        sys.stderr.write("Usage: %s <number or dev>\n" % sys.argv[0])
+        sys.exit(1)
+
+    ver = sys.argv[1]
+    if ver != "dev":
+        try:
+            ver = int(ver)
+            if ver <= 0:
+                sys.stderr.write("Error: version number must be >= 1, not %d\n" % ver)
+                sys.exit(1)
+
+        except ValueError:
+            sys.stderr.write("ERROR: version must be an integer or the string dev, not %s\n" % ver)
+            sys.exit(1)
+
+    cver = get_ciao_version()
+
+    if ver == "dev":
+        ver = ver.upper()
+    else:
+        ver = str(ver)
+
+    verstr = "%s.%s.%s" % (cver["majver"], cver["minver"], ver)
+
+    tarfile = "%s-contrib-%s.tar" % (cver["root"], ver)
+    tarfilegz = tarfile + ".gz"
+    print("Tar file: {}".format(tarfile))
+
+    if ver != "DEV" and \
+            (os.path.exists(tarfile) or os.path.exists(tarfilegz)):
+
+        sys.stderr.write("ERROR: output file already exists\n")
+        sys.stderr.write("         {}\n".format(tarfile))
+        sys.stderr.write("         {}\n".format(tarfilegz))
+        sys.stderr.write("       Does the version number need updating?")
+        sys.stderr.write("\n\n")
+        sys.exit(1)
+
+    # Remove backup (*~) files
+    # (let find do this)
+    #
+    sbp.check_call(["find", ".", "-name", "*~", "-exec", "rm", "{}", ";"])
+
+    verfile = os.path.join(cver["root"], "contrib", "VERSION.CIAO_scripts")
+    print("Updating {} with current date and release number".format(verfile))
+    datestr = "scripts %s " % verstr
+    datestr += time.strftime("%A, %B %e, %Y")
+    with open(verfile, 'w') as fh:
+        fh.write(datestr)
+        fh.write("\n")
+
+    # If there is no change then hg exits with a status value of 1,
+    # so we can not use check_call here.
+    # Would like to create tags here, but slightly worried about multiple values.
+    #
+    #if ver != "DEV":
+    #    sbp.call(["hg", "commit", "-m",
+    #              "Updating timestamp (%s)" % verstr,
+    #              "--quiet", verfile])
+
+    print("Building {}".format(tarfile))
+
+    # This does not keep soft links, which means that the python2.7/3.5
+    # split doubles the files (it's not a lot of space, but still).
+    # Do we have links anywhere else?
+    #
+    # sbp.check_call(["tar", "chf", tarfile, "./" + cver["root"]])
+
+    args = ["tar", "cf", tarfile, "./" + cver["root"],
+            "--exclude=.gitignore"]
+    sbp.check_call(args)
+    sbp.check_call(["gzip", "-f", tarfile])
+
+    print("\nCreated: {}".format(tarfilegz))
+

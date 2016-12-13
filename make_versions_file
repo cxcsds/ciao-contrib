@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+
+"""
+
+Aim:
+  Create a data file representing the version strings in /soft/ciao
+
+Usage:
+  ./make_versions_file
+
+Output:
+  Screen
+
+Will oftern be used
+  ./make_versions_file > ciao_versions.dat
+  
+"""
+
+import os
+import glob
+from optparse import OptionParser
+
+help_str = """
+Create the data file used by check_ciao_caldb.
+"""
+
+def read_vfile(fname):
+    fh = open(fname, "r")
+    cts = fh.readlines()
+    fh.close()
+
+    # may have blank lines
+    cts = [l.strip() for l in cts if l.strip() != ""]
+    if len(cts) != 1:
+        raise IOError("Expected 1 line for {0} but read in:\n{1}".format(fname, cts))
+
+    return cts[0]
+
+def package_name(fname):
+    """Return the package name for the given file name"""
+
+    if fname == "VERSION":
+        return "CIAO"
+    
+    elif fname == "contrib/VERSION.CIAO_scripts":
+        return "contrib"
+
+    elif fname.find("_") != -1:
+        return fname.split("_")[-1]
+
+    else:
+        raise ValueError("Unrecognized file name: {0}".format(fname))
+
+def doit():
+    """Run the code."""
+
+    opts = OptionParser(usage="%prog",
+                        description=help_str)
+    (options, args) = opts.parse_args()
+    if len(args) != 0:
+        opts.print_help()
+        return
+
+    ciao = os.path.expandvars("$ASCDS_INSTALL")
+    vbase = glob.glob(ciao + "/VERSION")
+    if vbase == []:
+        raise IOError("Unable to find $ASCDS_INSTALL/VERSION")
+        
+    vfiles = glob.glob(ciao + "/VERSION_*")
+    if vfiles == []:
+        raise IOError("Unable to find $ASCDS_INSTALL/VERSION_*")
+
+    # allow missing contrib file since we can always add this info in manually
+    # later
+    cfile = glob.glob(ciao + "/contrib/VERSION*")
+    if len(cfile) > 1:
+        raise IOError("Expected 1 entry for contrib VERSION file, found: {0}".format(cfile))
+
+    l = len(ciao) + 1
+    for vfile in vbase + vfiles + cfile:
+        v = read_vfile(vfile)
+
+        print("{0} {1}".format(package_name(vfile[l:]), v))
+    
+
+if __name__ == "__main__":
+    doit()
+    

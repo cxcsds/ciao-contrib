@@ -1,0 +1,492 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr 'unix&#37;'>
+]>
+<cxchelptopics>
+  <ENTRY key="combine_spectra" context="tools" 
+  refkeywords="combine coadd add spectra PHA spectral combined multi-obsid multi-obs" 
+  seealsogroups="resptools"> 
+
+    <SYNOPSIS>
+     Combine PHA files and their associated response files.
+    </SYNOPSIS>
+
+
+     <DESC>
+      <PARA>
+         The combine_spectra script sums multiple PHA
+	 spectra.  It will also combine the associated background PHA spectra and
+	 source and background ARF and RMF response files.       
+      </PARA>
+
+      <PARA>
+      Typically only the src_spectra parameter and outroot parameters
+      need to be specified, since the
+      response (ARF and RMF) and background files will be found
+      from the ANCRFILE, RESPFILE, and BACKFILE keywords in the
+      spectra. If required, the user can override these settings
+      using the src_arfs, src_rmfs, bkg_spectra, bkg_arfs, and
+      bkg_rmfs parameters.
+      </PARA>
+
+      <PARA>
+      The output source spectrum will contain the sum of the 
+      source spectrum counts and (by default) the sum of the
+      exposure time.  The background counts are scaled by 
+      the exposure times and areas as discussed below.
+      </PARA>
+  </DESC>
+
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; combine_spectra obs1843.pi,obs1842.pi combined</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+            Combine the two source spectra.  The output source file 
+	    is called combined_src.pi and
+            contains the summed source counts and the summed EXPOSURE.  
+            If the files contain ANCRFILE, RESPFILE, and/or BACKFILE
+            keywords, the responses and background files will also be
+            created.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; combine_spectra /data/pha1.pi,/data/pha2.pi summed \</LINE>
+	  <LINE>bkg_spectra=pha1_bkg.pi,pha2_bkg.pi bkg_arfs=@pha_arf.lis</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	   The input source spectra 'pha1.pi' and 'pha2.pi' are
+	combined to produce the summed counts spectrum
+	'summed_src.pi'. The script locates the associated source ARF and RMF
+	files for these spectra and combines them, producing output
+	files 'summed_src.arf' and 'summed_src.rmf'. Instead of having the script search for
+	the associated background spectra and background ARFs to combine,
+	they are explicitly entered into the 'bkg_spectra' and
+	'bkg_arfs' parameters, the latter using a
+	<HREF
+	    link="http://cxc.harvard.edu/ciao/ahelp/stack.html">stack
+	file</HREF>.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; combine_spectra @pha3.lis combined verbose=2</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	   An ASCII file containing a list of Level-3 PHA spectral
+	filenames is input to combine_spectra for combining.  The script
+	locates the associated source responses, background
+	spectra, and background responses, and combines these files as
+	well. The verbosity level is changed from the default value of
+	1 to 2, in order to print to the screen each step of the code
+	as it is carried out.  
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+
+   <PARAMLIST>
+      <PARAM name="src_spectra" type="file" filetype="input" reqd="yes" stacks="yes">
+         <SYNOPSIS>
+            Source PHA files to combine; enter list or '@stack'
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+             A stack of PHA TYPE:I spectra to combine. 
+             </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="outroot" type="file" filetype="output" reqd="yes" >
+         <SYNOPSIS>
+            Root name for output files
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+             The script will create the following output files based
+             on the available inputs:              
+           </PARA>
+            <LIST>
+              <ITEM>${outroot}_src.pi : Source spectrum</ITEM>
+              <ITEM>${outroot}_src.arf : Source ARF file</ITEM>
+              <ITEM>${outroot}_src.rmf: Source RMF file</ITEM>
+              <ITEM>${outroot}_bkg.pi : Background spectrum</ITEM>
+              <ITEM>${outroot}_bkg.arf : Background ARF file</ITEM>
+              <ITEM>${outroot}_bkg.rmf : Background RMF file</ITEM>
+            </LIST>
+         </DESC>
+      </PARAM>     
+      <PARAM name="src_arfs" type="file" filetype="input" reqd="no" stacks="yes">
+         <SYNOPSIS>
+            Source ARF files to combine; enter list or '@stack'
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      If this parameter is blank then the script will locate
+	      the ARF file using the
+              ANCRFILE keyword in each of the input files.
+	      If given, then the order of the ARF files
+              must match the order of the src_spectra parameter.  
+            </PARA>
+        <PARA>
+          The parameter can be set to "NONE" and the keyword value will
+          not be used.
+        </PARA>
+         </DESC>
+      </PARAM>     
+
+      <PARAM name="src_rmfs" type="file" filetype="input" reqd="no" stacks="yes">
+         <SYNOPSIS>
+           Source RMF files to combine; enter list or '@stack'
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      If this parameter is blank then the script will locate the RMF file using the
+              RESPFILE keyword in each of the input files.
+	      If given, then the order of the RMF files
+              must match the order of the src_spectra parameter.  
+            </PARA>
+        <PARA>
+          The parameter can be set to "NONE" and the keyword value will
+          not be used.
+        </PARA>
+
+            <PARA>
+              Note: RSP-style responses which have been premultiplied by an ARF
+              are not supported.
+	    </PARA>
+         </DESC>
+      </PARAM>     
+
+      <PARAM name="bkg_spectra" type="file" reqd="no" filetype="input" stacks="yes">
+         <SYNOPSIS>
+            Background PHA files to combine; enter list or '@stack'
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      If this parameter is blank then the script will locate
+	      the background file using the
+              BACKFILE keyword in each of the input files.
+	      If given, then the order of the background files
+              must match the order of the src_spectra parameter.  
+            </PARA>
+        <PARA>
+          The parameter can be set to "NONE" and the keyword value will
+          not be used.
+        </PARA>
+         </DESC>
+      </PARAM>     
+
+      <PARAM name="bkg_arfs" type="file" reqd="no" filetype="input" stacks="yes">
+         <SYNOPSIS>
+	   Background ARF files to combine; enter list or '@stack'
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+                See the src_arfs parameter for more details.
+            </PARA>
+         </DESC>
+      </PARAM>     
+
+      <PARAM name="bkg_rmfs" type="file" reqd="no" filetype="input" stacks="yes">
+         <SYNOPSIS>
+	   Background RMF files to combine; enter list or '@stack'
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+            See the src_rmfs parameter for more details.
+           </PARA>
+         </DESC>
+      </PARAM> 
+
+  
+      <PARAM name="method" type="string" reqd="no" def="sum">
+         <SYNOPSIS>
+	   Sum or average PHA exposures?
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+             The method parameter may be set to either 'sum' (default)
+             or 'avg' to specify how the individual PHA exposure
+             times should be combined for the output combined
+             spectrum.	When 'method=sum', combined spectra are output
+             with the total PHA exposure time recorded in the header.             
+             When 'method=avg' ,
+             the mean exposure time is recorded. The output combined
+             responses are appropriately adjusted for the current
+             'method' setting.
+            </PARA>
+         </DESC>
+      </PARAM>      
+
+      <PARAM name="bscale_method" type="string" reqd="no" def="asca">
+        <SYNOPSIS>
+	  How are BACKSCAL and background counts computed?
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+              There are 3 different algorithms to combine
+              the background counts compute the background
+              scaling (BACKSCAL) values.            
+          </PARA>
+          
+          <PARA title="'asca'">
+          When simply subtracting the background, the 'asca'
+          method can be used.  The combined background counts
+          are an exposure and area weighted combination:
+          </PARA>
+        
+<VERBATIM>
+f = {(bkg_exp1 + ... + bkg_expN)/[src_exp1(src_backscal1/bkg_backscal1) + ... + src_expN(src_backscalN/bkg_backscalN)]}*
+f_I = f*{(src_expI/bkg_expI)*(src_backscalI/bkg_backscalI)}  
+BKG_COUNTS = f_1*bkg_counts1 + f_2*bkg_counts2 + ... f_N*bkg_countsN
+BKG_BACKSCAL = (src_exp1 + ... + src_expN)/[src_exp1(src_backscal1/bkg_backscal1) + ...  + src_expN(src_backscalN/bkg_backscalN)]  
+SOURCE_COUNTS = src_counts1 + src_counts2 + ... + src_countsN
+SOURCE_EXPOSURE = src_exp1 + src_exp2 + ... + src_expN
+SOURCE_BACKSCAL = 1.0
+</VERBATIM>
+          
+          
+          <PARA title="'time'">
+  The 'time' methods computes the total counts (unweighted) and
+  the provides and exposure time weighted BACKSCAL value.
+          </PARA>
+<VERBATIM>
+BKG_COUNTS = bkg_counts1 + bkg_counts2 + ... bkg_countsN
+SS = [(src_exp1*src_backscal1) + ... + (src_expN*src_backscalN)] / (src_exp1 + ... + src_expN)
+BB = [(bkg_exp1*bkg_backscal1) + ... + (bkg_expN*bkg_backscalN)] / (bkg_exp1 + ... + bkg_expN)
+BKG_BACKSCAL = BB / SS
+SOURCE_COUNTS = src_counts1 + src_counts2 + ... + src_countsN
+SOURCE_EXPOSURE = src_exp1 + src_exp2 + ... + src_expN
+SOURCE_BACKSCAL = 1.0
+</VERBATIM>
+
+          <PARA title="'counts'">
+  The 'counts' method gives background counts and backscale values that
+  are correctly weighted when the background is going to be modeled
+  rather than subtracted.  That is the background has been combined
+  such that the errors on the background are correct.
+          </PARA>
+<VERBATIM>
+r_i = (src_exp_i*src_backscal_i)/(bkg_exp_i*bkg_backscal_i)
+m1 = (bkg_counts1*r_1) + ... + (bkg_countsN*r_N)
+m2 = (bkg_counts1*r_1^2) + ... + (bkg_countsN*r_N^2)
+
+BKG_COUNTS = (m1*m1) / m2
+BKG_BACKSCAL = SOURCE_BACKSCAL * ((src_exp1+...+src_expN)/(bkg_exp1+...+bkg_expN))*(m1/m2)
+
+SOURCE_COUNTS = src_counts1 + src_counts2 + ... + src_countsN
+SOURCE_EXPOSURE = src_exp1 + src_exp2 + ... + src_expN
+SOURCE_BACKSCAL = (src_exp1*src_backscal1) + ... + (src_expN*src_backscalN) / (src_exp1 + ... + src_expN)
+</VERBATIM>
+
+        </DESC>
+      </PARAM>
+
+     <PARAM name="exp_origin" type="string" def="pha" reqd="no">
+       <SYNOPSIS>
+	 Write combined PHA or ARF exposure time to header(s) (pha, arf)
+       </SYNOPSIS>
+       <DESC>
+	 <PARA>
+	   Should the combined EXPOSURE time be taken from the PHA or
+	   ARF files?
+	 </PARA>
+       </DESC>
+     </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no"  reqd="no">
+         <SYNOPSIS>
+	   OK to overwrite existing output file?
+         </SYNOPSIS>
+      </PARAM>       
+    
+
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5" reqd="no">
+         <SYNOPSIS>
+	   Debug Level(0-5)
+         </SYNOPSIS>
+      </PARAM>       
+    </PARAMLIST>
+
+    <ADESC title="Caveats">
+        <LIST>
+         <ITEM>
+	Any grouping flags which may be present in input source or 
+    background PHA spectra will be ignored by the script.
+	</ITEM>
+	
+	<ITEM>
+	Combining background spectra with
+	wildly varying spectral extraction region areas may
+	yield misleading uncertainty estimates; i.e., some extractions
+	will be over-represented while others will be under-represented.
+	</ITEM>
+
+	<ITEM>
+	If the background rates	contributing to a source are
+	significantly different in the individual spectra to be
+	combined, it is recommended that these spectra remain separate
+	and be modeled simultaneously - otherwise, the modeling
+	results of the combined source spectrum could be biased
+	towards the observation(s) with the highest background rate(s).
+	</ITEM>
+
+      <ITEM>
+	RSP-style responses which have been premultiplied by an ARF
+	are not supported.
+      </ITEM>
+
+    <ITEM>
+        Statistical errors on the combined counts in the combined
+	source and background spectra are not computed by
+        the script, as it is left to the X-ray fitting
+        program chosen to fit the data to assign uncertainties to each
+        spectral bin. 
+    </ITEM>
+
+    <ITEM>
+        Non-chandra files may not work correctly.
+    </ITEM>
+
+       </LIST>
+</ADESC>
+
+<ADESC title="Change in the 4.7.3 (June 2015) release">
+  <PARA>
+    The path name is now removed from the file names 
+    stored in the ANCRFILE, RESPFILE, and BACKFILE keywords.
+  </PARA>
+</ADESC>
+
+
+<ADESC title="Changes in the 4.6.7 (November 2014) release">
+<PARA>Users can now specify src_arf, src_rmf, bkg_spectra, bkg_arf, and bkg_rmf
+as "NONE" to for the tool to entirely skip combining those products, even
+if they are able to be located by the ANCRFILE, RESPFILE, or BACKFILE keywords in the
+input source spectrum files. (Value is case sensitive) 
+</PARA>
+<PARA>
+Fixes a bug in the bscale_method='counts' method when the 
+combined background counts in any channel is 0.
+</PARA>
+ 
+    </ADESC>
+      
+    <ADESC title="Changes in the CIAO 4.6.6 (September 2014) release">
+      <PARA>
+      The script will ensure that the ONTIME, LIVETIME, and EXPOSURE
+      keywords (and the per-chip variants) in the output ARF files 
+      are consistent with the input ARF times.  The PHA values in the
+      PHA files (used by sherpa and xspec) are not affected.
+      </PARA>
+    
+    </ADESC>
+
+
+    <ADESC title="Changes in the CIAO 4.6.5 (June 2014) release">
+      <PARA>
+        The combine_spectra script has been completely re-written.
+        It no longer makes use of a large number of temporary
+        files and as a result is much faster.
+      </PARA>
+      <PARA>
+        Two new parameters have been added.  exp_origin controls
+        whether the EXPOSURE keyword is computed from the
+        spectrum, pha, files or whether it is computed from
+        the ARF files.  bscale_method allows the user to select
+        different algorithms to compute the combined
+        background counts and associated scaling factor (BACKSCAL);
+        the default, 'asca', is the same as previous versions
+        of this script.
+      </PARA>
+    </ADESC>
+     
+    <ADESC title="Changes in the February 2012 Release">
+      <PARA>
+       The script was updated to work around a CIAO 4.4 bug
+       in the tool addresp, used for
+       combining ARF and RMF responses: the output combined RMF file
+       is missing the TLMIN header keyword for the F_CHAN column;
+       combine_spectra now adds the TLMIN4 keyword to the combined RMF file.
+      </PARA>
+       <PARA>
+        The script now cleans up several temporary files which were
+        being written to the outroot directory, instead of to /tmp/.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the December 2011 Release">
+      <PARA>
+       New 'method' parameter for selecting between a summed and mean
+       exposure value to be recorded in the header of output combined spectra and
+       ARFs.
+      </PARA>
+      <PARA>
+       Bug fix: the ANCRFILE header keyword in an output combined
+       background spectrum was incorrectly being set to "NONE" 
+       when the input backround response files exactly matched the
+       input source responses.
+      </PARA>
+      <PARA>
+       Internal updates to the addresp step of the script to support
+       the new addresp 'phafiles' and 'method' parameters. 
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the April 2011 Release">
+      <PARA>
+       The script prints the version number when verbosity is greater
+      than 0.
+      </PARA>
+      <PARA>
+       Temporary output files are written to the 'outroot' directory instead
+      of the current working directory, before being moved to the /tmp
+      directory.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the December 2010 Release">
+      <PARA>
+       combine_spectra in CIAO 4.3 invokes the new tool addresp for
+      combining ARF and RMF responses. Prior to this release, the
+      script combined ARFs via the dmarfadd tool -  with results
+      equivalent to the output of addresp - and did not combine RMFs.
+      </PARA>
+     </ADESC> 
+
+     <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/combine_spectra.html">bugs
+        page for this script</HREF> on the CIAO website for an up-to-date listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+   
+    <LASTMODIFIED>June 2015</LASTMODIFIED>
+
+
+  </ENTRY>
+</cxchelptopics>

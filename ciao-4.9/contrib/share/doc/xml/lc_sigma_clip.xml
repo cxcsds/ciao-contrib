@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr "chips>">
+]>
+<cxchelptopics>
+  <ENTRY key="lc_sigma_clip" context="contrib"
+	 refkeywords="lc_sigma_clip analyze_ltcrv lightcurve histogram timing time times background variability gti clean filter clip sigma sigma-clip lc_sigma_clip.py"
+	 seealsogroups="contrib timingtools cleantools"> 
+
+    <SYNOPSIS>
+      lc_sigma_clip - remove flares from a light curve using an iterative sigma-clipping algorithm
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>
+	lc_sigma_clip(filename,
+	[outfile=None], [sigma=3.0], [minlength=3],
+	[plot=True], [rateaxis="y"], [pattern="solid"], [gcol="green"], [pcol="red"],
+	[verbose=1])
+      </LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The lc_sigma_clip() routine uses a simple
+	iterative sigma-clipping routine to detect and remove
+	flares from a lightcurve.
+	For more information see the <HREF 
+        link="http://cxc.harvard.edu/ciao/threads/filter_ltcrv/">Filtering
+        Lightcurves</HREF> thread. 
+	The deflare tool can be used to run this algorithm from the command
+	line; see "ahelp deflare" for more information.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into a Python
+	interpreter - such as chips, sherpa, or ipython 
+	- by saying:
+      </PARA>
+
+<VERBATIM>
+from lightcurves import *
+</VERBATIM>
+
+      <PARA>
+	See "ahelp lightcurves" for more information on the lightcurves module.
+      </PARA>
+
+      <PARA title="Common arguments">
+	The lc_sigma_clip() and lc_clean() routines share a number of
+	common arguments and options.
+	The filename argument - which is the only required argument for either
+	call - is used to specify the name of the light curve to analyze.
+	The required columns for this file are discussed in the
+	"Format of Lightcurves" section below.
+      </PARA>
+
+      <TABLE>
+	<CAPTION>Common options between the three routines (i.e. those with the same meaning)</CAPTION>
+	<ROW>
+	  <DATA>Option</DATA>
+	  <DATA>Default</DATA>
+	  <DATA>Meaning</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>outfile</DATA>
+	  <DATA>None</DATA>
+	  <DATA>If set, this gives the name of the GTI file to create.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>verbose</DATA>
+	  <DATA>1</DATA>
+	  <DATA>Do we display screen output (1) or not (0)?</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>plot</DATA>
+	  <DATA>True</DATA>
+	  <DATA>
+	    Should the light curve be displayed as a plot?
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>pattern</DATA>
+	  <DATA>solid</DATA>
+	  <DATA>
+	    If a GTI file is created as well as a plot, then we indicate the
+	    excluded times using regions filled with this pattern. Valid values
+	    are the same as those for region and histograms - see the "Fill Patterns"
+	    section of "ahelp chipsopt".
+	    A value of "none" means no regions will be drawn.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>rateaxis</DATA>
+	  <DATA>"y"</DATA>
+	  <DATA>Should the light curve (the top plot)
+	  be drawn with the count rate along the y axis ("y") or x axis ("x")?</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>gcol</DATA>
+	  <DATA>"green"</DATA>
+	  <DATA>The color used to display "good" points when drawing the light curve.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>pcol</DATA>
+	  <DATA>"red"</DATA>
+	  <DATA>The color used to color regions indicating excluded times (see the
+	  pattern argument).</DATA>
+	</ROW>
+      </TABLE>
+
+      <PARA>
+	Although all routines contain an optional sigma argument, the
+	meaning of this parameter is not exactly
+	the same.
+      </PARA>
+
+      <PARA title="Using lc_sigma_clip">
+	The lc_sigma_clip routine performs an iterative
+	sigma-clipping algorithm, removing those points that fall
+	outside the range
+	<EQUATION>mean - n * sigma</EQUATION>
+	to
+	<EQUATION>mean + n * sigma</EQUATION>
+	at each iteration until all 
+	data points are within this range.
+	The default value for n is 3.0 but this can be changed
+	using the sigma parameter as described below.
+	This algorithm is robust but not perfect;
+	it can easily "overclean" a noisy lightcurve,
+	or fail to reject any points, 
+	and so should not be used blindly.
+      </PARA>
+
+      <PARA>
+	The two options for lc_sigma_clip are
+	"sigma" and "minlength". The sigma argument
+	determines the value used to clip the count
+	rate data at each iteration, and defaults
+	to 3.0. The minlength option, which defaults to
+	3, is the minimum number of consecutive bins
+	that must all lie within the final
+	rate limits for that range to be considered
+	good.
+      </PARA>
+
+      <PARA title="How do we use the output GTI file?">
+	If the outfile argument is set, then a GTI file
+	will be created listing those time periods which
+	are considered to be "good" by the algorithm.
+	This file can be used to filter an event file using
+	the following syntax (we assume here that the event file
+	to be filtered is evt2.fits and the output of the routine
+	is called evt.gti):
+      </PARA>
+
+<VERBATIM>
+unix% dmcopy "evt2.fits[@evt.gti]" evt2_filt.fits
+</VERBATIM>
+
+      <PARA title="A warning about low count-rate lightcurves">
+	The lc_sigma_clip algorithm excludes bins which have a zero
+	count rate, whether it is because the exposure time
+	of the bin is zero or because no counts were detected
+	in this bin.
+	This is because the algorithm is not designed for use
+	with low count-rate data.
+	Therefore the routines should be used with 
+	extreme care when
+	applied to data for which zero-rate bins are
+	expected (for example a very-faint source).
+      </PARA>
+
+      <PARA title="A note on times">
+	When run with verbose set to 1,
+	durations are displayed alongside time filters.
+	These values are instructive, but should not
+	be taken as the actual exposure-length of each interval
+	because they may not account for
+      </PARA>
+
+      <LIST>
+	<ITEM>
+	  the dead-time correction of the observation (DTCOR
+	  header keyword);
+	</ITEM>
+	<ITEM>
+	  exposure variations within the bin due to existing
+	  time filters (i.e. the time filters already applied
+	  to the observation).
+	</ITEM>
+      </LIST>
+
+      <PARA>
+	The best way to find out what the final exposure time will
+	be is to create a GTI file, use it to filter the event file,
+	and then look at the EXPOSURE value of the filtered file.
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>&pr; lc_sigma_clip("bg.lc")</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    The default parameters are used to analyze the light curve
+	    in the file bg.lc. A plot will be created and information about
+	    the calculation, including the final filter range, is
+	    printed to the screen.
+	  </PARA>
+	  <PARA>
+	    The plot can be printed using the ChIPS print_window command,
+	    for example
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; print_window("bg.lc.ps", ["fittopage", True, "orientation", "landscape"])</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    will create a postscript plot which is drawn
+	    in landscape format and fills the page.
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>&pr; lc_sigma_clip("bg.lc", outfile="clip.gti")</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Since the outfile parameter is set, the routine creates
+	    a GTI file (clip.gti)
+	    that represents the "good" times calculated by the algorithm.
+	    After writing out the file the filtered-out times will be displayed
+	    on the plot using red cross-hatched regions.
+	  </PARA>
+	  <PARA>
+	    The output file
+	    can be used to filter an event file (say evt2.fits) like
+	    so:
+	  </PARA>
+<VERBATIM>
+unix% dmcopy "evt2.fits[@clip.gti]" evt2_filt.fits
+</VERBATIM>
+	</DESC>
+
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>&pr; lc_sigma_clip("bg.lc", outfile="bg.gti", pattern="none")</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Create a GTI file (bg.gti) but do
+	    not use regions to indicate the excluded times in the
+	    count-rate plot.
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>&pr; lc_sigma_clip("bg.lc", outfile="bg.gti", pattern="crosshatch", pcol="orange")</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Create a GTI file (bg.gti) and use
+	    an orange cross-hatch fill to indicate the excluded times in the
+	    count-rate plot.
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>&pr; lc_sigma_clip("bg.lc", outfile="bg.gti", verbose=0, plot=False)</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Create a GTI file (bg.gti), but do
+	    not create any screen output or a plot.
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Format of Lightcurves">
+      <PARA>
+	The lc_sigma_clip routine is designed to work with light curves that were
+	created using the CIAO dmextract tool, run with the opt parameter set
+	to ltc1. They should however also work with any file which has the 
+	following columns:
+      </PARA>
+      <LIST>
+	<ITEM>TIME</ITEM>
+	<ITEM>TIME_MIN and TIME_MAX (both columns are optional)</ITEM>
+	<ITEM>COUNT_RATE or, if not present, RATE</ITEM>
+      </LIST>
+      <PARA>
+	If the file contains OBJECT and OBS_ID keywords then these will be
+	used to label the plot.
+      </PARA>
+    </ADESC>
+
+    <!--
+       This code has not been released yet
+    <ADESC title="Changes in the scripts CIAO 4.X.X (XXXX 201X) release">
+      <PARA>
+	The lc_sigma_uclip routine has been added in this release. This
+	routine may be better suited to Chandra background lightcurves
+	than lc_sigma_clip.
+      </PARA>
+    </ADESC>
+    -->
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/lightcurves.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

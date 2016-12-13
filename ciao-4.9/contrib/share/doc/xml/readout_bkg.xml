@@ -1,0 +1,267 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY context="tools" key="readout_bkg" refkeywords="readout streak background bkg cluster snr acis frame transfer bkgmap bgmap bg" seealsogroups="resptools acistools">
+
+    <SYNOPSIS>
+      Approximate the Out Of Time source contribution to the background.
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+        Since the ACIS detector does not have a shutter, some events are
+        detected during the (typical) 0.04 seconds it takes to transfer the image
+        to the frame-store to be read-out.  These Out Of Time (OOT) 
+        events are detected with the correct CHIPX location, but are 
+        detected at random  CHIPY locations.  These events contribute 
+        to the observed background and can be especially important 
+        when analyzing bright, extended
+        emission.      
+      </PARA>
+      <PARA>
+        The 'readout_bkg' script can be used to model the OOT events
+        contribution to the background.  
+        The algorithm is described in detail in        
+        <HREF link="http://adsabs.harvard.edu/abs/2005ApJ...628..655V">Vikhlinin et al.</HREF>.
+        
+        To summarize: the level 1 event file for an observation is
+        modified by randomizing the
+        CHIPY values.  Then the standard calibrations 
+        (energy and coordinates) and filters (grade, 
+        status, GTIs) are applied.  The exposure time is adjusted for the 
+        fraction of the readout time to the actual observation time 
+        by modifying the DTCOR (dead time correction) keyword. 
+        The end product is a Level 2 event file that can be used
+        to model the OOT source contribution to the background.
+      </PARA>
+
+
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>unix% download_chandra_obsid 10805</LINE>
+          <LINE>unix% readout_bkg 10805 abell2199_oot.evt</LINE>
+
+
+        </SYNTAX>
+        <DESC>
+<VERBATIM>
+readout_bkg
+           indir = 10805
+         outfile = abell2199_oot.evt
+          tmpdir = /tmp
+    check_vf_pha = no
+          random = 0
+         verbose = 1
+         clobber = no
+            mode = ql
+
+Working in temporary directory: /tmp/tmp.readout_bkg_v7pULX
+Using event file /tmp/tmp.readout_bkg_v7pULX/secondary/acisf10805_001N002_evt1.fits
+Randomizing chipy values between 2 and 1023
+Modifying DTCOR keyword to account for hyperexposure: from 0.987 to 74.549
+Saving modified events to /tmp/tmp.readout_bkg_v7pULX/secondary/acisf10805_001N002_randchipy_evt1.fits
+Running chandra_repro
+Copying output file
+Cleaning up temporary files
+
+Output background file : abell2199_oot.evt
+The effective exposure is 2291.48 ks
+</VERBATIM>
+
+          <PARA>
+            The easiest way to get started is by 
+            downloading the current version of the data products
+            for the observation, in this example OBS_ID=10805 (Abell 2199).
+            The directory name is then input to readout_bkg along with
+            the final output file name, abell2199_oot.evt.
+          </PARA>
+          <PARA>
+            The readout_bkg script internally runs the 
+            <HREF link="http://cxc.harvard.edu/ciao/ahelp/chandra_repro.html">chandra_repro</HREF>
+            script, and therefore requires the full set of data products in
+            the standard primary/ and secondary/ directories.
+          </PARA>
+          <PARA>
+          The "effective exposure" is the regular exposure time corrected for the 
+          ratio of frame time (~3.2 seconds) to the transfer time (~0.04 seconds).          
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>unix% readout_bkg 10805 abell2199_vfaint_oot.evt check_vf_pha=yes</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+              Same as the example above, with the extra VFAINT mode 
+              background filter applied.  Users should set check_vf_pha=yes if they 
+              have applied the VFAINT filter to the observed data          
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+
+
+
+
+    <PARAMLIST>
+
+      <PARAM filetype="input" name="infile" reqd="yes" stacks="no" type="file">
+        <SYNOPSIS>
+            The name of the input directory                        
+       </SYNOPSIS>
+        <DESC>
+          <PARA>
+            The readout_bkg script will look for the level 1 event file
+            in the secondary/ sub-directory, and will uses the
+            other files to apply the calibrations to the modified event
+            file.
+         </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="outfile" filetype="output" type="file" stacks="no" reqd="yes">
+        <SYNOPSIS>The final Level 2 OOT background event file</SYNOPSIS>
+         <DESC>
+           <PARA>
+             After the chip coordinates are randomized and 
+             the events recalibrated, the standard filters are
+             applied (GTIs, grade, status) to create the Level 2
+             OOT background event file.           
+           </PARA>
+         </DESC>
+      </PARAM>
+      <PARAM name="tmpdir" filetype="output" type="file" stacks="no" reqd="no" def="${ASCDS_WORK_PATH}">
+        <SYNOPSIS>Temporary working directory</SYNOPSIS>
+        <DESC>
+          <PARA>
+            readout_bkg creates symbolic links to the input directory 
+            in a subdirectory of the tmpdir.  It then runs chandra_repro
+            from that copy of the input files; copying the final
+            Level 2 event file to the outfile name.  The default
+            ${ASCDS_WORK_PATH}, is usually defaulted to "/tmp".
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="random" type="integer" def="0" min="0">
+          <SYNOPSIS>Random seed value</SYNOPSIS>
+          <DESC>
+            <PARA>
+                The random seed can be set to a positive interger value to
+                produce repeatable results.  A value of 0 will 
+                use the system clock to generate the random seed.            
+            </PARA>
+          </DESC>
+      </PARAM>
+
+      <PARAM name="check_vf_pha" type="boolean" def="no" reqd="no" >
+        <SYNOPSIS>Apply the additional VFAINT mode background filter?</SYNOPSIS>
+        <DESC>
+          <PARA>
+           The check_vf_pha filter can provide additional background suppression,
+           though it can also sometimes mistakenly remove valid source events.  
+            More information on this setting can be found in the 
+          <HREF link="http://cxc.harvard.edu/ciao/ahelp/chandra_repro.html#plist.check_vf_pha">
+          chandra_repro help file</HREF>.
+          </PARA>
+          <PARA>
+          This filter only applies to data taken in VFAINT mode.  Users 
+          should only apply this filter to the OOT background events if they
+          also applied the filter to their observed data.
+          </PARA>
+        
+        </DESC>
+      </PARAM>
+      <PARAM name="verbose" min="0" max="5" def="1" type="integer" reqd="no">
+        <SYNOPSIS>Controls the amount of information printed to the terminal</SYNOPSIS>
+      </PARAM>
+      <PARAM name="clobber" def="no" type="boolean" reqd="no">
+        <SYNOPSIS>Delete the output outfile if it already exists?</SYNOPSIS>
+      </PARAM>
+
+
+
+
+    </PARAMLIST>
+
+  <ADESC title="Comparison to acis_streak_map">  
+      <PARA>
+        Conceptually, this tool is somewhat similar to the 
+        <HREF link="http://cxc.harvard.edu/ciao/ahelp/acis_streak_map.html">acis_streak_map</HREF>
+        tool.  They differ in that acis_streak_map explicitly tries to
+        exclude sources whereas that is what readout_bkg is trying to
+        capture.  They also differ in that readout_bkg creates an
+        output event file whereas acis_streak_map creates a background image.
+      
+      </PARA>
+  </ADESC>
+
+
+   <ADESC title="Using with specextract and sherpa">
+
+<PARA>
+The OOT event file can be used with standard CIAO tools 
+as the background.  For example it can be used with 
+<HREF link="http://cxc.harvard.edu/ciao/ahelp/specextract.html">specextract</HREF>
+as shown here:
+</PARA>
+
+<VERBATIM>
+unix% specextract infile="acisf10805_repro_evt.fits[sky=region(ds9.reg)]" \ 
+   bkgfile="abell2199_oot.evt[sky=region(ds9.reg)]" \
+   outroot=abell2199
+unix% sherpa
+-----------------------------------------------------
+Welcome to Sherpa: CXC's Modeling and Fitting Package
+-----------------------------------------------------
+
+sherpa&gt; load_data("abell2199.pi")
+read ARF file abell2199.arf
+read RMF file abell2199.rmf
+read ARF (background) file abell2199_bkg.arf
+read RMF (background) file abell2199_bkg.rmf
+read background file abell2199_bkg.pi
+sherpa&gt; plot_bkg()
+</VERBATIM>
+
+   
+   
+   </ADESC>
+
+
+   <ADESC title="Changes in the scripts 4.8.2 (January 2016) release">
+      <PARA>
+        The random parameter has been added to control the Numpy random seed.
+        </PARA>
+    </ADESC>
+        
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/readout_bkg.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>July 2015</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

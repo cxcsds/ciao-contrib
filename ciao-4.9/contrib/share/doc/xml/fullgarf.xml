@@ -1,0 +1,497 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+<ENTRY key="fullgarf"  context="tools"  refkeywords="grating spectroscopy effective area flux psf lsf aspect dither letg hetg meg heg leg gratings transmission spectrum arf response exposure order pha"  seealsogroups="resptools"  >
+<SYNOPSIS>
+
+      Create a grating ARF for a particular order and grating
+      for a given observation.
+   
+</SYNOPSIS>
+
+<DESC>
+<PARA>
+
+          fullgarf is a  script that creates a grating ARF for a 
+          particular order and grating for a given observation.  While
+          the mkgarf tool will create a grating ARF for an individual
+          chip given an aspect histogram, this script will create 
+          ARFS for each chip, creating aspect histograms as necessary.
+          The script will then combine the individual ARFS into the
+          full array&apos;s ARF via the dmarfadd tool (see mkgarf for further
+          details). The order and grating can be specified either by 
+          giving the corresponding row in a Type II PHA file,
+          or by specifying a Type I PHA file which contains a spectrum
+          for the desired order/grating combination. 
+
+       
+</PARA>
+<PARA>
+
+          This tool carries out all of the steps involved in creating
+          a grating ARF and runs asphist, mkgarf and dmarfadd. See
+          help on those tools for additional information.  In
+          successive invocations, the rootname parameter is used to
+          check for the existence of asphist files in order to avoid
+          re-creating them for the same chip (since they depend only
+          on chip, and not grating or order).
+       
+</PARA>
+
+<PARA title="HRC-S/LETG Data">
+
+          For HRC-S/LETG data, fullgarf creates +/- 1 gARFs
+          correctly.  However, the functionality does not exist to
+          create higher order responses.  Users who wish to model more
+          than the first order of the observation should follow the
+          <HREF
+          link="http://cxc.harvard.edu/ciao/threads/mkgarf_letghrcs/">Compute
+          LETG/HRC-S Grating ARFs thread</HREF> to creater gARFs for
+          higher orders. 
+</PARA>
+
+<PARA title="HRC-I/LETG Data">
+
+	This script does not operate on HRC-I/LETG data.  Users doing
+	analysis with this configuration should follow the <HREF
+	link="http://cxc.harvard.edu/ciao/threads/mkgarf_letghrci/">Compute
+	LETG/HRC-I Grating ARFs thread</HREF>. 
+	
+</PARA>
+
+</DESC>
+<QEXAMPLELIST>
+<QEXAMPLE>
+<SYNTAX>
+<LINE>
+
+            fullgarf phafile=acisf00007_005N001_pha2.fits pharow=1
+            evtfile=acisf00007N001_evt2.fits.gz
+            asol=pcadf085492801N001_asol1.fits
+            engrid=&quot;grid(acis_heg_1.rmf[cols ENERG_LO,ENERG_HI])&quot; 
+            maskfile=acisf00007_002N001_msk1.fits
+            dafile=CALDB
+
+         
+</LINE>
+
+</SYNTAX>
+<DESC>
+<PARA>
+
+         For the first 2 examples, consider an HETG+ACIS-S observation
+ with a pha file named &quot;acisf00007_005N001_pha2.fits&quot;. Examining the file via dmlist 
+ (dmlist &quot;acisf00007_005N001_pha2.fits[SPECTRUM][cols tg_m,tg_part]&quot; opt=data) gives:
+       
+</PARA>
+<VERBATIM>
+
+----------------------------------------------------------------------
+Data for Table Block SPECTRUM
+----------------------------------------------------------------------
+ 
+ROW    TG_M TG_PART
+ 
+     1   -3    1
+     2   -2    1
+     3   -1    1
+     4    1    1
+     5    2    1
+     6    3    1
+     7   -3    2
+     8   -2    2
+     9   -1    2
+    10    1    2
+    11    2    2
+    12    3    2
+      </VERBATIM>
+<PARA>
+
+         In other words, e.g., row one corresponds to an HEG (TG_PART=1)
+      minus-third order spectrum while row ten corresponds to an MEG
+      (TG_PART=2) first-order spectrum.
+      
+</PARA>
+<PARA>
+
+         In this case, fullgarf will create an ACIS-S, HEG ARF for the minus third order. 
+      
+</PARA>
+
+</DESC>
+
+</QEXAMPLE>
+<QEXAMPLE>
+<SYNTAX>
+<LINE>
+
+            fullgarf phafile=acisf00007_005N001_pha2.fits pharow=11
+           evtfile=acisf00007N001_evt2.fits.gz
+           asol=pcadf085492801N001_asol1.fits
+           engrid=&quot;grid(acis_meg_1.rmf[cols ENERG_LO,ENERG_HI])&quot; 
+           maskfile=acisf00007_002N001_msk1.fits
+           dafile=NONE
+ 
+         
+</LINE>
+
+</SYNTAX>
+<DESC>
+<PARA>
+
+            This will create an ACIS-S, MEG ARF for the second order.
+            The ACIS dead area correction is not applied.
+         
+</PARA>
+
+</DESC>
+
+</QEXAMPLE>
+<QEXAMPLE>
+<SYNTAX>
+<LINE>
+
+            fullgarf hrcf01715_002N001_pha2.fits 1
+            hrcf01715_002N001_evt2.fits.gz
+            hrcf01715_002N001_asoff.fits
+            engrid=&quot;grid(hrc_leg_1.rmf[cols
+            ENERG_LO,ENERG_HI])&quot;
+            dtffile=hrcf01715_000N001_dtf1.fits rootname=mrk421_
+            maskfile=""
+ 
+         
+</LINE>
+
+</SYNTAX>
+<DESC>
+<PARA>
+
+            This will create an HRCS-S, LEG ARF for the minus first order.
+              
+         
+</PARA>
+
+</DESC>
+
+</QEXAMPLE>
+</QEXAMPLELIST>
+<PARAMLIST>
+<PARAM name="phafile"  type="file"  reqd="yes"  stacks="no"  >
+<DESC>
+<PARA>
+
+         The name of the PHA file containing the order, grating
+         and source position information. This file may be either
+         a Type I or a Type II PHA file. (See tgextract for information
+         on Type I/Type II PHA files.)  In the case of a Type I
+         file, this information is contained in header keywords.
+         For a Type II file this information is contained in
+         the data table of the SPECTRUM extension. In this case
+         the data are specified by row number via the pharow
+         parameter.
+       
+</PARA>
+<PARA>
+
+         Note that the user does not need to specify which type
+         of PHA file the above file is.  The script will determine
+         this via looking at the TFORMx header keywords.
+         
+       
+</PARA>
+
+</DESC>
+
+</PARAM>
+<PARAM name="pharow"  type="integer"  reqd="yes"  def="1">
+<DESC>
+<PARA>
+
+           Type II PHA files contain multiple spectra in the
+           SPECTRUM binary-table extension. (Type I files contain only
+           one spectrum.) Each row of the table contains one
+           spectrum for a given order, grating and source.
+           The pharow parameter specifies the appropriate row 
+           for the desired order and grating combination.
+           (The order and grating data are contained in the
+            TG_M and TG_PART columns). The dmlist tool can be
+            used to determine row corresponds to which grating
+            grating and order.
+
+         
+</PARA>
+<PARA>
+
+           Note that if a Type I pha is specified for the phafile
+           parameter, the pharow parameter is ignored.
+         
+</PARA>
+
+</DESC>
+
+</PARAM>
+<PARAM name="evtfile"  type="file"  reqd="yes"  >
+<SYNOPSIS>
+
+          This parameter is passed on to the asphist tool.
+     
+</SYNOPSIS>
+<DESC>
+<PARA>
+
+           The event file provides observational configuration 
+           information via FITS keywords. It
+           also provides good-time interval (GTI) data.
+        
+</PARA>
+
+</DESC>
+
+</PARAM>
+<PARAM name="asol"  type="file"  reqd="yes"  >
+<SYNOPSIS>
+
+          This parameter is passed on to the asphist tool.
+     
+</SYNOPSIS>
+<DESC>
+<PARA>
+
+         This parameter give the aspect solution or sim-corrected aspect
+         offset file(s).
+         It is required as input to the asphist 
+         tool. (For additional information on this, try
+         ahelp asphist.) 
+        
+</PARA>
+
+</DESC>
+
+</PARAM>
+<PARAM name="engrid"  type="string"  units="keV"  reqd="yes"  >
+<SYNOPSIS>
+
+          This parameter is passed on to the mkgarf tool.
+     
+</SYNOPSIS>
+<DESC>
+<PARA>
+
+         This parameter gives the specification for the energy 
+         grid. The string may specify either a file (FITS or
+         ASCII) which contains the energy grid or an explicit energy
+         grid.  CIAO users should, in general, use a gRMF file (created
+         with mkgrmf) for the energy grid specification.
+        
+</PARA>
+<PARA>
+
+          For example, to specify the grid contained in the MATRIX
+          block of an RMF file name &quot;grating_rmf.fits&quot;, specify:
+          &quot;engrid=grid(grating_rmf.fits[MATRIX][cols ENERG_LO,ENERG_HI])&quot;
+           You should NOT specify a block that contains a wavelength
+	   grid! For example, often a file will contain 
+           columns named BIN_LO and BIN_HI which may contain
+           wavelengths. Such grids may not be specified, since the
+           values will be interpreted as energies.
+        
+</PARA>
+<PARA>
+
+          To explicitly specify a grid which runs from 0.3 keV
+          to 10.0 keV in 0.01 keV increment steps, specify:
+          &quot;engrid=0.3:10.0:0.01&quot;
+        
+</PARA>
+<PARA>
+
+         To use an ASCII file which contains two columns, the energ_lo 
+          and energ_hi, specify: 
+          &quot;engrid=grid(myfile.tbl)&quot;
+        
+</PARA>
+<PARA>
+
+          Note that the preferred grid is linear in wavelength, since this 
+          reflects the natural dispersion of photons onto the detector. For 
+          back-compatibility, we write the grid in energy units in ascending 
+          order. Grating rmfs (see mkgrmf) have energy grids in descending
+          linear wavelength. (Also see mk_tggrid, a script which converts
+          the wavelength grid of a pha file into an FITS-format energy 
+          grid file.)
+
+          
+
+        
+</PARA>
+
+</DESC>
+
+</PARAM>
+
+<PARAM name="dtffile"  type="file"  reqd="yes"  >
+<SYNOPSIS>
+
+          This parameter is passed on to the asphist tool.
+     
+</SYNOPSIS>
+<DESC>
+<PARA>
+
+        This parameter gives the name of the file containing the
+       dead-time correction factor. In the case of the HRC, these
+       data are contained as a table in a FITS file. For the ACIS,
+       a single value given by the DTCOR header keyword is used.
+       This value is stored in the event file, so that usually
+       (for the case of ACIS only!) one specifies the same
+       value for this parameter as for the evtfile parameter.
+
+       
+</PARA>
+
+</DESC>
+
+</PARAM>
+<PARAM name="badpix"  type="file"  reqd="yes"  >
+<SYNOPSIS>
+
+          This parameter is passed on to the ardlib.par file.
+     
+</SYNOPSIS>
+<DESC>
+<PARA>
+
+         This parameter will replace the value given in ardlib.par.
+       It is not implemented for observations involving the HRC.
+
+        
+</PARA>
+
+</DESC>
+
+</PARAM>
+<PARAM name="rootname"  type="string"  reqd="yes"  >
+<DESC>
+<PARA>
+
+          The rootname for all of the output files. The script will
+         prepend this parameter to all output filenames. The
+         script will first check for the existence of an output file 
+         (which includes this rootname). If the file already exists,
+         the script will not create a new version. 
+       
+        
+</PARA>
+
+</DESC>
+
+</PARAM>
+
+
+<PARAM name="maskfile" type="string" filetype="input" reqd="yes">
+<SYNOPSIS>
+
+          This parameter is passed on to the mkgarf tool.
+     
+</SYNOPSIS>
+<DESC>
+<PARA>
+   The mask file (msk1.fits) for the observation; used by mkgarf.  The
+   mask file is needed in particular when a window or subarray was
+   used.  A value of "NONE" indicates that no mask file will be applied.
+</PARA>
+</DESC>
+</PARAM>
+
+<PARAM name="dafile" type="string" filetype="input" def="CALDB">
+<SYNOPSIS>
+
+          This parameter is passed on to the mkgarf tool.
+     
+</SYNOPSIS>
+  <DESC>
+    <PARA>
+      ACIS "dead area" coefficients file, which may have the values
+      "NONE" (no dead area computation), CALDB (for automatic lookup),
+      or an explicit file reference to an ACIS "dead area"
+      coefficients FITS table. 
+    </PARA>
+
+    <PARA>
+      See "ahelp mkgarf" for more information on this parameter.
+    </PARA>
+  </DESC>
+</PARAM>      
+
+<PARAM name="osipfile" type="string" filetype="input" def="CALDB" reqd="no">
+<SYNOPSIS>
+
+          This parameter is passed on to the mkgarf tool.
+     
+</SYNOPSIS>
+<DESC>
+<PARA>
+  The Order Sorting and Integrated Probability file; used by mkgarf.  
+  The default value, "CALDB", indicates that the highest version for
+  the most recent date before the observation date will be retrieved
+  from the calibration database.         
+</PARA>
+
+    <PARA>
+      See "ahelp mkgarf" for more information on this parameter.
+    </PARA>
+
+</DESC>
+</PARAM>
+
+<PARAM name="clobber"  type="boolean"  def="no">
+<DESC>
+<PARA>
+
+         If set to yes, existing output files will be removed.  Note
+         that this value is passed on to each tool in the script.
+         That is, the value chosen for this parameter will 
+         set the value for the clobber parameter of all
+         tools called by the script.
+
+        
+</PARA>
+
+</DESC>
+
+</PARAM>
+</PARAMLIST>
+    <ADESC title="Changes in CIAO 4.6 contributed software release">
+      <PARA>
+            The ACIS parameter block file parameter, pbkfikle, was
+            removed.
+      </PARA>
+    </ADESC>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/fullgarf.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+<LASTMODIFIED>October 2014</LASTMODIFIED>
+
+</ENTRY>
+
+</cxchelptopics>
+

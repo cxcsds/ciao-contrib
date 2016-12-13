@@ -1,0 +1,17 @@
+global chipsPID
+global ds9
+
+set chipsPID [exec startchips $ds9(title) &]
+
+
+proc CleanUp {chipsPID windowPath} {
+   # check that the window is the top path. No point in trying to kill it for
+   # all sub windows
+   if {$windowPath == "."} {
+      exec kill -9 $chipsPID
+   }
+}
+
+
+# cleanup the chips server
+bind . <Destroy> {CleanUp $chipsPID %W}

@@ -1,0 +1,142 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="get_instmap_weights" context="contrib" pkg="sherpa"
+	 refkeywords="get access read mkinstmap instmap instrument map imap spectrumfile spectral weight weights fluxtype "
+	 seealsogroups="sh.wgts" displayseealsogroups="sh.get">
+
+    <SYNOPSIS>
+      Return the model spectrum in the form required by the spectrumfile parameter of mkinstmap
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>get_instmap_weights( [id=None, fluxtype="photon"] )</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The get_instmap_weights() command turns the current model
+	values into the form used for the spectrumfile parameter of
+	the CIAO mkinstmap tool.  The return value is an object with
+	the following fields:
+      </PARA>
+      <TABLE>
+	<ROW>
+	  <DATA>Field</DATA><DATA>Value</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>id</DATA><DATA>The dataset identifier.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>modelexpr</DATA><DATA>A string containing the model expression.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>xlo</DATA><DATA>The lower edge of each bin.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>xhi</DATA><DATA>The upper edge of each bin.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>xmid</DATA><DATA>The mid-point of each bin.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>weight</DATA><DATA>The weight for each bin.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>fluxtype</DATA>
+	  <DATA>
+	    "photon" or "erg"; the instrument map is in units of cm^2 count / &lt;fluxtype>.
+	  </DATA>
+	</ROW>
+      </TABLE>
+
+      <PARA>
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/threads/spectral_weights/">Calculating Spectral Weights</HREF>
+	thread for further information on how to use this routine.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.utils import *
+</VERBATIM>
+
+      <TABLE>
+	<CAPTION>Arguments</CAPTION>
+	<ROW>
+	  <DATA>Name</DATA><DATA>Default value</DATA><DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>id</DATA>
+	  <DATA>None (which means use the value of get_default_id)</DATA>
+	  <DATA>Which dataset to use.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>fluxtype</DATA>
+	  <DATA>"photon"</DATA>
+	  <DATA>The units for the instrument map are cm^2 count / &lt;fluxtype>. The 
+	  valid options for this argument are "photon" (the default) or "erg".
+	  </DATA>
+	</ROW>
+
+      </TABLE>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; w = get_instmap_weights()</LINE>
+	  <LINE>&pr; print (w)</LINE>
+	  <LINE>id        = 1</LINE>
+	  <LINE>modelexpr = (xsphabs.gal * xsmekal.clus)</LINE>
+	  <LINE>xlo       = Float32[47]</LINE>
+	  <LINE>xhi       = Float32[47]</LINE>
+	  <LINE>xmid      = Float32[47]</LINE>
+	  <LINE>weight    = Float32[47]</LINE>
+	  <LINE>fluxtype  = photon</LINE>
+          <LINE>&pr; add_curve(w.xmid, w.weight, ["symbol.style", "none"])</LINE>
+	</SYNTAX>
+	<DESC>
+
+          <PARA>
+	    Get the weights for the model values of the default dataset and
+	    then plot them up as a curve using ChIPS. The weights are appropriate
+	    for creating an instrument map in units of cm^2 count / photon
+	    and will sum to 1.
+	  </PARA>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; w = get_instmap_weights(fluxtype="erg")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	  In this case the weights are intended to create an instrument map in units
+	  of cm^2 count / erg and so will not sum to 1 (the individual weights will
+	  be large in this case, with values somewhere around 1e8, depending on the
+	  binning and spectral model chosen).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>April 2010</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

@@ -1,0 +1,167 @@
+#!/usr/bin/env python
+
+#
+#  Copyright (C) 2011, 2015
+#            Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Usage
+=====
+
+get_fov_limits fov.fits [dmfilter] [xygrid] [verbose]
+
+Aim
+===
+
+Returns the sky region occupied by the supplied field-of-view (FOV)
+file, and the number of pixels, in a form that can be used for binning
+into an image, using the DM syntax, or for the xygrid parameter of
+mkexpmap.
+
+Filters should be applied to the filter to select a given CCD, if
+desired.
+
+The dmfilter and xygrid parameters are used to store the output
+expressions - ie it does not make sense to set them before running the
+script.
+
+If verbose is > 0, then messages will be printed to the screen -
+including the required binning specs.
+
+Notes
+=====
+
+See also get_sky_limits
+
+"""
+
+toolname = "get_fov_limits"
+version = "12 November 2015"
+
+import sys
+
+import paramio as pio
+
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib.param_wrapper import open_param_file
+
+import ciao_contrib.region.fov as fov
+
+lw.initialize_logger(toolname)
+
+v1 = lw.make_verbose_level(toolname, 1)
+v2 = lw.make_verbose_level(toolname, 2)
+v3 = lw.make_verbose_level(toolname, 3)
+v4 = lw.make_verbose_level(toolname, 4)
+v5 = lw.make_verbose_level(toolname, 5)
+
+
+def process_command_line(argv):
+    """Handle the parameter input for this script."""
+
+    if argv is None or argv == []:
+        raise ValueError("argv argument is None or empty")
+
+    pinfo = open_param_file(argv, toolname=toolname)
+
+    fp = pinfo["fp"]
+
+    infile = pio.pget(fp, "infile")
+    if infile.strip() == "":
+        raise ValueError("infile parameter is empty")
+
+    pixsize = pio.pgetd(fp, "pixsize")
+    # TODO: should the mode be respected when setting xygrid parameter?
+    # mode = pio.pget(fp, "mode")
+    verbose = pio.pgeti(fp, "verbose")
+
+    # Ensure the output parameters are cleared
+    pio.pset(fp, "dmfilter", "")
+    pio.pset(fp, "xygrid", "")
+
+    pio.paramclose(fp)
+
+    # Set tool and module verbosity
+    lw.set_verbosity(verbose)
+
+    return {"progname": pinfo["progname"],
+            "parname": pinfo["parname"],
+            "infile": infile,
+            "pixsize": pixsize,
+            "verbose": verbose}
+
+
+def display_start_info(opts):
+    "Display startup information to users"
+
+    v1("Running: {0}".format(opts["progname"]))
+    v1("  version: {0}".format(version))
+
+    v2("with parameters:")
+    v2("  infile={0}".format(opts["infile"]))
+    v2("  pixsize={0}".format(opts["pixsize"]))
+    v2("  verbose={0}".format(opts["verbose"]))
+    # v2("  and ASCDS_INSTALL is {0}".format(os.getenv("ASCDS_INSTALL")))
+
+
+def gfl(opts):
+    "Process the FOV file and output the answers to param. file/screen."
+
+    infile = opts["infile"]
+    pixsize = opts["pixsize"]
+    pname  = opts["parname"]
+
+    fp = pio.paramopen(pname, "wL")
+    display_start_info(opts)
+
+    v2("Reading in FOV from: {0}".format(infile))
+    fv = fov.FOVRegion(infile, pixsize=pixsize)
+
+    ccdstr = ", ".join([str(c) for c in fv.ccd_ids])
+    v2("Contains data for CCDs: {0}".format(ccdstr))
+
+    v3("FOV data is:")
+    v3(str(fv))
+
+    (xrs, yrs) = fv.range
+    dmfilter = "x={0},y={1}".format(xrs, yrs)
+    xygrid = "{0},{1}".format(xrs.as_grid(), yrs.as_grid())
+
+    pio.pset(fp, "dmfilter", dmfilter)
+    pio.pset(fp, "xygrid", xygrid)
+    pio.paramclose(fp)
+
+    v1("  DM filter is:")
+    v1("    {0}".format(dmfilter))
+    v1("  mkexpmap xygrid value is:")
+    v1("    {0}".format(xygrid))
+
+
+@lw.handle_ciao_errors(toolname, version)
+def get_fov_limits(args):
+    "Run the tool"
+
+    opts = process_command_line(args)
+    gfl(opts)
+
+
+if __name__ == "__main__":
+    get_fov_limits(sys.argv)
+
+# End

@@ -1,0 +1,185 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="get_caldb" context="contrib"
+         refkeywords="get_caldb_dir get_caldb_releases
+		      get_caldb_installed get_caldb_installed_version get_caldb_installed_date
+		      get_caldb_release directory location loc dir dirname
+		      get download access caldb calibration database release releases version history date dates
+		      install installed"
+	 seealsogroups="caldb">
+
+    <SYNOPSIS>
+      Access various information about the Chandra Calibration DataBase (CALDB)
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>Information on the locally-installed version:</LINE>
+      <LINE>dname = get_caldb_dir()</LINE>
+      <LINE>(v,d) = get_caldb_installed(caldb=None)</LINE>
+      <LINE>v = get_caldb_installed_version(caldb=None)</LINE>
+      <LINE>d = get_caldb_installed_date(caldb=None)</LINE>
+      <LINE/>
+      <LINE>v is a string containing the CALDB version (e.g. '4.2.2')
+	and d is a Python time object representing the release date.</LINE>
+      <LINE/>
+      <LINE>Information on the release history of the CALDB:</LINE>
+      <LINE>rels = get_caldb_releases()</LINE>
+      <LINE/>
+      <LINE>rels is a dictionary with the keys "CIAO", "CALDB", "SDP"
+      and "L3". Each key stores an array of (version,date) tuples for all
+      relevant releases for that key.
+      </LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA title="get_caldb_dir">
+	The get_caldb_dir() routine returns the name of the directory
+	which contains the locally-installed CALDB (i.e. the value of the
+	$CALDB environment variable).
+      </PARA>
+
+      <PARA title="get_caldb_installed">
+	The get_caldb_installed() routine returns the version and release
+	date of the locally-installed version of the 
+	Chandra Calibration Database (CALDB). The get_caldb_installed_version()
+	and get_caldb_installed_date() routines just return one of the pieces
+	of information returned by get_caldb_installed().
+      </PARA>
+
+      <PARA>
+	If these routines are called without an argument then the CALDB
+	environment variable is used to determine the location of the
+	files, otherwise the argument is taken to be the name of the
+	directory to look in.
+      </PARA>
+
+      <PARA title="get_caldb_releases">
+	The get_caldb_releases() routine returns information on the
+	Chandra Calibration Database (CALDB) releases. Unlike the other
+	routines, it requires that
+	the computer is on-line and able to access the 
+	<HREF link="http://cxc.harvard.edu/caldb/">CALDB web site</HREF>.
+      </PARA>
+
+      <PARA>
+	The return value is a dictionary with the following
+	keys: "CALDB", "CIAO", "SDP" and "L3". The values are
+	a list of (version, date) tuples, where the version is
+	a string (e.g. "4.2.2") and the date is a Python
+	time "structure" (see the 
+	<HREF link="http://docs.python.org/library/time.html">time module
+	documentation</HREF> for more information).
+      </PARA>
+
+      <PARA title="Loading the routines">
+	The routines can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from ciao_contrib.caldb import *
+</VERBATIM>
+
+      <PARA title="Loading other modules">
+	The examples below make use of the Python os and time modules;
+	to ensure that they will run they each start with the necessary
+	"import" call, but this is only necessary if the module has
+	not already been loaded.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; import os</LINE>
+	  <LINE>&pr; dname = get_caldb_dir()</LINE>
+	  <LINE>&pr; print(os.listdir(dname))</LINE>
+	  <LINE>['software', 'docs', 'data']</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The os.listdir() routine returns a list of the contents of the
+	    given directory (in this case the top-level CALDB directory).
+	    The os.path.walk() routine can be used to recursively scan through
+	    the directory contents; see
+	    <HREF link="http://docs.python.org/library/os.path.html#os.path.walk">'help
+	    os.path.walk'</HREF> for more information.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; import time</LINE>
+	  <LINE>&pr; (rv, rt) = get_caldb_installed()</LINE>
+	  <LINE>&pr; rtstr = time.asctime(rt)</LINE>
+	  <LINE>&pr; print("The installed CALDB is v {0}, released on {1}".format(rv, rtstr))</LINE>
+
+        </SYNTAX>
+        <DESC>
+
+          <PARA>
+	    The return value of get_caldb_installed() is a tuple where
+	    the first element is the version (as a string) and the
+	    second the release date (as a Python time object; see
+	    'help time' for more information).
+	  </PARA>
+
+	  <PARA>
+	    The print statement displayes the value; we use
+	    the time.asctime function to convert the time
+	    value to a string. The screen output on May 5 2010 was
+	  </PARA>
+
+<VERBATIM>
+The installed CALDB is v 4.2.2, released on Mon Apr 19 19:00:00 2010
+</VERBATIM>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; import time</LINE>
+	  <LINE>&pr; rs = get_caldb_releases()</LINE>
+	  <LINE>&pr; ciao = rs["CIAO"]</LINE>
+	  <LINE>&pr; (rv, rt) = ciao[0]</LINE>
+	  <LINE>&pr; rtstr = time.strftime("%a %b %d %H:%M:%S %Y", rt)</LINE>
+	  <LINE>&pr; print("The latest version is {0}, released on {1}".format(rv, rtstr))</LINE>
+
+        </SYNTAX>
+        <DESC>
+
+          <PARA>
+	    The return value of get_caldb_releases() is a dictionary
+	    with keys "CIAO", "CALDB", "SDP" and "L3".
+	    The values are an array of tuples which contain
+	    the version, as a string, and the release date, as
+	    a Python time object (see 'help time' for
+	    more information).
+	  </PARA>
+
+	  <PARA>
+	    Here we access the first item in the CIAO list,
+	    and store the version and release dates in the
+	    variables rv and rt respectively.
+	    The print statement displayes the value; we use
+	    the time.strftime function to convert the time
+	    value to a string. The screen output on May 5 2010 was
+	  </PARA>
+
+<VERBATIM>
+The latest version is 4.2.2, released on Mon Apr 19 19:00:00 2010
+</VERBATIM>
+
+        </DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <LASTMODIFIED>September 2010</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

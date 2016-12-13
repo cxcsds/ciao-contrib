@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY     pr  "unix&#x25; ">
+  <!ENTITY cltool "dewiggle">
+]>
+<cxchelptopics>
+  <ENTRY key="&cltool;" context="tools"
+	 refkeywords="grating spectroscopy spectrum letg
+		      leg gratings wiggle tg_d hrc-s hrcs"
+	 seealsogroups="analysis tgtools detilt symmetrize">
+    <SYNOPSIS>
+      Straighten LETG/HRC-S spectra by applying tg_d adjustments.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>&cltool; infile outfile</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	&cltool; reads in a standard LETG/HRC-S evt2 
+	file and adjusts the TG_D values of all events to remove small "wiggles"
+	and straighten the dispersed spectrum.  The adjustments, which are up 
+	to +/-1.5 HRC pixels, are applied on a tap-by-tap (CRSV) basis along 
+	the dispersion axis and correct small residual errors that cannot be 
+	corrected by the HRC-S degapping procedure.  Only TG_D values are 
+	affected; the output file will not exhibit any changes if displayed 
+	in sky or detector coordinates.
+      </PARA>
+
+      <PARA>
+	&cltool; is generally used in combination with the detilt and symmetrize
+	commands--also contributed software tools--to prepare LETG/HRC-S spectra 
+	so that narrower spectral extraction regions can be used to improve
+	the S/N of low-S/N data.
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+
+	  <LINE>
+	    &cltool; input_evt2.fits output_evt2.fits clobber+
+	  </LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Run the program with the clobber parameter enabled.
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+
+      <PARAM name="infile"  type="file"  reqd="yes"  stacks="no">
+	<DESC>
+	  <PARA>
+	    Input FITS file event list with columns CHIP_ID, CHIPY and
+	    TG_D.
+	  </PARA>
+	</DESC>
+
+      </PARAM>
+
+      <PARAM name="outfile" type="file" reqd="yes" def="" stacks="no"
+	     filetype="output">
+	<DESC>
+	  <PARA>
+	    Output FITS file event list with modified TG_D column.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="wfile"  type="file"
+	     def="${ASCDS_CONTRIB}/data/wigglecorrection.dat" stacks="no">
+	<DESC>
+	  <PARA>
+	    Wiggle correction file, containing TG_D correction as a
+	    function of CRSV.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+        <PARAM name="verbose" type="integer"  def="0" min="0" max="5">
+          <SYNOPSIS>Tool chatter level</SYNOPSIS>
+          <DESC>
+            <PARA>
+          Controls the amount of information tool prints to the screen.
+            </PARA>
+          </DESC>
+
+        </PARAM>
+
+        <PARAM name="clobber" type="boolean"  def="no" >
+          <SYNOPSIS>Remove outfile if it already exists?</SYNOPSIS>
+        </PARAM>
+
+
+    </PARAMLIST>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This tool is not an official part of the CIAO release but is
+	made available as "contributed" software via the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+	instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+	See the
+	<HREF link="http://cxc.harvard.edu/ciao/bugs/">bugs page</HREF>
+	on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>November 2016</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

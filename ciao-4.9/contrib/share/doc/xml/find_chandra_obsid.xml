@@ -1,0 +1,850 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY tool "find_chandra_obsid">
+
+ <!ENTITY pr "unix&#37;">
+
+ <!ENTITY dco "<HREF link='http://cxc.harvard.edu/ciao/ahelp/download_chandra_obsid.html'>download_chandra_obsid</HREF>">
+
+ <!ENTITY cdaenv "CDA_MIRROR_SITE">
+
+]>
+<cxchelptopics>
+  <ENTRY key="find_chandra_obsid" context="tools"
+	 refkeywords="find search download ftp chandra obsid obsids
+		      data archive cda mirror public chaser webchaser
+		      footprint footprints
+		      fco find_chandra_obsids
+		      &cdaenv;"
+         seealsogroups="contrib.cda"
+	 >
+
+    <SYNOPSIS>
+      Find, and optionally download, publicly-available Chandra ObsIds from the Chandra archive.
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+	The &tool; tool will find publicly available Chandra data
+	that covers a circular region of sky (a point search can be
+	used by setting the search radius to 0). The download
+	parameter can be used to download the data, or the
+	&dco; script can be used.
+      </PARA>
+      <PARA>
+	This tool makes use of the
+	<HREF link="http://cxc.harvard.edu/cda/footprint/">Chandra Footprint Service</HREF>,
+	which can also be searched using a web browser.
+      </PARA>
+      <PARA title="Single argument">
+	When called with a single argument, it is checked to see if it matches
+	an
+	<HREF link="http://cxc.harvard.edu/ciao/dictionary/obsid.html">Observation Id (ObsId)</HREF>
+	value (that is, an integer between 1 and 65535),
+	otherwise it is treated as an object name.
+      </PARA>
+      
+      <PARA title="ObsId">
+	If an integer value is given, then the Chandra Data Archive is
+	searched to find the location of the observation, and this
+	is used in the search (which means that the ObsId will be
+	one of the returned values). If the ObsId is unrecognized by the
+	archive then it is treated as an object name.
+      </PARA>
+      <PARA>
+	You can check the coordinates that are returned for the name
+	by setting the verbose parameter to 2.
+      </PARA>
+
+      <PARA title="Object names">
+	The name resolver at the CADC is used to convert names to
+	a position. If the name contains a space then it must be given 
+	surrounded by quotes - e.g. "NGC 1333" - to ensure that the script
+	recognizes it as a single argument.
+      </PARA>
+      <PARA>
+	You can check the coordinates that are returned for the name
+	by setting the verbose parameter to 2.
+      </PARA>
+
+      <PARA title="Solar system objects">
+	The name resolver does not support solar-system objects.
+      </PARA>
+
+      <PARA title="Using a position">
+	If two arguments are given then they are taken to be the
+	Right Ascension and Declination to search about (J2000).
+	A range of formats can be used (which may require surrounding
+	the value in quotes or protecting characters depending on the shell you
+	are using):
+      </PARA>
+
+<VERBATIM>
+&pr; &tool; 12.3 -1.2
+&pr; &tool; 12:14 "-1 15 23"
+&pr; &tool; "12h 14m 3.2s" "-0d 5'"
+</VERBATIM>
+
+      <PARA>
+	If verbose is set to 2 then the script will display the result
+	of the conversion from the input values into decimal degrees.
+      </PARA>
+
+      <PARA title="Selecting instruments">
+	The default search uses all instruments, but you can restrict
+	the results using the instrument parameter, so
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; &tool; m31 instrument=acis</LINE>
+	  <LINE>&pr; &tool; m31 instrument=aciss</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	searches for all ACIS or just ACIS-S observations of M31.
+      </PARA>
+
+      <PARA title="Selecting gratings">
+	The default search does not filter on the grating; to do so
+	use the grating parameter.
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; &tool; mkn421 grating=letg</LINE>
+	  <LINE>&pr; &tool; perseus grating=any</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	searches for LETG observations of Markarian 421 and any grating observations
+	of Perseus.
+      </PARA>
+
+      <PARA title="Downloading data">
+	When the download parameter is "none" - which is the default - then a table of
+	values for the matching observations are displayed. If set to "all" then
+	the matching ObsIds are downloaded to the working directory; in this case
+	the information on the matching ObsIds is not given.
+	When set to "ask", you are queried whether to download each ObsId 
+	and then the download will take place for the chosen observations.
+      </PARA>
+
+      <PARA>
+	The data is downloaded to the current working directory and uses the same
+	layout as the &dco;
+	script. If the file already exists it will not be over-written, unless the
+	file size is larger than on disk; a smaller value is taken to mean a previous
+	download attempt was interrupted, so it will append to the file.
+      </PARA>
+      <PARA>
+	Unlike download_chandra_obsid, there is no way to select
+	a subset of data to download for each ObsId.
+      </PARA>
+      <PARA title="Subsetting the data for download">
+	This script provides limited capabilities for filtering the data,
+	by using the instrument and grating parameters. More complicated
+	filtering can be done by taking advantage of the fact that the
+	screen output of the script can be manipulated using the 
+	CIAO command-line tools. For example
+      </PARA>
+<VERBATIM>
+&pr; find_chandra_obsid 350.86 58.81 > matches.dat
+&pr; dmlist matches.dat counts
+115
+&pr; dmlist "matches.dat[time>20,inst=HRC-I][cols obsid]" data,raw 
+#  obsid
+               1505.0
+&pr; download_chandra_obsid 1505
+...
+</VERBATIM>
+      <PARA>
+	shows that ObsId 1505 is the only HRC-I observation with an exposure
+	of 20 ks or higher. The download_chandra_obsid tool is then used
+	to download the matching observation.
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 3040</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    All observations that overlap the aim point
+	    of ObsId 3040 are reported.
+	  </PARA>
+	  <PARA>
+	    Setting the verbose value to 2, or higher, displays
+	    the coordinates returned by by the name resolver; for instance
+	  </PARA>
+<VERBATIM>
+&pr; &tool; 3040 verbose=2
+Looking for position of ObsId 3040
+ObsId 3040 status=archived RA=12 01 53.70 Dec=-18 52 35.50
+Found ra=180.47375 dec=-18.8765277778
+    = 12h 1m 53.7s -18d 52' 35.5"
+...
+</VERBATIM> <!-- " for emacs -->
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; arp244</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this case a name resolver is used to convert
+	    the argument into a position, and then all observations
+	    which overlap that position are reported.
+	    Unfortunately solar system names are not supported.
+	  </PARA>
+	  <PARA>
+	    Setting the verbose value to 2, or higher, displays
+	    the coordinates returned by by the name resolver; for instance
+	  </PARA>
+<VERBATIM>
+&pr; &tool; arp244 verbose=2
+Querying name resolvers for name=arp244
+Found ra=180.47208 dec=-18.87694
+    = 12h 1m 53.2992s -18d 52' 36.984"
+...
+</VERBATIM> <!-- " for emacs -->
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 'ARP 244'</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    If the object name contains spaces then it must be
+	    quoted with single or double quotes.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 180.47 -18.88</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    If two arguments are given then the script interpets these
+	    as Right Ascension and Declination. This call will
+	    find all the publicly-available Chandra observations
+	    that overlap the circle with a center at RA of 180.47 degrees
+	    and Declination of -18.88 degrees, and a radius of 1 arcminute.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 12:1:54 -18:52:36</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The script supports the most common formats for specifying
+	    RA and Dec. Values that include spaces will need to be
+	    quoted to avoid being interpreted as multiple arguments by
+	    the shell - e.g.
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; &tool; "12 1 54" "-18 52 36"</LINE>
+	      <LINE>&pr; &tool; "12h 1m 54s" "-18d 52' 36"'"'</LINE> <!-- " needed by emacs -->
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    Setting the verbose value to 2, or higher, displays
+	    the decimal coordinates calculated by the script:
+	  </PARA>
+<VERBATIM>
+&pr; &tool; "12h 15m 46s" "-0 0 4" verbose=2
+Converting 12h 15m 46s and -0 0 4 to decimal degrees.
+-> 183.941666667 -0.00111111111111
+...
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 180.47 -18.88 detail=obsid</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we list just the ObsId values for each observation.
+	    The detail setting can also be changed to all to get
+	    more columns (basically the RA and Dec of the aim point
+	    for each observation).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 180.47 -18.88 download=ask</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Instead of listing all the matches, you will be asked
+	    whether to download each ObsId; the output will look something like
+	  </PARA>
+<VERBATIM>
+There were 7 matching observations:
+
+1/7: Obsid=315 Sepn=0.3 Inst=ACIS-S Grat=NONE Exp=73.2 ObsDate=1999-12-01
+   PI=Murray Target=NGC 4038/NGC 4039
+2/7: Obsid=3040 Sepn=0.3 Inst=ACIS-S Grat=NONE Exp=69.9 ObsDate=2001-12-29
+   PI=Fabbiano Target=NGC 4038/NGC 4039
+...
+7/7: Obsid=3718 Sepn=0.3 Inst=ACIS-S Grat=NONE Exp=35.2 ObsDate=2002-07-13
+   PI=Fabbiano Target=NGC 4038/NGC 4039
+
+Use h to get help on the download options.
+
+1/7: Obsid=315 Sepn=0.3 Inst=ACIS-S Grat=NONE Exp=73.2 ObsDate=1999-12-01
+   PI=Murray Target=NGC 4038/NGC 4039
+
+Download [y, n, q, a, h]: y
+
+...
+</VERBATIM>
+	  <PARA>
+	    The instrument and grating flags can be used to restrict the
+	    set of matches, in which case the use of download=all may
+	    be appropriate; this downloads all the matching data without asking
+	    you for confirmation.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 350.86 58.81 instrument=hrc</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we restrict the search to just HRC observations.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 350.86 58.81 radius=0</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we restrict the search to those observations that
+	    overlap the given point, rather than any part of a
+	    circle about the point.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 'cas a' grating=any</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we find all the grating observation of Cas A.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 12:0 0 radius=3600 instrument=hrci grating=letg</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The grating and instrument parameters can be combined to restrict,
+	    in this case, to HRC-I observations with the LETG, using
+	    a search of 1 degree about RA=12:0:0 and a Declination of 0.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; &tool; 350.86 58.81 mirror=ftp://cdaftp.cfa.harvard.edu/pub</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            If you have access to a mirror of the Chandra Data Archive (CDA), then
+            use the mirror parameter to point to it. The script will then
+            search in the mirror site, rather than the CDA,
+            for the files. Note that if you use a partial mirror, or an out of date one,
+            that the script does not fall back to trying the CDA
+            if it can not find the requested data on the mirror site.
+            Note that in this example we have used the location of the CDA
+            itself.
+	  </PARA>
+	  <PARA>
+	    An alternative is to use the &cdaenv; environment variable, so that
+	    the above could also be written as:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; setenv &cdaenv; ftp://cdaftp.cfa.harvard.edu/pub</LINE>
+	      <LINE>&pr; &tool; 350.86 58.81</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="arg" type="string" reqd="yes">
+	<SYNOPSIS>RA, ObsId, or name of source</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The Right Ascension (J2000) or name of the source.
+	  </PARA>
+	  <PARA>
+	    Many common RA formats can be used, as shown below. Values
+	    including a space need to be surrounded by quotes.
+	  </PARA>
+	  <LIST>
+	    <ITEM>12.3</ITEM>
+	    <ITEM>12:14</ITEM>
+	    <ITEM>"12h 14m 3.2s"</ITEM>
+	  </LIST>
+	  <PARA>
+	    If the Dec argument is empty than the value is taken to
+	    be wither be an ObsId (if an integer in the range 1 to
+	    65535), or the name of the source and sent to the 
+	    CADC name resolver. Set verbose to 2 to see the 
+	    position that is returned.
+	  </PARA>
+	  <PARA>
+	    Not all names can be resolved; for instance solar system
+	    objects.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="dec" type="string" reqd="yes">
+	<SYNOPSIS>Dec of source</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The declination (J2000) of the source. If not given,
+	    or set to "", the first argument is taken to be the
+	    name or ObsId of the source.
+	  </PARA>
+	  <PARA>
+	    Many common formats can be used, as shown below. Values
+	    including a space need to be surrounded by quotes or
+	    protetected in some way, depending on your shell:
+	  </PARA>
+	  <LIST>
+	    <ITEM>-34.2</ITEM>
+	    <ITEM>"-34 12"</ITEM>
+	    <ITEM>"-34d 12' 2.8"'"'</ITEM> <!-- " for emacs -->
+	  </LIST>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="radius" type="real" def="1" min="0" units="arcmin">
+	<SYNOPSIS>Radius for search overlap in arcmin</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The search radius around the source to look for overlap
+	    with any Chandra observation. A value of 0 means that the
+	    search location must lie within the "footprint" of a
+	    Chandra observation for it to be returned.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="download" type="string" def="none">
+	<SYNOPSIS>What ObsIDs should be downloaded?</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    What should be done with matching ObsIDS?
+	  </PARA>
+	  <TABLE>
+	    <ROW>
+	      <DATA>Value</DATA><DATA>Description</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>none</DATA>
+	      <DATA>No data is downloaded. A list of matching observations is
+	      displayed to the screen (the detail parameter controls the level of
+	      detail).</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>ask</DATA>
+	      <DATA>
+		The user is asked whether each matching ObsID should be downloaded.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>all</DATA>
+	      <DATA>
+		All matching ObsIDs are downloaded. Care should be taken here
+		since this can result in a lot of data being downloaded from the archive.
+	      </DATA>
+	    </ROW>
+	  </TABLE>
+	  
+	  <PARA>
+	    Note that there is no way to restrict the data being downloaded. If you
+	    only want a subset of files for each ObsID then use the 
+	    &dco; script once you have
+	    found the list of matching ObsID values.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="instrument" type="string" def="all">
+	<SYNOPSIS>Choice of instrument</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The search can be restricted to one or more instruments
+	    using this parameter:
+	  </PARA>
+	  <TABLE>
+	    <ROW>
+	      <DATA>Setting</DATA><DATA>Instrument(s)</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>all</DATA>
+	      <DATA>No instrument filter is applied.</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>acis</DATA>
+	      <DATA>Only ACIS-I or ACIS-S data is returned.</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>hrc</DATA>
+	      <DATA>Only HRC-I or HRC-S data is returned.</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>acisi</DATA>
+	      <DATA>Only ACIS-I data is returned.</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>aciss</DATA>
+	      <DATA>Only ACIS-S data is returned.</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>hrci</DATA>
+	      <DATA>Only HRC-I data is returned.</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>hrcs</DATA>
+	      <DATA>Only HRC-S data is returned.</DATA>
+	    </ROW>
+	  </TABLE>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="grating" type="string" def="all">
+	<SYNOPSIS>Choice of grating</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The search can be restricted to one or more grating settings
+	    using this parameter:
+	  </PARA>
+	  <TABLE>
+	    <ROW>
+	      <DATA>Setting</DATA><DATA>Grating(s)</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>all</DATA>
+	      <DATA>No grating filter is applied.</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>none</DATA>
+	      <DATA>Only observations with no grating are returned.</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>letg</DATA>
+	      <DATA>Only LETG data is returned.</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>hetg</DATA>
+	      <DATA>Only HETG data is returned.</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>any</DATA>
+	      <DATA>Search for LETG or HETG observations.</DATA>
+	    </ROW>
+	  </TABLE>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="detail" type="string" def="basic">
+	<SYNOPSIS>Columns to display</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter controls the number of columns displayed
+	    when the download parameter is "none". The options are:
+	  </PARA>
+	  <TABLE>
+	    <ROW>
+	      <DATA>Setting</DATA><DATA>Columns</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>basic</DATA>
+	      <DATA>
+		obsid, sepn, inst, grat, time, obsdate, piname, target
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>obsid</DATA>
+	      <DATA>
+		obsid
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>all</DATA>
+	      <DATA>
+		obsid, sepn, inst, grat, time, 
+		rastr, decstr, 
+		obsdate, piname, target, ra, dec
+	      </DATA>
+	    </ROW>
+	  </TABLE>
+	  <PARA>
+	    and the description of the columns is given below:
+	  </PARA>
+	  <TABLE>
+	    <ROW>
+	      <DATA>Column</DATA><DATA>Description</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>obsid</DATA>
+	      <DATA>
+		The 
+		<!--
+		    <HREF link="http://cxc.harvard.edu/ciao/dictionary/obsid.html">Observation Id</HREF>
+		-->
+		Observation Id
+		for the observation.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>sepn</DATA>
+	      <DATA>
+		The separation, in arcminutes, between the
+		<!--
+		    <HREF link="http://cxc.harvard.edu/ciao/faq/aimpoint.html">aim point</HREF>
+		-->
+		aim point
+		of the observation and the search location.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>inst</DATA>
+	      <DATA>
+		The instrument used in the observation, one of
+		ACIS-S, ACIS-I, HRC-S, or HRC-I.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>grat</DATA>
+	      <DATA>
+		Thr grating used in the observation, one of
+		NONE, LETG, or HETG.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>time</DATA>
+	      <DATA>
+		The exposure time of the observation, in kiloseconds.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>rastr</DATA>
+	      <DATA>
+		The RA of the aim point of the observation, using h:m:s
+		format (J2000).
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>decstr</DATA>
+	      <DATA>
+		The Declination of the aim point of the observation, using d:m:s
+		format (J2000).
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>obsdate</DATA>
+	      <DATA>
+		The date of the observation. When the detail level is basic then this
+		contains just the day of the observation; the time is included when
+		the detail level is all.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>piname</DATA>
+	      <DATA>
+		The surname of the Principal Investigator for the observation.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>target</DATA>
+	      <DATA>
+		The target name.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>ra</DATA>
+	      <DATA>
+		The RA of the aim point of the observation, in decimal degrees.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>dec</DATA>
+	      <DATA>
+		The Declination of the aim point of the observation, in decimal degrees.
+	      </DATA>
+	    </ROW>
+	  </TABLE>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="mirror" type="string" def="">
+	<SYNOPSIS>Use this instead of the CDA FTP site</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The default FTP site used to download data is the Chandra
+	    Data Archive. 
+	    If the mirror parameter site is set then this is taken
+	    to be the address of the mirror site to use,
+	    otherwise if the &cdaenv; environment
+	    variable is set then this is used, otherwise the
+	    default setting (the Chandra Data Archive) is used.
+	    If the observation is not found at
+	    the mirror site then the script will skip it (i.e. it does not
+	    try the CDA site).
+	  </PARA>
+          <PARA>
+            The mirror location should include the URL of the FTP site
+            (the leading ftp:// is required) and the path up to, but not including,
+            the byobsid/ directory. So, for the Chandra Data Archive itself
+            you would use
+            <EQUATION>ftp://cdaftp.cfa.harvard.edu/pub</EQUATION>
+            (although obviously in this case you do not need to use the mirror
+            option).
+            Please see the documentation for the mirror site to find out
+            the correct path to use.
+          </PARA>
+          <PARA>
+            If needed, you can include a username and password in the mirror
+            setting, following 
+            <HREF link="http://tools.ietf.org/html/rfc3986">RFC3986</HREF>,
+            for instance
+            <EQUATION>ftp://anonymous:foo@bar.com@cdaftp.cfa.harvard.edu/pub</EQUATION>
+          </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+	<SYNOPSIS>
+	  Verbose level
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If set to 0 then there will be no screen output
+	    apart from error messages. The default setting
+	    of 1 is intended for most users; a value of 2 will display
+	    the position found for the name when the dec argument is
+	    empty.
+	    Higher levels are
+	    mainly useful for debugging (e.g. when reporting a problem to
+	    to the CXC HelpDesk).
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+    </PARAMLIST>
+
+    <ADESC title="Parameter handling">
+      <PARA>
+	This script has a default mode setting of "h", rather than the usual
+	"ql", so that you can say:
+      </PARA>
+<VERBATIM>
+&pr; &tool; 234.568 -23.24
+&pr; &tool; "1h 33m 50s" "30d 39' 40"
+&pr; &tool; m101
+</VERBATIM>
+      <PARA>
+        without having to be prompted for an declination (when using just
+        a name), or having to clear out previous values.
+	It does mean that it is an error to call the script without
+	either a position or object name on the command line
+	(i.e. you will not be prompted
+	for these arguments).
+      </PARA>
+      <PARA>
+	Use pset 
+        if you wish to permanently set options, for instance to set 
+        instrument to acis to exclude HRC observations.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.7.1 (December 2014) release">
+      <PARA title="Support for searching by ObsId">
+	If a single argument is given and it is an integer in the
+	range 1 to 65535, then it is first checked against the 
+	Chandra Data Archive and, if it matches an existing ObsId,
+	then its position is used, otherwise it is passed to the
+	name server.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.4 (August 2013) release">
+      <PARA title="Support for CDA mirror sites">
+	The mirror parameter and support for the
+	&cdaenv; environment variable 
+	has been added to allow data access from a
+	mirror of the Chandra Data Archive site.
+      </PARA>
+      <PARA title="Screen output">
+        A minor change to the screen output when no matches are found
+        (the search position is now included in the message).
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+	See the
+	<HREF link="http://cxc.harvard.edu/ciao/bugs/find_chandra_obsid.html">bugs page
+	for this script</HREF> on the CIAO website for an up-to-date
+	listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

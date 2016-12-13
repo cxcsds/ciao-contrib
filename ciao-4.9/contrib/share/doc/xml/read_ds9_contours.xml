@@ -1,0 +1,122 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="read_ds9_contours" context="contrib"
+         refkeywords="read_ds9_contour read ds9 contours con contour *.con"
+         seealsogroups="ds9.utils">
+
+    <SYNOPSIS>
+      Read in the contours from a ds9 *.con file with optional coordinate conversion.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>(xs, ys) = read_ds9_contours(filename [, coords=None, fromsys=None, tosys=None])</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	This routine reads in the contours from a DS9 *.con file
+	and returns the x and y coordinates of each component as a
+	separate numpy array. If the coords, fromsys and tosys arguments
+	are given then they are used to convert the values to a
+	different coordinate system (e.g. if the values were written out
+	in WCS but you wish to use the sky system).
+      </PARA>
+
+      <PARA>
+	The 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/add_ds9_contours.html">add_ds9_contours routine</HREF>
+	from the chips_contrib.utils
+	module can be used to display a DS9 contour file in ChIPS.
+      </PARA>
+
+      <PARA title="Loading the routine">
+	The routine can be loaded into a ChIPS or Sherpa session by saying:
+      </PARA>
+<VERBATIM>
+from crates_contrib.utils import *
+</VERBATIM>
+
+      <PARA title="Coordinate conversion">
+	To convert the coordinate values form the file then
+	coords should be either the name of an image file or
+	a crate containing an image and the fromsys and tosys
+	arguments determine what systems to use:
+      </PARA>
+      <TABLE>
+	<CAPTION>The fromsys and tosys arguments</CAPTION>
+	<ROW><DATA>Value</DATA><DATA>Description</DATA></ROW>
+	<ROW><DATA>"world" or "eqpos"</DATA><DATA>The WCS coordinate systems supported by CIAO</DATA></ROW>
+	<ROW><DATA>"physical" or "sky"</DATA><DATA>The physical coordinate system</DATA></ROW>
+	<ROW><DATA>"logical" or "image"</DATA><DATA>The logical coordinate system</DATA></ROW>
+      </TABLE>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<DESC>
+<VERBATIM>
+(xs, ys) = read_ds9_contours("ds9.con")
+add_image("image.fits")
+for i in range(0, len(xs))
+    add_line(xs[i], ys[i], ["color", "green"])
+
+</VERBATIM>
+       
+	  <PARA>
+	    Here we read in the contours stored in the file ds9.con and then
+	    add them onto a ChIPS image as green lines. See the
+	    add_ds9_contours() routine from chips_contrib.utils for a
+	    way to automate this.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; (xs, ys) = read_ds9_contours("ds9.con", "img.fits", "world", "sky")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here the contour coordinates are read in and then converted from
+	    WCS to SKY coordinates using the coordinate axes in the 
+	    image file img.fits.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Notes">
+      <PARA title="Coordinate-system support">
+	The coordinate-transform code has been written and tested for use with images
+	created by CIAO tools. Please
+	let the
+	<HREF link="http://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	know if it does not work for your image file(s).
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.2 (April 2013) release">
+      <PARA>
+	The routine now works when asked to convert between
+	coordinate systems (this removes the "Input must be a 2D array"
+	error message introduced with CIAO 4.5).
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+ 
+    <LASTMODIFIED>April 2013</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

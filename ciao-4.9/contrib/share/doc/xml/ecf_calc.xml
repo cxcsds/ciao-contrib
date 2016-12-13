@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY upr  "unix&#37;">
+  <!ENTITY cltool "ecf_calc">
+]>
+
+<cxchelptopics>
+  <ENTRY key="&cltool;" context="tools"
+	 refkeywords="ecf eef encircled counts fraction frac psf
+	 psffrac radius &cltool;"
+	 seealsogroups=""
+	 displayseealsogroups="">
+    
+    <SYNOPSIS>
+       Obtain the encircled counts fraction of an object as a function
+       of radius.
+    </SYNOPSIS>
+    
+    <DESC> 
+      <PARA>
+	The &cltool; tool takes an input event file (including
+	ChaRT/MARX simulations), or image file and extracts the
+	Encircled Counts Fraction (ECF).  The ECF is the integrated
+	fraction of the total number of counts (i.e. integrated flux)
+	as a function of radius from the input position.  The output
+	is the radii at which the desired input ECFs are met.  By
+	definition, ECF=100% at the input radius.  
+      </PARA>
+
+      <PARA>
+	The output radii are saved to the output file and can be
+	plotted optionally with ChIPS when plot=yes.  
+      </PARA>
+
+      <PARA>
+	The ECF data can be used to compare observed data with the
+	point spread function (PSF) to search for extent.
+      </PARA>      
+    </DESC>
+    
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; &cltool; infile=hrcf13182_evt2.fits outfile=ecf.fits radius=13 xpos=16405.337 ypos=16500.457 binsize=0.2</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    An events file with a source located at the sky
+	    coordinates (16405.33,16500.457) returns a ECF profile for a
+	    circular region of 13 sky pixels for an image binned with
+	    pixel size equal to 0.2.  
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; &cltool;
+	  hrcf13182_evt2.fits ecf.fits 13 16405.337 16500.457 0.2 plot=yes</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The same example as above, except the profile will be
+	    plotted with ChIPS.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; &cltool; psf.img ecf_psf.fits radius=12
+	  xpos=4162.7138 ypos=3688.3056 binsize=1</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    An image of a PSF is input and the ECF profile is computed
+	    around the input sky coordinates.  Note that image files
+	    require binning with an integer value.    
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes" stacks="no">
+	<SYNOPSIS>
+	  Input file
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    An event file (observed of simulated) or image file.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+	<SYNOPSIS>
+	  Output file
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    Output file name that will contain "fraction" and
+	    radius ("r_mid") columns of the profiles.  If possible, a transform
+	    from pixel radii to angular radii will be available. 
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="radius" type="real" def="20" min="0" reqd="yes">
+	<SYNOPSIS>
+	  Extraction radius
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    Radius of the extraction region in pixels.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="xpos" type="real" def="4096.5" min="0" reqd="yes">
+	<DESC>
+	  <PARA>
+	    The x-position of the source in sky coordinates.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="ypos" type="real" def="4096.5" min="0" reqd="yes">
+	<DESC>
+	  <PARA>
+	    The y-position of the source in sky coordinates.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="binsize" type="real" def="1.0" min="0" reqd="yes">
+	<SYNOPSIS>
+	  Image binning factor
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The binning factor has units of pixels, where the value
+	    need not be an integer for an events file, and may be be
+	    less than 1.  For image files, the binning factor must be
+	    integer-valued.    
+	  </PARA>
+	</DESC>
+      </PARAM>    
+
+      <PARAM name="fraction" type="string"
+	    def="0.01,0.025,0.05,0.075,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.85,0.9,0.95,0.99"
+	    reqd="yes" stacks="yes">
+	<SYNOPSIS>
+	  Encircled counts fraction.
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    The set of encircled energy fractions to determine
+	    radii.  This can be specified using any of the stack
+	    syntax, including lgrid() or just a comma separated list
+	    (or just a single value).  If unspecified - either with "",
+	    None, or Indef - the ECFs will
+	    automatically be determined using a set of binsize-spaced radii.    
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="plot" type="boolean" def="yes" reqd="no">
+	<DESC>
+	  <PARA>
+	    Display encircled counts fraction profile.  The user will
+	    be prompted to exit.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no" reqd="no">
+	<DESC>
+	  <PARA>
+	    Specifies if an existing output file should be
+	    overwritten.
+	  </PARA>
+	</DESC>
+      </PARAM>
+    </PARAMLIST>
+      
+    
+<!--//    <ADESC title="Changes in the December 2012 release">
+      <PARA>
+	The script is new for in CIAO 4.5.
+      </PARA>
+    </ADESC> //-->
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+<!--//    
+    <BUGS>
+      <PARA>
+	See the
+	<HREF link="http://cxc.harvard.edu/ciao/bugs/&cltool;.html">bugs page
+	for this script</HREF> on the CIAO website for an up-to-date
+	listing of known bugs. 
+      </PARA>
+    </BUGS>
+//-->    
+    <LASTMODIFIED>March 2014</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

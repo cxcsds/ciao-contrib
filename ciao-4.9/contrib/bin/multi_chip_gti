@@ -1,0 +1,213 @@
+#! /usr/bin/env python
+
+#
+# Copyright (C) 2013-2014,2016 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+from __future__ import print_function
+
+
+
+toolname = "multi_chip_gti"
+__revision__ = "13 Sep 2016"
+
+import os
+import sys
+
+
+import ciao_contrib.logger_wrapper as lw
+lw.initialize_logger(toolname)
+lgr = lw.get_logger(toolname)
+verb0 = lgr.verbose0
+verb1 = lgr.verbose1
+verb2 = lgr.verbose2
+verb3 = lgr.verbose3
+verb5 = lgr.verbose5
+
+from ciao_contrib.runtool import make_tool
+
+def input_order( infile, todo ):
+    """
+    Get the order of the CCDs in the subspace from the input.
+    
+    This is important since ONTIME/LIVETIME/EXPOSURE are taken
+    from the *first* GTI, ie the first CCD in the subspace.  
+    """
+    
+    from pycrates import read_file
+    tab = read_file(infile)
+    
+    ret_order = []
+    ii = 0
+
+    # Ugh.  Wish there was a better way to get the number of 
+    # subspace components.
+    while True:
+        try:
+            ii = ii+1
+            subspace = tab.get_subspace_data( ii, "ccd_id")
+        except Exception as e:
+            break
+    
+        for lo,hi in zip( subspace.range_min, subspace.range_max+1):
+            for ccd in range( lo, hi ):
+                if ccd in ret_order:
+                    verb0("Warning: It looks like CCD_ID={} is in multiple subspace components.  This might mess up the ONTIME/LIVETIME/EXPOSURE keywords".format(ccd))
+                else:
+                    # Only add once
+                    ret_order.append( ccd )
+
+    verb2("Based on the input file, the order of CCDs will be {}".format(ret_order))
+    t2 = dict(todo)
+    # Only include ccds that are in the infile subspace already
+    todo = [(x,t2[x]) for x in ret_order if x in t2 ]
+    
+    return todo
+
+
+def make_tempfile( tmpdir, suffix):
+    """
+    Create a temp file that will get cleaned up at end, always
+    """
+    from tempfile import NamedTemporaryFile
+
+    class DelMe(str):    
+        # Trick to make sure temp files are always deleted.  
+        # As long as filename is passed around file will remain.
+        # when filename goes away, garbage collection will delete it
+        #
+        def __del__( self ):
+            todel = self.__str__().split("[")[0]  # may have a DM filter
+            todel = todel.strip("@-").strip("@+").strip("@") # may be a stack
+            if os.path.exists( todel ):
+                os.remove(todel)
+
+    tmp  = NamedTemporaryFile( dir=tmpdir, suffix=suffix)
+    outfile = DelMe(tmp.name) # make sure it gets cleaned up
+    tmp.close()
+
+    #
+    # FWIW: There is a race condition here.  From the time the
+    # tempfile is closed (or goes out of scope) until the tool 
+    # actually opens/creates it, the same tempfile name could be
+    # generated again (say by another process).
+    #
+    # Try to keep creation of temp file as close as possible to
+    # actual tool exec to minimize probability.
+    #
+    return outfile
+
+
+def prep_infile( cf, tmpdir ):    
+    """
+    Create a copy of the input gti file that now has a CCD_ID subspace
+    """
+    ccd = cf[0]
+    infile = cf[1]
+
+    verb2("Processing input GTI file {}".format(infile))
+
+    dmtcalc = make_tool("dmtcalc")
+    dmcopy = make_tool("dmcopy")
+
+    # Add CCD_ID column, value is irrelevant
+    tmp1 = make_tempfile( tmpdir, "dmtcalc_{}.gti".format(ccd))
+    dmtcalc( infile, tmp1, expression="CCD_ID=-999", clobber=True)
+
+    # Filter on actual CCD_ID
+    tmp2 = make_tempfile( tmpdir, "dmcopy_{}.gti".format(ccd))
+    dmcopy( "{}[ccd_id={}]".format( tmp1, ccd ), tmp2, clobber=True)
+
+    # Remove CCD_ID column, subspace remains
+    outfile = make_tempfile( tmpdir, "dmcopy_{}.gti".format(ccd))
+    dmcopy( "{}[cols -ccd_id]".format( tmp2 ), outfile, clobber=True)
+    
+    return outfile
+
+
+def merge_files( infiles, outfile ):
+    """
+    Merge the files together to combine the subspaces
+    """
+    verb2("Combining GTIs")
+
+    dmmerge = make_tool( "dmmerge")
+    dmmerge( infiles, outfile, clobber=True, lookupTab="")
+    return outfile
+    
+
+def not_none( ccd_fname ):
+    """
+    Check for none or blank file name
+    """
+    fname = ccd_fname[1]
+    if not fname:
+        return False
+    if fname.lower() in ["", "none"]:
+        return False
+    return True
+
+
+#
+# Main Routine
+#
+@lw.handle_ciao_errors( toolname, __revision__)
+def main():
+    # get parameters
+    from ciao_contrib.param_soaker import get_params
+    from ciao_contrib.runtool import add_tool_history
+    from ciao_contrib._tools.fileio import outfile_clobber_checks
+
+    ccds = ["i0", "i1", "i2", "i3", "s0", "s1", "s2", "s3", "s4", "s5"]
+
+    # Load parameters
+    pars = get_params(toolname, "rw", sys.argv, 
+                verbose={"set":lw.set_verbosity, "cmd":verb1} )
+
+    outfile_clobber_checks(pars["clobber"], pars["outfile"] )
+
+    # Load *_gti parameters
+    fnames = [ pars["{}_gti".format(x)] for x in ccds ]
+    
+    # Determine which parameters are not "none" or blank
+    todo = [x for x in enumerate(fnames) if not_none(x)] 
+
+    # Re-order ccds based on input file (if any)
+    if not_none( (None, pars["infile"] )):
+        todo = input_order( pars["infile"], todo )
+
+    # Add ccd suspace to files
+    infiles = [prep_infile(t,pars["tmpdir"]) for t in todo ] 
+
+    # Merge files
+    merge_files( infiles, pars["outfile"] )
+    add_tool_history( pars["outfile"], toolname, pars, toolversion=__revision__)
+
+    # Fin!
+    verb1("Created output filter file '{}'".format(pars["outfile"]))
+    if not_none( (None, pars["infile"] )):
+        verb1("\nIt can be used like:")
+        verb1("dmcopy '{}[@{}]' filtered_events.fits".format( pars["infile"], pars["outfile"]))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as E:
+        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+  

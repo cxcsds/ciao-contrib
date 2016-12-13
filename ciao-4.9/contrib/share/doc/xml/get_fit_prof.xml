@@ -1,0 +1,99 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="get_fit_prof" context="contrib" pkg="sherpa"
+	 refkeywords="profile circular elliptical radial ellipse plot plotting fit data model"
+	 seealsogroups="sh.plot sh.profile">
+
+    <SYNOPSIS>
+      Return the data used to create the radial or elliptical profile of fits to imaging data.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>get_fit_prof( [id], [model=None,
+      rstep=None, rmin=None, rmax=None, rlo=None, rhi=None,
+      xpos=None, ypos=None, ellip=None, theta=None,
+      group_counts=None, group_snr=None,
+      recalc=True] )</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The get_fit_prof() command calculates the radial - or elliptical - profile of 
+	the imaging data and returns an object containing the values.
+	The profile is defined by the existing model
+	compenents, although it is possible to over-ride these values.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.profiles import *
+</VERBATIM>
+
+      <PARA title="Argument options">
+        The argument options are the same as for the prof_fit() command -
+	except that the overplot and label arguments are not supported - 
+        and are described in its ahelp page. 
+      </PARA>
+
+      <PARA title="Fields returned by get_fit_prof">
+	The get_fit_prof() call returns an object which contains dataplot
+	and modelplot fields. These values can be seen by
+	using the print command, as shown below. See the
+	ahelp file for get_data_prof() and get_model_prof() for
+	a description of the contents of these fields.
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; d = get_fit_prof(rstep=10)</LINE>
+	  <LINE>&pr; print (d.dataplot)</LINE>
+	  <LINE>&pr; print (d.modelplot)</LINE>
+	</SYNTAX>
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; d10 = get_fit_prof(group_snr=10)</LINE>
+          <LINE>&pr; d = d10.dataplot</LINE>
+          <LINE>&pr; m = d10.modelplot</LINE>
+          <LINE>&pr; erase()</LINE>
+          <LINE>&pr; add_histogram(d.xlo, d.xhi, d.y, d.yerr, ["line.style", "none", "symbol.style", "square"])</LINE>
+          <LINE>&pr; add_histogram(m.xlo, m.xhi, m.y, ["line.color", "red"])</LINE>
+          <LINE>&pr; set_plot_xlabel(d.xlabel)</LINE>
+          <LINE>&pr; set_plot_ylabel(d.ylabel)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The commands above produce a plot similar to that created by a call to
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; prof_fit(group_snr=10)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+	   
+    </QEXAMPLELIST>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>December 2009</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

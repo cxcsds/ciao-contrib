@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY key="acis_clear_status_bits"
+	 context="tools" 
+	 refkeywords="acis bpix bpix1 bad pixel badpixel badpix change flip
+		      clear clean status bit bits afterglow flare removal
+		      chandra_repro repro reprocessing acis_process_events pipeline
+		      " 
+	 seealsogroups="acistools">
+
+    <SYNOPSIS>Clear (set to 0) ACIS status bits before reprocessing with acis_process_events</SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>acis_clear_status_bits evtfile</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	This script clears out several ACIS status bits that are set
+	by the Chandra pipeline and that need to be cleared before
+	using acis_process_events. This is needed to support the
+	bad-pixel/afterglow pipeline. Please see
+	the
+	<HREF link="http://cxc.harvard.edu/ciao/threads/createL2/">Reprocessing
+	Data to Create a New Level=2 Event File</HREF>
+	thread for more information.
+      </PARA>
+
+      <PARA>
+	Unlike most CIAO scripts and tools, this script does not
+	have a parameter file as there is only one argument,
+	the file name of the event file to change. This change
+	happens "in place", so ensure you either have a backup copy of the event file,
+	or can re-create it, before using this script.
+      </PARA>
+      
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>unix% acis_clear_status_bits evt1.fits</LINE>
+	  <LINE>unix% dmkeypar evt1.fits CLSTBITS echo+</LINE>
+	  <LINE>11111111011000000011111111000001</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The status bits are cleared from the file evt1.fits. The
+	    CLSTBITS keyword is described in the "What bits are cleared?"
+	    section below.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <ADESC title="What bits are cleared?">
+      <PARA>
+	The ACIS status column is a 32-bit value. This scripts clears
+	- sets to 0 - bit numbers 1 to 5, 14 to 20, and 23.
+	The numbering here matches that used in the
+	<HREF link="http://cxc.harvard.edu/ciao/dictionary/status.html">Status dictionary
+	entry</HREF> on the CIAO web site.
+      </PARA>
+      <PARA>
+	The scripts adds the CLSTBITS keywords to the file, with 
+	a value showing the bit mask that was and-ed against each
+	entry (so 0 means the bit was cleared and 1 means that the
+	initial setting is retained). The example above shows
+	the value used for this keyword.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.6 (September 2014) release">
+      <PARA title="Invalid CLSTBITS keyword on 32-bit machines">
+	The CLSTBITS keyword is now correct on 32-bit machines.
+	This problem only affected this header keyword; the 
+	STATUS column changes were correct.
+      </PARA>
+      <PARA>
+	The invalid keyword setting was:
+      </PARA>
+<VERBATIM>
+CLSTBITS= '-100111111100000000111111' / 0 means clear STATUS bit
+</VERBATIM>
+      <PARA>
+	which is now:
+      </PARA>
+<VERBATIM>
+CLSTBITS= '11111111011000000011111111000001' / 0 means clear STATUS bit
+</VERBATIM>
+
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/acis_clear_status_bits.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+	listing of known bugs.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>September 2014</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

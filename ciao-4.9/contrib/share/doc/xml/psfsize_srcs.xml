@@ -1,0 +1,362 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY key="psfsize_srcs" context="tools"
+         refkeywords="psf chandra point spread function prf size fraction energy bands ecf eef enclosed circle coordinates"
+         seealsogroups="psftools"
+         displayseealsogroups="" >
+    <SYNOPSIS>
+        Compute the size of a circle enclosing a specified fraction of PSF.
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+            `psfsize_srcs' will compute the size of a circle
+            that encloses the specified fraction of the PSF 
+            at the specified energy for each of the input positions.            
+        </PARA>
+    
+        <PARA>
+            Users input a position as either a single RA/Dec pair or provide 
+            a table
+            with RA and Dec columns.  ASCII files can be used as long as
+            they are readable by the DM ASCII kernel. (see ahelp dmascii).
+            The header keyword information in the infile is used
+            to convert the RA and Dec values to mirror coordinates (theta and
+            phi) which are used together with the energy and ecf parameters
+            to determine the output circle size.
+        </PARA>
+        <PARA>
+            The output file is an ASC-FITS-REGION format file with 
+            that can be used as input to other CIAO tasks or 
+            ds9 can be used to display the regions.
+        </PARA>
+
+    
+    </DESC>
+    
+    <QEXAMPLELIST>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>psfsize_srcs evt.fits "10:04:33.8 +41:12:34" myout.fits energy=broad ecf=0.9</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>            
+                This is an example where the tool computes a circle whose radius
+                encloses 90% of the PSF at 2.3 keV (CSC 'broad' band energy) for
+                the specified RA/Dec value.  The information in the evt.fits
+                file is used to setup the coordinate transforms from 
+                RA/Dec to mirror coordinates (theta and phi).  The output
+                file will contain an ASC-FITS-REGION file with a
+                SHAPE, X, Y, R column.  X, Y, and R are all returned in
+                physical pixels.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>psfsize_srcs evt.fits "151.1410079341,41.2096249008" myout.fits energy=1.0 ecf=0.9</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>            
+                This example we now specify the energy explicitly as 1.0 keV
+                and use decimal degrees rather than sexagesimal notation.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>psfsize_srcs evt.fits "wavdetect.fits" myout.fits energy=wide ecf=0.68</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>            
+                In this example the pos parameter is now specified as a file name,
+                in this case the source list output from wavdetect.  Since it has
+                RA and Dec columns they will be used.  The size of the
+                circle will enclose 68% of the PSF fraction at the
+                Chandra Source Catalog's 'wide' band energy of 1.5keV.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>psfsize_srcs evt.fits "csc_output.tsv[opt kernel=text/tsv]" myout.fits energy=broad ecf=0.50</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>            
+                ASCII files can also be input if they are compatible with
+                the DM ASCII kernel.  In this example we use an output from
+                the Chandra Source Catalog stored in tab-separated-value format
+                (TSV).  This format requires the user specify the 
+                kernel option as shown.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>    
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+        <PARAM name="infile" type="file" reqd="yes" filetype="input" stacks="no">
+            <SYNOPSIS>Input image or event file</SYNOPSIS>
+            <DESC>
+                <PARA>
+                  The header keywords in the infile file are used to
+                  setup all the coordinate transforms needed to go from
+                  celestial coordinates to mirror coordinates.  The
+                  following keywords need to be present:
+
+                </PARA>
+                <PARA>
+                INSTRUME, DETNAM,  RA_NOM, DEC_NOM, RA_PNT, DEC_PNT, ROLL_PNT, 
+                SIM_X*, SIM_Y*, SIM_Z*, DY_AVG*, DZ_AVG*, DTH_AVG*, 
+                FIRSTROW**, NROWS**
+                </PARA>
+
+                <PARA>
+                * are optional, but should be present to get accurate
+                estimates of the CHIP coordinates.  They do not
+                affect mirror coordinates nor the output size.  ** are
+                also optional.  If they are not present, eg for HRC
+                datasets, then the output "near_chip_edge" may be
+                inaccurate for ACIS subarray datasets.
+                </PARA>
+                
+
+                <PARA>
+                The input file should not be a merged event file or
+                co-added image.  In particular the *_NOM and *_PNT 
+                values of those products may be insufficient to 
+                get the information needed for the coordinate transforms.
+                </PARA>
+
+            </DESC>        
+        </PARAM>
+    
+        <PARAM name="pos" type="string" reqd="yes" def="" stacks="no" units="J2000">
+          <SYNOPSIS>RA and Dec value or filename with RA and Dec values </SYNOPSIS>
+          <DESC>
+             <PARA>
+
+            The input position must be in celestial coordinates.  It can either be
+            input as an RA/Dec pair, or as a filename.
+                </PARA>
+                <PARA title="Single Set of Values">
+                If a single RA/Dec value pair is input, then they 
+                can be in either decimal degrees or in 
+                sexagesimal format.  Positive declinations expressed in
+                sexagesimal format must include the "+" sign.  Decimal degrees should 
+                be separated by a comma.
+                </PARA>
+                
+                <TABLE>
+                  <ROW>
+                    <DATA>Good</DATA>
+                    <DATA>Bad</DATA>
+                  </ROW>   
+                  <ROW>
+                    <DATA>10:04:33.8 +41:12:34</DATA>
+                    <DATA>10:04:33.8 41:12:34</DATA>
+                  </ROW>
+                  <ROW>
+                    <DATA>10 04 33.8 +41 12 34</DATA>
+                    <DATA>10 04 33.8 41 12 34</DATA>
+                  </ROW>
+                  <ROW>
+                    <DATA>151.1410079341,41.2096249008</DATA>
+                    <DATA>151.1410079341 41.2096249008</DATA>
+                  </ROW>
+                  <ROW>
+                    <DATA>151.1410079341,41.2096249008</DATA>
+                    <DATA>10 04 33.8,41.2096249008</DATA>
+                  </ROW>
+                </TABLE>
+                
+                <PARA title="Filename">
+                If a filename is specified, the tool will look for
+                the columns named "RA" and "DEC".  If they do not
+                exist, the first two columns in the file are used.
+                Columns may be renamed on the fly using DM virtual
+                file syntax.  The following examples are all valid file names
+                </PARA>
+<VERBATIM>
+wavdetect.fits
+some_catalog.fits[cols ra=ra_j2000,dec=dec_j2000]
+some_catalog.txt[flux=1e-5]
+cscview_output.tsv[opt kernel=text/tsv]
+</VERBATIM>
+
+
+          </DESC>
+                
+        </PARAM>
+    
+
+        <PARAM name="outfile" type="file" reqd="yes" def="" stacks="no" filetype="output">
+          <SYNOPSIS>The output file name</SYNOPSIS>
+          <DESC>
+            <PARA>
+            The output file is an ASC-FITS-REGION format file that
+            contains the output source size in the "R" (radius) column.
+            As is the convention, the units of the X, Y, and R columns
+            are stored in physical pixels.  The SHAPE column is 
+            always a 'circle' and the COMPONENT number is simply a
+            integer going from 1 to N, where N is the number of input
+            positions.
+          </PARA>
+          <PARA>
+            The following columns are also created representing the
+            various coordinate transforms:
+          </PARA>
+            <LIST>
+              <ITEM>RA and DEC : original location expressed in decimal degrees</ITEM>
+              <ITEM>THETA and PHI : off axis angle away from and around the optical axis</ITEM>
+              <ITEM>DETX and DETY : Chandra Focal Plane coordinates</ITEM>
+              <ITEM>CHIP_ID, CHIPX, CHIPY : Chandra instrument coordinates.  If the optional
+              SIM keywords are missing from the infile, these coordinates will not
+              be accurate.</ITEM>
+            </LIST>
+
+
+          </DESC>
+        
+        </PARAM>
+        <PARAM name="energy" type="string"  def="broad" stacks="no">
+          <SYNOPSIS>Single energy or CSC energy band</SYNOPSIS>
+          <DESC>
+            <PARA>
+            A single energy value or the name of a single energy band may
+            be input.
+            </PARA>          
+                    
+	  <PARA title="Band names">
+	    The following names - based on the definitions from the
+	    <HREF link="http://cxc.harvard.edu/csc/columns/ebands.html">Chandra Source Catalog</HREF>
+	  </PARA>
+	  <TABLE>
+	    <ROW>
+	      <DATA>Band name</DATA><DATA>Effective Energy [keV]</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>broad</DATA><DATA>2.3</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>soft</DATA><DATA>0.92</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>medium</DATA><DATA>1.56</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>hard</DATA><DATA>3.8</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>ultrasoft</DATA><DATA>0.4</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>wide</DATA><DATA>1.5</DATA>
+	    </ROW>
+
+	  </TABLE>
+
+    <PARA title="Single Energy">
+    Alternatively, any single monochromatic energy, in keV can be specified.
+    The value should be between 0.2 and 10.0 keV.    
+    </PARA>
+            
+          </DESC>
+        </PARAM>
+
+
+        <PARAM name="ecf" type="real"  def="0.9" stacks="no" min="0.0" max="0.999">
+          <SYNOPSIS>Fraction of PSF to enclose</SYNOPSIS>
+          <DESC>
+            <PARA>
+            The output region will contain a circle region that
+            encloses this fraction of the PSF.    The PSF technically has
+            infinite extent so a value of 1.0 would create an infinitely
+            large region.  Typical values will be 0.5 (50%, ie FWHM), 0.68 (68%, ie 1
+            sigma), and 90%.  
+            </PARA>
+          
+          </DESC>
+        
+        </PARAM>
+        <PARAM name="psffile" type="file" filetype="input"  def="CALDB" stacks="no">
+          <SYNOPSIS>The PSF calibration file name</SYNOPSIS>
+          <DESC>
+            <PARA>
+                The name of the Chandra Radially Encircle Energy Fraction
+                calibration file.  The default, 'CALDB', will signal the
+                tool to look for the file in the Chandra Calibration Database.
+            </PARA>
+          </DESC>
+        
+        </PARAM>
+        <PARAM name="verbose" type="integer"  def="0" min="0" max="5">
+          <SYNOPSIS>Tool chatter level</SYNOPSIS>
+          <DESC>
+            <PARA>
+          Controls the amount of information tool prints to the screen.
+            </PARA>
+          </DESC>
+        
+        </PARAM>
+        <PARAM name="clobber" type="boolean"  def="no" >
+          <SYNOPSIS>Remove outfile if it already exists?</SYNOPSIS>        
+        </PARAM>
+    
+    
+    </PARAMLIST>
+
+
+    <ADESC title="Changes in CIAO 4.7.2 (April 2015) release">
+      <PARA>
+        Standard HISTORY records have been added for this tool.  
+        There is also a correction for the "near_chip_edge" 
+        calculation for ACIS subarray datasets.
+      </PARA>
+    
+    </ADESC>
+
+
+    <ADESC title="Caveats">
+        <PARA title="REEF File Calibration Approximations">
+
+            The Chandra point spread function varies significantly
+            across the field of view and also as a function of energy.
+            It becomes highly elliptical and contains many sharp
+            features that makes providing an accurate 2D analytic model 
+            impossible.    The
+            The calibration file used, the REEF (radially enclosed energy
+            fraction) file, was created assuming a flat detector.  This is 
+            accurate for HRC and for ACIS-7, but the other ACIS CCDs are 
+            tilted and cause additional asymetries.
+                    
+        </PARA>
+    </ADESC>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+ 
+    <LASTMODIFIED>March 2015</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

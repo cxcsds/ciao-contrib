@@ -1,0 +1,297 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="estimate_weighted_expmap" context="contrib" pkg="sherpa"
+	 refkeywords="estimate mkexpmap exposure expmap mkinstmap instmap instrument map imap spectrumfile spectral weight weights fluxtype"
+	 seealsogroups="sh.wgts" displayseealsogroups="sh.arf sh.calc">
+
+    <SYNOPSIS>
+      Return the estimated exposure map value by weighting an ARF
+      by a spectral model.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>estimate_weighted_expmap( id=None, arf=None, elo=None, ehi=None, specresp=None, fluxtype="photon", par=None, pvals=None )</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The estimate_weighted_expmap() command returns an estimate of the
+	weighted exposure map using the spectral model associated with
+	the dataset as the weighting function. The exposure map is estimated
+	by using an ARF; this can either be the ARF associated with the PHA
+	dataset or can be explicitly given, as a filename, crate, or set
+	of three arrays for the bin edges and bin value.
+      </PARA>
+
+      <PARA>
+	The routine can be used to estimate the exposure map with the current
+	set of model parameters, or it can be given an array of values for
+	a single parameter and return the exposure map for each
+	parameter value.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.utils import *
+</VERBATIM>
+
+      <TABLE>
+	<CAPTION>Arguments</CAPTION>
+	<ROW>
+	  <DATA>Name</DATA><DATA>Default value</DATA><DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>id</DATA>
+	  <DATA>None (which means use the value of get_default_id)</DATA>
+	  <DATA>Which dataset to use.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>arf</DATA>
+	  <DATA>None</DATA>
+	  <DATA>If given then this should be either the name of the ARF to read in
+	  or a crate containing the ARF (e.g. the return value of the read_file or
+	  read_arf commands).
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>elo</DATA>
+	  <DATA>None</DATA>
+	  <DATA>If arf is set to None then this argument is used to send in
+	  an array of the low-values of each bin, in keV. It should have the
+	  same number of elements as ehi and specresp.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ehi</DATA>
+	  <DATA>None</DATA>
+	  <DATA>If arf is set to None then this argument is used to send in
+	  an array of the high-values of each bin, in keV. It should have the
+	  same number of elements as elo and specresp.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>specresp</DATA>
+	  <DATA>None</DATA>
+	  <DATA>If arf is set to None then this argument is used to send in
+	  an array of the ARF value for each bin, in cm^2. It should have the
+	  same number of elements as elo and ehi.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>fluxtype</DATA>
+	  <DATA>"photon"</DATA>
+	  <DATA>The units for the return value are cm^2 count / &lt;fluxtype>. The 
+	  valid options for this argument are "photon" (the default) or "erg".
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>par</DATA>
+	  <DATA>None</DATA>
+	  <DATA>If not None, it should be a parameter of the source model
+	  which will be set to each entry in the pvals array.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>pvals</DATA>
+	  <DATA>None</DATA>
+	  <DATA>If par is not None then this defined the parameter values
+	  over which the exposure map is to be calculated.</DATA>
+	</ROW>
+      </TABLE>
+
+      <PARA title="Estimating the source flux">
+	If source_counts is the number of counts in the source, emap is the return value
+	of estimate_weighted_expmap(), and exposure is the exposure time in seconds, then
+	<EQUATION>source_counts / (exposure * emap)</EQUATION>
+	is an estimate of the source flux, with units of either
+	photon / cm^2 / s or
+	erg / cm^2 / s, depending on the value of the fluxtype argument.
+	This is only an estimate of the source flux, since it depends on how closely the
+	source resembles the model spectrum, as well as the energy range used and
+	how the background is estimated. For instance, the background is likely to have a significantly different
+	spectrum to the source, and the correction factor from counts to flux can
+	vary significantly (by 50% or more) with spectral shape.
+      </PARA>
+      
+      <PARA title="Note: no 'de-reddening'">
+	Note that the calculation above does not "de-redden" the source flux; if the
+	model includes Galactic absorption then you will want to account for this
+	in calculating the intrinsic flux of the source.
+      </PARA>
+
+      <PARA title="Estimating the sensitivity of the exposure map to the input spectrum">
+	The estimate_weighted_expmap() routine can be used to estimate
+	how sensitive the exposure map, and hence the flux conversion factor, is to
+	energy range or spectral model. As an example, if the source model is
+	a power law called "pl", with the parameter gamma, then the conversion factor
+	can be estimated for a range of gamma values:
+      </PARA>
+
+<VERBATIM>
+gamma_vals = np.arange(0.1,5,0.1)
+expmap_vals = estimate_weighted_expmap(par=pl.gamma, pvals=gamma_vals)
+add_curve(gamma_vals, expmap_vals)
+</VERBATIM>
+
+      <PARA>
+	The plot shows how the conversion factor (i.e. weighted exposure map)
+	value varies as gamma changes from 0.1 to 4.9.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; load_data("src.pi")</LINE>
+          <LINE>&pr; notice(0.5, 7)</LINE>
+          <LINE>&pr; set_source(xsphabs.gal * xsmekal.clus)</LINE>
+          <LINE>&pr; gal.nh = 0.45</LINE>
+          <LINE>&pr; clus.kt = 2</LINE>
+          <LINE>&pr; clus.abundanc = 0.5</LINE>
+          <LINE>&pr; plot_instmap_weights()</LINE>
+          <LINE>&pr; estimate_weighted_expmap()</LINE>
+          <LINE>531.66632</LINE>
+          <LINE>&pr; estimate_weighted_expmap(fluxtype="erg")</LINE>
+          <LINE>1.722337e+11</LINE>
+          <LINE>&pr; clus.kt = 5</LINE>
+          <LINE>&pr; estimate_weighted_expmap()</LINE>
+          <LINE>487.28174</LINE>
+          <LINE>&pr; estimate_weighted_expmap(fluxtype="erg")</LINE>
+          <LINE>1.1962892e+11</LINE>
+	</SYNTAX>
+	<DESC>
+
+          <PARA>
+	    A dataset is loaded, an energy range chosen, and a spectral model set up.
+	    The plot_instmap_weights() call is used to show what the weights look like,
+	    and then the estimate_weighted_expmap() call is used to estimate the
+	    exposure map for two different model parameters (kT = 2 keV and then
+	    kT = 5 keV).
+	    The first calculation for each parameter value calculates a value with
+	    units of cm^2 count / photon (with values around 500), and the
+	    second call calculates a value of cm^2 count / erg (values around 1e11).
+	    The values were calculated using the ARF that was read in with the
+	    data file (i.e. given by the ANCRFILE keyword in the file src.pi).
+	    The values can vary strongly given the ARF, spectral model, and energy grids
+	    used in the analysis.
+	  </PARA>
+
+	  <PARA title="Approximate count fluxes">
+	    The estimated source flux (for the kT=2 keV case) is therefore
+	    <EQUATION>source_counts / (exposure * 531.66632)</EQUATION>
+	    in units of photon / cm^2 / s and
+	    <EQUATION>source_counts / (exposure * 1.722337e+11)</EQUATION>
+	    in units of erg / cm^2 / s,
+	    where source_counts is the measured number of source counts in the
+	    0.5 to 7 keV band, and exposure is the exposure time of the observation,
+	    in seconds.
+	    Please note that these values are only approximate; please see the
+	    <HREF link="http://cxc.harvard.edu/ciao/threads/spectral_weights/">Calculating Spectral Weights</HREF>
+	    thread and related documentation for a discussion of
+	    the reliability of this approach.
+	  </PARA>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; dataspace1d(2.5,5,0.1)</LINE>
+          <LINE>&pr; set_source(xsphabs.gal * xsmekal.clus)</LINE>
+          <LINE>&pr; gal.nh = 0.45</LINE>
+          <LINE>&pr; clus.kt = 2</LINE>
+          <LINE>&pr; clus.abundanc = 0.5</LINE>
+          <LINE>&pr; estimate_weighted_expmap(arf="src.arf")</LINE>
+          <LINE>421.69598</LINE>
+          <LINE>&pr; estimate_weighted_expmap(arf="src.arf", fluxtype="erg")</LINE>
+          <LINE>7.9162262e+10</LINE>
+          <LINE>&pr; clus.kt = 5</LINE>
+          <LINE>&pr; estimate_weighted_expmap(arf="src.arf")</LINE>
+          <LINE>420.05133</LINE>
+          <LINE>&pr; estimate_weighted_expmap(arf="src.arf", fluxtype="erg")</LINE>
+          <LINE>7.5432468e+10</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example we manually create a data space for the model
+	    evaluation. Since there is no associated ARF in this case one
+	    has to be given when calling estimate_weighted_expmap(); we
+	    chose to give the file name via the arf argument. It would have
+	    been slightly more efficient to read in the ARF using the
+	    Crates routine read_file (or read_arf) and then send the crate
+	    to the routine: for example
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; cr = read_file("src.arf")</LINE>
+	      <LINE>&pr; estimate_weighted_example(arf=cr)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    The exposure-map values are more consistent as the kT parameter is varied in
+	    this example compared to the previous one because the Chandra ARF shows
+	    much less variation over the energy range 2.5 to 5 keV than the
+	    0.5 to 7 keV band used previously. The degree of variation with
+	    model parameters also depends on whether the output is in "photon" or
+	    "erg" units and the shape of the spectral model.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; estimate_weighted_expmap(2, elo=x1, ehi=x2, specresp=arf)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example the ARF is defined by the three arrays
+	    x1, x2, and arf. The x1 and x2 arrays give the low and high
+	    edges of each bin, and are in keV, and the arf array
+	    gives the ARF for each bin in cm^2.
+	    All three arrays should contain the same number of elements.
+	  </PARA>
+	  <PARA>
+	    The ARF does not have to have the same energy gridding as the dataspace,
+	    but should cover the same energy range.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; kts = 10**np.linspace(-1,1,11)</LINE>
+          <LINE>&pr; evals = estimate_weighted_expmap(2, elo=x1, ehi=x2, specresp=arf, par=clus.kt, parvals=kts)</LINE>
+          <LINE>&pr; add_curve(evals, kts, ["symbol.style", "none"])</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example the exposure map is evaluated as the clus.kt parameter is
+	    varied from 0.1 to 10, using logarithmically-spaced bins.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Changes in the scripts 4.8.2 (January 2016) release">
+      <PARA>
+	The routine has been updated to work in CIAO 4.8.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>January 2016</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

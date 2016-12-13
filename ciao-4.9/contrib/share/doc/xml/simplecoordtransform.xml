@@ -1,0 +1,124 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="simplecoordtransform" context="contrib"
+         refkeywords="convert image coordinate coord system transform transformation simple class"
+         seealsogroups="py.transform">
+
+    <SYNOPSIS>
+      Convert between the different coordinate systems of an image.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>tr = SimpleCoordTransform(input)</LINE>
+      <LINE>(xout, yout) = tr.convert(fromsys, tosys, xin, yin)</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The SimpleCoordTransform class allows you to easily convert
+	between the different coordinate systems of a CIAO-produced
+	image (it may work on some non-CIAO data).
+      </PARA>
+
+      <PARA title="Loading the routine">
+	The routine can be loaded into a ChIPS or Sherpa session by saying:
+      </PARA>
+<VERBATIM>
+from crates_contrib.utils import *
+</VERBATIM>
+
+      <PARA title="Coordinate conversion">
+	An object is created using the SimpleCoordTransform constructor,
+	which takes a single argument: the name of an image file or
+	an image crate. The object has a single method - convert - which can
+	then be used to convert between one of three coordinate systems:
+	world, physical, or logical.
+      </PARA>
+      <PARA>
+	The fromsys and tosys arguments define the input and output
+	coordinate systems respectivelty and can be one of:
+      </PARA>
+      <TABLE>
+	<CAPTION>The fromsys and tosys arguments</CAPTION>
+	<ROW><DATA>Value</DATA><DATA>Description</DATA></ROW>
+	<ROW><DATA>"world" or "eqpos"</DATA><DATA>The WCS coordinate systems supported by CIAO</DATA></ROW>
+	<ROW><DATA>"physical" or "sky"</DATA><DATA>The physical coordinate system</DATA></ROW>
+	<ROW><DATA>"logical" or "image"</DATA><DATA>The logical coordinate system</DATA></ROW>
+      </TABLE>
+      <PARA>
+	The xin and yin arguments can be of a single point or multiple
+	points.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; tr = SimpleCoordTransform("img.fits")</LINE>
+	  <LINE>&pr; (r0, d0) = tr.convert("sky", "world", 4096.5, 4096.5)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here the sky coordinate (4096.5, 4096.5) is converted into
+	    Ra and Dec coordinates (assuming the "world" system represents
+	    an equatorial coordinate system).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; tcr = read_file("sources.fits[cols ra,dec]")</LINE>
+	  <LINE>&pr; ra = copy_colvals(tcr, "ra")</LINE>
+	  <LINE>&pr; dec = copy_colvals(tcr, "dec")</LINE>
+	  <LINE>&pr; icr = read_file("img.fits")</LINE>
+	  <LINE>&pr; tr = SimpleCoordTransform("img.fits")</LINE>
+	  <LINE>&pr; (x, y) = tr.convert("world", "image", ra, dec)</LINE>
+	  <LINE>&pr; add_image(icr, ["wcs", "logical"])</LINE>
+	  <LINE>&pr; add_points(x, y, ["symbol", "square", "fill", False])</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here Ra and Dec coordiantes from the file "sources.fits" are
+	    converted into image (a.k.a. logical) coordinates of the
+	    image stored in img.fits. They are then drawn, as open squares, on
+	    top of the image using ChIPS.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Notes">
+      <PARA title="Coordinate-system support">
+	The coordinate-transform code has been written and tested for use with images
+	created by CIAO tools. Please
+	let the
+	<HREF link="http://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	know if it does not work for your image file(s).
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.4 (April 2014) release">
+      <PARA>
+	The error where SimpleCoordTransform would fail, claiming that
+	it was "Unable to find the world system", has been fixed.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+ 
+    <LASTMODIFIED>April 2014</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

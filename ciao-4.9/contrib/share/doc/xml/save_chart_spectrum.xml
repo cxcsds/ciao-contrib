@@ -1,0 +1,205 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+
+  <!ENTITY chart2 '<HREF link="http://cxc.harvard.edu/ciao/PSFs/chart2">ChaRT2</HREF>'>
+
+]>
+<cxchelptopics>
+  <ENTRY key="save_chart_spectrum" context="contrib" pkg="sherpa"
+	 refkeywords="write_chart_spectrum save write create chart spectrum spectra file psf simulate simulation"
+	 seealsogroups="sh.save sh.chart">
+
+    <SYNOPSIS>
+      Write out the model spectrum in the form required by ChaRT2
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>save_chart_spectrum(outfile, format="text", clobber=True, verbose=True, id=None, elow=None, ehigh=None, ewidth=None, norm=None)</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The save_chart_spectrum() command writes out the current model
+	values in the form expected by &chart2;
+	(the Chandra Ray Tracer).
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/threads/prep_chart/">ChaRT preparation thread</HREF>
+	for further information on how to use this routine.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.chart import *
+</VERBATIM>
+
+      <TABLE>
+	<CAPTION>Arguments</CAPTION>
+	<ROW>
+	  <DATA>Name</DATA><DATA>Default value</DATA><DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>outfile</DATA>
+	  <DATA></DATA>
+	  <DATA>The name of the file to create.
+	    It is no longer valid to use a value of None for this
+	    argument.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>format</DATA>
+	  <DATA>"text"</DATA>
+	  <DATA>The output format of the file: "text" for
+	    ASCII format, "fits" for a FITS binary table.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>clobber</DATA>
+	  <DATA>True</DATA>
+	  <DATA>Determines the behavior if the output file already
+	    exists: a value of True (the default) means that the
+	    file will be overwritten, otherwise an error will be
+	    raised.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>verbose</DATA>
+	  <DATA>True</DATA>
+	  <DATA>If verbose is True then a message will be printed to the
+	  standard output when the file has been created.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>id</DATA>
+	  <DATA>None</DATA>
+	  <DATA>Which dataset to use: if None then the value returned
+	  by get_default_id() will be used.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>elow</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    The minimum energy at which to evaluate the model; this parameter
+	    controls the lower edge of the lowest-energy bin, and is in keV.
+	    A value of None means to use the lowest energy bin from the
+	    ARF grid. This value should not be smaller than 0.2 keV.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ehigh</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    The maximum energy at which to evaluate the model; this parameter
+	    controls the upper edge of the highest-energy bin, and is in keV.
+	    A value of None means to use the highest energy bin from the
+	    ARF grid. This valus should not be larger than 10 keV.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ewidth</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    The bin width to use, in keV.
+	    A value of None means to use the bin width from the
+	    ARF grid.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>norm</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    A scaling factor to allow you to easily change the overall flux
+	    of the model. A value of None is equivalent to a factor
+	    of 1; a value of 10 would create a ChaRT spectral model ten times
+	    brighter than the input model.
+	  </DATA>
+	</ROW>
+
+      </TABLE>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; load_pha("3c273.pi")</LINE>
+	  <LINE>&pr; subtract()</LINE>
+	  <LINE>&pr; notice(0.1, 6)</LINE>
+          <LINE>&pr; set_source(xsphabs.abs1 * powlaw1d.p1)</LINE>
+          <LINE>&pr; abs1.nh = 0.07</LINE>
+          <LINE>&pr; freeze(abs1)</LINE>
+          <LINE>&pr; guess(p1)</LINE>
+          <LINE>&pr; fit()</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; save_chart_spectrum("chart.dat")</LINE>
+	</SYNTAX>
+	<DESC>
+
+          <PARA>
+	    Here we load in a source spectrum from the file 3c273.pi, along
+	    with the associated files (e.g. ARF, RMF, and background) that are indicated
+	    in its header.
+	    The background is subtracted, the analysis restricted to the 0.1 to 6 keV
+	    range, a model is created - consisting of an absorbed power law - and then
+	    parameter values are set before the fit is made.
+	  </PARA>
+	  <PARA>
+	    After the fit has been made the save_chart_spectrum() routine is used to
+	    write out the best-fit model - in a format usable by
+	    &chart2; - 
+	    to the text file "chart.dat".
+	  </PARA>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; save_chart_spectrum("chart.dat", elow=1, ehigh=8)</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    In this example the output is restricted to the range 1 to 8 keV, using the default
+	    binning given by the ARF grid. Note that this energy range need not overlap the
+	    range used to fit the data (or even the energy ranges of the ARF and RMF files).
+	    It should however remain within the range 0.2 to 10 keV.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; save_chart_spectrum("chart.fits", format="fits")</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    The data is written to a FITS binary table called
+	    'chart.fits'.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Changes in the scripts 4.8.2 (January 2016) release">
+      <PARA>
+	The routine has been updated to work with
+	version 2 of ChART:
+	the output now contains three columns rather than two;
+	it can be in FITS or ASCII format; a clobber parameter
+	has been added; and the outfile parameter can no-longer
+	be set to None.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>January 2016</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr "unix&#37;">
+]>
+<cxchelptopics>
+  <ENTRY key="summarize_status_bits" context="tools" 
+    refkeywords="chandra acis hrc status bit bad byte summary event destreak cti u v coord pha amp coarse overclock over clock bias fep pi signal coordinate coord" 
+    seealsogroups="evttools"
+    displayseealsogroups="acistools hrctools"> 
+    <SYNOPSIS>
+      Summarize the status bits in a Chandra event file.
+    </SYNOPSIS>
+    <SYNTAX>
+     <LINE>summarise_status_bits  filename</LINE>
+    </SYNTAX>
+    <DESC>
+        <PARA>
+            The ACIS and HRC level 1 event files contain 
+            a STATUS column which is used to encode
+            information about each event.  The state encoded
+            in each of the 32 bits is unique to each detector.  Some of the
+            bits encode hardware/telemetry problems (such as missing
+            overclock values), some bits encode unexpected
+            software processing results (e.g. CTI algorithm 
+            failed to converge), and some bits are informational
+            (coincident with HRC anti-coincidence shield).
+        </PARA>
+        <PARA>
+            The summarize_status_bits tool examines the
+            STATUS column in an event file and provides
+            a summary of the reasons why the bits were set.        
+        </PARA>
+        <PARA>
+            Unlike most CIAO tools, this script does not have
+            a parameter file.  It only accepts one argument: the
+            name of the event file, which can include the
+            DataModel virtual-file syntax (e.g. to apply a region
+            filter or select a single chip).
+        </PARA>
+        
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; summarize_status_bits acis_evt1.fits</LINE>
+        </SYNTAX>
+        <DESC>
+
+<VERBATIM>
+BitName    Bit  NumEvt   %Evt  BitDesc
+-------    ---  ------   ----  -------
+BADLM        1      43    0.0  Center pixel PHA not local maximum
+BADPIX       4  515728   13.6  Center of event island falls on bad pixel
+BADPIXE      5  258971    6.8  Surrounding event island falls on bad pixel
+BADBIAS      6   12386    0.3  Bad bias value (4095)
+GLOW        16    7373    0.2  Event is part of a cosmic ray afterglow
+CTIERR      20     764    0.0  CTI algorithm did not converge
+</VERBATIM>
+          <PARA>
+        This example shows the output running on an ACIS
+        event file.  All the events in the file are checked
+        and the summary of the non-zero status bits 
+        is printed to the screen.            
+          </PARA>
+          <PARA>
+        Note:  since each event can have multiple status
+        bits set, the sum of the NumEvt values may 
+       be larger than the number of events in the input file.
+          </PARA>
+
+        </DESC>
+      </QEXAMPLE>
+    
+
+      <QEXAMPLE>
+        <SYNTAX><LINE>
+        &pr; summarize_status_bits "acis_evt1.fits[sky=region(ds9.reg)]"
+        </LINE></SYNTAX>
+        <DESC>
+
+<VERBATIM>
+BitName    Bit  NumEvt   %Evt  BitDesc
+-------    ---  ------   ----  -------
+BADPIX       4     286    1.5  Center of event island falls on bad pixel
+BADPIXE      5     738    3.9  Surrounding event island falls on bad pixel
+GLOW        16      38    0.2  Event is part of a cosmic ray afterglow
+</VERBATIM>
+          <PARA>
+            Similar to above, but only select the events 
+            in the specified region.  
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+        <SYNTAX><LINE>
+        &pr; summarize_status_bits hrc_evt1.fits
+        </LINE></SYNTAX>
+        <DESC>
+
+<VERBATIM>
+BitName    Bit  NumEvt   %Evt  BitDesc
+-------    ---  ------   ----  -------
+BADHYPU      0   81278   13.0  Hyperbolic test failed on U axis
+BADHYPV      1   71271   11.4  Hyperbolic test failed on V axis
+AMPSATU      2   49799    8.0  AMP saturation test failed on U axis
+AMPSATV      3   66035   10.6  AMP saturation test failed on V axis
+AMPFLATU     4   10842    1.7  AMP flatness test failed on U axis
+AMPFLATV     5    8563    1.4  AMP flatness test failed on V axis
+BADPI        7    2784    0.4  PI value out of range
+SIGAXIS      8    8633    1.4  Total signal on V or U axis is 0
+SIGSUM       9    9584    1.5  Sum of signal on U and V axis are discrepant, position may be inaccurate 
+SIGZERO     10    5000    0.8  Sum of all 6 tap is 0, event position is unknown
+BADRATIO    11   12069    1.9  PHA ratio test failed, likely a particle event
+BADCTRU     12   10605    1.7  U center tap is not local maximum
+BADCTRV     13   11362    1.8  V center tap is not local maximum
+SIGAXIS2    14    8633    1.4  Total on V or U axis is 0 (same as 8)
+BADPIX      15   39469    6.3  Event in bad region/pixel
+SIGLOW      16    2928    0.5  Signal below lower level discriminator, position may be wrong
+SIGHI       17   71671   11.5  Signal above upper level discriminator, may be particle
+TRIGU       20   74714   12.0  Number of U-axis taps with signal exceeding trigger above commanded level
+TRIGV       21   42240    6.8  Number of V-axis taps with signal exceeding trigger above commanded level
+RINGU       30   91078   14.6  U axis corrected for tap ringing effect
+RINGV       31  102176   16.4  V axis corrected for tap ringing effect
+</VERBATIM>
+          <PARA>
+      HRC event status bits encode many of the
+      hrc_process_events test results.  Events with
+      some status bits set are still considered to 
+      be valid.  Some of the bits are informational
+      rather than being used as a selection criteria.          
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX><LINE>
+        &pr; summarize_status_bits acis_evt2.fits
+        </LINE></SYNTAX>
+        <DESC>
+
+<VERBATIM>
+All status bits are 0
+</VERBATIM>
+          <PARA>
+          ACIS level 2 event files have (by default), all 
+          status bits set to 0.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+    
+    </QEXAMPLELIST>
+
+   <ADESC title="References">
+
+    <PARA title="ACIS">
+
+    <HREF
+    link="http://space.mit.edu/CXC/docs/docs.html#evtbits">
+    ACIS status bits
+    </HREF>.
+    </PARA>
+    <PARA title="HRC">
+    <HREF 
+    link="http://cxc.harvard.edu/contrib/juda/memos/status_bits/hrc_status_bits.html">
+    HRC status bits
+    </HREF>.  Note: the enumeration of bits in this document is opposite
+    from summarize_status_bits.  So for example this memo
+    describes BIT=1 as the V axis rining test.  summarize_status_bits
+    counts bits from right-to-left, starting at 0, so it will be
+    reported as BIT=31.
+    </PARA>
+
+   </ADESC>
+
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/summarize_status_bits.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    
+       <LASTMODIFIED>May 2014</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

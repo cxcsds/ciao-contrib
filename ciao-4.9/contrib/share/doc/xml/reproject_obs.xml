@@ -1,0 +1,862 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr "unix&#37;">
+  <!ENTITY mname "merge_obs">
+  <!ENTITY rname "reproject_obs">
+  <!ENTITY fname "flux_obs">
+]>
+
+<cxchelptopics>
+  <ENTRY key="&rname;" context="tools"
+	 refkeywords="reproject event events obsid observation observations obsid obsids reproject_obsid
+                      obs multi coadd coadded merge
+                      tangent point plane reprojection common
+	             "
+	 seealsogroups="mergescripts"
+	 displayseealsogroups="reproject">
+
+    <SYNOPSIS>
+      Reproject a set of observations to a common tangent point and
+      create a merged event file.
+    </SYNOPSIS>
+    
+    <DESC>
+      <PARA>
+        Given a set of observations (event files and, optionally, aspect
+	solutions), reproject the event files to a common tangent
+        point and merge the event files.
+	The default behavior is to calculate the new reference
+        position from the observations, but an explicit value can also
+        be given.
+      </PARA>
+      <PARA>
+        To ensure that the reprojected event files can be used with
+	other CIAO tools and scripts, the matching aspect solution, bad-pixel,
+	mask, and dtf files (where applicable) are linked (or copied) to
+	the output location, and the header keywords updated to
+	match the new files.
+      </PARA>
+      <PARA>
+	By default the event files will also be merged together to form
+	a single event file which can be used in ds9 or to create
+	images, time series, or spectra. Care should be taken 
+	when using this merged product with other CIAO tools since
+	some information may have been lost (e.g. if observations have
+	different response files in the CALDB); the preference is to use
+        the individual event files to create separate data products and
+	then either analyze them simultaneously or combine them.
+      </PARA>
+      <PARA>
+	This tool can be combined with &fname; to replicate &mname;:
+	for instance
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; &rname; "*/repro/*evt2.fits" reproj/</LINE>
+	  <LINE>&pr; &fname; reproj/ reproj/</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	where the observations have been re-processed by chandra_repro,
+	hence the search for the original files in the repro/ sub-directory.
+      </PARA>
+
+      <PARA title="WCS alignment">
+	The individual event files are reprojected to the same tangent point,
+	but no attempt is made to align the observations. If you find that
+	the WCS of the individual observations are not aligned - e.g. you
+	can see "double" sources in the reprojected, merged data - then
+	you need to update the WCS before running &rname;. An 
+	example is the 
+	<HREF link="http://cxc.harvard.edu/ciao4.4/threads/reproject_aspect/">Correcting 
+	Absolute Astrometry</HREF> thread.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; &rname; 5826/,5827/ reproj/</LINE>
+	  <LINE>&pr; ds9 reproj/merged_evt.fits</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    When given a directory name, the script searches for event files
+	    in the directory using the following patterns:
+	  </PARA>
+
+	  <LIST>
+	    <ITEM>dirname/repro/*evt*</ITEM>
+	    <ITEM>dirname/primary/*evt*</ITEM>
+	    <ITEM>dirname/*evt*</ITEM>
+	  </LIST>
+	  
+	  <PARA>
+	    where the search stops once a match is made.
+	  </PARA>
+
+	  <PARA>
+	    So this example reprojects the observations stored in
+	    the directories 5826/ and 5827/, and
+	    creates a merged events file called
+	    reproj/merged_evt.fits.
+	  </PARA>
+
+	  <PARA>
+	    The aspect solutions are assumed to be in the same directory as
+	    the event files and their names are taken from the ASOLFILE
+	    keyword.
+	  </PARA>
+	  <PARA>
+	    Note that the event files do not need to be listed in
+	    observation order; the script will re-orders them if
+	    necessary.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+	  
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; &rname; "*/repro/*evt2*" reproj/</LINE>
+	  <LINE>&pr; ds9 reproj/merged_evt.fits</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    All the "evt2" files in the repro sub-directories
+	    are reprojected to create files called 
+	    "reproj/&lt;obsid&gt;_reproj_evt.fits".
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; pset &rname; outroot=reproj/</LINE>
+	  <LINE>&pr; &rname; 5826/repro/acisf05826_repro_evt2.fits,5827/repro/acisf05827_repro_evt2.fits</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example the event files are listed explicitly, as
+	    a comma-separated string.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; find . -name \*repro_evt2.fits > evt2.lis</LINE>
+          <LINE>&pr; &rname; @evt2.lis reproj/ clobber+</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    This is similar to the first example except that 
+	    a stack file is used to list the files to be processed
+	    (see "ahelp stack" for more information).
+	    The UNIX find command is used to list all files that end in the
+	    text repro_evt2.fits that are in the current directory or any subdirectories, 
+	    and this list is passed to &rname; using the "@" syntax.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; &rname; @evt2.lis"[ccd_id=0:3]" acisi/</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we apply a DataModel filter to the stack so that only 
+	    the ACIS-I chips (ie those with ccd_id between 0 and 3 inclusive),
+	    will be reprojected and merged.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; &rname; @evt2.lis reproj/ ref="123.45 -2.2"</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this case the reference coordinate is given explicitly,
+            as a space separated pair of decimal degrees, rather than
+	    being calculated for us.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; &rname; @evt2.lis reproj/ ref="8:13:48 -2:12:0"</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            This is the same as the previous example but the reference
+            position is given in sexagesimal notation.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; &rname; "@evt2.lis[ccd_id=7]" reproj6/ ref=reproj/merged_evt.fits</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we reproject and merge only the ACIS-S3 chips from the
+	    obervations (if an event file in evt2.lis has no data from this
+	    chip then it will be skipped). The reprojection is done
+	    to match the tangent point from the file reproj/merged_evt.fits.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; &rname; @evt2.lis reproj/ asolfiles=@asol.lis</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example the aspect solutions are explicitly listed,
+	    rather than taken from the ASOLFILE keyword in the header of
+            each event file. The order of the files in asol.lis does not
+	    need to match that of evt2.lis since the script matches up
+	    aspect solutions to event files.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infiles" type="file" reqd="yes" stacks="yes">
+	<SYNOPSIS>
+	  Input event files
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    Multiple event files may be
+            provided as a comma-separated list or as a stack; see <HREF
+            link="http://cxc.harvard.edu/ciao/ahelp/stack.html">"ahelp
+            stack"</HREF> for more information.
+	    The event files do not need to be given in time order.
+	  </PARA>
+
+	  <PARA title="Listing just a directory name">
+	    Rather than list the full path to an event file, you can
+	    just give a directory name; in such a case the script
+	    searches for any files that match the pattern
+	  </PARA>
+
+	  <LIST>
+	    <ITEM>dirname/repro/*evt*</ITEM>
+	    <ITEM>dirname/primary/*evt*</ITEM>
+	    <ITEM>dirname/*evt*</ITEM>
+	  </LIST>
+
+	  <PARA>
+	    where the search is done in the order given above, and stops
+	    as soon as a match (or matches) is found.
+	  </PARA>
+
+	  <PARA title="Skipping files">
+	    Any observations that do not match the instrument of the
+	    first observation are skipped, as are CC mode observations
+	    or those with no data (e.g. because of a ccd_id filter).
+	    For HRC data, the first observation determines whether
+	    HRC-I or HRC-S are being combined, with observations from
+	    the other instrument being skipped.
+	    Any file with an OBS_ID keyword of "Merged" is skipped.
+	  </PARA>
+
+	  <PARA>
+	    If multiple files with the same OBS_ID keyword are found,
+	    then all but the first are skipped, unless they are
+	    part of an ACIS interleaved-mode observation (i.e. they
+	    have CYCLE=P or CYCLE=S).
+	  </PARA>
+
+	  <PARA>
+	    The input files must contain at least the following columns.
+	    otherwise they are skipped:
+	  </PARA>
+
+	  <TABLE>
+	    <ROW>
+	      <DATA>Instrument</DATA>
+	      <DATA>Columns</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>ACIS</DATA>
+	      <DATA>TIME, CCD_ID, ENERGY, CHIP, DET, SKY</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>HRC</DATA>
+	      <DATA>TIME, CHIP_ID, CHIP, DET, SKY</DATA>
+	    </ROW>
+	  </TABLE>
+
+	  <PARA title="File headers">
+	    If the asolfiles parameter is left empty then the
+	    ASOLFILE keyword of each event file is used to find
+	    the relevant aspect solution files.
+	  </PARA>
+
+	</DESC>
+      </PARAM>
+
+      <PARAM name="outroot" type="string" reqd="yes" def="">
+	<SYNOPSIS>
+	  Root name for the output merged files.
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    Any directories included in the root name will be created
+	    if they do not exist.   If the parameter ends in "/" then
+	    the output files will be named
+	    <EQUATION>&lt;obsid&gt;_reproj_evt.fits</EQUATION>
+	    in the specified directory.  Otherwise, the filename will
+	    be  
+	    <EQUATION>&lt;outroot&gt;_&lt;obsid&gt;_reproj_evt.fits</EQUATION>
+	    where &lt;obsid&gt; is the value of the OBS_ID header
+	    keyword for each events file.
+	  </PARA>
+	  <PARA title="Merged event file">
+	    If the merge parameter is set to "yes" then the merged event
+	    file will be named
+	    <EQUATION>&lt;outroot&gt;/merged_evt.fits</EQUATION>
+	    or
+	    <EQUATION>&lt;outroot&gt;_merged_evt.fits</EQUATION>
+	    depending on whether the outroot parameter ends in 
+	    "/" or not.
+	  </PARA>
+	  <PARA title="Interleaved mode">
+	    ACIS interleaved mode files may have "e1" or "e2" appended to the
+	    ObsId when creating the output name (it depends on whether the
+	    file is unique to the primary or secondary cycle, such as the
+	    event or bad-pixel files, or is the same for both cycles, such
+	    as the aspect solution).
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="asolfiles" type="file" stacks="yes">
+	<SYNOPSIS>
+	  Input aspect solutions
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    If the value is empty then the ASOLFILE keyword from
+	    the events files will be used to find the
+	    files to use. 
+	  </PARA>
+	  <PARA>
+	    The aspect solution files have names like
+	    pcadf*_asol1.fits and are included in the
+	    output directory of the chandra_repro script.
+	    To explicitly specify the asol files use
+	    the stack syntax (e.g. a comma, or space, separated
+	    string or an external file as described in
+	    <HREF
+		link="http://cxc.harvard.edu/ciao/ahelp/stack.html">"ahelp
+	    stack"</HREF> for more information).
+	    So to use asol1.fits, asol2.fits, and asol3.fits you could say
+	    <EQUATION>asolfile="asol1.fits,asol2.fits,asol3.fits"</EQUATION>
+	    or
+	    <EQUATION>asolfile="asol1.fits asol2.fits asol3.fits"</EQUATION>
+	    or
+	    <EQUATION>asolfile=@asol.lis</EQUATION>
+	    where asol.lis contains the names of each file, one per line.
+	    The files do not have to be given in time order.
+	  </PARA>
+	  <PARA>
+	    Since there may be multiple asol files for an
+	    observation there may be more entries in this
+	    parameter than there are in the infiles parameter.
+	  </PARA>
+	  <PARA>
+	    Aspect histograms - the output of the asphist tool - can
+	    not be used here.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="merge" type="boolean" def="yes">
+        <SYNOPSIS>
+	  Merge event files?
+        </SYNOPSIS>
+        <DESC>
+	  <PARA>
+	    Should the reprojected event files be merged together?
+	    If so, the merged event file will be called
+	    outroot/merged_evt.fits or
+	    outroot_merged_evt.fits. This file can be
+            treated as a normal event file but great care
+	    should be taken when using it for anything other
+            than simple imaging or timing analysis. In general
+            it is safer to use the individual reprojected event
+            files and either combine the results or do a joint
+            analysis, treating each observation separately.
+	  </PARA>
+          <PARA>
+	    Only those columns that are common to all the event
+	    files are copied to the merged event file.
+	    The "expno" subspace in the merged event file does
+	    not reflect any filtering applied to the original event
+	    files, which means that great care should be taken
+	    if you wish to do timing analysis based on the EXPNO
+	    column.
+	  </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="refcoord" type="string" def="">
+        <SYNOPSIS>Reference coordinates or evt2 file</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter defines the central coordinate of the
+	    reprojected data; that is the Right Ascension and Declination
+	    that maps to
+	    SKY=(4096.5,4096.5) for ACIS data,
+	    (16384.5,16384.5) for HRC-I data, or
+	    (32768.5,32768.5) for HRC-S data.
+	  </PARA>
+	  <PARA>
+	    The default setting ("") means that this value is calculated
+	    from the tangent points of the observations. When set it
+	    can be either:
+	  </PARA>
+	  <LIST>
+	    <ITEM>
+	      the name of a file, so that the tangent position of the file
+	      is used;
+	    </ITEM>
+	    <ITEM>
+	      or a space-separated value taken to be the RA and Declination
+	      to use (ICRS) in decimal degrees or
+	      colon-separated sexagesimal formats.
+	    </ITEM>
+	  </LIST>
+	  <PARA>
+	    Examples include:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>refcoord=fluxed/broad_flux.img</LINE>
+	      <LINE>refcoord="123.45 -12.34"</LINE>
+	      <LINE>refcoord="8:13:48 -12:20:24"</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="parallel" type="boolean" def="yes">
+	<SYNOPSIS>
+	  Run processes in parallel?
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    When run on a multi-processor system, many of the
+	    tasks can be run in parallel to reduce the
+	    execution time of the script.
+	    Since the tasks are likely to be memory or I/O-bound,
+	    the reduction in run time will be less than the
+	    number of cores on a machine.
+	    When parallel=yes, the default behaviour is to use all
+	    the CPU processors, but this can be changed with
+	    the nproc parameter.
+	  </PARA>
+	  <PARA>
+	    This option can be ignored when run on a single-processor
+	    system.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="nproc" type="integer" def="INDEF">
+	<SYNOPSIS>
+	  Number of processors to use
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter is only used when parallel=yes. It determines
+	    the number of processors to use. If maxproc is the actual
+	    number of processors on your machine, then
+	    a value of INDEF - the default value - means that all
+	    maxproc processors will be used.  A positive value
+	    means to use that number of processors (any value
+	    larger than maxproc will be set to maxproc).
+	    A negative value is added to maxproc (and any value less
+	    than one is set to one).
+	  </PARA>
+	  <!--
+	  <TABLE>
+	    <CAPTION>
+	      The number of processors to be used
+	      for a variety of nproc and maxproc values (assuming parallel=yes).
+	    </CAPTION>
+	    <ROW>
+	      <DATA>nproc argument</DATA>
+	      <DATA>maxproc</DATA>
+	      <DATA>number of processors used</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>INDEF</DATA>
+	      <DATA>4</DATA>
+	      <DATA>4</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>INDEF</DATA>
+	      <DATA>2</DATA>
+	      <DATA>2</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>INDEF</DATA>
+	      <DATA>1</DATA>
+	      <DATA>1</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>3</DATA>
+	      <DATA>4</DATA>
+	      <DATA>3</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>3</DATA>
+	      <DATA>2</DATA>
+	      <DATA>2</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>3</DATA>
+	      <DATA>1</DATA>
+	      <DATA>1</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>-1</DATA>
+	      <DATA>4</DATA>
+	      <DATA>3</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>-1</DATA>
+	      <DATA>2</DATA>
+	      <DATA>1</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>-1</DATA>
+	      <DATA>1</DATA>
+	      <DATA>1</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>-2</DATA>
+	      <DATA>4</DATA>
+	      <DATA>2</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>-2</DATA>
+	      <DATA>2</DATA>
+	      <DATA>1</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>-2</DATA>
+	      <DATA>1</DATA>
+	      <DATA>1</DATA>
+	    </ROW>
+	  </TABLE>
+	  -->
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="linkfiles" type="boolean" def="yes">
+        <SYNOPSIS>
+	  Link (rather than copy) files?
+        </SYNOPSIS>
+        <DESC>
+	  <PARA>
+	    Should the ancillary files (e.g. aspect solution,
+	    bad-pixel file) be linked or copied to the output
+	    location (given by the outroot parameter)?
+	    If link is set to yes then a soft link is used,
+	    which saves disk space, otherwise the ancillary
+	    files are copied.
+	  </PARA>
+	  <PARA>
+	    This parameter is set to "no" for
+	    file systems that do not support soft links.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="tmpdir" type="string" def="${ASCDS_WORK_PATH}">
+	<SYNOPSIS>
+	  Directory for temporary files. 
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Directory for storing temporary files that
+	    require further processing before becoming useful.
+	    If the directory does not exist then it will be created
+	    for use by the script, and then deleted.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="clobber" type="boolean" def="no">
+	<SYNOPSIS>
+	  Overwrite existing files?
+	</SYNOPSIS>
+      </PARAM>
+      
+      <PARAM name="verbose" type="integer" def="1">
+	<SYNOPSIS>
+	  Output verbosity.
+	</SYNOPSIS>
+	
+	<DESC>
+	  <PARA>
+	    The default verbosity value of 1 prints status
+	    messages as the script runs.  Higher verbosity
+	    settings print the commands that are being run.
+	    Setting verbose=0 turns off the screen output.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+    </PARAMLIST>
+    
+    <ADESC title="Ancillary files">
+      <PARA>
+        The reprojected event file for an observation is
+	either
+	<EQUATION>outroot/obsid_reproj_evt.fits</EQUATION>
+	or
+	<EQUATION>outroot_obsid_reproj_evt.fits</EQUATION>
+	depending on whether the outroot parameter ends in
+	a '/' or not. Along with this file, the following
+	ancillary files (where appropriate) are also created:
+      </PARA>
+      <TABLE>
+        <ROW>
+	  <DATA>KEYWORD</DATA><DATA>Name</DATA><DATA>Desciption</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ASOLFILE</DATA>
+	  <DATA>obsid.asol</DATA>
+	  <DATA>
+	    Aspect solution when there is only one asol file
+	    for the observation.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ASOLFILE</DATA>
+	  <DATA>obsida.asol, obsidb.asol, ...</DATA>
+	  <DATA>
+	    When there are multiple aspect solutions for an obsid,
+	    'a', 'b', ... are appended to the obsid value.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>BPIXFILE</DATA>
+	  <DATA>obsid.bpix</DATA><DATA>Bad-pixel file.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>DTFFILE</DATA>
+	  <DATA>obsid.dtf</DATA><DATA>DTF file (HRC only).</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>MASKFILE</DATA>
+	  <DATA>obsid.mask</DATA><DATA>Mask file.</DATA>
+	</ROW>
+      </TABLE>
+      <PARA>
+	If the linkfiles parameter is set to yes then
+        these files are soft links to the files in the input
+	directory structure (i.e. the location of the input event files).
+        If the file system does not support soft links, 
+	or linkfiles is no, then a copy of the
+	file will be used instead.
+      </PARA>
+      <PARA>
+        The headers of the reprojected event files are updated so that 
+	they reference the new file names. This allows tools like
+	&fname; and fluximage to pick the files up automatically when given just
+	the name of the reprojected event file.
+      </PARA>
+      <PARA title="Interleaved mode">
+	When handling interleaved-mode observations, also known as
+	<HREF link="http://cxc.harvard.edu/ciao/dictionary/altexp.html">alternating-exposure mode</HREF>,
+	the bad-pixel and
+	mask files are labelled with the cycle (i.e. "e1" or "e2" is
+	appended to the ObsId), but the aspect solution files are
+	shared between the two cycles, so do not get this extra label.
+      </PARA>
+      <PARA title="Multi-OBI datasets">
+	A small number of Chandra data sets contain 
+	<HREF link="http://cxc.harvard.edu/ciao/why/multiobi.html">multiple-OBI
+	  blocks</HREF>. For these cases, the 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/splitobs.html">splitobs</HREF>
+	script will create multiple directories, one for each OBI, and then
+	they can be analysed separately. To identify these observations, the
+	ObsId number will have the OBI number appended to it as a three-digit
+	integer; for example: 3057_001 and 3057_002.
+      </PARA>
+    </ADESC>
+    
+    <ADESC title="Processing steps">
+      <PARA>
+	An overview of how &rname; works:
+      </PARA>
+
+      <LIST>
+	<ITEM>
+	  The event files are checked to ensure they are all 
+	  for the same instrument (ACIS-I and ACIS-S, HRC-I, or HRC-S).
+	  Event files with no data - perhaps because of a ccd_id filter - 
+	  or that are for CC-mode observations are ignored.
+	</ITEM>
+
+	<ITEM>The ancillary files for these observations are found,
+	if not given explicitly given, and matched up with the observations.</ITEM>
+
+	<ITEM>The reference position is either calculated from the data or taken
+	from the refcoord parameter.</ITEM>
+
+	<ITEM>
+	  A summary of the observations is displayed; e.g. time taken, observation
+	  length, and several other useful details such as the focal-plane temperature (for ACIS),
+	  SIM position, and separation from the reference position.
+	</ITEM>
+	
+	<ITEM>
+	  The event files are reprojected to the new reference position,
+	  or copied if no reprojection is needed.
+	</ITEM>
+
+	<ITEM>
+	  For each new event file the ancillary files are either
+	  linked, or copied, to the output location. The header of the event file
+	  is updated so that it points to these new files.
+	</ITEM>
+
+	<ITEM>
+	  The new events files are merged together to create a single
+	  events file, where only those columns common to all the input files
+	  are used.
+	  The resulting file can be used for further analysis but in most cases it
+	  should not be used for spectral analysis; the individual files should be used
+	  instead.
+	</ITEM>
+
+      </LIST>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.7.3 (June 2015) release">
+      <PARA title="Improved support for multi-obi datasets">
+	The script is now able to work with 
+	<HREF link="http://cxc.harvard.edu/ciao/why/multiobi.html">multi-obi datasets</HREF>
+	that have been processed by
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/splitobs.html">splitobs</HREF>
+	and then 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/chandra_repro.html">chandra_repro</HREF>.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.6 (September 2014) release">
+      <PARA title="Reprojecting observations">
+	Observations will only be reprojected if the tangent point
+	shift is larger than 0.05 arcseconds, otherwise the original
+	event file is copied.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.1 (December 2013) release">
+      <PARA title="Removed support for the Parameter Block File">
+	With the deprecation of the pbkfile parameter in CIAO 4.6 tools, this
+	script no longer updates the PBKFILE header keyword or copies over/links
+	the pbk files.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.2 (April 2013) release">
+      <PARA title="Handling HRC data">
+	When merging HRC files, the sub-spaces of 
+	several columns - including CLKTICKS, AV1, and AU1 -
+	have been removed to avoid the possibility of creating
+	multiple GTI blocks. See the
+	<HREF link="http://cxc.harvard.edu/ciao/caveats/hrc_subspace.html">HRC subspace caveat</HREF>
+	for more information.
+      </PARA>
+      <PARA>
+	The script will now warn you if the HRC observations contain
+	old and new data, in which the defnition of the PI column
+	has changed. If you see this warning we strongly advise
+	you to reprocess the old dataset(s) with chandra_repro
+	and re-do your analysis.
+      </PARA>
+      <PARA title="Event file selection">
+	The script now skips event files which have an OBS_ID keyword
+	of "Merged".
+      </PARA>
+      <PARA title="Interleaved mode data">
+	The script will now include both the primary and secondary cycles (i.e. the "e1" and "e2" forms)
+	of ACIS interleaved mode data.
+	Previously it would just select one of the files (generally the
+	"e1", which is the shorter of the two). If you only want to include one of the
+	cycles then use an explicit list of observations.
+	When processing interleaved-mode data, file names are labelled as
+	"&lt;obsid&gt;e1"
+	or 
+	"&lt;obsid&gt;e2".
+      </PARA>
+      <PARA title="Aspect solutions">
+	The program now checks that the aspect-solution files are
+	not aspect histograms.
+      </PARA>
+      <PARA title="Improved warnings and errors">
+	Prior to this release, &rname; would error out with the less-than
+	helpful message "'NoneType' object is not subscriptable" when
+	an ancillary file (such as the mask file) was missing.
+	The program now tells you that the file can not be found but
+	carries on with the reprojection.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.1 (December 2012) release">
+      <PARA>
+	The script has been updated to work in CIAO 4.5.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+	See the
+	<HREF link="http://cxc.harvard.edu/ciao/bugs/&rname;.html">bugs page
+	for this script</HREF> on the CIAO website for an up-to-date
+	listing of known bugs. 
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+    
+  </ENTRY>
+</cxchelptopics>

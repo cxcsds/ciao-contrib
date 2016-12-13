@@ -1,0 +1,139 @@
+#! /usr/bin/env python
+
+# 
+# Copyright (C) 2015,2016 Smithsonian Astrophysical Observatory
+# 
+# 
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+
+"""Usage:
+  dewiggle infile outfile
+
+Options:
+
+Aim:
+
+  Remove emperically-derived "wiggles" from HRC-S/LETG
+  cross-dispersion coordinates.
+
+"""
+
+toolname = 'dewiggle'
+version = '18 November 2016'
+
+import sys
+import numpy as np
+import shutil
+import os
+
+import cxcdm
+import paramio
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib.runtool import add_tool_history
+from ciao_contrib.logger_wrapper import handle_ciao_errors
+from ciao_contrib.param_wrapper import open_param_file
+
+# Set up the logging/verbose code
+lw.initialize_logger(toolname)
+
+# Use v<n> to display messages at the given verbose level.
+#
+v1 = lw.make_verbose_level(toolname, 1)
+v2 = lw.make_verbose_level(toolname, 2)
+
+def print_version():
+    v1("Running {} version: {}\n".format(toolname, version))
+
+def read_wiggle_file(wfile):
+    d=np.loadtxt(wfile, unpack=True, skiprows=1)
+    return d[0].astype(int), d[1]
+
+def update_tgd( params ):
+    infile = params['infile']
+    outfile = params['outfile']
+    wfile = params['wfile']
+    clobber = params['clobber']
+
+    v2("Reading wiggle data from '{}'\n".format(wfile))
+    wiggle_crsv, wiggle_data = read_wiggle_file(wfile)
+
+    wiggle=np.zeros(192) # 0 <= CRSV <= 191
+    wiggle[wiggle_crsv] = wiggle_data
+
+    if not clobber and os.path.isfile(outfile):
+        raise IOError("outfile={} exists and clobber=no".format(outfile))
+
+    v2("Copying '{}' -> '{}'\n".format(infile, outfile))
+    shutil.copy(infile, outfile)
+
+    v2("Opening {} for update\n".format(outfile))
+    bl = cxcdm.dmTableOpen(outfile, update=True)
+    nrows = cxcdm.dmTableGetNoRows(bl)
+
+    # can we access the columns? In CIAO 4.7 it throws a RuntimeError
+    # with no message if there's no column, so change it
+    v2("Reading CHIP_ID, CHIPY, TG_D\n")
+    try:
+        chip_id = cxcdm.dmTableOpenColumn(bl, 'chip_id')
+        chipy = cxcdm.dmTableOpenColumn(bl, 'chipy')
+        tg_d = cxcdm.dmTableOpenColumn(bl, 'tg_d')
+    except RuntimeError as e:
+        if str(e).strip() == '':
+            raise ValueError("Unable to open columns CHIP_ID, CHIPY, TG_D")
+        else:
+            raise e
+    chip_id_vals = cxcdm.dmGetData(chip_id, 1, nrows)
+    chipy_vals = cxcdm.dmGetData(chipy, 1, nrows)
+    tg_d_vals = cxcdm.dmGetData(tg_d, 1, nrows)
+
+    v2("Calculating CRSV\n")
+    crsv = (chip_id_vals-1)*64 + chipy_vals/256
+
+    v2("Calculating new TG_D\n")
+    tg_d_vals -=  wiggle[crsv.astype(int)]
+
+    v2("Updating TG_D\n")
+    cxcdm.dmSetData(tg_d, tg_d_vals)
+
+    v2("Closing '{}'\n".format(outfile))
+    cxcdm.dmTableClose(bl)
+
+def process_command_line(argv):
+    pinfo = open_param_file(argv, toolname=toolname)
+    fp = pinfo['fp']
+    params = {
+        'infile' : paramio.pgetstr(fp, 'infile'),
+        'outfile' : paramio.pgetstr(fp, 'outfile'),
+        'wfile' : paramio.pgetstr(fp, 'wfile'),
+        'clobber' : paramio.pgetb(fp, 'clobber')==1,
+        'verbose' : paramio.pgeti(fp, 'verbose'),
+    }
+    paramio.paramclose(fp)
+    lw.set_verbosity(params['verbose'])
+    return params
+
+@lw.handle_ciao_errors(toolname, version) # top-level routine
+def dewiggle(argv):
+    params = process_command_line(argv)
+    print_version()
+    update_tgd( params );
+
+    v2("Adding HISTORY entry to %s\n" % params['outfile'])
+    add_tool_history(params['outfile'], toolname, params, toolversion=version)
+
+if __name__ == '__main__':
+    dewiggle(sys.argv)

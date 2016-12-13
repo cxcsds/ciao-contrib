@@ -1,0 +1,316 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="write_columns" context="contrib"
+         refkeywords="write_column write create print file ascii fits table
+		      col cols columns columns array arrays
+		      dict dictionary ordereddict recarray structured struct"
+         seealsogroups="sh.write sh.arrays cr.io crutils.cols">
+
+    <SYNOPSIS>
+      Write out arrays (columns) to a file as a table (ASCII or FITS format).
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>write_columns(filename, col1, ..., coln)</LINE>
+      <LINE>write_columns(filename, dictionary)</LINE>
+      <LINE>write_columns(filename, structarray)</LINE>
+      <LINE/>
+      <LINE>The optional arguments, with their default values, are:</LINE>
+      <LINE>colnames=None</LINE>
+      <LINE>format="text"</LINE>
+      <LINE>clobber=True</LINE>
+      <LINE>sep=" "</LINE>
+      <LINE>comment="#"</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	This routine provides a quick means of writing out a set of arrays,
+	a dictionary, or NumPy structured array,
+	to a file as a table, in ASCII or FITS binary format.
+      </PARA>
+      <PARA title="Loading the routine">
+	The routine can be loaded into a ChIPS or Sherpa session by saying:
+      </PARA>
+<VERBATIM>
+from crates_contrib.utils import *
+</VERBATIM>
+
+      <PARA title="Column content: dictionary">
+	If a single argument for the column data is given and it acts like a Python dictionary,
+        then it is used to define both the column names and values (the
+	dictionary keys and values respectively). The dictionary values
+	are assumed to be arrays and follow the same rules as if
+	given individually, as described in the "Column contents: separate arguments"
+	section below.
+      </PARA>
+      <PARA>
+	If the colnames argument is given then it is used to determine the
+	order of the columns in the output crate. This argument acts as a column
+	filter on the input dictionary, since any dictionary keys not in colnames
+	are not added to the crate.
+      </PARA>
+      <PARA>
+	If colnames is None then the argument of the columns is determined by the
+	dictionary itself - i.e. the order returned by its keys() method.
+	Use the collections.OrderedDict class if you need a specific order (or 
+	explicitly specify it using the colnames argument).
+      </PARA>
+
+      <PARA title="Column content: structured array">
+	If the column argument is a
+	<HREF link="http://docs.scipy.org/doc/numpy-1.7.0/user/basics.rec.html">NumPy
+	structured array</HREF> then it is used to determine the column
+	names and values and the order of the columns. The colnames
+	argument can be used to re-order or subset the columns as
+	with dictionaries.
+      </PARA>
+
+      <PARA title="Column content: separate arguments">
+	If neither a dictionary or structured array is given then
+	the data to write out is given as the col1 to coln arguments;
+	they can be Python arrays (e.g. [1,2,3]) or numpy arrays (e.g.
+	np.arange(4)), can be multi-dimensional (e.g. for vector columns),
+	and can include string vectors. Each column should contain a single
+	datatype, and all will be padded to the length of the longest
+	array. The padding is 0 for numeric columns and "" or "IND" for
+	string arrays.
+      </PARA>
+      <PARA>
+	If the optional colnames argument is not given then the output
+	columns will be named "col1" to "coln", where n is the number of
+	columns. To use your own names, supply an array of strings to the
+	colnames argument.
+      </PARA>
+      <PARA title="Output format">
+	The default output format is ASCII, using the "TEXT/SIMPLE"
+	flavor supported by the CIAO Data Model (see "ahelp dmascii" for
+	more information on text formats). The output format can be changed
+	using the format argument, using the values listed below.
+      </PARA>
+      <TABLE>
+	<CAPTION>The format argument</CAPTION>
+	<ROW><DATA>Value</DATA><DATA>Description</DATA></ROW>
+	<ROW><DATA>"text"</DATA><DATA>A simple ASCII format consisting of a header line containing the column names and then the data (TEXT/SIMPLE).</DATA></ROW>
+	<ROW><DATA>"fits"</DATA><DATA>FITS binary table format.</DATA></ROW>
+	<ROW><DATA>"simple"</DATA><DATA>The same as "text".</DATA></ROW>
+	<ROW><DATA>"raw"</DATA><DATA>As "text" but without the column names (TEXT/RAW).</DATA></ROW>
+	<ROW><DATA>"dtf"</DATA><DATA>Data Text Format, which is a FITS-like ASCII format (TEXT/DTF).</DATA></ROW>
+      </TABLE>
+      <PARA title="ASCII output options">
+	The sep and comment arguments control the ASCII output versions (they are ignored
+	when format is set to "fits"). The sep argument gives the column seperator - the default
+	is " " - and the comment argument gives the character that starts a comment line, and
+	it has a default of "#".
+      </PARA>
+      <PARA title="Adding extra metadata to the table">
+	If you wish to add extra metadata to the table then you can use the
+	make_table_crate() routine, which creates a Crate from a list of 
+	arrays, add the metadata using Crates routines, and then write
+	the crate out using write_file().
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; a = [1, 2, 3, 4, 5]</LINE>
+	  <LINE>&pr; b = 2.3 * np.asarray(a)**2</LINE>
+	  <LINE>&pr; c = ["src a", "src b", "", "multiple sources", "x"]</LINE>
+	  <LINE>&pr; write_columns("src.dat", a, b, c)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The three columns are written to the file "src.dat" in text format.
+	    The output file will contain the following; note that the string column
+	    contains leading and trailing quote characters for elements that are
+	    empty or contain spaces.
+	  </PARA>
+<VERBATIM>
+&pr; !cat src.dat
+#TEXT/SIMPLE
+# col1 col2 col3
+1 2.300000000000 "src a"
+2 9.200000000000 "src b"
+3 20.70000000000 ""
+4 36.80000000000 "multiple sources"
+5 57.50000000000 x
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; write_columns("src.dat", a, b, c, colnames=["x", "y", "comment"])</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The same data is written out as in the previous example but this time explicit column
+	    names are given. The output file now looks like:
+	  </PARA>
+<VERBATIM>
+&pr; !cat src.dat
+#TEXT/SIMPLE
+# x y comment
+1 2.300000000000 "src a"
+2 9.200000000000 "src b"
+3 20.70000000000 ""
+4 36.80000000000 "multiple sources"
+5 57.50000000000 x
+</VERBATIM>
+	  <PARA>
+	    Note that this call will overwrite the contents of the "src.dat" file without warning.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; cnames = ["x", "y", "comment"]</LINE>
+	  <LINE>&pr; write_columns("src.fits", a, b, c, colnames=cnames, format="fits")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The file is now written out as a FITS binary table:
+	  </PARA>
+<VERBATIM>
+&pr; !dmlist src.fits cols
+ 
+----------------------------------------------------------------------
+Columns for Table Block TABLE
+----------------------------------------------------------------------
+ 
+ColNo  Name       Unit        Type             Range
+   1   x                       Int4           -                    
+   2   y                       Real8          -Inf:+Inf            
+   3   comment                 String[16]                       
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; x = [1, 2, 3, 4]</LINE>
+	  <LINE>&pr; y = np.arange(10).reshape(5,2)</LINE>
+	  <LINE>&pr; print (x)</LINE>
+	  <LINE>[1, 2, 3, 4]</LINE>
+	  <LINE>&pr; print (y)</LINE>
+	  <LINE>[[0 1] </LINE>
+	  <LINE> [2 3] </LINE>
+	  <LINE> [4 5] </LINE>
+	  <LINE> [6 7] </LINE>
+	  <LINE> [8 9]]</LINE>
+	  <LINE>&pr; write_columns("cols.dat", x, y)</LINE>
+	  <LINE>&pr; write_columns("cols.fits", x, y, format="fits")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we highlight
+	  </PARA>
+	  <LIST>
+	    <ITEM>handling multi-dimensional arrays (y),</ITEM>
+	    <ITEM>and dealing with arrays of different length (x has 4 scalars and y has 5 pairs).</ITEM>
+	  </LIST>
+	  <PARA>
+	    The ASCII output file contains a scalar column (col1) and a 
+	    vector column of length 2, col2). The fifth element of col1 has
+	    been set to 0 since the input array (x) did not contain any data.
+	  </PARA>
+<VERBATIM>
+&pr; !cat cols.dat
+#TEXT/SIMPLE
+# col1 col2[2]
+1 1 2
+2 3 4
+3 5 6
+4 7 8
+0 9 10
+</VERBATIM>
+	  <PARA>
+	    The FITS format output is the same: a 0 for the fifth row of col1 and
+	    col2 is a vector of length 2.
+	  </PARA>
+<VERBATIM>
+&pr; !dmlist cols.fits data
+ 
+--------------------------------------------------
+Data for Table Block TABLE
+--------------------------------------------------
+ 
+ROW    col1       col2[2]
+ 
+     1          1                [1 2]
+     2          2                [3 4]
+     3          3                [5 6]
+     4          4                [7 8]
+     5          0               [9 10]
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; d = {"x1": a, "x2": b, "x3": c}</LINE>
+	  <LINE>&pr; write_columns("src.dat", d, clobber=True)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we use a
+	    <HREF link="http://docs.python.org/tutorial/datastructures.html#dictionaries">Python dictionary</HREF>
+	    to name the columns. The order of the columns in the output file is
+	    unspecified (it depends on the dictionary). To enforce
+	    an ordering - and to possibly exclude columns - use the colnames argument,
+	    or try 
+	    using an <HREF link="http://docs.python.org/library/collections.html#ordereddict-objects">Ordered Dictionary</HREF>.
+	    For example:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; write_columns("src.dat', d, colnames=["x1", "x2", "x3"])</LINE>
+	      <LINE>&pr; write_columns("src.dat', d, colnames=["x1", "x3"])</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Changes in the January 2012 Release">
+      <PARA title="Dictionary and structured-array support">
+	The write_columns() routine can now accept a 
+	dictionary or NumPy structured array
+	rather than a set of column arguments.
+      </PARA>
+
+      <PARA title="Support for np.int32 arrays">
+	On 64-bit builds of CIAO,
+	any NumPy arrays with a datatype of np.int32 are
+	converted to np.int64 values to avoid
+	data corruption.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the December 2011 Release">
+      <PARA title="The clobber parameter">
+	The clobber parameter has been added, which defaults to True.
+	In prior releases the routine always over-wrote a file if it
+	existed (i.e. acted as if clobber was True).
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+ 
+    <LASTMODIFIED>December 2011</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

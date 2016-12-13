@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY key="make_instmap_weights" context="tools"
+	 refkeywords="weight weights weighted
+		      mkinstmap spectrumfile spectrum
+		      instrument exposure map image
+		      instmap expmap"
+	 seealsogroups="resptools"> 
+
+    <SYNOPSIS>
+      make_instmap_weights - produces a weighted spectrum file usable
+      with mkinstmap in order to create a weighted exposure map. 
+    </SYNOPSIS>
+
+
+     <DESC>
+      <PARA>
+        This tool creates a two-column ASCII file; the first column
+        specifies the energy in keV (E_i) and the second column
+        specifies a spectral weighting (W_i); from any Sherpa model.  
+	The spectral weight
+        column should sum to 1. The spectral file is then used to
+        compute the weighted instrument map as a linear combination of
+        monochromatic maps at energies E_i with weights W_i for
+        several energy-weight pairs.  To learn more about spectral
+        weightings and their affect on instrument maps, look at the
+	<HREF link="http://cxc.harvard.edu/ciao/threads/spectral_weights">"Calculating
+	Spectral Weights for mkinstmap"</HREF> analysis thread. 
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>unix% make_instmap_weights weights.txt
+	  "xsphabs.abs1*powlaw1d.p1"
+	  paramvals="abs1.nh=2.2;p1.gamma=1.6" emin=0.5 emax=10.0
+	  ewidth=0.25</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Create a spectral weights table, weights.txt, using an
+	    absorbed power-law with spectral index of 1.6 and neutral
+	    hydrogen column density of 2.2E+22 cm**-2 between 0.5-10.0
+	    keV, with 0.25 keV energy bins.  Note that parameter
+	    values must be separated by a semi-colon and that the paramvals
+	    name had to be given on the command line since its value containined the
+	    "=" character.
+	  </PARA>
+	  <PARA>
+	    The output file (weights.txt) can be used as the value for
+	    the spectrumfile parameter of mkinstmap.
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>unix% make_instmap_weights weights.txt
+	  "xszphabs.abs1*xsapec.apec1"
+	  paramvals="abs1.nh=2.2;abs1.redshift=1.3;apec1.kt=6.4;apec1.redshift=zabs1.redshift"
+	  xsect="vern" abund="wilm"
+	  </LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Create a spectral weights table using a XSpec redshifted, 
+	    absorbed APEC plasma model.  The redshift of the
+	    plasma model is linked to the photoelectric absorption
+	    redshift parameter and the plasma temperature is set to
+	    6.4 keV.  The XSpec solar abundance, used in plasma
+	    models, is set to Wilms, Allen &amp; McCray (2000, ApJ
+	    542, 914) and the photoelectric cross-section is set to
+	    Verner et al. (1996, ApJ 465, 487).
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="outfile" type="file" filetype="output" reqd="yes" def="">
+         <SYNOPSIS>
+            The name of the spectral weights file to create.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      The weights file created listing the energy bin center
+	      in keV in the first column and normalized weighting in the
+	      second column.
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="model" type="string" reqd="yes" def="">
+         <SYNOPSIS>
+	    Sherpa model used to derive spectral weighting.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      Any Sherpa model(s) may be used to determine a spectral
+	      weighting, as long as the model is entered as a string.  
+	      For example: "xsphabs.abs1*powlaw1d.p1".
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="paramvals" type="string" reqd="yes" def="">
+         <SYNOPSIS>
+	    Sherpa model parameters used to derive spectral weighting.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      Model parameters listed as a string, with each parameter
+	      seperated by a semi-colon.  For example:
+	      "abs1.nh=1.3;p1.gamma=1.7".
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="emin" type="real" reqd="yes" def="INDEF">
+         <SYNOPSIS>
+	    Lower bound of model energy range in keV.
+         </SYNOPSIS>
+      </PARAM>     
+      <PARAM name="emax" type="real" reqd="yes" def="INDEF">
+         <SYNOPSIS>
+	    Upper bound of model energy range in keV.
+         </SYNOPSIS>
+      </PARAM>     
+      <PARAM name="ewidth" type="real" reqd="yes" def="INDEF">
+         <SYNOPSIS>
+	    Width of each energy bin in keV.
+         </SYNOPSIS>
+      </PARAM>    
+      <PARAM name="abund" type="string" reqd="no" def="angr">
+         <SYNOPSIS>
+	    Set XSpec solar abundance.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      Sets the elemental abundance table used in XSpec plasma-code models. 
+            </PARA>
+         </DESC>
+      </PARAM>      
+      <PARAM name="xsect" type="string" reqd="no" def="bcmc">
+         <SYNOPSIS>
+	    Set XSpec photoelectric cross-section.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      Set the photoelectric cross-section used in XSpec
+	      absorption models.
+            </PARA>
+         </DESC>
+      </PARAM>      
+      <PARAM name="verbose" type="integer" def="3" min="0" max="5" reqd="no">
+         <SYNOPSIS>
+            Verbose can be from 0 to 5, generating different amounts of output.
+         </SYNOPSIS>
+      </PARAM>       
+      <PARAM name="clobber" type="boolean" def="no" reqd="no">
+         <SYNOPSIS>
+	    If set to yes, existing output files will be overwritten.
+	 </SYNOPSIS>
+      </PARAM>
+     </PARAMLIST>
+     
+     <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/make_instmap_weights.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    <VERSION>02 June 2010</VERSION>
+    <LASTMODIFIED>June 2010</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

@@ -1,0 +1,1818 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+
+  <!ENTITY pr "unix&#37;">
+
+  <!ENTITY dmx '<DATA>*</DATA>'>
+  <!ENTITY nodmx '<DATA/>'>
+
+  <!-- need to use &#37; rather than % in the following! -->
+  <!ENTITY gal "&#37;GAL&#37;">
+  <!ENTITY nrao "&#37;NRAO_NH&#37;">
+  <!ENTITY bell "&#37;BELL_NH&#37;">
+
+]>
+<cxchelptopics>
+  <ENTRY key="srcflux" context="tools"
+         refkeywords="poisson net count counts rate rates flux fluxes erg fraction
+		      countrate countrates
+		      estimate upper limit model dependent independent
+		      psf correct band bands CSC
+		      aprates eff2evt specextract
+		      compute calculate photon eef ecf fraction
+		      "
+         seealsogroups="stattools"
+         displayseealsogroups="resptools" >
+    <SYNOPSIS>
+      Calculate the net count rates and fluxes, including uncertainties, of sources in a Chandra observation.
+    </SYNOPSIS>
+    <DESC>
+      <PARA>
+	Calculate the net count rate, and flux, for sources in a
+	Chandra observation given source and background regions.
+	The count rate is calculated using the aprates tool, and
+	so can be used to estimate upper limits as well as detections,
+	as well as to account for the PSF contribution to both the
+	source and background regions, for point sources.
+	The flux is estimated in three ways:
+      </PARA>
+      <LIST>
+	<ITEM>a model-independent estimate, using the eff2evt tool,</ITEM>
+	<ITEM>a model dependent estimate, using the modelflux script
+	to calculate the conversion factor for a given spectral model
+	(for this stage ARFs and RMFs will be created for each source).</ITEM>
+    <ITEM>and in photon units by using the fluximage tool to
+    create exposure an corrected image.
+    </ITEM>
+      </LIST>
+      <PARA>
+        The results are written to one or more output files, with one row per source, and one
+        file for each energy band.  With verbose&gt;0, the results are also
+        printed to the screen.            
+      </PARA>
+      <PARA title="Specifying a source location">
+	The simplest option is to just specify the location of the sources,
+	with no source or background regions; that is set the pos argument
+	but not the srcreg and bkgreg ones.
+	In this case a circle is used for each source, centered on each source,
+	and the radius is the size of a circle needed to enclose 90% of the PSF at 1.0keV.
+      </PARA>
+      <PARA title="Using source and background regions">
+	If the srcreg and bkgreg parameters are given then they are
+	used to calculate the source and background counts.  In this 
+    mode, the pos parameter must still be specified since it is used
+    to get the PSF fraction correction.
+      </PARA>
+      <PARA title="Estimating the PSF contribution">
+	The PSF contribution to both the source and background regions
+	can be estimated using one of four methods, controlled by the
+	psfmethod argument. Extended sources should use psfmethod=ideal,
+	which makes no correction, or psfmethod=psffile and provide
+    an image of the surfrace brightness as the psffile parameter.
+        The other options are discussed below in the psfmethod parameter 
+     and the "PSF Correction" section.
+      </PARA>
+    </DESC>
+    
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; punlearn srcflux</LINE>
+	  <LINE>&pr; srcflux acisf00635_repro_evt2.fits "16:27:33.115 -24:41:15.51" rhooph</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The simplest usage of srcflux is to provide an event list,
+	    a position, and an output root file name. Since the default
+	    is verbose=1, the following output is generated            
+	  </PARA>
+<VERBATIM>
+srcflux
+          infile = acisf00635_repro_evt2.fits
+             pos = 16:27:33.115 -24:41:15.51
+         outroot = rhooph
+           bands = broad
+          srcreg = 
+          bkgreg = 
+         bkgresp = yes
+       psfmethod = ideal
+         psffile = 
+            conf = 0.9
+         binsize = 1
+         rmffile = 
+         arffile = 
+           model = xsphabs.abs1*xspowerlaw.pow1
+       paramvals = abs1.nH=0.0;pow1.PhoIndex=2.0
+        absmodel = 
+       absparams = 
+           abund = angr
+         fovfile = 
+        asolfile = 
+         mskfile = 
+        bpixfile = 
+         dtffile = 
+         ecffile = CALDB
+        parallel = yes
+           nproc = INDEF
+          tmpdir = /tmp
+         clobber = no
+         verbose = 1
+            mode = ql
+
+Extracting counts
+Setting Ideal PSF : alpha=1 , beta=0
+Getting net rate and confidence limits
+Getting model independent fluxes 
+Getting model fluxes 
+Getting photon fluxes 
+Running tasks in parallel with 4 processors.
+Running eff2evt for rhooph_broad_0001_src.dat
+Running aprates for rhooph_broad0001_rates.par
+Running eff2evt for rhooph_broad_0001_bkg.dat
+Making response files for rhooph_0001
+Running modeflux for region 1
+Adding net rates to output
+Appending flux results onto output
+Appending photflux results onto output
+Computing Net fluxes
+Adding model fluxes to output
+Scaling model flux confidence limits
+
+
+Summary of source fluxes
+
+Position                               0.5 - 7.0 keV                           
+                                       Value        90% Conf Interval          
+16 27 33.11 -24 41 15.5 Rate           0.0263 c/s (0.0255,0.0272)              
+                        Flux           3.6E-13 erg/cm2/s (3.49E-13,3.72E-13)   
+                        Mod.Flux       2.73E-13 erg/cm2/s (2.65E-13,2.82E-13)  
+</VERBATIM>
+	  <PARA>
+	    Since source and background regions are not supplied, the script
+	    creates a region that encloses 90% of the PSF at 1.0 keV.
+	  </PARA>
+<VERBATIM>
+&pr; dmlist rhooph_broad.flux"[cols shape,x,y,r]" data,clean
+#  SHAPE              sky(X,Y)                                 R[2]
+ Circle                               3676.130      3260.330            14.35720                    0
+</VERBATIM>
+	  <PARA>
+	    which for this source in this observation is a circle with a 14.4 pixel radius.
+	  </PARA>
+	  <PARA>
+	    The default is psfmethod=ideal, so the source region PSF fraction is
+	    assumed to be 100% and the background is assumed to have 0% of the source
+	    PSF.
+	  </PARA>
+<VERBATIM>
+&pr; dmlist rhooph_broad.flux"[cols psffrac,bg_psffrac]" data,clean
+#  PSFFRAC              BG_PSFFRAC
+                  1.0                    0
+</VERBATIM>
+	  <PARA>
+	    The default energy band the Chandra Source Catalog broad band which
+	    goes from 0.5 to 7.0 keV.  
+	  </PARA>
+	  <PARA>
+	    The values and the 90% confidence are also printed to the screen as
+	    shown above.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>% srcflux acisf00635_repro_evt2.fits "16:27:33.115 -24:41:15.51" rhooph psfmethod=quick clobber=yes</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            Same as above but now we make use of the quick PSF method that
+            uses the characteristic energy of the band to look up the
+            PSF fraction.  In this example the characteristic energy
+            of the CSC broad band is 2.3keV.
+	  </PARA>
+<VERBATIM>
+...
+Summary of source fluxes
+
+Position                               0.5 - 7.0 keV                           
+                                       Value        90% Conf Interval          
+16 27 33.11 -24 41 15.5 Rate           0.0302 c/s (0.0293,0.0312)              
+                        Flux           4.14E-13 erg/cm2/s (4.01E-13,4.28E-13)  
+                        Mod.Flux       3.14E-13 erg/cm2/s (3.04E-13,3.24E-13)  
+
+
+&pr; dmlist rhooph_broad.flux"[cols psffrac,bg_psffrac]" data,clean
+#  PSFFRAC              BG_PSFFRAC
+     0.86991358226167                    0
+</VERBATIM>
+
+	  <PARA>
+	    Since the PSF fraction is better estimated we end up with a slightly
+	    higher RATEs.  
+	  </PARA>
+	  <PARA>
+	    The value of 87% should not be too surprising.  Since we did not provide
+	    a region, one was created that enclosed 90% of the PSF at 1.0keV.  The PSF
+	    is more broad at this higher energy, 2.3keV, so the PSF fraction is
+	    a little less.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; srcflux acisf00635_repro_evt2.fits "16:27:33.115 -24:41:15.51" rhooph psfmethod=arfcorr clob+</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    We repeat the above example again, now using the arfcorr tool to
+	    generate a circularly symmetric model of the PSF and compute the
+	    PSF fractions from it.            
+	  </PARA>
+<VERBATIM>
+Position                               0.5 - 7.0 keV                           
+                                       Value        90% Conf Interval          
+16 27 33.11 -24 41 15.5 Rate           0.0304 c/s (0.0295,0.0314)              
+                        Flux           4.76E-13 erg/cm2/s (4.61E-13,4.92E-13)  
+                        Mod.Flux       3.16E-13 erg/cm2/s (3.06E-13,3.26E-13)  
+
+
+
+&pr; dmlist rhooph_broad.flux"[cols psffrac,bg_psffrac]" data,clean
+#  PSFFRAC              BG_PSFFRAC
+     0.86952022197560     0.11286898252867
+</VERBATIM>
+	  <PARA>
+	    The source PSF fraction is about the same, which is expected given that
+	    the same calibration is used to make the region size and the PSF
+        correction. However, now the background PSF fraction
+	    is better estimated to be about 11%.  Given how bright this source
+	    is the background contribution is not significant so it barely affects
+	    the value or confidence limits.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; srcflux acisf00635_repro_evt2.fits "16:27:33.115 -24:41:15.51" rhooph psfmethod=psffile 
+	  psffile=CXOJ162733.1-244115/acisf00635_000N001_r0002b_psf3.fits.gz clob+</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    We repeat this example one last time using psfmethod=psffile
+	    and providing an image of the PSF taken from the
+	    Chandra Source Catalog for this source, CXOJ162733.1-244115.
+	  </PARA>
+<VERBATIM>
+Position                               0.5 - 7.0 keV                           
+                                       Value        90% Conf Interval          
+16 27 33.11 -24 41 15.5 Rate           0.0286 c/s (0.0276,0.0295)              
+                        Flux           4.18E-13 erg/cm2/s (4.04E-13,4.31E-13)  
+                        Mod.Flux       2.97E-13 erg/cm2/s (2.87E-13,3.06E-13)  
+
+&pr; dmlist rhooph_broad.flux"[cols psffrac,bg_psffrac,theta]" data,clean
+#  PSFFRAC              BG_PSFFRAC           THETA
+     0.92381309814224     0.06098705197973         7.6742977885
+</VERBATIM>
+	  <PARA>
+	    The source and background PSF fractions are now computed from the 
+	    broad band PSF image that was input via the psffile parameter.  The 
+	    results are somewhat different than before.  A visual inspection of the
+	    PSF shows it to be highly elliptical so the circular approximations made
+	    earlier were biasing the results.  We can also do a quick analysis of the PSF
+	    to show that it is quite elliptical:
+	  </PARA>
+<VERBATIM>
+&pr; dmellipse CXOJ162733.1-244115/acisf00635_000N001_r0002b_psf3.fits.gz psf_ellipse.fits 0.9
+&pr; dmlist psf_ellipse.fits"[cols shape,r,rotang]" data,clean
+#  shape                            r[2]                                     rotang
+ ellipse                                 16.1637725830         9.5770123050        23.2332704673 
+</VERBATIM>
+
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; roi infile=psf_ellipse.fits outsrc=psf_region bkgradius=5 clob+ mode=h</LINE>
+	  <LINE>&pr; punlearn srcflux</LINE>
+	  <LINE>&pr; pset srcflux psfmethod=psffile clob+</LINE>
+	  <LINE>&pr; pset srcflux psffile=CXOJ162733.1-244115/acisf00635_000N001_r0002b_psf3.fits.gz</LINE>
+	  <LINE>&pr; pset srcflux srcreg="psf_region[srcreg]"</LINE>
+	  <LINE>&pr; pset srcflux bkgreg="psf_region[bkgreg]"</LINE>
+	  <LINE>&pr; srcflux acisf00635_repro_evt2.fits "16:27:33.115 -24:41:15.51" rhooph</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            In the previous example we found an ellipse that encloses 90% of 
+            the broad band PSF.  We can use that as in input source region
+            instead of the circular 90% source region at 1.0keV.  However,
+            we also need a background region so first we run
+            the 
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/roi.html">roi tool</HREF>
+	    to scale the source ellipse.
+	  </PARA>
+<VERBATIM>
+Position                               0.5 - 7.0 keV                           
+                                       Value        90% Conf Interval          
+16 27 33.11 -24 41 15.5 Rate           0.0285 c/s (0.0275,0.0294)              
+                        Flux           4.32E-13 erg/cm2/s (4.18E-13,4.46E-13)  
+                        Mod.Flux       2.96E-13 erg/cm2/s (2.86E-13,3.05E-13)  
+</VERBATIM>
+
+          <PARA>
+	    We see that we get consistent results with above which makes 
+	    sense.  As long at the PSF corrections are happening correctly,
+	    the shape and size of the region will not drastically change the results, just
+	    possibly confidence limits.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+      <LINE>&pr; punlearn srcflux</LINE>
+	  <LINE>&pr; srcflux acisf00635_repro_evt2.fits '635_catalog.tsv[opt kernel=text/tsv][significance=5:6]' rhooph bands=0.3:7.0:1.9 clob+</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    We can also input a file with a list of RA and Dec. values 
+	    and the script will compute the NET rates and fluxes for
+	    each source.  In this example we input a Tab-Separated-Value
+	    table (for example retrieved from the Chandra Source Catalog)
+	    and have filtered it include sources with a significance
+	    between 5 and 6.  We have also chosen a custom energy
+	    range going from 0.3 to 7.0 keV.  The screen output
+	    will now look like this:
+	  </PARA>
+<VERBATIM>
+srcflux
+          infile = acisf00635_repro_evt2.fits
+             pos = 635_catalog.tsv[opt kernel=text/tsv][significance=5:6]
+         outroot = rhooph
+           bands = 0.3:7.0:1.9
+          srcreg = 
+          bkgreg = 
+         bkgresp = yes
+       psfmethod = ideal
+         psffile = 
+            conf = 0.9
+         binsize = 1
+         rmffile = 
+         arffile = 
+           model = xsphabs.abs1*xspowerlaw.pow1
+       paramvals = abs1.nH=0.0;pow1.PhoIndex=2.0
+        absmodel = 
+       absparams = 
+           abund = angr
+         fovfile = 
+        asolfile = 
+         mskfile = 
+        bpixfile = 
+         dtffile = 
+         ecffile = CALDB
+        parallel = yes
+           nproc = INDEF
+          tmpdir = /tmp
+         clobber = yes
+         verbose = 1
+            mode = ql
+
+Extracting counts
+Setting Ideal PSF : alpha=1 , beta=0
+Getting net rate and confidence limits
+Getting model independent fluxes 
+Getting model fluxes 
+Getting photon fluxes 
+Running tasks in parallel with 4 processors.
+Making response files for rhooph_0004
+Running eff2evt for rhooph_0.3-7.0_0004_src.dat
+Running eff2evt for rhooph_0.3-7.0_0005_src.dat
+Making response files for rhooph_0005
+Running eff2evt for rhooph_0.3-7.0_0003_src.dat
+Running eff2evt for rhooph_0.3-7.0_0005_bkg.dat
+Running modeflux for region 4
+Running modeflux for region 5
+Making response files for rhooph_0001
+Running aprates for rhooph_0.3-7.00004_rates.par
+Running aprates for rhooph_0.3-7.00003_rates.par
+Running aprates for rhooph_0.3-7.00002_rates.par
+Running aprates for rhooph_0.3-7.00001_rates.par
+Running eff2evt for rhooph_0.3-7.0_0002_src.dat
+Running aprates for rhooph_0.3-7.00005_rates.par
+Making response files for rhooph_0003
+Running eff2evt for rhooph_0.3-7.0_0001_src.dat
+Running eff2evt for rhooph_0.3-7.0_0003_bkg.dat
+Running modeflux for region 1
+Running modeflux for region 3
+Running eff2evt for rhooph_0.3-7.0_0001_bkg.dat
+Making response files for rhooph_0002
+Running eff2evt for rhooph_0.3-7.0_0002_bkg.dat
+Running eff2evt for rhooph_0.3-7.0_0004_bkg.dat
+Running modeflux for region 2
+Adding net rates to output
+Appending flux results onto output
+Appending photflux results onto output
+Computing Net fluxes
+Adding model fluxes to output
+Scaling model flux confidence limits
+
+
+Summary of source fluxes
+
+Position                               0.3 - 7.0 keV                           
+                                       Value        90% Conf Interval          
+16 26 48.92 -24 38 23.8 Rate           0.000319 c/s (0.000219,0.000436)        
+                        Flux           2.65E-15 erg/cm2/s (1.82E-15,3.62E-15)  
+                        Mod.Flux       3.47E-15 erg/cm2/s (2.39E-15,4.75E-15)  
+
+16 26 57.34 -24 35 38.8 Rate           0.000308 c/s (0.000221,0.000413)        
+                        Flux           5.86E-15 erg/cm2/s (4.2E-15,7.85E-15)   
+                        Mod.Flux       3.07E-15 erg/cm2/s (2.2E-15,4.12E-15)   
+
+16 26 59.06 -24 35 57.3 Rate           0.000328 c/s (0.00024,0.000435)         
+                        Flux           2.93E-15 erg/cm2/s (2.14E-15,3.88E-15)  
+                        Mod.Flux       3.77E-15 erg/cm2/s (2.76E-15,5E-15)     
+
+16 27 5.22 -24 41 12.2  Rate           0.000393 c/s (0.000286,0.000517)        
+                        Flux           1.06E-14 erg/cm2/s (7.68E-15,1.39E-14)  
+                        Mod.Flux       4.28E-15 erg/cm2/s (3.12E-15,5.63E-15)  
+
+16 27 15.54 -24 33 1.8  Rate           0.000295 c/s (0.000214,0.000394)        
+                        Flux           5.81E-15 erg/cm2/s (4.21E-15,7.76E-15)  
+                        Mod.Flux       3.94E-15 erg/cm2/s (2.86E-15,5.27E-15)  
+
+</VERBATIM>
+
+	  <PARA>
+            Note:  The processing will happen in a random or on a
+            machine with multiple CPU cores.  Since we chose a
+            custom energy range, the output file name
+            is now 'rhooph_0.3-7.0.flux'.  
+	  </PARA>
+	  
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; punlearn srcflux</LINE>
+	  <LINE>&pr; pset srcflux bands=csc conf=0.68 clob+</LINE>
+	  <LINE>&pr; pset srcflux model=xspowerlaw.pow1 absmodel=xsphabs.abs1</LINE>
+	  <LINE>&pr; pset srcflux paramvals="pow1.PhoIndex=1.0"</LINE>
+	  <LINE>&pr; pset srcflux absparam="abs1.nH=1.0"</LINE>
+	  <LINE>&pr; srcflux acisf00635_repro_evt2.fits '635_catalog.tsv[opt kernel=text/tsv][significance=6:6.5]' rhooph</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example we change the confidence limits to be 1sigma (68%), 
+	    run multiple energy bands (bands=csc will run the soft,
+	    medium, and hard bands) and setup the model to give us
+	    both observed and unabsorbed fluxes.
+	  </PARA>
+<VERBATIM>
+Summary of source fluxes
+
+Position                               0.5 - 1.2 keV                           1.2 - 2.0 keV                           2.0 - 7.0 keV                           
+                                       Value        68% Conf Interval          Value        68% Conf Interval          Value        68% Conf Interval          
+16 26 48.44 -24 28 37.1 Rate           0 c/s (NAN,2.44E-05)                    6.72E-05 c/s (4.02E-05,0.000101)        0.000467 c/s (0.000394,0.000546)        
+                        Flux           8.31E-17 erg/cm2/s (NAN,8.31E-17)       4.97E-16 erg/cm2/s (2.97E-16,7.45E-16)  9.12E-15 erg/cm2/s (7.69E-15,1.07E-14)  
+                        Mod.Flux       0 erg/cm2/s (NAN,1.12E-16)              4.38E-16 erg/cm2/s (2.62E-16,6.58E-16)  1.28E-14 erg/cm2/s (1.08E-14,1.5E-14)   
+                        Unabs Mod.Flux 0 erg/cm2/s (NAN,2.08E-15)              9.79E-16 erg/cm2/s (5.85E-16,1.47E-15)  1.4E-14 erg/cm2/s (1.18E-14,1.64E-14)   
+
+16 27 41.46 -24 35 37.8 Rate           0 c/s (NAN,1.13E-05)                    0.000222 c/s (0.000177,0.000273)        0.000202 c/s (0.000157,0.000253)        
+                        Flux           NAN erg/cm2/s (NAN,NAN)                 1.21E-15 erg/cm2/s (9.69E-16,1.49E-15)  3.39E-15 erg/cm2/s (2.64E-15,4.25E-15)  
+                        Mod.Flux       0 erg/cm2/s (NAN,5.02E-17)              1.45E-15 erg/cm2/s (1.16E-15,1.79E-15)  5.49E-15 erg/cm2/s (4.28E-15,6.88E-15)  
+                        Unabs Mod.Flux 0 erg/cm2/s (NAN,9.34E-16)              3.24E-15 erg/cm2/s (2.6E-15,3.99E-15)   6E-15 erg/cm2/s (4.68E-15,7.52E-15)     
+
+</VERBATIM>
+	  <PARA>
+	    We also see an example of an upper limits computed 
+	    for the soft band rate and fluxes.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; pset srcflux absparam="abs1.nH=&gal;"</LINE>
+	  <LINE>&pr; srcflux acisf00635_repro_evt2.fits '635_catalog.tsv[opt kernel=text/tsv][significance=6:6.5]' rhooph2</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    This repeats the previous example, but instead of using a fixed column density for
+	    the absorbing model (i.e. the same value for all sources), it calculates
+	    individual column densities for each source, using the
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/colden.html">prop_colden</HREF>
+	    tool and the NRAO catalog.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; srcflux acisf00635_repro_evt2.fits "16:27:33.115 -24:41:15.51" rhooph arffile=my.arf rmffile=my.rmf</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    If an ARF and RMF for the source are already available,
+	    they can be input via the arffile and rmffile, respectively.  
+	    When these are specified, specextract is not run so 
+	    source and background spectra are not extracted.
+	  </PARA>
+	  <PARA>
+	    Important: The input ARF must not have already been corrected
+	    for the PSF fraction, OR the psfmethod should be set
+	    to "ideal".  This will ensure that the PSF fraction will
+	    not be doubly applied to the model flux outputs.
+	  </PARA>        
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes" stacks="no">
+	<SYNOPSIS>Input Chandra event file</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The input Chandra event file.  The file will be filtered
+	    on energy and with the source and background regions.
+	    The file should be for a single observation (see
+	    note about merged observations below). 
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      <PARAM name="pos" type="string" reqd="yes" stacks="no">
+	<SYNOPSIS>RA and DEC position of the source</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    pos may be a single position or may be a filename
+	    that contains columns named RA and DEC.  If 
+	    a single position the values may be in degrees or
+	    in sexagesimal format and must contain the "+" or
+	    "-" part of the declination.
+	  </PARA>
+	  <PARA>
+	    If a file name is given, then it should contain columns
+	    named RA and DEC.  The values in the file must be in
+	    decimal degrees.  If columns RA and DEC cannot be found
+	    then the first two columns in the file are used.
+	  </PARA>
+	  <PARA>
+	    All positions must be J2000.
+	  </PARA>
+      <PARA>
+        When srcreg and bkgreg are left unspecified, a circular
+        source region located at the pos location(s) is use whose
+        radius is the size of a circle needed to enclose 90% of the
+        PSF at 1.0keV.  An annular background region is also located 
+        at the pos location, that has an inner radius equal to the 
+        size of the source radius, and an outer radius 5 times the
+        inner radius.      
+      </PARA>
+      <PARA>
+        The pos values are also used in the PSF corrections.  It is the
+        source's pos location that is used when psfmethod=quick and 
+        psfmethod=arfcorr to estimate the PSF fractions.
+      </PARA>
+
+	</DESC>        
+      </PARAM>
+      <PARAM name="outroot" type="file" filetype="output" stacks="no" reqd="yes">
+	<SYNOPSIS>The output root file name including directory.</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    There will be one file created per energy band.  The
+	    file names will be:  $outroot_$band.flux. 
+	    The contents of the output files is described in the
+	    "Output files" section below.
+	  </PARA>
+      <PARA>
+        If the arffile and rmffile are left blank, then the spectrum
+        and associated response files for each source are 
+        also saved.  The files all have 
+        
+      </PARA>
+      <TABLE>
+        <ROW><DATA>Suffix</DATA>
+             <DATA>File contents</DATA>
+        </ROW>
+        <ROW>
+             <DATA>.arf</DATA>
+             <DATA>ARF for source region, with PSF corrections</DATA>
+        </ROW>
+        <ROW>
+            <DATA>_nopsf.arf</DATA>
+            <DATA>ARF for source region, without PSF corrections</DATA>
+        </ROW>
+        <ROW>
+            <DATA>.rmf</DATA>
+            <DATA>RMF for source region</DATA>
+        </ROW>
+        <ROW>
+            <DATA>.pi</DATA>
+            <DATA>Spectrum of source region</DATA>
+        </ROW>
+        <ROW>
+            <DATA>_grp.pi</DATA>
+            <DATA>Grouped spectrum of source region with min 15 counts per group</DATA>
+        </ROW>
+       <ROW>
+             <DATA>_bkg.arf</DATA>
+             <DATA>ARF for background region (only if bkgresp=yes)</DATA>
+        </ROW>
+        <ROW>
+            <DATA>_bkg.rmf</DATA>
+            <DATA>RMF for background region (only if bkgresp=yes)</DATA>
+        </ROW>
+        <ROW>
+            <DATA>.pi</DATA>
+            <DATA>Spectrum of background region</DATA>
+        </ROW>
+        <ROW>
+            <DATA>_srcreg.fits</DATA>
+            <DATA>Source region file</DATA>
+        </ROW>
+        <ROW>
+            <DATA>_bkgreg.fits</DATA>
+            <DATA>Background region file</DATA>
+        </ROW>
+        <ROW>
+            <DATA>_thresh.img</DATA>
+            <DATA>counts image around the source (new in 4.7.2)</DATA>
+        </ROW>
+        <ROW>
+            <DATA>_thresh.expmap</DATA>
+            <DATA>exposure map around the source (new in 4.7.2)</DATA>
+        </ROW>
+        <ROW>
+            <DATA>_flux.img</DATA>
+            <DATA>Fluxed (exposure corrected) image (new in 4.7.2)</DATA>
+        </ROW>
+        <ROW>
+            <DATA>.prob</DATA>
+            <DATA>Probability Density Function for the source count rate (new in 4.7.2)</DATA>
+        </ROW>
+        <ROW>
+            <DATA>_model.psf</DATA>
+            <DATA>The model psf used if method=arfcorr (new in 4.7.2)</DATA>
+        </ROW>
+
+      </TABLE>
+
+
+
+	</DESC>        
+      </PARAM>
+      <PARAM name="bands" type="string" reqd="no" stacks="yes" def="broad" units="keV">
+	<SYNOPSIS>Energy bands and characteristic energy value</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    A band can be given using a name (which will
+	    use the appropriate definitions from the Chandra Source
+	    Catalog) or by explicit limits.
+	  </PARA>
+	  <PARA>
+	    The names for the output files are created using the
+	    minimum, maximum and effective-energy values for each
+	    band.
+	  </PARA>
+	  
+	  <PARA title="Band names">
+	    The following names - based on the definitions from the
+	    <HREF link="http://cxc.harvard.edu/csc/columns/ebands.html">Chandra Source Catalog</HREF>
+	    - can be used; energies are given in keV and the effective
+	    energy is the monochromatic energy used to calculate the PSF fractions:
+	  </PARA>
+	  <TABLE>
+	    <ROW>
+	      <DATA>Band name</DATA><DATA>Minimum Energy</DATA><DATA>Maximum Energy</DATA><DATA>Effective Energy</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>broad</DATA><DATA>0.5</DATA><DATA>7.0</DATA><DATA>2.3</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>soft</DATA><DATA>0.5</DATA><DATA>1.2</DATA><DATA>0.92</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>medium</DATA><DATA>1.2</DATA><DATA>2.0</DATA><DATA>1.56</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>hard</DATA><DATA>2.0</DATA><DATA>7.0</DATA><DATA>3.8</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>ultrasoft</DATA><DATA>0.2</DATA><DATA>0.5</DATA><DATA>0.4</DATA>
+	    </ROW>
+		<ROW>
+		<DATA>wide</DATA><DATA>n/a</DATA><DATA>n/a</DATA><DATA>1.5</DATA>
+		</ROW>
+	  </TABLE>
+	  
+	  <PARA title="CSC">
+	    The value "csc" can be used as a short form for the
+	    combination of "soft,medium,hard".
+	  </PARA>
+      <PARA title="wide">
+        The "wide" energy band can only be used with HRC.
+      </PARA>
+        
+	  <PARA title="Explicit ranges">
+	    If you want to use different values to those of the CSC then
+	    you can use the format lo:hi:eff - where lo, hi and eff
+	    give the minimum, maximum and effective energies to use
+	    for the band (values are in keV).
+	  </PARA>
+	  
+	  <PARA title="Multiple bands">
+	    Multiple bands can be given either by using the name "csc"
+	    or by using a comma-separated list. The different schemes
+	    can be combined, so the following are all valid
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>bands="csc,broad"</LINE>
+	      <LINE>bands="0.5:7:2.5,ultrasoft"</LINE>
+	      <LINE>bands="0.5:7:2.5,csc"</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="srcreg" type="string" filetype="input" reqd="no" stacks="yes">
+	<SYNOPSIS>Stack of source regions</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The source region used to extra counts and the spectrum.
+	    This can either be a CIAO region syntax or can be
+	    a region file.  The following are all valid examples,
+	  </PARA>
+<VERBATIM>
+ellipse(4096,4096,100,50,45)
+box(3000,3000,100,50)-circle(3000,3000,10)
+region(ds9.reg)
+mysource.fits
+region(mysource.fits)
+bounds(region(my.reg))
+@ciaoreg.lis
+</VERBATIM>
+	  <PARA>
+	    see <HREF link="http://cxc.harvard.edu/ciao/ahelp/dmregions.html">ahelp dmregions</HREF>
+	    for more information on the supported syntax.
+	  </PARA>
+	  <PARA>
+	    If srcreg is specified, then bkgreg must also be specified.
+	    If multiple source positions are input, then multiple srcreg (and bkgreg) 
+	    must be specified and all in the same order.
+	  </PARA>
+	  <PARA>
+	    If srcreg is not specified, the tool will use a circle that encloses 90% of
+	    the PSF at 1.0keV.  If the fovfile is provided, then it will be included
+	    if the region overlaps the edge of the detector.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+
+      <PARAM name="bkgreg" type="string" filetype="input" reqd="no" stacks="yes">
+	<SYNOPSIS>Stack of background regions</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The background region.  It should be
+	    taken from a region near the source free of most
+	    source counts.  See the description of srcreg for 
+	    examples of the allowed syntax.
+	  </PARA>
+	  <PARA>
+	    If srcreg is specified, then bkgreg must also be specified.
+	    If multiple source positions are input, then multiple srcreg (and bkgreg) 
+	    must be specified and in the same order.
+	  </PARA>
+	  <PARA>
+	    If srcreg is not specified the background is 
+	    an annulus created by multiplying the source region by 
+	    1 (inner radius) and 
+	    5 (outer radius).   
+	    Overlapping sources are excluded from both the source and 
+        the background region.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+
+      <PARAM name="bkgresp" type="boolean" def="yes" reqd="no">
+	<SYNOPSIS>Create background ARF and RMF?</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Should the spectral response for the background regions be
+	    created - that is ARF and RMF - as well as for the source
+	    regions. The names of these files is discussed above, in the
+	    outroot parameter.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="psfmethod" type="string" def="ideal" reqd="no">
+	<SYNOPSIS>Method to compute PSF fraction in the
+	source and background regions.</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    There are 4 different methods for computing the
+	    fraction of the PSF in the source and background
+	    regions:
+	  </PARA>
+	  <LIST>
+	    <ITEM>ideal : source region is assumed to contain 100% of the PSF and the 
+	    background therefore contains 0% of the source flux.</ITEM>
+	    <ITEM>quick : the radius of the source circle is used to look up the
+	    PSF fraction in the specified energy band(s).  The background is assumed to
+	    contain 0% of the source flux.</ITEM>
+	    <ITEM>arfcorr: the arfcorr
+	    tool is run for the source and background regions at the specified energy band(s) and
+	    the PSF fraction is estimated from the model PSF.
+	    </ITEM>
+	    <ITEM>psffile : allows the user to supply an image of the PSF, for example
+	    created with ChaRT or MARX.  The filenames are then supplied via the
+	    psffile parameter.
+	    </ITEM> 
+	  </LIST>
+	</DESC>        
+      </PARAM>
+      <PARAM name="psffile" type="file" filetype="input" reqd="no" stacks="yes">
+	<SYNOPSIS>PSF image file(s) for use with psfmethod=psffile</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    An image of the PSF, for example, created by running
+	    SAOTrace, ChaRT, or MARX.  If multiple source
+	    positions are input, there must be one PSF image for
+	    each source.  If multiple energy bands are used,
+	    then the same PSF image is used for all energies.                    
+	  </PARA>
+	  <PARA>
+	    The image should be large enough for both the source
+	    and background regions.
+	  </PARA>
+      <PARA>
+        If working with an extended source, the psffile can also 
+        be an image of the model surface brightness.
+      </PARA>
+      
+	</DESC>        
+      </PARAM>
+      
+      <PARAM name="conf" type="real" min="0" max="1" def="0.9" reqd="no">
+	<SYNOPSIS>Confidence interval</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The confidence interval for the errors.  If the 
+	    net counts are 0, then the upper limit is reported.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      
+      <PARAM name="binsize" type="real" min="0" def="1" reqd="no">
+        <SYNOPSIS>Image bin size</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The image bin size used for the arfcorr PSF correction and
+            for the fluximage images used to get the photon fluxes.
+            The binsize should only be reduced when working with
+            very small source regions (subpixel analysis).
+          </PARA>
+        </DESC>
+      </PARAM>
+      
+      
+      <PARAM name="rmffile" type="file" filetype="input" reqd="no" stacks="yes">
+	<SYNOPSIS>Input ARF files</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If an ARF and RMF exist for the source then the
+	    RMF can be input via the rmffile parameter.  Both
+	    ARF and RMF must be available.  When this parameter
+	    is used, specectract is not run so the source
+	    and background spectrum are not created.                
+	    There must be 1 ARF and RMF pair for each source.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="arffile" type="file" filetype="input" reqd="no" stacks="yes">
+	<SYNOPSIS>Input ARF files</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If an ARF and RMF exist for the source then the
+	    ARF can be input via the arffile parameter.  Both
+	    ARF and RMF must be available.  When this parameter
+	    is used, specectract is not run so the source
+	    and background spectrum are not created.                
+	    There must be 1 ARF and RMF pair for each source.
+	  </PARA>
+	  <PARA>
+	    The input ARF must not have had any PSF corrections or
+	    the psfmethod parameter should be set to 'ideal'.  This
+	    will ensure that the PSF fraction correction is not
+	    doubly applied to the modelflux results.
+	  </PARA>
+      <PARA>
+        If using the output from srcflux, user should use the _nopsf.arf
+        file.
+      </PARA>
+
+	</DESC>
+      </PARAM>
+            
+      <PARAM name="model" type="string" reqd="no">
+	<SYNOPSIS>The Sherpa model expression for the source spectrum</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The Sherpa model expression for the source. See
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/modelflux.html">ahelp modelflux</HREF>
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      <PARAM name="paramvals" type="string" reqd="no">
+	<SYNOPSIS>Model parameters</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The Sherpa model expression parameters for the source. See
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/modelflux.html">ahelp modelflux</HREF>
+	  </PARA>
+	  <PARA>
+            The special tokens "&gal;" (which is a short form
+	    for "&nrao;"), "&nrao;" and "&bell;" (no quotes) 
+            may be used in the model paramvals or absorption model absparams.
+            These tokens will be replaced with the nH value retrieved
+            by running the 
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/colden.html">prop_colden</HREF>
+            tool.  To use the NRAO value for nH for each source, use
+	    either the "&gal;" or "&nrao;" tokens as in the following example:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; pset srcflux absmodel="xsphabs.abs1"</LINE>
+	      <LINE>&pr; pset asbparams="abs1.nH=&gal;"</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    The NRAO catalog is the default because it is an all-sky
+	    survey, whereas
+	    the Bell catalog only contains data for positions with a
+	    declination greater than -40 degrees.
+	    These tokens are case sensitive, so must be given all in
+	    upper case with both a leading and trailing % character.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      <PARAM name="absmodel" type="string" reqd="no">
+	<SYNOPSIS>The absorption model component</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The absorption model component can either be specified
+	    here or as part of the model expression.  If it is
+	    supplied separately, then the unabsorbed fluxes will
+	    also be computed. The parameter values for this component
+	    is given in the absparams parameter.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      <PARAM name="absparams" type="string" reqd="no">
+	<SYNOPSIS>The absorption model component parameter values.</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    See the paramvals section, in particular for information on how
+	    the "&gal;", "&nrao;", and "&bell;" tokens are used to define a
+	    per-source column density.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="abund" type="string" reqd="no" def="angr">
+	<SYNOPSIS>XSPEC solar abundances</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    See
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/modelflux.html">ahelp modelflux</HREF>
+	    for more information and available options.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      
+      <PARAM name="fovfile" type="file" filetype="input" reqd="no" stacks="no">
+	<SYNOPSIS>Field Of View (FOV) file</SYNOPSIS>
+	<DESC>
+	  <PARA>
+         If not specified, a temporary fovfile will be created by
+         the script by running the 
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/skyfov.html">ahelp skyfov</HREF>
+        tool.
+	  </PARA>
+        <PARA>
+          The FOV is used to filter the event file, psf, and images to 
+           correctly account for regions that overlap the edge of
+           the detectors.
+        </PARA>
+        <PARA>
+            If the srcreg and bkgreg parameters are not specified, 
+            the FOV will also be included as part of the automatically
+            generated regions (see pos description).
+        </PARA>
+	</DESC>        
+      </PARAM>
+      <PARAM name="asolfile" type="file" filetype="input" reqd="no" stacks="yes">
+	<SYNOPSIS>Stack of Aspect Solution Files</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    A stack with the file names of one or more aspect solution
+	    files.  Most observations have a single aspect file but
+	    some will have more.                    
+	    If left blank, the tool will attempt to locate the
+	    correct file based on the event file header
+	    information.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      <PARAM name="mskfile"  type="file" filetype="input" reqd="no" stacks="no">
+	<SYNOPSIS>Mask file name</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Name of the observation's mask file describing the
+	    active area of the detector.
+	    If left blank, the tool will attempt to locate the
+	    correct file based on the event file header
+	    information.
+	    It can be set to the string "none" to use no mask
+	    file.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      <PARAM name="bpixfile"  type="file" filetype="input" reqd="no" stacks="no">
+	<SYNOPSIS>Badpixel file name</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Name of the observation specific bad pixel file.
+	    If left blank, the tool will attempt to locate the
+	    correct file based on the event file header
+	    information.
+	    It can be set to the string "none" to use no bad-pixel
+	    file.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      <PARAM name="dtffile"  type="file" filetype="input" reqd="no" stacks="no">
+	<SYNOPSIS>Dead time factors file (HRC only)</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Name of the HRC head time file for the observation.
+	    If left blank, the tool will attempt to locate the
+	    correct file based on the event file header
+	    information.
+	    It can be set to the string "none" to ignore
+	    the DTF corrections. 
+	  </PARA>
+	</DESC>        
+      </PARAM>
+    
+      <PARAM name="ecffile"  type="file" filetype="input" reqd="no" stacks="no" def="CALDB">
+	<SYNOPSIS>PSF Calibration file</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The filename of the PSF calibration file.  Should be left
+	    as the default unless otherwise instructed.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+
+      <PARAM name="parallel" type="boolean" def="yes" reqd="no">
+	<SYNOPSIS>Run code in parallel using multiple processors?</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If multiple processors are available, then 
+	    this parameter controls whether the tool should 
+	    run various underlying tools in parallel.
+	  </PARA>
+	  <PARA>
+	    If parallel=yes and verbose&gt;0 users will see that
+	    sources will be run in a random order.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      
+      <PARAM name="nproc" type="integer" def="INDEF" min="1" reqd="no">
+	<SYNOPSIS>Number of processors to use</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If parallel=yes, then this controls the number of
+	    processes to run at once.  The default, INDEF,
+	    will use all available processors.  The value
+	    cannot be larger than the number of processors.
+	  </PARA>
+	  <PARA>
+	    If parallel=yes and verbose&gt;0 users will see that
+	    sources will be run in a random order.
+	  </PARA>
+	</DESC>        
+      </PARAM>
+      <PARAM name="tmpdir" type="file" reqd="no" def="${ASCDS_WORK_PATH}">
+	<SYNOPSIS>Directory for temporary files</SYNOPSIS>
+      </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no">
+	<SYNOPSIS>Overwrite existing files?</SYNOPSIS>
+      </PARAM>
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+	<SYNOPSIS>Amount of tool chatter</SYNOPSIS>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="PSF Correction">
+      <PARA>
+	For extended sources, or when the PSF scattering is being
+	ignored, the psfmethod=ideal setting should be used,
+	which assumes that the source region contains all the source
+	flux, so there is no source contribution to the background region.
+      </PARA>
+      <PARA>
+	Otherwise the PSF fraction can be
+	approximated from a circular model (psfmethod=quick [source region only] and
+	psfmethod=arfcorr [source and background regions]), or estimated 
+    from an input image (psfmethod=psffile).
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Multiple Sources">
+      <PARA>
+	Multiple source positions may be specified by supplying a file
+	with RA and DEC values.  If source and background regions are supplied, they
+	need to match the positions in the file - the same number of regions 
+	and in the same order.  Similarly, if psfmethod=psffile, then these
+	must match the positions.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Multiple Bands">
+      <PARA>
+	Multiple energy bands can be specified.  There will be one output
+	file per energy band.  If using psfmethod=psffile, then the same psffile
+	is used for all energy bands.  Users who want to use a separate
+	psffile for each energy band need to run the tool for each 
+	band separately.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Output files">
+      <PARA>
+	This is a list of
+	the column definitions in the output .flux file.
+	A '*' in the Orig column indicates that the
+	value was computed directly by dmextract.
+      </PARA>
+
+      <TABLE>
+	<ROW>
+	  <DATA>Name</DATA>
+	  <DATA>Orig</DATA>
+	  <DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>sky(x,y)</DATA>
+	  &dmx;
+	  <DATA>Physical pixel location of center of extraction region.  
+	  If no region, then will be the same as XPOS,YPOS (below)</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>EQPOS(Ra,Dec)</DATA>
+	  &dmx;
+	  <DATA>RA and Dec of center of extraction region.  If no
+	  region, then will be the same as RAPOS,DECPOS (below)</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>SHAPE</DATA>
+	  &dmx;
+	  <DATA>shape of extraction region</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>R</DATA>
+	  &dmx;
+	  <DATA>radii of extraction region (physical pixels).</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>COMPONENT</DATA>
+	  &dmx;
+	  <DATA>integer number identifying region number</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>COUNTS</DATA>
+	  &dmx;
+	  <DATA>total counts in source region</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ERR_COUNTS</DATA>
+	  &dmx;
+	  <DATA>approx error on total counts</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>AREA</DATA>
+	  &dmx;
+	  <DATA>area of source region in physical pixels</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>EXPOSURE</DATA>
+	  &dmx;
+	  <DATA>exposure time</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>COUNT_RATE</DATA>
+	  &dmx;
+	  <DATA>total count rate in source region</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>COUNT_RATE_ERR</DATA>
+	  &dmx;
+	  <DATA>approx error on total count rate in source regions</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>BG_COUNTS</DATA>
+	  &dmx;
+	  <DATA>total number of counts in background region</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>BG_ERR</DATA>
+	  &dmx;
+	  <DATA>approx error on total number of counts in background region</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>BG_AREA</DATA>
+	  &dmx;
+	  <DATA>area of background region (physical pixels)</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>BG_EXPOSURE</DATA>
+	  &dmx;
+	  <DATA>exposure time in background (same as source)</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>BG_RATE</DATA>
+	  &dmx;
+	  <DATA>total rate in background region</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>BG_SUR_BRI</DATA>
+	  &dmx;
+	  <DATA>total surface brightness in background region</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>BG_SUR_BRI_ERR</DATA>
+	  &dmx;
+	  <DATA>approx error on background surface brightness</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_COUNTS</DATA>
+	  &dmx;
+	  <DATA>Net counts in source region from scaled background counts </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_ERR</DATA>
+	  &dmx;
+	  <DATA>error on net counts</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_RATE</DATA>
+	  &dmx;
+	  <DATA>Net count rate in source region from scaled background counts</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ERR_RATE</DATA>
+	  &dmx;
+	  <DATA>Gaussian error on net_rate</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>SUR_BRI</DATA>
+	  &dmx;
+	  <DATA>	  Surface brightness.  Net counts per pixel.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>SUR_BRI_ERR</DATA>
+	  &dmx;
+
+	  <DATA>      Gaussian error on surface brightness.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>XPOS</DATA>
+	  &nodmx;
+	  <DATA>Input position converted to physical coordinates</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>YPOS</DATA>
+	  &nodmx;
+	  <DATA>Input position converted to physical coordinates</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>THETA</DATA>
+	  &nodmx;
+	  <DATA>Location of position relative to the optical axis</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>PHI</DATA>
+	  &nodmx;
+	  <DATA>Location of position azimuthally around the optical axis</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>RAPOS</DATA>
+	  &nodmx;
+	  <DATA>RA of position (decimal degrees)</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>DECPOS</DATA>
+	  &nodmx;
+	  <DATA>Dec of position (decimal degrees)</DATA>
+	</ROW>
+<!--
+	<ROW>
+	  <DATA>DETX</DATA>
+	  &nodmx;
+	  <DATA>X detector focal plane coordinate</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>DETY</DATA>
+	  &nodmx;
+	  <DATA>X detector focal plane coordinate</DATA>
+	</ROW>
+-->
+	<ROW>
+	  <DATA>CHIP_ID</DATA>
+	  &nodmx;
+	  <DATA>CHIP number at mean aspect and sim location</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>CHIPX</DATA>
+	  &nodmx;
+	  <DATA>CHIP X location at mean aspect and sim location</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>CHIPY</DATA>
+	  &nodmx;
+	  <DATA>CHIP Y location at mean aspect and sim location</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>INSIDE_FOV</DATA>
+	  &nodmx;
+	  <DATA>
+	    A value of TRUE means that the source
+	    - using the position (RAPOS, DECPOS) - 
+	    is within the field-of-view of the observation.
+	  </DATA>
+	</ROW>
+    <ROW>
+      <DATA>NEAR_CHIP_EDGE</DATA>
+      &nodmx;
+      <DATA>
+        A value of TRUE means that the POS location of the source
+        is within 32 pixels of the edge an ACIS CCD meaning the
+        source position and/or region may be partially off-chip.
+      </DATA>
+    </ROW>
+
+	<ROW>
+	  <DATA>PSFFRAC</DATA>
+	  &nodmx;
+	  <DATA>Fraction of the PSF in source region</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>BG_PSFFRAC</DATA>
+	  &nodmx;
+	  <DATA>Fraction of the PSF in the background region</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_RATE_APER</DATA>
+	  &nodmx;
+	  <DATA>Net COUNT rate in source is computed using the aprates
+	    tool.  It computes the Bayesian background-marginalized
+	    posterior probability distribution function (PDF) for the
+	    NET_RATE, assuming non-informative priors for the
+	    intensities in the source and background apertures.  The
+	    mode of the PDF is the NET_RATE_APER.  A value of 0
+	    indicates that only an upper limit is available.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_RATE_APER_LO</DATA>
+	  &nodmx;
+	  <DATA>Lower equal tail confidence limit on NET_RATE.  A value
+	  of NaN indicates that only an upper limit is available as
+	  the NET_RATE_APER_HI value. </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_RATE_APER_HI</DATA>
+	  &nodmx;
+	  <DATA>Upper equal tail confidence limit on NET_RATE.  If 
+	  the _LO value is NaN and the RATE is 0 then this value
+	  represent the upper limit on the count rate.</DATA>
+	</ROW>
+    <ROW>
+      <DATA>SRC_SIGNIFICANCE</DATA>
+      &nodmx;
+      <DATA>The source significance given the source
+      and background count rates and their errors.</DATA>    
+    </ROW>
+	<ROW>
+	  <DATA>FLUX_APER</DATA>
+	  &nodmx;
+	  <DATA>Model independent flux computed by summing 
+	  the FLUX values produced by running eff2evt on the event file 
+	  in the source region.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>BG_FLUX_APER</DATA>
+	  &nodmx;
+	  <DATA>Same FLUX_APER for the background region.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_FLUX_APER</DATA>
+	  &nodmx;
+	  <DATA>
+	    A model independent net flux for the counts in the source region.        
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_FLUX_APER_LO</DATA>
+	  &nodmx;
+	  <DATA>
+	    Lower confidence limit the model independent net flux computed
+	    by scaling the NET_RATE limits.  If only an upper limit
+	    was compute then it is used to scale the values.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_FLUX_APER_HI</DATA>
+	  &nodmx;
+	  <DATA>
+	    Same as NET_FLUX_APER_LO for the upper confidence limit.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>UPPER_LIMIT</DATA>
+	  &nodmx;
+	  <DATA>
+	    A flag identifying whether the  NET_FLUX_APER limits are 
+	    computed from an upper limit estimate (yes) or an observed NET_RATE (no).
+	  </DATA>
+	</ROW>
+    <ROW>
+      <DATA>MEAN_SRC_EXP</DATA>
+      &nodmx;
+      <DATA>The mean value of the exposure map pixel values (cm^2) in the source
+      region.</DATA>
+    </ROW>
+    <ROW>
+      <DATA>MEAN_BKG_EXP</DATA>
+      &nodmx;
+      <DATA>The mean value of the exposure map pixel values (cm^2) in the
+      background region.</DATA>
+    </ROW>
+    <ROW>
+      <DATA>SRC_PHOTFLUX</DATA>
+      &nodmx;
+      <DATA>The sum of the pixel values fluximage output integrated
+      over the source region (photon/cm^2/sec) </DATA>
+    </ROW>
+    <ROW>
+      <DATA>BG_PHOTFLUX</DATA>
+      &nodmx;
+      <DATA>The sum of the pixel values fluximage output integrated
+      over the background region (photon/cm^2/sec)</DATA>
+    </ROW>
+    <ROW>
+      <DATA>NET_PHOTFLUX_APER</DATA>
+      &nodmx;
+      <DATA>The net photon flux computed using the source and background
+      photflux, area, and PSF fractions.</DATA>
+    </ROW>
+    <ROW>
+      <DATA>NET_PHOTFLUX_APER_LO</DATA>
+      &nodmx;
+      <DATA>The lower limit on the NET_PHOTFLUX_APER value obtained
+      by scaling the NET_RATE_APER_LO value.</DATA>
+    </ROW>
+    <ROW>
+      <DATA>NET_PHOTFLUX_APER_HI</DATA>
+      &nodmx;
+      <DATA>The upper confidence limit on the NET_PHOTFLUX_APER value obtained
+      by scaling the NET_RATE_APER_HI value.</DATA>
+    </ROW>
+
+	<ROW>
+	  <DATA>MFLUX_CNV</DATA>
+	  &nodmx;
+	  <DATA>The conversion factor used for the (absorbed) model flux.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>UMFLUX_CNV</DATA>
+	  &nodmx;
+	  <DATA>The conversion factor used for the unabsorbed model flux (if absmodel specified)
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_MFLUX_APER</DATA>
+	  &nodmx;
+	  <DATA>The net flux assuming the specified model computed by scaling
+	  the NET_RATE by the MFLUX_CNV value</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_MFLUX_APER_LO</DATA>
+	  &nodmx;
+	  <DATA>The lower confidence in NET_MFLUX_APER</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_MFLUX_APER_HI</DATA>
+	  &nodmx;
+	  <DATA>The upper confidence in the NET_MFLUX_APER</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_UMFLUX_APER</DATA>
+	  &nodmx;
+	  <DATA>The net unabsorbed flux assuming the specified model, computed
+	  when the absmodel parameter is specified.  Value is NET_RATE
+	  scaled by the UMFLUX_CNV value.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_UMFLUX_APER_LO</DATA>
+	  &nodmx;
+	  <DATA>Lower confidence limit on unabsorbed model flux</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>NET_UMFLUX_APER_HI</DATA>
+	  &nodmx;
+	  <DATA>Upper confidence limit on the unabsorbed model flux</DATA>
+	</ROW>
+      </TABLE>               
+      
+      <PARA>
+	The following keywords are also added to each file:
+      </PARA>
+      
+      <TABLE>
+	<ROW>
+	  <DATA>Keyword</DATA>
+	  <DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ENERGY</DATA>
+	  <DATA>Characteristic monochromatic energy for band [keV]</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>EMIN</DATA>
+	  <DATA>Minimum energy in band [keV]</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>EMAX</DATA>
+	  <DATA>Maximum energy in band [keV]</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>CONF</DATA>
+	  <DATA>Confidence interval</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>MODEL</DATA>
+	  <DATA>Sherpa model expression</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>PARAMVAL</DATA>
+	  <DATA>Sherpa model parameters</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ABSMODEL</DATA>
+	  <DATA>Sherpa model expression for absorption component</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ABSPARAM</DATA>
+	  <DATA>Sherpa absorption parameters</DATA>
+	</ROW>
+      </TABLE>
+    </ADESC>
+
+    <ADESC title="Processing steps">
+      <PARA>
+	Given a position and no source and background regions, the 
+	script will create a source region that is a circle which 
+	encloses 90% of the PSF at 1.0keV and
+	will create a co-located background annulus  with inner radius
+    equal to the source and outer radius 5 time the source radius.
+      </PARA>
+      <PARA>
+	The aprates tool is used to compute the net counts and 90% confidence
+	interval using the events in the specified energy band(s).  The user 
+	may select a different confidence interval by changing
+	the conf parameter.  The energy bands can be explicitly provided or can
+	be specified to match those in the Chandra Source Catalog.
+      </PARA>
+      <PARA>
+    The fraction of the PSF in the source and background regions is
+    computed in one of 4 ways.  Ideal: assumes 100% of the
+    PSF in the source region and 0% in the background. Quick: looks up
+    the PSF fraction given size of the source region (circle only).  Arfcorr:
+    creates a 2D radially symmetric model of the PSF and estimates both
+    the source and background PSF fractions.  PSFFile: user supplies
+    an image of the PSF from which the source and background PSF fractions
+    are extracted.
+      </PARA>
+      <PARA>
+	The tool then computes a model independent flux using the
+	flux values computed using the eff2evt tool which uses the events'
+	energy and the local responses to estimate a flux value per event.
+      </PARA>
+      <PARA>
+      The fluximage tool is run to create an exposure corrected
+      image for just a small region around the source and background.
+      The photon flux is extracted from this image.
+      </PARA>
+      <PARA>
+	specextract is then run to generated the ARF and RMF needed to 
+	compute the model dependent fluxes using the modelflux tool.  
+	Both absorbed and unabsorbed fluxes can be computed.
+      </PARA>
+      <PARA>
+        The results are stored in an output file, one row per source, and one
+        file for each energy band.  With verbose&gt;0, the results are also
+        printed to the screen.            
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Caveats">
+
+      <PARA title="Model Independent Flux">
+        The Flux values reported by srcflux are computed by summing
+        a flux value associated with event based on its location
+        in the field and detected energy.  This is a useful
+        model independent approximation of the flux. However, since 
+        the detected energy may significantly differ from the true energy (ie
+        the effects encoded in the RMF) and the detected location
+        may differ from the true location (ie the effects encoded
+        in the PSF) users should be careful if the flux computed this 
+        way differs significantly from what they get from doing a proper
+        spectral fit.      
+      </PARA>
+
+
+
+      <PARA title="Using with Merged Datasets">
+	Users should not use this script with merged datasets.
+	Users should review the material on
+	<HREF link="http://cxc.harvard.edu/ciao/caveats/merged_events.html">
+	  Extracting spectra from Merged Datasets
+	</HREF>
+	regarding
+	the issues of trying to extract and fit a spectra from
+	a merged observation as they apply directly to this script.
+	To summarize, while it is trivial to simply combine the
+	counts, even something as simple as NET_COUNTS is
+	problematic if the source was observed on different
+	CCD's.
+      </PARA>
+      
+      <PARA title="Gratings"> 
+	This script may only be used to estimate the count rate
+	and flux from the 0th order grating datasets.        
+      </PARA>
+      
+      <PARA title="Crowded Fields">
+	This script does not take source flux from neighboring
+	sources into account when computing NET_RATE and errors.
+	The aperture/region and PSF fraction will exclude them however,
+	when the sources have significant overlap, the contributions
+	from the overlap need to be handled differently.
+      </PARA>    
+      
+      <PARA title="Pileup"> 
+	This script does not consider pileup effects when estimating
+	the NET_FLUX or the confidence intervals.  Due to the non-linear
+	relationship between observed counts and incident photons, 
+	users need to take extra care when analyzing data that
+	affected by pileup.
+      </PARA>
+      
+      <PARA title="Low Counts">
+	eff2evt fluxes are very sensitive when there are a low 
+    number of counts, especially when the response changes
+    significantly across the energy band.  When there are few or no counts
+    in the source region, the eff2evt fluxes are omitted (returned as NaN)
+    since there is no way to estimate a model independent spectral shape 
+    in the absence of counts.
+      </PARA>
+
+      <PARA title="Continuous Clocking">
+      This script will not work with continuous clocking (CC) mode
+      data.  CC mode data processing requires special handling beyond
+      the scope of this script.
+      
+      </PARA>
+
+    </ADESC>
+
+
+    <ADESC title="Changes in the scripts 4.8.4 (September 2016) release">
+      <PARA>
+      The following changes are included:
+      </PARA>
+        <LIST>
+            <ITEM>Users who have installed MARX can now use 
+            psfmethod=marx which will run a monochromatic MARX simulation 
+            at the source location(s) to create a model.
+            </ITEM>
+            <ITEM>
+            Users can now supply a stack of event files.  
+            If users also supply regions, the same regions are
+            used with each event file in the stack -- therefore the regions
+            should either be in celestial coordinates or the datasets need
+            to be reprojected to the same tangent plane.
+            The results for each input event file are reported separately; 
+            they are NOT combined.
+            </ITEM>
+            <ITEM>
+            A new ${root}_summary.txt file is created with the final
+            flux summary information.
+            </ITEM>
+            <ITEM>
+            The summary information now includes the region (ie component)
+            number.
+            </ITEM>
+            <ITEM>
+            The default for the model and absmodel parameters have been
+            changed, the later uses the %GAL% token to specify the 
+            galactic nH.
+            </ITEM>
+
+        </LIST>
+    
+    
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.7.2 (April 2015) release">
+      <PARA>
+      The following changes are included:      
+      </PARA>
+        <LIST>
+            <ITEM>Users can now set the mskfile, bpixfile, and dtffile
+            to the value "none". This can be useful in special cases,
+            but note that it can lead to inaccurate or invalid results.</ITEM>
+
+            <ITEM>The output .flux file now has CHIP_ID, CHIPX, 
+            and CHIPY columns for the nominal aspect location.  This 
+            location may be off the detector.</ITEM>
+
+            <ITEM>When given ACIS data, the per-chip LIVETIME (LIVTIMEx, where x
+            goes from 0 to 9) is now used if available.  The 
+            nominal chip ID for the source position is used.</ITEM>
+            
+            <ITEM>Additional data products are now retained 
+            including: the counts image, exposure map, flux image, 
+            net-rate probability density function, and - when
+            method=arfcorr - the model PSF.</ITEM>
+
+            <ITEM>The special tokens &gal;, &nrao; and &bell; 
+            can be used in the paramvals and absparam parameters.
+            These indicate that the nH column density value calculated by prop_colden
+	      should be used.
+            </ITEM>
+
+        </LIST>
+    </ADESC>
+
+
+
+    <ADESC title="Changes in the scripts 4.6.6 (September 2014) release">
+      <PARA>
+        A new, hidden, parameter called 'binsize' has been added to support
+    using sub-pixel analysis (for small regions).
+      </PARA>
+      <PARA>
+    A hard-coded path to /tmp has been removed in part of the code;
+    it now uses the tmpdir parameter.
+      </PARA>
+    
+    </ADESC>
+
+
+    <ADESC title="Changes in the scripts 4.6.5 (June 2014) release">
+      <PARA>
+        This patch fixes a problem where the background photon flux values, 
+        BG_PHOTFLUX, were incorrectly computed to be 0.  The 
+        NET_PHOTFLUX_APER value and errors were therefore not
+        background subtracted.  The bug only affected the photon flux, *PHOTFLUX values;
+        the count rates and other fluxes are not affected.
+      </PARA>
+    </ADESC>
+
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/srcflux.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>March 2015</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

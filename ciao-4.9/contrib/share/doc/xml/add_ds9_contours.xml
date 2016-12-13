@@ -1,0 +1,236 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="add_ds9_contours" context="contrib"
+         refkeywords="add_ds9_contour add ds9 contours con contour *.con"
+         seealsogroups="ds9.utils">
+
+    <SYNOPSIS>
+      Add the contours from a ds9 *.con file to a ChIPS plot (with optional coordinate conversion).
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>add_ds9_contours(filename [, color="green", thickness=1, style="solid", depth=100, stem="ds9con", coords=None, fromsys=None, tosys=None])</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	This routine draws on the contours from the DS9 *.con file onto
+	the current plot as a curve with the given parameters (which
+	correspond to the line options of a curve; symbol.style is set to
+	"none").
+	If the coords, fromsys and tosys arguments
+	are given then they are used to convert the values to a
+	different coordinate system (e.g. if the values were written out
+	in WCS but you wish to use the sky system).
+	The coords argument on its own can be used to plot up the contours
+	using a tangent-plane projection if one does not already exist.
+      </PARA>
+
+      <PARA>
+	The 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/read_ds9_contours.html">read_ds9_contours routine</HREF>
+	from the crates_contrib.utils
+	module can be used to read in DS9 contour files.
+      </PARA>
+
+      <PARA title="Loading the routine">
+	The routine can be loaded into a ChIPS or Sherpa session by saying:
+      </PARA>
+<VERBATIM>
+from chips_contrib.utils import *
+</VERBATIM>
+
+      <PARA title="Coordinate conversion">
+	To convert the coordinate values form the file then
+	coords should be either the name of an image file or
+	a crate containing an image and the fromsys and tosys
+	arguments determine what systems to use:
+      </PARA>
+      <TABLE>
+	<CAPTION>The fromsys and tosys arguments</CAPTION>
+	<ROW><DATA>Value</DATA><DATA>Description</DATA></ROW>
+	<ROW><DATA>"world" or "eqpos"</DATA><DATA>The WCS coordinate systems supported by CIAO</DATA></ROW>
+	<ROW><DATA>"physical" or "sky"</DATA><DATA>The physical coordinate system</DATA></ROW>
+	<ROW><DATA>"logical" or "image"</DATA><DATA>The logical coordinate system</DATA></ROW>
+      </TABLE>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; clear()</LINE>
+	  <LINE>&pr; add_window(8, 8, "inches")</LINE>
+	  <LINE>&pr; add_image("img.fits")</LINE>
+	  <LINE>&pr; add_ds9_contours("ds9.con")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The contours from ds9.con are drawn on top of the image
+	    img.fits. The contour coordinates are assumed to be in the
+	    same system as used to display the image. The output of
+	    the info() command after the above looks like:
+	  </PARA>
+<VERBATIM>
+&pr; info()
+Window [win1]
+  Frame [frm1]
+    Plot [plot1]   (0.15,0.15)  .. (0.90,0.90)
+      Border bottom [bx1]  top [bx2]  left [by1]  right [by2]
+      Image [image1]
+      X Axis [ax1]
+      Y Axis [ay1]
+      Curve [ds9con1]
+
+</VERBATIM>
+	  <PARA>
+	    Since the contour is drawn using a ChIPS curve, we can use the set_curve()
+	    command to change its properties: e.g.
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; set_curve(["line.color", "orange"])</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; add_ds9_contours("radio.con", color="orange", depth=110)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we add the contours from the file radio.con to the plot, using the
+	    arguments in the command to change the color and depth of the curve
+	    (see 'ahelp depthcontrol' for more information on how ChIPS uses the
+	    depth attribute to order the display of objects).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; clear()</LINE>
+	  <LINE>&pr; add_window(8, 8, "inches")</LINE>
+	  <LINE>&pr; add_image("img.fits", ["wcs", "physical"])</LINE>
+	  <LINE>&pr; add_ds9_contours("ds9.con", coords="img.fits", fromsys="world", tosys="sky")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we display the image in physical (i.e. SKY) coordinates and so
+	    we need to convert the DS9 coordinates (which we assume were written out in
+	    equatorial coordinates).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; clear()</LINE>
+	  <LINE>&pr; add_window(8, 8, "inches")</LINE>
+	  <LINE>&pr; add_ds9_contours("ds9.con")</LINE>
+	  <LINE>&pr; set_plot_title("Linear")</LINE>
+	  <LINE>&pr; add_window(8, 8, "inches")</LINE>
+	  <LINE>&pr; add_ds9_contours("ds9.con", coords="img.fits")</LINE>
+	  <LINE>&pr; set_plot_title("World")</LINE>
+	  <LINE>&pr; current_window("all")</LINE>
+	  <LINE>&pr; set_axis(["majorgrid.visible", True])</LINE>
+	  <LINE>&pr; zoom(0.1)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we create two plots consisting of just the contours; the difference
+	    is whether they use linear axes (first window) or
+	    a tangent-plane projection (second window). Grid lines are added and
+	    both plots zoomed out to try and show a difference (if the axis
+	    scale is large enough or the tangent-point of img.fits is near enough
+	    the pole then you should see the major grid lines curve in the second
+	    plot).
+	  </PARA>
+	  <PARA>
+	    In the second window, the add_ds9_contours() call had to create
+	    axes and so it used the tangent-plane projection information from the coords argument. This is only
+	    needed if add_image() or add_contour() has not already been used to
+	    set up a plot with the required projection. For example, after
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; from crates_contrib.utils import scale_image_crate</LINE>
+	      <LINE>&pr; cr = read_file("img.fits")</LINE>
+	      <LINE>&pr; scale_image_crate(cr, "log10")</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    then either
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; clear()</LINE>
+	      <LINE>&pr; add_image(cr)</LINE>
+	      <LINE>&pr; add_ds9_contours("ds9.con")</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    or
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; clear()</LINE>
+	      <LINE>&pr; add_ds9_contours("ds9.con", coords=cr)</LINE>
+	      <LINE>&pr; add_image(cr)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    will work but the following fails
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; clear()</LINE>
+	      <LINE>&pr; add_ds9_contours("ds9.con")</LINE>
+	      <LINE>&pr; add_image(cr)</LINE>
+	      <LINE>chips ERROR: Cannot add object because axes, ax1 and ay1, are not a valid type and already have data associated with them.</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    because the axes created by the add_ds9_contour() call do not contain the
+	    necessary WCS projection information needed to display the image data.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Notes">
+      <PARA title="Coordinate-system support">
+	The coordinate-transform code has been written and tested for use with images
+	created by CIAO tools. Please
+	let the
+	<HREF link="http://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	know if it does not work for your image file(s).
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.2 (April 2013) release">
+      <PARA>
+	The routine now works when asked to convert between
+	coordinate systems (this removes the "Input must be a 2D array"
+	error message introduced with CIAO 4.5).
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+ 
+    <LASTMODIFIED>April 2013</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

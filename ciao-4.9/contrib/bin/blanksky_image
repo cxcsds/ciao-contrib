@@ -1,0 +1,331 @@
+#!/usr/bin/env python
+
+__version__ = "CIAO 4.9"
+toolname = "blanksky_image"
+__revision__  = "30 September 2016"
+
+
+import os, sys, paramio, tempfile, numpy
+import pycrates as pcr
+
+# This is only needed for development.
+# try:
+#     if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+#         _thisdir = os.path.dirname(__file__)
+#         _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib/python2.7/site-packages'))
+#         if os.path.isdir(_pathdir):
+#             os.sys.path.insert(1, _pathdir)
+#         else:
+#             print("*** WARNING: no {}".format(_pathdir))
+
+#         del _pathdir
+#         del _thisdir
+        
+# except KeyError:
+#     raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+########################################################
+
+from crates_contrib.utils import *
+from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
+from ciao_contrib.param_wrapper import open_param_file
+from ciao_contrib.stacklib import expand_stack
+
+from ciao_contrib._tools import utils, fileio
+
+from ciao_contrib.runtool import dmcopy, dmimgcalc, add_tool_history, get_sky_limits
+
+from sherpa.utils import parallel_map
+from ciao_contrib.parallel_wrapper import parallel_pool
+from ciao_contrib.runtool import new_pfiles_environment
+
+# Set up the logging/verbose code
+initialize_logger(toolname)
+
+# Use v<n> to display messages at the given verbose level.
+v0 = make_verbose_level(toolname, 0)
+v1 = make_verbose_level(toolname, 1)
+v2 = make_verbose_level(toolname, 2)
+v3 = make_verbose_level(toolname, 3)
+v4 = make_verbose_level(toolname, 4)
+v5 = make_verbose_level(toolname, 5)
+
+
+class ScriptError(RuntimeError):
+    """Error found during running the script. This class is introduced
+    in case there is a need to catch such an error and deal with it
+    appropriately (e.g. recognize it as distinct from an error raised
+    by the code).
+    """
+    pass
+
+#########################################################################################
+#
+# suppress warnings printed to screen from fluximage.blanksky_hrci when probing for 
+# HRC-I background files
+# http://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
+#
+#########################################################################################
+class suppress_stdout_stderr(object):
+    '''
+    A context manager for doing a "deep suppression" of stdout and stderr in 
+    Python, i.e. will suppress all print, even if the print originates in a 
+    compiled C/Fortran sub-function.
+       This will not suppress raised exceptions, since exceptions are printed
+    to stderr just before a script exits, and after the context manager has
+    exited (at least, I think that is why it lets exceptions through).      
+
+    '''
+    def __init__(self):
+        # Open a pair of null files
+        self.null_fds =  [os.open(os.devnull,os.O_RDWR) for x in range(2)]
+        # Save the actual stdout (1) and stderr (2) file descriptors.
+        self.save_fds = (os.dup(1), os.dup(2))
+
+    def __enter__(self):
+        # Assign the null pointers to stdout and stderr.
+        os.dup2(self.null_fds[0],1)
+        os.dup2(self.null_fds[1],2)
+
+    def __exit__(self, *_):
+        # Re-assign the real stdout/stderr back to (1) and (2)
+        os.dup2(self.save_fds[0],1)
+        os.dup2(self.save_fds[1],2)
+        # Close the null files
+        os.close(self.null_fds[0])
+        os.close(self.null_fds[1])
+
+
+def error_out(msg):
+    "Throw a ScriptError with msg as the message."
+    raise ScriptError(msg)
+
+
+###############################################
+# def combine_chips((bkgfile,chip,component_info,bkg_kw,bkg,dettype,dmfilter,xylimits,crtype))
+def combine_chips(args): # P3
+    with new_pfiles_environment(ardlib=True):
+
+        (bkgfile,chip,component_info,bkg_kw,bkg,dettype,dmfilter,xylimits,crtype,verbose) = args # P3
+
+        ind = component_info[1].index(chip)
+        elo = component_info[2][ind]
+        ehi = component_info[3][ind]
+
+        if dettype == "ccd_id":
+            scale = bkg_kw["BKGSCAL{}".format(chip)]
+            energy = "energy={0}:{1}".format(elo,ehi)
+        else:
+            scale = bkg_kw["BKGSCALE"]
+            energy = "pi={0}:{1}".format(elo,ehi)
+
+        dmimgcalc.punlearn()
+        dmimgcalc.infile = "{0}[{1}={2},{3}]{4}[bin {5}][opt type={6}]".format(bkg,dettype,chip,energy,dmfilter,xylimits,crtype)
+        dmimgcalc.outfile = bkgfile
+        dmimgcalc.operation = "imgout={}*img1".format(scale)
+        dmimgcalc.clobber = "yes"
+        dmimgcalc.verbose = verbose
+
+        dmimgcalc()
+
+# def parallel_map_combine_chips(args):
+#     parallel_map(combine_chips,args)
+###############################################
+
+
+def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
+    
+    get_sky_limits.punlearn()
+    get_sky_limits.image = imgfile
+    get_sky_limits.verbose = "0"
+    get_sky_limits()
+    
+    xylimits = get_sky_limits.dmfilter 
+
+    bkg_kw = fileio.get_keys_from_file(bkg)
+    bkgmethod = bkg_kw["BKGMETH"].lower()
+
+    # scale each chip before mosaicing them using the BKGSCALn keywords 
+    # in the background event file
+    bkg_scaled = []
+    dmimgcalc_op = "+".join(["img{}".format(n+1) for n in range(len(chips))])       
+
+    # get energy filter that matches reference image file by using the file's subspace
+    cr = pcr.read_file(imgfile)
+    component_info = []
+
+    if dettype == "ccd_id":
+        subspace_arg = "energy"
+    else:
+        subspace_arg = "pi"
+
+    for i in range(len(chips)):
+        component_info.append([i+1,cr.get_subspace_data(i+1,dettype).range_min[0],cr.get_subspace_data(i+1,subspace_arg).range_min[0],cr.get_subspace_data(i+1,subspace_arg).range_max[0]])
+
+    #component_info = zip(*component_info) # the * in the zip takes the transpose # P2
+
+    ### P3
+    try:
+        from importlib import abc
+        component_info = list(zip(*component_info)) # the * in the zip takes the transpose
+
+    except ImportError:
+        #from importlib2 import abc
+        component_info = zip(*component_info) # the * in the zip takes the transpose
+    ### P3
+
+    # get image data type to set appropriate image type
+    crtype = cr.get_image()._values.dtype
+
+    if crtype == numpy.dtype('int16'):
+        crtype = "i2"
+    elif crtype == numpy.dtype('int64'):
+        crtype = "i4"
+    elif crtype == numpy.dtype('float32'):
+        crtype = "r4"
+    elif crtype == numpy.dtype('float64'):
+        crtype = "r8"
+    else:
+        crtype = "i4"
+
+    cr.__del__()
+
+    try:
+        bkg_scaled = [(tempfile.NamedTemporaryFile(suffix=".bkg{}".format(chip),dir=tmpdir),chip) for chip in chips]
+
+        args = [(bkg_scaled[i][0].name,bkg_scaled[i][1],component_info,bkg_kw,bkg,dettype,dmfilter,xylimits,crtype,verbose) for i in range(len(bkg_scaled))]
+        
+        parallel_map(combine_chips,args)
+        #parallel_pool(combine_chips,args)
+
+        dmimgcalc.punlearn()
+        dmimgcalc.infile = [bg[0].name for bg in bkg_scaled]
+        dmimgcalc.outfile = "{0}{1}_bgnd.img".format(outfile,bkgmethod)
+        dmimgcalc.operation = "imgout={}".format(dmimgcalc_op)
+        dmimgcalc.clobber = "yes"
+        dmimgcalc.verbose = verbose
+
+        dmimgcalc()
+
+    finally:
+        for fn in bkg_scaled:
+            fn[0].close()
+
+    return xylimits,"{0}{1}_bgnd.img".format(outfile,bkgmethod),bkgmethod
+
+
+def get_par(argv):
+    """ Get data_products parameters from parameter file """
+
+    pfile = open_param_file(argv,toolname=toolname)["fp"]
+
+    # Common parameters:
+    params = {}
+    pars = {}
+
+    # input blanksky background event file
+    pars["bkgfile"] = params["bkgfile"] = paramio.pgetstr(pfile,"bkgfile")
+    if params["bkgfile"] == "":
+        error_out("Input background event file must be specified.")
+    elif params["bkgfile"].startswith("@"):
+        error_out("Input event stacks not supported.")
+    else:        
+        params["infile_filter"] = fileio.get_filter(params["bkgfile"])
+        params["bkgfile"] = fileio.get_file(params["bkgfile"])
+    
+    # output file name
+    pars["outroot"] = params["outroot"] = paramio.pgetstr(pfile,"outroot")
+    if params["outroot"] == "":
+        error_out("Please specify an output file name.")
+    else:
+        params["outdir"],outfile = utils.split_outroot(params["outroot"])
+        
+        if outfile.endswith("_"):
+            params["outroot"] = outfile
+        else:
+            params["outroot"] = outfile.rstrip("_")
+
+        # check if output directory is writable
+        fileio.validate_outdir(params["outdir"])
+        
+    # reference image file to get xygrid and binning
+    pars["imgfile"] = params["imgfile"] = paramio.pgetstr(pfile,"imgfile")
+    if params["imgfile"] == "":
+        error_out("Reference image file must be specified.")
+    elif params["imgfile"].startswith("@"):
+        error_out("Input image file stacks not supported.")
+    else:
+        params["imgfile"] = fileio.get_file(params["imgfile"])    
+
+    # set clobber of files
+    pars["tmpdir"] = params["tmpdir"] = paramio.pgetstr(pfile,"tmpdir")
+    pars["clobber"] = params["clobber"] = paramio.pgetstr(pfile, "clobber")
+    pars["verbose"] = params["verbose"] = paramio.pgeti(pfile,"verbose")
+    pars["mode"] = params["mode"] = paramio.pgetstr(pfile, "mode")
+
+    ## error out if there are spaces in absolute paths of the various parameters
+    if " " in os.path.abspath(pars["bkgfile"]):
+        raise IOError("The absolute path for the bkgfile, '{}', cannot contain any spaces".format(os.path.abspath(pars["bkgfile"])))
+
+    if " " in os.path.abspath(pars["outroot"]):
+        raise IOError("The absolute path for the output file, '{}', cannot contain any spaces".format(os.path.abspath(pars["outroot"])))
+
+    if " " in os.path.abspath(params["imgfile"]):
+        raise IOError("The absolute path for the output file, '{}', cannot contain any spaces".format(os.path.abspath(pars["imgfile"])))
+
+    # close parameters block after validation
+    paramio.paramclose(pfile)
+    return params,pars
+
+
+@handle_ciao_errors(toolname,__revision__)
+def doit():
+ 
+    params,pars = get_par(sys.argv)
+
+    set_verbosity(params["verbose"])
+    utils.print_version(toolname, __revision__)
+
+    bkgfile = params["bkgfile"]
+    filters = params["infile_filter"]
+    outdir = params["outdir"]
+    outroot = params["outroot"]
+    imgfile = pars["imgfile"]
+    tmpdir = params["tmpdir"]
+    clobber = params["clobber"]
+    verbose = params["verbose"]
+
+    bkg_kw = fileio.get_keys_from_file(bkgfile)
+    instrument = bkg_kw["INSTRUME"] 
+
+    # determine chips to be used for the image
+    if instrument == "ACIS":
+        chips = fileio.get_ccds(bkgfile+filters)
+        det = "ccd_id"
+
+    else:
+        chips = fileio.get_chips(bkgfile+filters)
+        det = "chip_id"
+
+    # get XY-grid; produce scaled image of the background file 
+    xylimits,bkgimg,bkgmethod = bkg_img(imgfile,bkgfile,outdir+outroot,
+                                        filters,det,chips,tmpdir,verbose) 
+
+    # create ACIS background subtracted image
+    dmimgcalc.punlearn()
+
+    dmimgcalc.infile = imgfile
+    dmimgcalc.infile2 = bkgimg
+    dmimgcalc.outfile = "{0}{1}{2}_bkgsub.img".format(outdir,outroot,bkgmethod)
+    dmimgcalc.operation = "sub"
+    dmimgcalc.weight = "1"
+    dmimgcalc.weight2 = "1"
+    dmimgcalc.clobber = clobber
+    dmimgcalc.verbose = verbose
+
+    dmimgcalc()
+
+    add_tool_history(bkgimg,toolname,pars)
+    add_tool_history("{0}{1}{2}_bkgsub.img".format(outdir,outroot,bkgmethod),toolname,pars)
+
+if __name__  == "__main__":
+    doit()

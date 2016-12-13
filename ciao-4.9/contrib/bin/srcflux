@@ -1,0 +1,2578 @@
+#! /usr/bin/env python
+
+#
+# Copyright (C) 2013-2016 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+from __future__ import print_function
+
+toolname = "srcflux"
+__revision__ = "19 Sep 2016"
+
+import os
+
+## TODO: replace run_tools with make_tools
+
+import ciao_contrib.logger_wrapper as lw
+lw.initialize_logger(toolname)
+lgr = lw.get_logger(toolname)
+verb0 = lgr.verbose0
+verb1 = lgr.verbose1
+verb2 = lgr.verbose2
+verb3 = lgr.verbose3
+verb4 = lgr.verbose4
+verb5 = lgr.verbose5
+
+__osuf__ = ".flux"  # output suffix
+
+import sys
+import stk as stk
+from ciao_contrib._tools.taskrunner import TaskRunner
+from ciao_contrib.runtool import make_tool
+
+import numpy as np
+np.seterr( all='ignore' )
+
+class delme( str ):
+    """
+    The temp files created by this script are based on the output
+    root name.  Under normal conditions they are removed automatically
+    however, if there is an error then since the threads
+    are independent we can't be sure which files were created and
+    what needs to be cleaned up.  
+    
+    Using this delme() class, we id the files that should always be
+    removed -- either will be via the normal code paths, or if
+    not when the string gets deleted/goes out of scope, the
+    __del__ is called to make sure the files they reference
+    are removed.
+    """
+    def __del__( self ):
+        infile = self.__str__().split("[")[0]  # may have a DM filter
+        gorm(infile.strip("@-"))  # may be a local stack
+
+
+def gorm( infile ):
+    """
+    Wrapper around the os.remove command -- setting SAVE_ALL to anything 
+    will keep all temp products
+    """
+    if 'SAVE_ALL' not in os.environ:
+        if os.path.exists( infile ):
+            os.remove(infile)
+
+
+def is_none( myfile ):
+    """
+    Identify blank/empty none file names
+    """
+    if not myfile:
+        return True
+    if '' == myfile.strip():
+        return True
+    if 'none' == myfile.lower().strip():
+        return True
+    return False
+
+
+def write_key( intab, name,value, comment, units=""):
+    """
+    Wrapper around crate key creation
+    """
+    from pycrates import CrateKey
+    kw = CrateKey()
+    kw.name = name
+    kw.value = value
+    kw.desc = comment
+    kw.unit = units
+    intab.add_key(kw)
+
+
+def get_root( myparams, at_energy ):
+    """
+    Construct root name per energy band
+    """
+    if at_energy in ['broad', 'soft', 'medium', 'hard', 'wide', 'ultrasoft']:
+        ename = at_energy
+    else:
+        ename = "-".join(at_energy.split(":")[0:2])
+
+    myroot = "_".join([myparams.outroot, ename])
+    return myroot
+
+
+def run_roi( infile, fovfile, tmproot="/tmp", bkgmode='mul', bkgradius=3, bkgfunction='mul', bkgfactor=1 ):
+    """
+    Create src and background regions for each source    
+    """
+    from ciao_contrib.runtool import roi
+
+    roi.punlearn()  # make sure clean for num_srcs below
+    roi.infile = infile
+
+    if fovfile and fovfile.lower() is not "none":
+        roi.fovregion = 'region({})'.format(fovfile)
+    else:
+        roi.fovregion = ''
+
+    roi.streakregion = ''
+    roi.outsrcfile = tmproot+r"_%04d_reg.fits"
+    roi.group = 'exclude'     # overlap srcs are cut out
+    roi.targetbkg = 'target'  # background only around this src
+    roi.clobber = True
+
+    roi.radiusmode = bkgmode
+    roi.bkgradius = bkgradius
+    roi.bkgfunction = bkgfunction
+    roi.bkgfactor = bkgfactor
+
+    rr = roi()
+
+    if rr:
+        verb2(rr)
+    # get the number of source regions
+
+    nn = roi.num_srcs
+    files = [ delme(tmproot+r"_{:04d}_reg.fits".format(i+1)) for i in range(nn) ]
+    return files
+
+
+def del_temp_regions_files( tmpregs ):
+    """
+    cleanup files
+    """
+    for ff in tmpregs:
+        if os.path.exists( ff ):
+            gorm(ff)
+
+
+
+def run_split_roi( myparams ):
+    """
+      TODO: Replace with runtool when added.
+    """
+    import subprocess as sp
+    verb2("Creating src and background regions")
+
+    myroot = myparams.outroot
+
+    # since we are already fixed at 90% at 1kev, fix
+    # background to be 5x and 1x src regions.
+    
+    fov = myparams.fovfile if not is_none(myparams.fovfile) else myroot+".fov"
+
+    roi_files = run_roi( myroot+"_srcs.fits", fov,
+        tmproot=myroot, bkgradius=5.0,
+        bkgfactor=1.0 )
+
+    mycmd = ["splitroi",
+             myroot+r"_????_reg.fits",
+             myroot ]
+             
+    if 0 != sp.call( mycmd ):
+        raise Exception("Problem running {}".format(mycmd))
+
+    del_temp_regions_files( roi_files)
+
+    return "@-"+myroot+".src.reg","@-"+myroot+".bg.reg"
+
+
+
+def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
+    """
+    
+    """
+    from cxcdm import dmTableOpen, dmTableClose, dmTableGetNoRows
+    from region import regParse, regRegionString
+
+    tab = dmTableOpen(myroot+"_srcs.fits")
+    nrows= dmTableGetNoRows( tab)
+    dmTableClose(tab)
+
+    src_stk = stk.build(src)
+    if len(src_stk) != nrows:
+        raise ValueError("Number of srcreg regions ({}) must match number of 'pos' values ({})".format(len(src_stk), nrows))
+    bkg_stk = stk.build(bkg)
+    if len(bkg_stk) != nrows:
+        raise ValueError("Number of bkgreg regions ({}) must match number of 'pos' values ({})".format(len(bkg_stk), nrows))
+    if len(src_stk) != len(bkg_stk):
+        raise ValueError("Number of srcreg regions ({}) and bkgreg regions ({}) must be the same".format(len(src_stk), len(bkg_stk)))
+    
+
+    def region_to_phys( reg ):
+        from ciao_contrib.runtool import dmmakereg
+        from tempfile import NamedTemporaryFile
+        tmproot = NamedTemporaryFile( dir=tmpdir)
+        tfile = tmproot.name
+        tmproot.close()        
+
+        dmmakereg.region=reg
+        dmmakereg.outfile=tfile
+        dmmakereg.kernel='fits'
+        dmmakereg.wcsfile=infile
+        dmmakereg.clobber=True
+        dmmakereg.verbose=0
+        dmmakereg()        
+
+        rr=regParse( "region({})".format(dmmakereg.outfile ))
+        gorm( tfile )
+        return regRegionString( rr )
+
+    
+    def validate_region( reg ):
+        try:
+            rr = regParse( reg )
+        except:
+            reg2 = "region({})".format(reg)
+            try:
+                rr = regParse( reg2 )
+                reg=reg2
+            except:
+                raise ValueError("Could not parse '{}' as either a region string or a region file".format(reg))
+
+        return region_to_phys(reg)
+
+    ss = list(map( validate_region, src_stk ))
+    outsrc = myroot+"_src.stk"
+    with open( outsrc, "w" ) as fp:
+        for s in ss:
+            fp.write( s+"\n")
+
+
+    bb = map( validate_region, bkg_stk )
+    outbkg = myroot+"_bkg.stk"
+    with open( outbkg, "w" ) as fp:
+        for b in bb:
+            fp.write( b+"\n")
+    
+    return delme("@-"+outsrc),delme("@-"+outbkg)
+
+
+def run_skyfov( myparams ):
+    
+    import ciao_contrib._tools.obsinfo as o
+    from ciao_contrib.runtool import skyfov
+    
+    obs = o.ObsInfo( myparams.infile )
+    
+    skyfov.infile= myparams.infile
+    skyfov.aspect = obs.get_asol() if 0 == len(myparams.asolfile) else myparams.asolfile
+    skyfov.kernel = "FITS"
+    skyfov.msk = obs.get_ancillary("mask") if 0 == len(myparams.mskfile) else myparams.mskfile
+    skyfov.outfile = myparams.outroot+".fov"
+    skyfov.clobber = True
+    
+    x = skyfov()
+    if x: 
+        verb2(x)
+    
+
+def check_pos_in_srcreg( infile, srcs ):
+    """
+        TODO:  This routine is not used.  There is 
+        a DM bug that stops parsing region files after 
+        reading a .gz file that causes this routine to fail.
+    """    
+    from region import regParse, regInsideRegion
+    from cxcdm import dmTableOpen, dmGetData, dmTableOpenColumn, dmTableClose, dmTableGetNoRows
+
+    #tab = dmTableOpen(infile)
+    #nrows= dmTableGetNoRows( tab)
+    #xpos = dmGetData( dmTableOpenColumn( tab, "x" ),1,nrows)
+    #ypos = dmGetData( dmTableOpenColumn( tab, "y" ),1,nrows)
+    #dmTableClose(tab)
+    xpos = [10]*len(srcs)
+    ypos = [100]*len(srcs)
+    
+
+    for ii,ss in enumerate( stk.build(srcs) ):
+        
+        rr = regParse( ss )
+        if not regInsideRegion( rr, xpos[ii], ypos[ii] ):
+            verb0("Warning position {} at x={}, y={} is not inside source region".format( ii+1, xpos[ii], ypos[ii] ))
+
+
+def save_regions( myparams, regions, flavor ):
+    """
+    
+    
+    """    
+    from ciao_contrib.runtool import dmmakereg
+    from tempfile import NamedTemporaryFile    
+    ss = stk.build(regions)
+    
+    with open( regions[2:], "w" ) as oo:  # 2 => skip "@-"
+        for ii in range( len(ss)):
+            outfile = "{}_{:04d}_{}reg.fits".format(myparams.outroot, ii+1, flavor)
+
+            tmpreg = NamedTemporaryFile( dir=myparams.tmpdir )
+
+            with open(tmpreg.name, "w") as fp:
+                fp.write( ss[ii].replace("|","\n") )
+
+            dmmakereg.region="region({})".format(tmpreg.name)
+            dmmakereg.outfile=outfile
+            dmmakereg.clobber=True
+            dmmakereg.kernel="FITS"
+            dmmakereg()
+
+            tmpreg.close()
+
+            oo.write( "region({})\n".format(outfile))
+    
+    return regions
+
+
+
+def make_regions( myparams ):
+    """
+    Run the psfsize_src sript which does two things:
+
+      - Compute the coords ra,dec -> x&y, theta&phi
+      - Compute PSF size
+
+    We always want the 1st stuff so we always run this.
+    """
+
+    from ciao_contrib.runtool import psfsize_srcs
+
+    verb2("Converting coords and looking up PSF size")
+    myroot = myparams.outroot
+
+    # 7/7: JCM req energy and ecf be hard coded to 90% @ 1keV
+    psfsize_srcs.infile=myparams.infile
+    psfsize_srcs.outfile=myparams.outroot+"_srcs.fits"
+    psfsize_srcs.pos=myparams.pos
+    psfsize_srcs.energy=1.0
+    psfsize_srcs.ecf=0.9
+    psfsize_srcs.psffile=myparams.ecffile
+    psfsize_srcs.verbose=myparams.verbose
+    psfsize_srcs.clobber=myparams.clobber
+
+    verb2(psfsize_srcs())
+
+    if is_none( myparams.fovfile.strip()):
+        run_skyfov(myparams)
+
+    srcbkg = [is_none( myparams.srcreg ),is_none( myparams.bkgreg )]
+
+    if all(srcbkg):
+        src,bkg = run_split_roi( myparams )        
+    elif any(srcbkg):
+        raise ValueError("Either both srcreg and bkgreg must be specified or neither can be specified")
+    else:        
+        src,bkg = validate_src_and_bkg_regions( myroot, myparams.infile, myparams.tmpdir, 
+            myparams.srcreg, myparams.bkgreg )
+        #check_pos_in_srcreg( psfsize_srcs.outfile, src )
+    
+    src = save_regions( myparams, src, "src" )
+    bkg = save_regions( myparams, bkg, "bkg" )
+    
+    return src,bkg
+    
+
+
+
+def map_energy_to_filter( band ):
+    """
+    Parse energy band by name or colon separated values
+    """
+
+    csc = { 'wide' : None, 'broad' : '500:7000', 'ultrasoft': '200:500',
+            'soft' : '500:1200', 'medium' : '1200:2000', 'hard' : '2000:7000'
+          }
+
+    band = band.lower()
+    if band in csc:
+        if csc[band]:
+            return "energy="+csc[band]
+        return None
+
+    ee = [float(x) for x in band.split(":")]
+    if len(ee) != 3:
+        raise ValueError("Bad energy band syntax {}".format(band))
+
+    # User will input in keV, need in eV for filter
+    lo = ee[0]*1000
+    hi = ee[1]*1000
+
+    return "energy={}:{}".format(lo,hi)
+
+
+def parse_mono_energy( energy ):
+    """
+    Parse energy band string and extract the
+    """
+    csc = { 'broad' : 2.3, 'soft' : 0.92, 'ultrasoft' : 0.4, 'medium' : 1.56, 'hard' : 3.8, 'wide' : 1.5 }
+    if energy.lower() in csc:
+        return csc[energy.lower()]
+
+    try:
+        retval = float(energy)
+        return retval
+    except ValueError:
+        pass
+
+    if ':' not in energy:
+        raise ValueError("Unknown energy {}".format(energy))
+
+    ee=energy.split(":")
+    if 3 != len(ee):
+        raise ValueError("Bad energy range format {}".format(energy))
+
+    try:
+        retval = float(ee[2])
+        return retval
+    except:
+        raise ValueError("Invalid mono energy {}".format(ee[2]))
+
+
+
+def get_counts( myparams, at_energy, src, bkg ):
+    """
+    Get the counts in the region using dmextract.
+    We add the input columns from the PSF script with dmpaste
+    """
+    from ciao_contrib.runtool import dmextract
+    from ciao_contrib.runtool import dmpaste
+    from pycrates import read_file
+
+    verb1("Extracting counts")
+
+    efilt = map_energy_to_filter( at_energy)
+    if efilt:
+        inroot = "{}[{}]".format(myparams.infile, efilt)
+    else:
+        inroot = myparams.infile
+
+    fov = myparams.outroot+".fov" if is_none(myparams.fovfile) else myparams.fovfile
+    
+    inroot = "{}[sky=region({})]".format(inroot,fov)
+
+    myroot = get_root(myparams, at_energy)
+
+    dmextract.infile = inroot+"[bin sky={}]".format(src)
+    dmextract.bkg    = inroot+"[bin sky={}]".format(bkg)
+    dmextract.outfile = myroot+__osuf__
+    dmextract.opt="generic"
+    dmextract.clobber= myparams.clobber
+    dmextract.verbose = myparams.verbose
+    verb2(dmextract())
+
+    # TODO:  If we want to start dropping/renaming dmextract columns
+    # TODO: ... this is where to do it.
+
+    pp = myparams.outroot+"_srcs.fits"
+    dmpaste.infile = dmextract.outfile
+    dmpaste.pastefile = pp+"[cols XPOS=x,YPOS=y,THETA,PHI,RAPOS=ra,DECPOS=dec,INSIDE_FOV,near_chip_edge,chip_id,chipx,chipy]"
+    dmpaste.outfile = delme(dmextract.outfile+".tmp")
+    dmpaste.clobber = myparams.clobber
+    dmpaste.verbose = myparams.verbose
+    verb2(dmpaste())
+
+    os.rename( dmpaste.outfile, dmextract.outfile )
+
+    # add some meta data
+    intab = read_file( dmextract.outfile, mode="rw")
+    write_key( intab, "ENERGY", parse_mono_energy( at_energy), "Monochromatic energy", "keV")
+    if efilt:
+        elo = float( efilt.split("=")[1].split(":")[0] )/1000.0
+        ehi = float( efilt.split("=")[1].split(":")[1] )/1000.0
+    else:
+        elo = 0.1
+        ehi = 10.0
+    write_key( intab, "EMIN", elo, "Lower energy bounds", "keV")
+    write_key( intab, "EMAX", ehi, "Upper energy bounds", "keV")
+    intab.write()
+    
+
+def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
+    """
+    Run saotrace and psf_project_ray to simulate the PSF
+    """
+
+    ### Note to future self:  saotrace pipes everything 
+    ### so it inheriently is already parallelized, trying to run
+    ### in parallel will only cause massive slowness.  But marx isn't
+    ### so we could see some benifit from do those in parallel.  
+
+
+    if simulator == 'saotrace':
+        if 'SAOTRACE_DB' not in os.environ:
+            raise IOError("Please setup for saotrace first")
+        projector="psf_project_ray"
+    elif simulator == 'marx':
+        if 'MARX_ROOT' not in os.environ:
+            raise IOError("Please setup for marx first")
+        projector="marx"
+    else:
+        raise ValueError("Unknown simulator")
+
+    
+    verb1("Simulating psfs using {}".format(simulator))
+
+    myroot = get_root( myparams, at_energy )
+    src_stk = stk.build(src)
+    nrow = len(src_stk)
+    
+    eng = parse_mono_energy( at_energy )
+
+    psf_files = []
+    
+    for ii in range( 1,nrow+1):
+        verb2("Working on src {}".format(ii))
+
+        ra = get_single_keyword( myroot+"{}[#row={}]".format(__osuf__,ii), "rapos")
+        dec = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "decpos")
+        rate = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "count_rate")
+        if float(rate) == 0:
+            rate = 1.0e-6
+
+        outroot = myroot.replace( myparams.outroot, myparams.outroot+"_{:04d}".format(ii))
+        simulate_psf = make_tool("simulate_psf")
+        simulate_psf.infile=myparams.infile
+        simulate_psf.asolfile=''
+        simulate_psf.outroot=outroot
+        simulate_psf.ra=ra
+        simulate_psf.dec=dec
+        simulate_psf.spectrumfile=''
+        simulate_psf.simulator=simulator
+        simulate_psf.projector=projector
+        simulate_psf.monoenergy=eng
+        simulate_psf.flux=rate
+        simulate_psf.binsize=myparams.binsize
+        simulate_psf.minsize=256
+        simulate_psf.readout_streak=False
+        simulate_psf.pileup=False
+        simulate_psf.ideal=True
+        simulate_psf.extended=True
+        simulate_psf.numiter=1
+        simulate_psf.keepiter=False
+        simulate_psf.verbose=0
+            
+        vv = simulate_psf()
+        if vv: 
+            verb2(vv)
+            
+        psf_files.append(outroot+".psf")
+    
+    return psf_files
+        
+
+
+def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
+    """
+    Extract PSF from psf file,
+
+    """
+    #
+    # Will use the same PSF for all energy bands so we don't get
+    # into stack matching craziness.
+    #
+
+    verb2("Getting PSF from file")
+
+    from ciao_contrib.runtool import dmextract
+    from ciao_contrib.runtool import dmmerge
+    from ciao_contrib.runtool import dmpaste
+    from ciao_contrib.runtool import dmstat
+
+    myroot = get_root( myparams, at_energy )
+
+    src_stk = stk.build(src)
+    bkg_stk = stk.build(bkg)
+
+
+    if simulate is None:
+        psf_stk = stk.build( myparams.psffile )
+    elif simulate == "marx":
+        if 'MARX_ROOT' not in os.environ:
+            raise RuntimeError("Please setup for MARX before using this option")
+        psf_stk = simulate_psfs( myparams, at_energy, src, bkg, simulator="marx" )
+    else:
+        raise NotImplementedError("Unknown simulator={}".format(simulate))
+
+    #if len(psf_stk) == 1 and psf_stk[0] == '#simulate' and 'SAOTRACE_DB' in os.environ :
+    #    psf_stk = simulate_psfs( myparams, at_energy, src, bkg, simulator="saotrace" )
+    #if len(psf_stk) == 1 and psf_stk[0] == '#marx' and 'MARX_ROOT' in os.environ :
+    #    psf_stk = simulate_psfs( myparams, at_energy, src, bkg, simulator="marx" )
+
+    if len( src_stk ) != len(psf_stk):
+        raise ValueError("Must have as many psffiles as pos/src values")
+    
+    fov = myparams.outroot+".fov" if is_none(myparams.fovfile) else myparams.fovfile
+    fov = [fov]*len(src_stk)
+
+    infiles = [ "{}[sky=region({})][bin sky={}]".format(*x) for x in list(zip(psf_stk,fov,src_stk))]
+    bgfiles = [ "{}[sky=region({})][bin sky={}]".format(*x) for x in list(zip(psf_stk,fov,bkg_stk))]
+
+    from tempfile import NamedTemporaryFile
+    all_files = []
+    for s,b in zip( infiles, bgfiles ):
+        tmproot = NamedTemporaryFile( dir=myparams.tmpdir)
+        tfile = tmproot.name
+        tmproot.close()
+        
+        dmextract.infile = s
+        dmextract.bkg    = b
+        dmextract.outfile = tfile
+        dmextract.opt="generic"
+        dmextract.clobber=True
+        verb2( dmextract() )
+
+        all_files.append( tfile )
+
+    just_counts = [ x+"[cols COUNTS,BG_COUNTS]" for x in all_files ]
+
+    outfile = delme(myroot+".pf")
+
+    dmmerge( infile=just_counts, outfile=outfile, clobber=True )
+    for ff in all_files:
+        if os.path.exists(ff):
+            gorm(ff)
+
+    # Check values <= 1
+    dmstat.punlearn()
+    dmstat( infile=outfile+"[cols COUNTS]" )
+    if float(dmstat.out_min) < 0 or float(dmstat.out_max) > 1:
+        raise ValueError("PSF must be normalized to sum less than 1")
+    
+    dmstat.punlearn()
+    dmstat( infile=outfile+"[cols BG_COUNTS]" )
+    if float(dmstat.out_min) < 0 or float(dmstat.out_max) > 1:
+        raise ValueError("PSF must be normalized to sum less than 1")
+    
+        
+    dmpaste.infile    = myroot+"{}".format(__osuf__)
+    dmpaste.pastefile = outfile+"[cols PSFFRAC=counts,BG_PSFFRAC=bg_counts]"
+    dmpaste.outfile   = delme(dmpaste.infile+".tmp")
+    dmpaste.clobber = True
+    dmpaste.verbose = myparams.verbose
+    verb2( dmpaste() )
+
+    os.rename( dmpaste.outfile, dmpaste.infile )
+    gorm( dmmerge.outfile )
+
+
+def get_psf_from_region( myparams, at_energy, src, bkg ):
+    """
+    For circle regions, get PSF frac for radius
+    """
+
+    from ciao_contrib.runtool import dmpaste
+    from ciao_contrib.runtool import src_psffrac
+    
+    verb2("Converting coords and looking up PSF size")
+
+    myroot = get_root(myparams, at_energy)
+
+    src_psffrac.infile=myparams.infile
+    src_psffrac.region=src
+    src_psffrac.outfile=delme(myroot+".psffracs")
+    src_psffrac.energy=at_energy
+    src_psffrac.psffile=myparams.ecffile
+    src_psffrac.verbose=myparams.verbose
+    src_psffrac.clobber=myparams.clobber
+    
+    verb2( src_psffrac() )
+
+    dmpaste.infile    = myroot+__osuf__
+    dmpaste.pastefile = src_psffrac.outfile+"[cols psffrac,bg_psffrac]"
+    dmpaste.outfile   = delme(dmpaste.infile+".tmp")
+    dmpaste.clobber = True
+    dmpaste.verbose = myparams.verbose
+    verb2( dmpaste() )
+
+    os.rename( dmpaste.outfile, dmpaste.infile )    
+    gorm( src_psffrac.outfile )
+
+
+def get_ideal_psf( myparams, at_energy, src, bkg ):
+    """
+    Ideal PSF is source = 100% and background = 0%
+    """
+    from ciao_contrib.runtool import dmtcalc
+
+    verb1( "Setting Ideal PSF : alpha=1 , beta=0")
+
+    myroot = get_root(myparams, at_energy)
+    dmtcalc.infile = myroot+__osuf__
+    dmtcalc.outfile = delme(dmtcalc.infile+".tmp")
+    dmtcalc.expression = "PSFFRAC=1.0;BG_PSFFRAC=0.0"
+    dmtcalc.clobber = myparams.clobber
+    dmtcalc.verbose = myparams.verbose
+    verb2(dmtcalc())
+    
+    os.rename( dmtcalc.outfile, dmtcalc.infile )
+
+
+def run_arfcorr_and_dme( myparams, at_energy, src, bkg,ii):
+    """
+    Run arfcorr and dmextract on a single region.
+
+    Output:
+        is a 1 row file that has PSF fraction for the ii-th
+        regions
+    """
+
+    from ciao_contrib.runtool import dmextract
+    from ciao_contrib.runtool import new_pfiles_environment as newpf
+    from ciao_contrib.runtool import make_tool
+
+    verb1("Getting PSF fraction by running arfcorr {}".format(ii))
+
+    myroot = get_root(myparams, at_energy)
+
+    xx = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "xpos")
+    yy = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "ypos")
+    aa = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "area")
+
+    if src.lower() == "point(0,0)" and bkg.lower() == "point(0,0)":
+        with open( myroot+"{:04d}_model.psffrac".format(ii), "w" ) as fp:
+            fp.write("#COUNTS\tBG_COUNTS\n")
+            fp.write("0\t0\n")
+        return
+
+    if 0 == aa:
+        with open( myroot+"{:04d}_model.psffrac".format(ii), "w" ) as fp:
+            fp.write("#COUNTS\tBG_COUNTS\n")
+            fp.write("0\t0\n")
+        return
+
+
+    infile="{}[sky={}][bin sky={}]".format( myparams.infile, bound_src_and_bkg(src, bkg, myparams.tmpdir), myparams.binsize)
+
+    outroot = myparams.outroot+"_{:04d}".format(ii)
+    if at_energy in ['broad', 'soft', 'medium', 'hard', 'wide', 'ultrasoft']:
+        outroot = outroot+"_"+at_energy
+    else:
+        outroot = outroot+"_"+"-".join(at_energy.split(":")[0:2])
+    outfile= outroot+"_model.psf"
+
+
+
+    #
+    # arfcorr calls 'dmcoords' which makes it non-thread safe so we
+    # need to use a unique local pfiles for each thread.
+    #
+
+    with newpf(tmpdir=myparams.tmpdir, copyuser=False) as foo:
+        arfcorr = make_tool("arfcorr")
+        arfcorr.infile = infile
+        arfcorr.arf = "none"
+        arfcorr.outfile = outfile
+        arfcorr.region = "field()"
+        arfcorr.x = xx
+        arfcorr.y = yy
+        arfcorr.energy = parse_mono_energy( at_energy )
+        arfcorr.clobber= myparams.clobber
+        arfcorr.verbose = myparams.verbose
+
+        verb2(arfcorr())
+        ac_out = arfcorr.outfile
+    
+    fov = myparams.outroot+".fov" if is_none(myparams.fovfile) else myparams.fovfile
+    
+    dmextract.infile = "{}[cntFrac=region({})][bin sky={}]".format(ac_out, fov,src )
+    dmextract.bkg = "{}[cntFrac=region({})][bin sky={}]".format(ac_out, fov, bkg )
+    dmextract.outfile=myroot+"{:04d}_model.psffrac".format(ii)
+    dmextract.clobber=myparams.clobber
+    dmextract.verbose=myparams.verbose
+    verb2(dmextract())
+
+    ###Let's keep this with the other images
+    ###gorm( ac_out )
+
+
+def get_psf_from_model( myparams, at_energy, src, bkg):
+    """
+    Get PSF by making a model via arfcorr.  THis is the
+    wrapper about above that runs the jobs in parallel.
+    """
+    from ciao_contrib.runtool import dmmerge
+    from ciao_contrib.runtool import dmpaste
+
+    verb1("Making PSF models ")
+
+    src_stk = stk.build( src )
+    bkg_stk = stk.build( bkg )
+
+    assert len(src_stk) == len(bkg_stk ), "src and bkg must be same size"
+
+    myroot = get_root(myparams, at_energy)
+
+    outfiles = []
+    taskrunner = TaskRunner()
+    for ii in range(1, len(src_stk)+1 ):
+        taskrunner.add_task( "arfcorr_{:04d}".format(ii), "", run_arfcorr_and_dme, myparams, at_energy, src_stk[ii-1], bkg_stk[ii-1],ii )
+        outfiles.append(myroot+"{:04d}_model.psffrac[cols PSFFRAC=counts,BG_PSFFRAC=bg_counts]".format(ii) )
+
+    taskrunner.run_tasks(processes=myparams.nproc, label=False)
+
+    verb1( "Combining PSF fractions together")
+
+    # Merge individual files into 1
+    dmmerge.infile=outfiles
+    dmmerge.outfile=delme(myroot+"_psfracs")
+    dmmerge.clobber=myparams.clobber
+    dmmerge.verbose = myparams.verbose
+    verb2(dmmerge())
+
+    # Add columns to output file
+    dmpaste.infile = myroot+__osuf__
+    dmpaste.pastefile = dmmerge.outfile
+    dmpaste.outfile = delme(dmpaste.infile+".tmp")
+    dmpaste.clobber=myparams.clobber
+    dmpaste.verbose = myparams.verbose
+    verb2(dmpaste())
+
+    # Keep output file name same
+    os.rename( dmpaste.outfile, dmpaste.infile )
+
+    # Cleanup
+    gorm( dmmerge.outfile )
+    for ff in outfiles:
+        gorm(ff.split("[")[0])
+
+
+def run_aprates( c_s, a_s, alpha, c_b, a_b, beta, exposure, conf, outfile ):
+    """
+    Run aprates tool, save the values in an ASCII file
+    that can be combined together later
+    """
+    from ciao_contrib.runtool import aprates
+
+    def write_null( outfile ):        
+        with open(outfile, "w") as fp:
+            fp.write("src_rate_mode,r,h,INDEF,,,\n")
+            fp.write("src_rate_err_lo,r,h,INDEF,,,\n")
+            fp.write("src_rate_err_up,r,h,INDEF,,,\n")
+            fp.write("src_rate_signif,r,h,INDEF,,,\n")
+        return
+
+    verb1( "Running aprates for {}".format(outfile) )
+
+    if 0 == c_s and 0 == c_b:
+        write_null( outfile )
+    elif 0 == a_s:
+        write_null( outfile )
+    elif 0 == alpha:
+        write_null( outfile )
+    else:
+        aprates.n = c_s
+        aprates.A_s = a_s
+        aprates.alpha = alpha
+        aprates.T_s = exposure
+        aprates.E_s = 1
+        aprates.eng_s = 1
+        aprates.flux_s = 1
+        aprates.m = c_b
+        aprates.A_b = a_b
+        aprates.beta = beta
+        aprates.T_b = exposure
+        aprates.E_b = 1
+        aprates.eng_b = 1
+        aprates.flux_b = 1
+        aprates.conf = conf
+        aprates.outfile = outfile
+        aprates.clobber = True
+        aprates.verbose=1
+        aa = aprates()
+        if aa:
+            verb4(aa)
+            
+            pdf = outfile.replace(".par", ".prob")
+            pdata = aa.split("\n")
+
+            pdata = list(filter( lambda x: len(x.strip())>0 , pdata ))
+            pdata = list(filter( lambda x: 'warning' not in x.lower(), pdata ))
+
+            startat = list(filter( lambda x: "PDF for 'src_cnts_aper' distribution" in x[1], enumerate(pdata)))
+            startat = startat[0][0]
+
+            stopat = list(filter( lambda x: x[1].startswith('#---') ,  enumerate(pdata[startat:])))
+            stopat = stopat[0][0]+startat
+
+
+            with open(pdf, "w") as fp:
+                fp.write("#net_count_rate\tprobability\n")
+                for pp in pdata[startat+1:stopat]:
+                    fp.write(pp.replace(" ","\t")+"\n")
+
+def get_livetime_keywords( infile ):
+    """
+    Read the LIVTIME keywords for all 10 chips (returns None if keyword
+    isn't there).  Also return just LIVETIME keyword value for HRC
+    and in case it lands on a chip that isn't on.
+    """
+    from pycrates import read_file
+   
+    tab = read_file( infile )
+    live_times = [ tab.get_key_value("LIVTIME{}".format(n)) for n in range(10)]
+    the_live_time = tab.get_key_value( "LIVETIME")
+    return( the_live_time, live_times)
+
+
+def get_net_rate_aper( taskrunner, myparams, at_energy, src, bkg ):
+    """
+    Wrapper around aprates that runs them in parallel then collects
+    the outputs
+    """
+    from pycrates import read_file
+
+    verb1("Getting net rate and confidence limits")
+
+    myroot = get_root( myparams, at_energy )
+
+    intab = read_file( myroot+__osuf__, mode="r")
+    src_cts = intab.get_column("counts").values
+    bkg_cts = intab.get_column("bg_counts").values
+    src_area = intab.get_column("area").values
+    bkg_area = intab.get_column("bg_area").values
+    src_frac = intab.get_column("psffrac").values
+    bkg_frac = intab.get_column("bg_psffrac").values
+    chip_id  = intab.get_column("chip_id").values
+    the_live_time, live_times = get_livetime_keywords( myroot+__osuf__ )
+
+    outfiles = []
+    for ii in range( len(src_cts) ):
+        outroot = myparams.outroot+"_{:04d}".format(ii+1)
+
+        if at_energy in ['broad', 'soft', 'medium', 'hard', 'wide', 'ultrasoft']:
+            myroot = outroot+"_"+at_energy
+        else:
+            myroot = outroot+"_"+"-".join(at_energy.split(":")[0:2])
+
+        outfile= myroot+"_rates.par"
+
+        livetime = live_times[chip_id[ii]] if live_times[chip_id[ii]] else the_live_time
+
+        outfiles.append( delme(outfile) )
+        taskrunner.add_task( "aprates_{:04d}".format(ii), "",
+            run_aprates, src_cts[ii], src_area[ii], src_frac[ii],
+            bkg_cts[ii], bkg_area[ii], bkg_frac[ii], livetime,
+            myparams.conf, outfile  )
+    return outfiles
+
+    
+def add_aprates_to_output( myparams, at_energy, outfiles):
+    """
+    """    
+    from pycrates import read_file
+
+    myroot = get_root( myparams, at_energy)
+    intab = read_file( myroot+__osuf__, mode="rw")
+
+    verb1("Adding net rates to output")
+
+    def pull_par_into_crate( parname, cratename, desc, units="counts/s" ):
+        from paramio import pget
+        from pycrates import CrateData
+        cd = CrateData()
+        cd.name = cratename
+        vals = [pget(pp,parname) for pp in outfiles ]
+        vals = [ np.nan if x == 'INDEF' else float(x) for x in vals ]
+        cd.values = vals
+        cd.unit = units
+        cd.desc = desc
+        intab.add_column( cd )
+
+    pull_par_into_crate( "src_rate_mode", "NET_RATE_APER", "Net count rate")
+    pull_par_into_crate( "src_rate_err_lo", "NET_RATE_APER_LO", "Lower limit on net count rate")
+    pull_par_into_crate( "src_rate_err_up", "NET_RATE_APER_HI", "Upper limit on net count rate")
+    pull_par_into_crate( "src_rate_signif", "SRC_SIGNIFICANCE", "Source significance", units="")
+    write_key( intab, "CONF", myparams.conf, 'Confidence intervals [0-1]' )
+
+    intab.write()
+
+    # cleanup
+    for pp in outfiles:
+        gorm( pp )
+
+
+def run_eff2evt( infile, outfile, energy="INDEF" ):
+    """
+    Run EFF2EVT tool to get a model independent flux
+
+    """
+    from ciao_contrib.runtool import eff2evt
+    from ciao_contrib.runtool import dmstat
+
+    verb1("Running eff2evt for {}".format(outfile))
+
+    eff2evt.infile = infile
+    eff2evt.outfile = delme(outfile+"_evt")
+    eff2evt.pbkfile = ""
+    eff2evt.energy = energy
+    eff2evt.clobber = True
+    ee = eff2evt()
+    
+    if ee:
+        verb2(ee)
+
+    dmstat.infile = eff2evt.outfile+"[cols flux]"
+    dmstat()
+
+    with open(outfile, 'w' ) as fp:
+        fp.write("#FLUX_APER\n")
+        fp.write(dmstat.out_sum)
+        fp.write("\n")
+
+    gorm( eff2evt.outfile )
+
+
+def add_array_to_crate( intab,colname, vals,desc, unit ):
+    """
+    add an array to crate 
+    """
+    from pycrates import CrateData
+    cd = CrateData()
+    cd.name = colname
+    cd.values = vals
+    cd.desc = desc
+    cd.unit = unit
+    intab.add_column( cd )
+
+
+def bound_src_and_bkg( src, bkg, tmpdir ):
+    """
+    For fluximage and arfcorr we do not really care about filtering the
+    image/data ... but we need to create a "seed" image (or subspace) that
+    is the correct size to include both the source and background regions.
+    Trying different DM syntaxes has lead to problems so we 
+    go ahead an just create the box that bounds the bounding boxes
+    of the source and backgroudnds.
+    
+    """
+    
+    def bounds( ss ):
+        from ciao_contrib.runtool import dmmakereg
+        from tempfile import NamedTemporaryFile
+        from pycrates import read_file
+
+        tmproot = NamedTemporaryFile(dir=tmpdir)
+        tfile = tmproot.name
+        dmmakereg.region="bounds({})".format(ss)
+        dmmakereg.outfile=tfile
+        dmmakereg.kernel='fits'
+        dmmakereg.wcsfile=""
+        dmmakereg.clobber=True
+        dmmakereg.verbose=0
+        dmmakereg()        
+
+        tab = read_file( tfile )
+        xx = tab.get_column("x").values[0]
+        yy = tab.get_column("y").values[0]
+        tmproot.close()        
+        
+        return xx[0],yy[0],xx[1],yy[1]
+        
+    sxmin,symin,sxmax,symax = bounds(src)
+    bxmin,bymin,bxmax,bymax = bounds(bkg)
+    
+    llx = min( [sxmin,bxmin] )-1
+    lly = min( [symin,bymin] )-1
+    
+    urx = max( [sxmax,bxmax] )+1
+    ury = max( [symax,bymax] )+1
+    
+    rr = "rectangle({},{},{},{})".format(llx,lly,urx,ury)
+
+    return rr
+
+
+def run_fluximage( infile, outroot, at_energy, src, bkg, myparams ):
+    """
+    Create a postage stamp size image around the source and background.
+
+    """
+    
+    from ciao_contrib.runtool import fluximage,dmextract
+
+    fov = myparams.outroot+".fov" if is_none(myparams.fovfile) else myparams.fovfile
+
+    
+    fluximage.infile = infile
+    fluximage.outroot = outroot
+    fluximage.bands = at_energy
+    fluximage.binsize = myparams.binsize
+    fluximage.parallel = False
+    fluximage.clobber = True
+    fluximage.asolfile = myparams.asolfile
+    fluximage.badpixfile = myparams.bpixfile
+    fluximage.maskfile = myparams.mskfile 
+    fluximage.dtffile = myparams.dtffile
+    fluximage.verbose = myparams.verbose
+    fluximage.cleanup = 'SAVE_ALL' not in os.environ
+    fluximage.tmpdir = myparams.tmpdir
+    
+    try:
+        verb2(fluximage())
+        if at_energy in ['broad', 'soft', 'medium', 'hard', 'wide', 'ultrasoft']:
+            myroot = outroot+"_"+at_energy
+        else:
+            myroot = outroot+"_"+"-".join(at_energy.split(":")[0:2])
+
+        dmextract.punlearn()
+        dmextract.infile=myroot+"_flux.img[sky=region({})][bin sky={}]".format(fov,src)
+        dmextract.bkg=myroot+"_flux.img[sky=region({})][bin sky={}]".format(fov,bkg)
+        dmextract.exp=myroot+"_thresh.expmap[sky=region({})]".format(fov)
+        dmextract.bkgexp=myroot+"_thresh.expmap[sky=region({})]".format(fov)
+        dmextract.opt="generic"
+        dmextract.clobber=True
+        dmextract.outfile=outroot+".exp"
+        verb2(dmextract())
+
+        ##
+        # Let's go ahead and keep these 
+        #
+        #if os.path.exists( myroot+"_thresh.expmap"):
+        #    gorm(myroot+"_thresh.expmap")
+        #if os.path.exists( myroot+"_flux.img"):
+        #    gorm(myroot+"_flux.img")
+        #if os.path.exists( myroot+"_thresh.img"):
+        #    gorm(myroot+"_thresh.img")
+        
+    except Exception as e:
+        verb0(str(e))
+        verb3("Problem running fluximage for {}, results set to NaN".format(outroot))
+        with open( outroot+".exp", "w" ) as fp:
+            fp.write("#COUNTS\tBG_COUNTS\tMEAN_SRC_EXP\tMEAN_BG_EXP\n")
+            fp.write("NaN\tNaN\tNaN\tNaN\n")
+        
+
+
+def get_fluximage_flux( taskrunner, myparams, at_energy, src, bkg ):
+    """
+    """
+
+    verb1( "Getting photon fluxes ")
+
+    myroot = myparams.outroot
+
+    inroot = myparams.infile
+    src_stk = stk.build( src )
+    bkg_stk = stk.build( bkg )
+    
+    srcfiles = []
+    for ii in range(1,len(src_stk)+1):
+        bound = bound_src_and_bkg(src_stk[ii-1], bkg_stk[ii-1], myparams.tmpdir)
+
+        #infile = inroot+"[sky={},{}]".format(src_stk[ii-1], bkg_stk[ii-1])
+        infile = inroot+"[sky={}]".format(bound)
+        outfile= myroot+"_{:04d}".format(ii)
+        taskrunner.add_task( outfile, "", run_fluximage,
+            infile, outfile, at_energy, src_stk[ii-1], bkg_stk[ii-1], myparams )
+        srcfiles.append( delme(outfile+".exp") )
+    
+    return srcfiles
+    
+
+
+
+
+def get_model_independent_flux( taskrunner, myparams, at_energy, src, bkg ):
+    """
+      The model independent flux comes from
+      running eff2evt, then summing the FLUX values
+      in the source and background and then
+      scaling with PSF and Areas.
+    """
+
+    verb1( "Getting model independent fluxes ")
+
+    myroot = get_root( myparams, at_energy)
+    efilt = map_energy_to_filter( at_energy)
+    if efilt:
+        inroot = "{}[{}]".format(myparams.infile, efilt)
+    else:
+        inroot = myparams.infile
+
+    src_stk = stk.build( src )
+    bkg_stk = stk.build( bkg )
+    if "hrc" == get_single_keyword( myparams.infile, "instrume").lower():
+        mono="1.5"
+    else:
+        mono="INDEF"
+
+    #
+    # We run eff2evt on each src and background regions only.
+    # We have to filter the files this many times anyway
+    # so the advantage of doing it this way, over
+    # running eff2evt once and then filtering is that
+    # we save the time to compute the fluxes for the events
+    # that are never used; and we can do them in parallel
+    #
+
+    srcfiles = []
+    for ii in range(1,len(src_stk)+1):
+        infile = inroot+"[sky={}]".format(src_stk[ii-1])
+        outfile= myroot+"_{:04d}_src.dat".format(ii)
+        taskrunner.add_task( outfile, "", run_eff2evt,
+            infile, outfile, energy=mono )
+        srcfiles.append( delme(outfile) )
+    
+    bkgfiles = []
+    for ii in range(1,len(bkg_stk)+1):
+        infile = inroot+"[sky={}]".format(bkg_stk[ii-1])
+        outfile= myroot+"_{:04d}_bkg.dat".format(ii)
+        taskrunner.add_task( outfile, "", run_eff2evt,
+            infile, outfile, energy=mono )
+        bkgfiles.append( delme(outfile+"[cols BG_FLUX_APER=FLUX_APER]" ))
+    
+    return( srcfiles, bkgfiles )
+
+
+def add_photflux_to_outfile( myparams, at_energy, photfiles ):
+    """
+    
+    """
+    verb1("Appending photflux results onto output")
+    myroot = get_root( myparams, at_energy )
+
+    from ciao_contrib.runtool import dmmerge
+    from ciao_contrib.runtool import dmpaste
+
+    zz = [ z+"[cols SRC_PHOTFLUX=counts,BG_PHOTFLUX=bg_counts,MEAN_SRC_EXP,MEAN_BG_EXP]" for z in photfiles ]
+
+    dmmerge.infile=zz
+    dmmerge.outfile=delme(myroot+"_photflux")
+    dmmerge.clobber = myparams.clobber
+    dmmerge.verbose = myparams.verbose
+    verb2(dmmerge())
+
+    dmpaste.infile = myroot+__osuf__
+    dmpaste.pastefile= dmmerge.outfile
+    dmpaste.outfile = delme(dmpaste.infile+".tmp")
+    dmpaste.clobber = myparams.clobber
+    dmpaste.verbose = myparams.verbose
+    verb2(dmpaste() )
+    os.rename( dmpaste.outfile, dmpaste.infile )
+
+    for dd in photfiles:
+        gorm( dd )
+    gorm( myroot+"_photflux")
+
+    
+
+def add_effevt_to_outfile( myparams, at_energy, srcfiles, bkgfiles ):
+    """
+    """
+    verb1("Appending flux results onto output")
+    myroot = get_root( myparams, at_energy )
+
+    from ciao_contrib.runtool import dmmerge
+    from ciao_contrib.runtool import dmpaste
+
+    sdat = delme(myroot+"_src.dat")
+    bdat = delme(myroot+"_bkg.dat")
+
+    dmmerge.infile=srcfiles
+    dmmerge.outfile=sdat
+    dmmerge.clobber = myparams.clobber
+    dmmerge.verbose = myparams.verbose
+    verb2(dmmerge())
+
+    dmmerge.infile=bkgfiles
+    dmmerge.outfile=bdat
+    dmmerge.clobber = myparams.clobber
+    dmmerge.verbose = myparams.verbose
+    verb2(dmmerge())
+
+    dmpaste.infile = myroot+__osuf__
+    dmpaste.pastefile= sdat+","+bdat
+    dmpaste.outfile = delme(dmpaste.infile+".tmp")
+    dmpaste.clobber = myparams.clobber
+    dmpaste.verbose = myparams.verbose
+    verb2(dmpaste() )
+    os.rename( dmpaste.outfile, dmpaste.infile )
+
+    for dd in srcfiles:
+        gorm( dd )
+    for dd in bkgfiles:
+        gorm( dd.split("[")[0] )
+    gorm( sdat)
+    gorm( bdat)
+
+
+def scale_eff2evt_fluxes( myparams, at_energy):
+    """
+    """
+    myroot = get_root( myparams, at_energy)
+
+    verb1("Computing Net fluxes")
+
+    from pycrates import read_file
+
+    intab = read_file( myroot+__osuf__, mode="rw")
+
+    src_flx = intab.get_column("flux_aper").values
+    bkg_flx = intab.get_column("bg_flux_aper").values
+    src_area = intab.get_column("area").values
+    bkg_area = intab.get_column("bg_area").values
+    src_frac = intab.get_column("psffrac").values
+    bkg_frac = intab.get_column("bg_psffrac").values
+
+    net_rate = intab.get_column("net_rate_aper").values
+    net_rate_lo = intab.get_column("net_rate_aper_lo").values
+    net_rate_hi = intab.get_column("net_rate_aper_hi").values
+
+    backscale = bkg_area / src_area
+    net_flux = ( backscale * src_flx - bkg_flx ) / ( backscale * (src_frac - bkg_frac))
+    # if net_flux < 0 then can't do anything
+    net_flux = np.array([ x if x >= 0 else np.nan for x in net_flux])
+
+    # Use net_rate_hi if net_rate is zero, which means net_rate_hi
+    # is the upper limit.  Flag it as such.
+    rate = [ x if x > 0 else y for x,y in zip( net_rate,net_rate_hi)]
+    upper_limit = [x<=0 for x in net_rate]
+
+    cnv_factor = net_flux / rate
+    net_flux_lo = net_rate_lo * cnv_factor
+    net_flux_hi = net_rate_hi * cnv_factor
+
+    add_array_to_crate( intab, "NET_FLUX_APER", net_flux, "Model independent flux" ,"ergs/cm**2/s")
+    add_array_to_crate( intab, "NET_FLUX_APER_LO", net_flux_lo, "Model independent flux lower limit" ,"ergs/cm**2/s")
+    add_array_to_crate( intab, "NET_FLUX_APER_HI", net_flux_hi, "Model independent flux upper limit" ,"ergs/cm**2/s")
+    add_array_to_crate( intab, "UPPER_LIMIT", upper_limit, "Was upper limit used?", "")
+
+    src_photflx = intab.get_column("src_photflux").values
+    bkg_photflx = intab.get_column("bg_photflux").values
+    net_photflux = ( backscale * src_photflx - bkg_photflx ) / ( backscale * (src_frac - bkg_frac))
+
+    # if net_photflux < 0 then can't do anything
+    net_photflux = np.array([ x if x >= 0 else np.nan for x in net_photflux])
+
+    # Use net_rate_hi if net_rate is zero, which means net_rate_hi
+    # is the upper limit.  Flag it as such.
+    rate = [ x if x > 0 else y for x,y in zip( net_rate,net_rate_hi)]
+    upper_limit = [x<=0 for x in net_rate]
+
+    cnv_factor = net_photflux / rate
+    net_photflux_lo = net_rate_lo * cnv_factor
+    net_photflux_hi = net_rate_hi * cnv_factor
+    add_array_to_crate( intab, "NET_PHOTFLUX_APER", net_photflux, "Photon flux counts/expmap" ,"photon/cm**2/s")
+    add_array_to_crate( intab, "NET_PHOTFLUX_APER_LO", net_photflux_lo, "Photon flux lower limit" ,"photon/cm**2/s")
+    add_array_to_crate( intab, "NET_PHOTFLUX_APER_HI", net_photflux_hi, "Photon flux upper limit" ,"photon/cm**2/s")
+
+    intab.write()
+
+def get_single_keyword( infile, keyword ):
+    """
+    Get a single keyword.  Using crates it reads whole file in :( and
+    shelling out to run a dmkeypar is too wasteful.
+    """
+    from cxcdm import dmTableOpen, dmKeyRead, dmTableClose
+    tab = dmTableOpen( infile )
+    desc,_val = dmKeyRead( tab, keyword )
+    try:
+        val = _val.decode("ascii")
+    except:
+        val = _val    
+    dmTableClose(tab)
+    return val
+
+
+class OutsideFOV( Exception ):
+    
+    def __init__(self, msg):
+        self.msg = msg
+    def __str__(self):
+        return ""
+
+
+class FailAndSkip( RuntimeError ):
+    def __init__(self, msg):
+        self.msg = msg
+    def __str__(self):
+        return self.msg
+    
+
+
+def run_specextract( myparams, outroot, srcreg, bkgreg, ii, at_energy ):
+    """
+    Create ARF and RMF files needed for model flux
+    """
+
+    from ciao_contrib.runtool import new_pfiles_environment as newpf
+    from ciao_contrib.runtool import make_tool
+
+    verb1("Making response files for {}".format(outroot))
+
+    myroot = get_root( myparams, at_energy )    
+    xx = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "xpos")
+    yy = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "ypos")
+    ra = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "rapos")
+    dec = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "decpos")
+    good = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "inside_fov")
+
+    if not good:
+        raise OutsideFOV("{}".format(ii))
+
+    infile = myparams.infile
+    
+    with newpf(tmpdir=myparams.tmpdir, copyuser=False, ardlib=False) as foo:
+        specextract2 = make_tool("specextract")
+        specextract2.infile  = "{}[sky={}]".format(infile,srcreg)
+        specextract2.bkgfile = "{}[sky={}]".format(infile,bkgreg)
+        specextract2.bkgresp = myparams.bkgresp
+
+        specextract2.outroot = outroot
+        specextract2.asp =  myparams.asolfile
+        specextract2.mskfile = myparams.mskfile
+        specextract2.badpixfile = myparams.bpixfile
+        specextract2.dtffile = myparams.dtffile
+        specextract2.energy_wmap = "300:7000"   # For point srcs, bkg not major effect
+
+        if dec < 0:
+            specextract2.refcoord = "{:.12} {:.12}".format(ra,dec)
+        else:
+            specextract2.refcoord = "{:.12} +{:.12}".format(ra,dec)
+
+        
+        specextract2.weight = True
+        #specextract.correctpsf = False # we run separately below so no psf double corrections
+        
+        # no grouping, leave for user, default grids, etc.
+        specextract2.clobber = myparams.clobber
+        specextract2.verbose = myparams.verbose
+        specextract2.tmpdir = myparams.tmpdir
+
+        try:
+            k = specextract2()
+            if (k) : verb2(k)
+        except Exception as e:
+            # If specextract failes, we try again w.o weighting applied.
+            # this triggers the refcoord parameter to take over.
+            verb2(str(e))
+            specextract2.weight = False
+            try:
+                k = specextract2()
+                if (k) : verb2(k)
+            except Exception as e:
+                raise FailAndSkip(str(e))
+
+        # Get PSF fraction correction in separate file, will get renamed at end
+        
+        #
+        # arfcorr calls 'dmcoords' which makes it non-thread safe so we
+        # need to use a unique local pfiles for each thread.
+        #
+        arfcorr = make_tool("arfcorr")
+        arfcorr.infile = specextract2.infile+"[bin sky={}]".format(myparams.binsize)
+        arfcorr.arf = outroot+".arf"
+        arfcorr.outfile = arfcorr.arf+".corr"
+        arfcorr.region = srcreg
+        arfcorr.x = xx
+        arfcorr.y = yy
+        arfcorr.energy = 0
+        arfcorr.clobber = True
+        arfcorr.verbose = myparams.verbose
+
+        verb2(arfcorr())
+
+
+def get_nh_from_colden( myparams, token, at_energy, ii ):
+    """
+    Get NH value by running colden
+    """
+    from ciao_contrib.proptools import colden
+    myroot = get_root( myparams, at_energy )    
+    ra = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "rapos")
+    dec = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "decpos")
+    
+    if token.startswith("%NRAO") or token.startswith("%GAL"):
+        nh = colden(ra,dec,dataset="nrao")
+    elif token.startswith("%BELL"):
+        nh = colden(ra,dec,dataset="bell")
+    else:
+        raise RuntimeError("Error getting colden values")
+    
+    if nh is None:
+        raise RuntimeError("Cannot retrieve the {} value from colden".format(token))
+    
+    nh *= 0.01 # Convert to 10^-22 for sherpa/xspec
+    return nh
+    
+
+def replace_nh_tokens( myparams, at_energy, ii ):
+    """
+    Look for and replace any special %*_NH% tokens in the 
+    model parameter strings.
+    
+    First try to get the value from the spectrum (if
+    available and had it) otherwise will try to run
+    colden.
+    """
+
+    from pycrates import read_file
+
+    def lookup_value( key, modelparam ):
+        token = '%{}%'.format(key)
+        if token not in modelparam:
+            return modelparam
+            
+        pi = myparams.outroot+"_{:04d}.pi".format(ii)
+        if not os.path.exists(pi):
+            verb1("Cannot locate spectrum file, will try to get from colden")
+            nh = get_nh_from_colden( myparams, token, at_energy, ii )
+        else:
+            try:
+                tab = read_file(pi)
+                kk = "NRAO_NH" if "GAL" == key else key
+                nh = tab.get_key_value(kk)
+            except Exception as e:
+                nh = get_nh_from_colden( myparams, token, at_energy, ii )
+
+        verb1("Using {}={} for source {}".format( key, nh, ii ))
+
+        return modelparam.replace(token, "{}".format(nh))
+
+    mparams = myparams.paramvals
+    absparams = myparams.absparams
+
+    for key in ["GAL", "NRAO_NH", "BELL_NH"]:
+        mparams = lookup_value( key, mparams )
+        absparams = lookup_value( key, absparams )
+        
+    return mparams, absparams
+
+
+def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf, inrmf ):
+    """
+    Run the modelflux script to get the conversion factor
+    from a 1 c/s rate to the model flux in the
+    energy band.
+    """
+    from ciao_contrib.runtool import make_tool
+
+    if inarf is None and inrmf is None:
+
+        def write_none( fname ):
+            with open( outroot, 'w' ) as fp:
+                fp.write("#MFLUX_CNV\tUMFLUX_CNV\n")
+                fp.write( "NaN\tNaN\n")
+
+        if make_resp:
+            try:
+                run_specextract( myparams, myparams.outroot+"_{:04d}".format(ii), src, bkg, ii, at_energy )
+            except OutsideFOV:
+                write_none( outroot )
+                return
+            except FailAndSkip as ff:
+                write_none( outroot )
+                return
+
+        arf = myparams.outroot+"_{:04d}.arf".format(ii)
+        if not os.path.exists( arf ):
+            write_none( outroot )
+            return
+
+        rmf = myparams.outroot+"_{:04d}.rmf".format(ii)
+        if not os.path.exists( rmf ):
+            write_none( outroot )
+            return
+
+    else:
+        arf = inarf
+        rmf = inrmf
+
+    verb1("Running modeflux for region {}".format(ii))
+
+    efilt = map_energy_to_filter( at_energy )
+
+    if efilt:
+        elo = float(efilt.split("=")[1].split(':')[0])/1000.0
+        ehi = float(efilt.split("=")[1].split(':')[1])/1000.0
+    else: # hrc
+        elo = 0.1
+        ehi = 10.0
+
+    mparams, absparams = replace_nh_tokens( myparams, at_energy, ii )
+
+    modelflux = make_tool("modelflux")
+    modelflux.arf = arf
+    modelflux.rmf = rmf
+    modelflux.model = myparams.model
+    modelflux.paramvals = mparams
+    modelflux.absmodel = myparams.absmodel
+    modelflux.absparams = absparams
+    modelflux.emin = elo
+    modelflux.emax = ehi
+
+    modelflux.rate=1.0
+    modelflux.opt = 'rate'
+    modelflux.verbose = myparams.verbose
+
+    verb2(modelflux())
+
+    flx = modelflux.flux
+    uflx = modelflux.uflux
+
+
+
+    def _gp( val ):
+        """
+        Convert 'INDEF' values, which get returned as None to NaN's.
+        """
+        return val if val else np.nan
+
+    with open( outroot, 'w' ) as fp:
+        fp.write("#MFLUX_CNV\tUMFLUX_CNV\n")
+        fp.write( "{}\t{}\n".format(_gp(flx ), _gp(uflx) )  )
+
+
+
+def cleanup_tempfiles( myparams, src, bkg ):
+    """
+    
+    """
+    nn = len(stk.build( src ))
+    gorm(src[2:]) # skip '@-'
+    gorm(bkg[2:]) # skip '@-'
+    gorm( myparams.outroot+"_srcs.fits" )
+
+    if is_none(myparams.fovfile) and os.path.exists( myparams.outroot+".fov" ):
+        gorm( myparams.outroot+".fov")
+
+    if not is_none( myparams.arffile):
+        # If arffile was input, no cleanup here is necessary
+        return
+
+    for ii in range(1,nn+1):
+        myroot = myparams.outroot+"_{:04d}".format(ii)
+        orig = myroot+".warf" if os.path.exists( myroot+".warf" ) else myroot+".arf"
+        if os.path.exists( orig ):
+            corr = orig +".corr"
+            os.rename( orig, orig.replace(".arf", "_nopsf.arf" ))
+            os.rename( corr, orig )
+    
+    # Cleanup specextract output
+    for ii in range(1,nn+1):
+        myroot = myparams.outroot+"_{:04d}".format(ii)
+        for tt in [ '.warf.orig', '.arf.orig', '.wfef', '_tdet.fits', '_bkg.warf.orig', '_bkg.arf.orig', '_bkg.wfef', '_bkg_tdet.fits' ]:
+            if os.path.exists( myroot+tt ):
+                gorm( myroot+tt)
+
+        import glob as glob
+        for tt in glob.glob( myroot+"_asphist*.fits"):
+            gorm(tt)
+        for tt in glob.glob( myroot+"_bkg_asphist*.fits"):
+            gorm(tt)
+    
+
+
+def get_input_arf_rmf( arffiles, rmffiles, src_stk ):
+    """
+    """
+    
+    if is_none(arffiles) or is_none(rmffiles):
+        aa = [None]*len(src_stk)
+        rr = [None]*len(src_stk)
+        return aa,rr
+
+    aa = stk.build(arffiles)
+    if len(aa) != len(src_stk):
+        raise IOError("ERROR: arffile must have as many values as sources")
+    rr = stk.build(rmffiles)
+    if len(rr) != len(src_stk):
+        raise IOError("ERROR: rmffile must have as many values as sources")
+    
+    return aa,rr
+
+
+
+def get_model_flux( taskrunner, myparams, at_energy, src, bkg, make_resp ):
+    """
+    Wrapper script to run specextract and modelflux and compute
+    the flux and scaled limits.
+    """
+    verb1("Getting model fluxes ")
+
+    src_stk = stk.build( src )
+    bkg_stk = stk.build( bkg )
+
+    arfs,rmfs = get_input_arf_rmf( myparams.arffile, myparams.rmffile, src_stk )
+
+    myroot = get_root( myparams, at_energy )
+
+    infiles = []
+    for ii in range(len(src_stk)):
+        outroot = myroot+"_{:04d}.dat".format(ii+1)
+        taskrunner.add_task( outroot, "", run_modelflux, myparams, 
+            at_energy, outroot, src_stk[ii], bkg_stk[ii], ii+1, make_resp,
+            arfs[ii], rmfs[ii] )
+        infiles.append( delme(outroot) )
+
+    return infiles
+    
+
+def add_modelflux_to_output( myparams, at_energy, infiles ):
+    """
+    attach model flux values to output file
+    
+    """
+    verb1("Adding model fluxes to output")
+    
+    myroot = get_root( myparams, at_energy )
+
+    from ciao_contrib.runtool import dmmerge
+    from ciao_contrib.runtool import dmpaste
+    dmmerge.infile = infiles
+
+    dmmerge.outfile = delme(myroot+"_mdls.dat")
+    dmmerge.clobber = myparams.clobber
+    dmmerge.verbose = myparams.verbose
+    verb2(dmmerge())
+
+    dmpaste.infile = myroot+__osuf__
+    dmpaste.pastefile = dmmerge.outfile
+    dmpaste.outfile = delme(dmpaste.infile+".tmp")
+    dmpaste.clobber = myparams.clobber
+    dmpaste.verbose = myparams.verbose
+    verb2(dmpaste())
+
+    os.rename( dmpaste.outfile, dmpaste.infile )
+
+    for dd in infiles:
+        gorm( dd )
+
+    gorm( dmmerge.outfile )
+
+
+def scale_modelflux_fluxes( myparams, at_energy ):
+    """
+    scale model flux output to the input rates    
+    """    
+
+    verb1("Scaling model flux confidence limits")
+
+    from pycrates import read_file
+    myroot = get_root( myparams, at_energy)
+
+    intab = read_file( myroot+__osuf__, mode="rw")
+
+    net_rate = intab.get_column("net_rate_aper").values
+    net_rate_lo = intab.get_column("net_rate_aper_lo").values
+    net_rate_hi = intab.get_column("net_rate_aper_hi").values
+
+    cnv = intab.get_column("MFLUX_CNV").values
+    ucnv = intab.get_column("UMFLUX_CNV").values
+
+    mflux = net_rate * cnv
+    mflux_lo = net_rate_lo * cnv
+    mflux_hi = net_rate_hi * cnv
+
+    umflux = net_rate * ucnv
+    umflux_lo = net_rate_lo * ucnv
+    umflux_hi = net_rate_hi * ucnv
+
+    add_array_to_crate( intab, "NET_MFLUX_APER", mflux, "Model scaled flux","ergs/cm**2/s")
+    add_array_to_crate( intab, "NET_MFLUX_APER_LO", mflux_lo , "Model scaled flux lower limit","ergs/cm**2/s")
+    add_array_to_crate( intab, "NET_MFLUX_APER_HI", mflux_hi, "Model scaled flux upper limit","ergs/cm**2/s")
+    add_array_to_crate( intab, "NET_UMFLUX_APER", umflux, "Unabs. model scaled flux","ergs/cm**2/s") 
+    add_array_to_crate( intab, "NET_UMFLUX_APER_LO", umflux_lo, "Unabs. model scaled flux lower limit","ergs/cm**2/s")
+    add_array_to_crate( intab, "NET_UMFLUX_APER_HI", umflux_hi, "Unabs. model scaled flux upper limit", "ergs/cm**2/s")
+
+    write_key( intab, "model", myparams.model, 'Spectral model for MFLUX values')
+    write_key( intab, "paramval", myparams.paramvals, 'Sectral model parameters for MFLUX values' )
+    write_key( intab, "absmodel", myparams.absmodel, 'Absorption model')
+    write_key( intab, "absparam", myparams.absparams, 'Absorption model parameters' )
+
+    intab.write()
+
+# -------------------------------------------------------------
+### Merged Routines
+
+def get_num_srcs( pars ):
+    """
+    Helper to get number of sources
+    """
+    from pycrates import read_file
+    bands = stk.build( pars.bands )
+    myroot = get_root( pars, bands[0] )
+    tab = read_file( myroot+__osuf__)
+    return tab.get_nrows()
+
+
+def merge_modelflux( stk_params, myparams ):
+    """
+    Combine the response file for each source and then run
+    model flux for each energy band.
+
+    Output File:  ${root}_${band}_${src#}.dat
+    """
+    from pycrates import read_file
+    bands = stk.build( myparams.bands)
+    outfiles = {}
+    for b in bands:
+        outfiles[b] = { 'mflux_cnv' : [], 'umflux_cnv': [] }
+
+    verb1("Combining spectra and running model flux for each source")
+    nsrcs = get_num_srcs( stk_params[0])
+    for snum in range( nsrcs ):
+        verb2("Combining spectra for source {}".format(snum+1))
+
+        combine_spectra = make_tool("combine_spectra")        
+
+        pi_files = [ p.outroot+"_{:04d}.pi".format(snum+1) for p in stk_params ]
+        arf_files = [ p.outroot+"_{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
+        combine_spectra.src_spectra=[x for x in pi_files if os.path.exists(x)]
+        combine_spectra.src_arf=[x for x in arf_files if os.path.exists(x)]
+        combine_spectra.outroot = myparams.outroot+"_{:04d}".format(snum+1)
+        combine_spectra.clobber=True
+        vv = combine_spectra()
+        if vv:
+            verb2(vv)
+
+        verb2("Running model_flux")
+        out_arf = combine_spectra.outroot+"_src.arf"
+        out_rmf = combine_spectra.outroot+"_src.rmf"
+        for at_energy in bands:
+            myroot = get_root( myparams, at_energy )
+            outroot = myroot+"_{:04d}.dat".format(snum+1)
+            run_modelflux( myparams, at_energy, outroot, None, None, snum+1, False, out_arf, out_rmf )
+            tab = read_file( outroot )
+            outfiles[at_energy]["mflux_cnv"].append( tab.get_column("MFLUX_CNV").values[0] )
+            outfiles[at_energy]["umflux_cnv"].append( tab.get_column("UMFLUX_CNV").values[0] )
+            delme(outroot)
+
+    return outfiles
+    
+
+def counts_helper( ):
+    
+    retval = { 'counts' : [],
+               'area' : [],
+               'exposure' : [],
+               'bg_counts' : [],
+               'bg_area' : [],
+               'bg_exposure' : [],
+               'chip_id' : [],
+               'psffrac' : [],
+               'bg_psffrac' : [],
+               'flux_aper' : [], # eff2evt flux
+               'bg_flux_aper' : [],
+               'upper_limit' : [],
+               'mean_src_exp' : [],
+               'mean_bg_exp' : [],
+               'exptime' : [],
+               'inside_fov': [],
+               }
+    return retval
+
+
+def merge_get_counts( infiles ):
+    from pycrates import read_file    
+    retval = counts_helper()
+
+    for infile in infiles:
+        tab = read_file( infile )
+
+        for cols in retval:
+            if 'exptime' == cols:  continue
+            retval[cols].append(tab.get_column(cols).values[0])
+
+        if tab.get_key_value("instrume") == "HRC":
+            retval['exptime'].append( tab.get_key_value("LIVETIME"))
+        else: # ACIS
+            cc = int(tab.get_column("chip_id").values[0])
+            assert cc in range(10)
+            retval['exptime'].append( tab.get_key_value("LIVTIME{}".format(cc)))
+
+    return retval
+
+
+def merge_aprates( cts, rate=False ):
+    """
+    TODO:  CSC1 approach.  Take instead from xaprate/naprates/etc
+    
+    """
+    import aper as aper
+    good = ( np.array( cts["inside_fov"] ) == True )
+
+
+    c      = np.array( cts["counts"] )[good]
+    b      = np.array( cts["bg_counts"] )[good]
+    alpha  = np.array(cts["psffrac"])[good]
+    beta   = np.array(cts["bg_psffrac"] )[good]
+    if True == rate:
+        exp_s  = np.array(cts["exptime"])[good]
+        exp_b  = np.array(cts["exptime"])[good]
+    else:
+        exp_s  = np.array(cts["exptime"] )[good] * np.array(cts["mean_src_exp"])[good]
+        exp_b  = np.array(cts["exptime"] )[good] * np.array(cts["mean_bg_exp"])[good]
+    area_s = np.array(cts["area"])[good]
+    area_b = np.array(cts["bg_area"])[good]
+
+
+    C = int(np.sum(c))
+    B = int(np.sum(b))
+
+    # sigma = exp_s / exp_b 
+    f = alpha * exp_s
+    g = beta *exp_b
+
+    F = np.sum(f)
+    G = np.sum(g)
+
+    r = (area_b/area_s)*(exp_b/exp_s)
+
+    m = (f*b - g*c) / (f*r - g)
+    M = np.sum(m)
+
+    q = m*r
+    Q = np.sum(q)
+
+    R = Q / M
+
+    photflux = aper.aper( C, B, R, F, G) 
+
+    retval = { 'src_cts' : C,
+               'bkg_cts' : B,
+               'backscl' : R,
+               'srcwexp' : F,
+               'bkgwexp' : G,
+               'value' : photflux[0],
+               'lolimit' : photflux[1],
+               'hilimit' : photflux[2],
+               'conf' : 0.68, # hard coded in aper module
+               'numobi': len(c) ,
+               }
+               
+    return retval
+    
+
+def merge_eff2evt( cts ):
+    """
+    Well, this isn't this simple.  Needs to include area scaling
+
+    """
+    good = ( np.array( cts["inside_fov"] ) == True )
+
+    s    = np.array(cts["flux_aper"])[good]
+    b    = np.array(cts["bg_flux_aper"])[good]
+    exp  = np.array(cts["exptime"])[good]
+
+    flux = np.sum(s*exp) / np.sum(exp)
+    bgflux = np.sum(b*exp) / np.sum(exp)
+
+    return { 'src' : flux, 'bkg' : bgflux}
+    
+    
+
+def merge_counts( stk_params, myparams):
+    """
+    Combine the counts/rates in the .flux files
+    
+    TODO: UPPER LIMITS!    
+    """
+    bands = stk.build( myparams.bands)
+    retvals = {}
+    for b in bands:
+        retvals[b] = { 'rates' : [],
+                      'fluxes' : [],
+                      'eff2evt' : [],
+                      }
+
+    verb1("Combining count rates")
+    nsrcs = get_num_srcs( stk_params[0])
+    for snum in range( nsrcs ):
+        verb2("Combining rates source {}".format(snum+1))
+    
+        for at_energy in bands:
+            srcfiles = [ "{}{}[#row={}]".format(get_root(src,at_energy), __osuf__, snum+1) for src in stk_params  ]
+            cts = merge_get_counts( srcfiles )
+            retvals[at_energy]['rates'].append( merge_aprates(cts, rate=True) )
+            retvals[at_energy]['fluxes'].append( merge_aprates(cts, rate=False) )
+            retvals[at_energy]['eff2evt'].append( merge_eff2evt(cts) )
+
+    return retvals
+
+
+def merge_write_output( stk_params, myparams, modelflux_vals, merge_fluxes ):
+    """
+    
+    """
+    dmmerge = make_tool("dmmerge")
+    from pycrates import read_file
+    
+    for at_energy in stk.build( myparams.bands ):
+        
+        mstk = [ get_root(s,at_energy)+__osuf__ for s in stk_params ]
+        #mstk = [ m+"[cols rapos,decpos,component][subspace -time,-expno,-ccd_id,-sky,-node_id,-chipx,-chipy,-tdetx,-tdety,-detx,-dety,-phas,-pha,-pha_ro,-pi,-fltgrade]" for m in mstk]
+        mstk = [ m+"[cols rapos,decpos,component][subspace -time,-expno,-sky,-ccd_id]" for m in mstk]
+        for ii in range(1,len(mstk)):
+            mstk[ii] = mstk[ii]+"[#row=0]"
+        dmmerge.infile = mstk
+        dmmerge.outfile = get_root(myparams, at_energy)+__osuf__
+        vv = dmmerge(clobber=True)
+        if vv: verb2(vv)
+        
+        intab = read_file( dmmerge.outfile, mode="rw" )
+
+        def pick_and_write( colname, desc, units, valname, store):
+            vals = [ r[valname] for r in merge_fluxes[at_energy][store]]
+            add_array_to_crate( intab, colname,vals, desc, units ) 
+
+        pick_and_write( "TOTAL_COUNTS", "Summed counts in src regions", "", "src_cts", "rates" )
+        pick_and_write( "TOTAL_BG_COUNTS", "Summed counts in bkg regions", "", "bkg_cts", "rates" )
+        pick_and_write( "NUM_OBI", "Number of OBIs included", "", "numobi", "rates" )
+        
+
+        pick_and_write( "MERGED_NET_RATE_APER", "Merged count rate", "counts/s", "value", "rates" )
+        pick_and_write( "MERGED_NET_RATE_APER_LO", "Merged count rate lower limit", "counts/s", "lolimit", "rates" )
+        pick_and_write( "MERGED_NET_RATE_APER_HI", "Merged count rate upper limit", "counts/s", "hilimit", "rates" )        
+        pick_and_write( "MERGED_RATE_AREASCAL", "Merged area scale used in rates", "", "backscl", "rates")
+        pick_and_write( "PSF_WEIGHTED_TOTAL_EXPOSURE_TIME", "Sum(EXPOSURE) weighted by PSF fraction", "s", "srcwexp", "rates")
+
+        pick_and_write( "MERGED_NET_PHOTFLUX_APER", "Merged count rate", "photon/cm**2/s", "value", "fluxes" )
+        pick_and_write( "MERGED_NET_PHOTFLUX_APER_LO", "Merged count rate lower limit", "photon/cm**2/s", "lolimit", "fluxes" )
+        pick_and_write( "MERGED_NET_PHOTFLUX_APER_HI", "Merged count rate upper limit", "photon/cm**2/s", "hilimit", "fluxes" )        
+        pick_and_write( "MERGED_PHOTFLUX_AREASCAL", "Merged area scale used in rates", "", "backscl", "fluxes")
+        pick_and_write( "PSF_WEIGHTED_TOTAL_SRC_EXPOSURE", "Sum(EXPOSURE_MAP) weighted by PSF fraction", "cm**2 s", "srcwexp", "fluxes")
+        pick_and_write( "PSF_WEIGHTED_TOTAL_BG_EXPOSURE", "Sum(EXPOSURE_MAP) weighted by PSF fraction", "cm**2 s", "bkgwexp", "fluxes")
+
+        total_net_rate = [ r['value'] for r in merge_fluxes[at_energy]['rates']]
+        total_net_rate_lolim = [ r['lolimit'] for r in merge_fluxes[at_energy]['rates']]
+        total_net_rate_hilim = [ r['hilimit'] for r in merge_fluxes[at_energy]['rates']]        
+
+        total_mflux_cnv = modelflux_vals[at_energy]['mflux_cnv']
+        total_umflux_cnv = modelflux_vals[at_energy]['umflux_cnv']
+
+        total_mflux = np.array( total_net_rate) * np.array( total_mflux_cnv )
+        total_mflux_lo = np.array( total_net_rate_lolim) * np.array( total_mflux_cnv )
+        total_mflux_hi = np.array( total_net_rate_hilim) * np.array( total_mflux_cnv )
+        total_umflux = np.array( total_net_rate) * np.array( total_umflux_cnv )
+        total_umflux_lo = np.array( total_net_rate_lolim) * np.array( total_umflux_cnv )
+        total_umflux_hi = np.array( total_net_rate_hilim) * np.array( total_umflux_cnv )
+
+        add_array_to_crate( intab, "MFLUX_CNV", total_mflux_cnv, "model flux rate conversion", "" )
+        add_array_to_crate( intab, "UMFLUX_CNV", total_mflux_cnv, "unabsorbed model flux rate conversion", "" )
+        
+        add_array_to_crate( intab, "MERGED_NET_MFLUX_APER", total_mflux, "Merged model scaled flux", "ergs/cm**2/s")
+        add_array_to_crate( intab, "MERGED_NET_MFLUX_APER_LO", total_mflux_lo, "Merged model scaled flux lower limit", "ergs/cm**2/s")
+        add_array_to_crate( intab, "MERGED_NET_MFLUX_APER_HI", total_mflux_hi, "Merged model scaled flux upper limit", "ergs/cm**2/s")
+        add_array_to_crate( intab, "MERGED_NET_UMFLUX_APER", total_umflux, "Merged unabsorbed model scaled flux", "ergs/cm**2/s")
+        add_array_to_crate( intab, "MERGED_NET_UMFLUX_APER_LO", total_umflux_lo, "Merged unabsorbed model scaled flux lower limit", "ergs/cm**2/s")
+        add_array_to_crate( intab, "MERGED_NET_UMFLUX_APER_HI", total_umflux_hi, "Merged unabsorbed model scaled flux upper limit", "ergs/cm**2/s")
+
+        pick_and_write( "TOTAL_FLUX_APER", "Total model independent flux in src regions", "ergs/cm**2/s", "src", "eff2evt")
+        pick_and_write( "TOTAL_BG_FLUX_APER", "Total model independent flux in bkg regions", "ergs/cm**2/s", "bkg", "eff2evt")
+        
+
+        intab.write()
+
+
+# -----------------------------------------------------
+
+def cleanup_outfile( myparams, pars, at_energy):
+    """
+    Cleanup output file, change units and descriptions. -- doesn't work :(
+    """
+
+    from ciao_contrib.runtool import add_tool_history
+    from pycrates import read_file
+
+    myroot = get_root( myparams, at_energy )
+
+    intab = read_file( myroot+__osuf__, mode="rw")
+
+    def fix_it( key, unit, desc ):
+        c = intab.get_column( key )
+        if unit:
+            c.unit = unit
+        if desc:
+            c.desc = desc
+    fix_it( "PSFFRAC", ' ', 'Source region PSF fraction' )
+    fix_it( "BG_PSFFRAC", ' ', 'Background region PSF fraction' )
+    fix_it( "FLUX_APER", "ergs/cm**2/s", "Sum eff2evt flux in src region")
+    fix_it( "BG_FLUX_APER", "ergs/cm**2/s", "Sum eff2evt flux in bkg region")
+    fix_it( "MFLUX_CNV", None, "model flux rate conversion")
+    fix_it( "UMFLUX_CNV", None, "unabsorbed model flux rate conversion")
+    
+    fix_it( "SRC_PHOTFLUX", "photon/cm**2/s", "Sum of flux image in src region")
+    fix_it( "BG_PHOTFLUX", "photon/cm**2/s", "Sum of the flux image in background region")
+
+    intab.write()
+    
+    add_tool_history( myroot+__osuf__, toolname, pars, toolversion=__revision__)
+
+
+
+def get_psf_fractions( myparams, at_energy, src, bkg ):
+    """
+    Pick which routine to use
+    """
+
+    if 'arfcorr' == myparams.psfmethod:
+        get_psf_from_model( myparams, at_energy, src, bkg )
+    elif 'ideal' == myparams.psfmethod:
+        get_ideal_psf( myparams, at_energy, src, bkg )
+    elif 'psffile' == myparams.psfmethod:
+        get_psf_from_file( myparams, at_energy, src, bkg )
+    elif 'quick' == myparams.psfmethod:
+        get_psf_from_region( myparams, at_energy, src, bkg )
+    elif 'marx' == myparams.psfmethod:
+        get_psf_from_file( myparams, at_energy, src, bkg, simulate='marx' )
+    else:
+        raise ValueError("Unknown PSF method")
+
+
+def summarize_results( myparams, obi=None, single=False ):
+    """
+    Position                               1 - 2 keV                               1 - 2 keV                               1 - 2 keV                               
+                                           Value        90% Conf Interval          Value        90% Conf Interval          Value        90% Conf Interval          
+    10 4 34.91 +41 12 43.0  Rate           0.00907 c/s (0.00848,0.00967)           0.00537 c/s (0.00491,0.00583)           0.00389 c/s (0.00349,0.00431)           
+                            Flux           3.57E-14 erg/cm2/s (3.33E-14,3.8E-14)   2.3E-14 erg/cm2/s (2.1E-14,2.5E-14)     6.71E-14 erg/cm2/s (6.01E-14,7.42E-14)  
+                            Mod.Flux       3.24E-14 erg/cm2/s (3.03E-14,3.45E-14)  2.08E-14 erg/cm2/s (1.9E-14,2.26E-14)   6.44E-14 erg/cm2/s (5.76E-14,7.12E-14)  
+                            Unabs Mod.Flux 3.24E-14 erg/cm2/s (3.03E-14,3.45E-14)  2.08E-14 erg/cm2/s (1.9E-14,2.26E-14)   6.44E-14 erg/cm2/s (5.76E-14,7.12E-14)      
+    """
+
+    bands = stk.build( myparams.bands )
+    conf = float(myparams.conf)
+
+    from coords.format import deg2ra, deg2dec
+    from pycrates import read_file
+    
+    _lead = 30
+    _lead_fmt = "{:"+str(_lead)+"s}"
+    vals={}
+
+    text_summary = open( myparams.outroot+"_summary.txt", "w")
+    def logverb( message ):
+        text_summary.write( message+"\n")
+        verb1(message)
+
+
+    hdr = [None, None, None, None]
+    
+    hdr[0] = _lead_fmt.format("      Position")
+    hdr[1] = " "*_lead
+    
+    hdr[0] += " "*15  # space for Rate, Flux
+    hdr[1] += " "*15  
+
+
+    for b in bands:
+        myroot = get_root( myparams, b)
+        vals[b] = read_file( myroot+__osuf__ )
+
+        ff = map_energy_to_filter( b )
+
+        if ff:
+            elo = float(ff.split("=")[1].split(":")[0])/1000.0
+            ehi = float(ff.split("=")[1].split(":")[1])/1000.0
+        else:
+            elo = 0.1
+            ehi = 10.0
+
+        hdr[0] += "{:40s}".format( "{} - {} keV".format( elo, ehi ))
+        hdr[1] += "{:40s}".format( "Value       {:3d}% Conf Interval".format( int( conf *100)))
+    
+
+    if True == single:
+        verbstr = "\n\nSummary of source fluxes\n"
+    else:
+        if obi is not None:
+            verbstr = "\n\nSummary of source fluxes in OBI {:03d}\n".format(obi)
+        else:
+            verbstr = "\n\nSummary of merged source fluxes\n"
+
+    logverb(verbstr)
+    logverb(hdr[0])
+    logverb(hdr[1])
+    
+    nsrcs = len( vals[bands[0]].get_column("RAPOS").values )
+    for ii in range(nsrcs):        
+        ra = vals[bands[0]].get_column("RAPOS").values[ii]
+        
+        ras = deg2ra( ra ," ")
+        dot = ras.find(".")
+        if dot == -1: # not found
+            pass
+        elif dot+3 < len(ras):
+            # More than 2 decimal places, truncate
+            ras = ras[0:dot+3]
+        else:
+            pass
+
+        dec = vals[bands[0]].get_column("DECPOS").values[ii]
+        decs = deg2dec( dec, " " )
+        dot = decs.find(".")
+        if dot == -1: # not found
+            pass
+        elif dot+2 < len(decs):
+            # More than 1 decimal place, truncate0
+            decs = decs[0:dot+2]
+        else:
+            pass
+
+        if dec < 0:
+            decs = ""+decs
+        else:
+            decs = "+"+decs
+
+
+        if (True == single) or (False == single and obi is not None):
+            cols = [ "NET_RATE_APER", "NET_FLUX_APER", "NET_MFLUX_APER", "NET_UMFLUX_APER" ]
+            disp = [ "Rate", "Flux", "Mod.Flux", "Unabs Mod.Flux" ]
+            inside = vals[bands[0]].get_column("INSIDE_FOV").values[ii]
+            srcno = vals[bands[0]].get_column("COMPONENT").values[ii]
+
+            hdr[0] = _lead_fmt.format("#{:04d}|{} {}".format( srcno, ras, decs ))
+            hdr[1] = " "*_lead if inside else _lead_fmt.format(" Outside FOV")
+            hdr[2] = " "*_lead
+            
+            if is_none( myparams.absmodel ):
+                cols.remove( "NET_UMFLUX_APER" )
+                hdr=hdr[0:3]
+            else:
+                hdr[3] = " "*_lead
+            
+            
+            unit = ["erg/cm2/s"]*len(cols)
+            unit[0] = "c/s"
+        else: 
+            hdr=hdr[0:3] # only 4 rows of output
+
+            cols = [ "MERGED_NET_RATE_APER", "MERGED_NET_MFLUX_APER", "MERGED_NET_UMFLUX_APER" ]
+            disp = [ "Rate", "Mod.Flux", "Unabs Mod.Flux" ]
+
+            hdr[0] = _lead_fmt.format("{} {}".format( ras, decs ))
+            hdr[1] = _lead_fmt.format("  NumObi={:d}".format( vals[bands[0]].get_column("NUM_OBI").values[ii]))
+            
+            if is_none( myparams.absmodel ):
+                cols.remove( "MERGED_NET_UMFLUX_APER" )
+                hdr=hdr[0:2]
+            else:
+                hdr[2] = " "*_lead
+            
+            
+            unit = ["erg/cm2/s"]*len(cols)
+            unit[0] = "c/s"
+
+        
+            
+        for k in range(len(cols )):                
+            hdr[k] += "{:15s}".format(disp[k])                
+            for b in bands:
+                val = vals[b].get_column(cols[k]).values[ii]
+                val_lo= vals[b].get_column(cols[k]+"_LO").values[ii]
+                val_hi= vals[b].get_column(cols[k]+"_HI").values[ii]                
+                hdr[k] += "{:40s}".format("{:.3G} {:s} ({:.3G},{:.3G})".format( val, unit[k], val_lo, val_hi))
+    
+        logverb("\n".join(hdr))
+        logverb("")
+    text_summary.close()
+    
+
+def set_nproc( pars ):
+    if "no" == pars["parallel"]:
+        pars["nproc"] = 1
+    else:
+        if pars["nproc"] != "INDEF":
+            pars["nproc"] = int(pars["nproc"])
+        else:
+            pars["nproc"] = 999 #Hack, else history gets stuck with a pset
+
+
+def set_bands( pars ):
+        
+    pars["bands"] = pars["bands"].lower().replace("csc", "soft,medium,hard")
+
+    if pars["bands"] == "default":
+        inst = get_single_keyword( pars["infile"], "instrume" )
+        if "ACIS" == inst:
+            pars["bands"] = "broad"
+        else:
+            pars["bands"] = "wide"
+    
+
+def check_infile( infile ):
+    """
+    
+    
+    """
+    
+    inst = get_single_keyword( infile, "instrume" )
+    
+    #if "HRC" == inst:
+    #    raise NotImplementedError("HRC is not supported in this version")
+    
+    if "chandra" != get_single_keyword( infile, "telescop").lower():
+        raise NotImplementedError("Script only works with CHANDRA datasets")
+    
+    if "ACIS" == inst.upper():
+        if "CONTINUOUS" == get_single_keyword(infile, "readmode").upper():
+            raise NotImplementedError("This script does not work with Continious Clocking mode data")
+    
+
+def check_pos_inside_fov( myparam ):
+    
+    from region import regParse, regInsideRegion
+    from pycrates import read_file
+    fov = myparam.fovfile if not is_none( myparam.fovfile ) else myparam.outroot+".fov"
+
+    fov = regParse( "region({})".format(fov))
+    tab = read_file( myparam.outroot+"_srcs.fits", mode="rw")
+    xx = tab.get_column("x").values.copy()
+    yy = tab.get_column("y").values.copy()
+    
+    isin = [ 1==regInsideRegion( fov, *xy) for xy in zip( xx,yy)]
+    
+    add_array_to_crate( tab, "INSIDE_FOV", isin, "Is XPOS,YPOS inside the FOV?", "")
+    tab.write()
+
+
+def check_outroot( outroot ):
+    """
+    From Doug
+    """
+    import ciao_contrib._tools.utils as utils
+    import ciao_contrib._tools.fileio as fileio
+
+    (outdir,outhead) = utils.split_outroot(outroot)
+    if outdir != "":
+        fileio.validate_outdir(outdir)
+
+
+def check_parameters( myparams ):
+    """
+    Simple sanity checks
+    """    
+
+    check_infile( myparams.infile )
+        
+    check_outroot( myparams.outroot) 
+    
+    for nm in [ 'pos', 'model', 'paramvals',  'ecffile', 'tmpdir' ]:
+        if is_none(getattr(myparams, nm)) :
+            raise ValueError("The '{}' parameter cannot be left blank or set to none".format( nm ))
+    
+    if is_none( myparams.absmodel ) and not is_none( myparams.absparams ):
+        raise ValueError("Both 'absmodel' and 'absparams' must be specified")
+    
+    if is_none( myparams.absparams ) and not is_none( myparams.absmodel ):
+        raise ValueError("Both 'absmodel' and 'absparams' must be specified")
+
+    import ciao_contrib._tools.obsinfo as o
+    obs = o.ObsInfo( myparams.infile )
+        
+    if is_none( myparams.asolfile ):
+        try:
+            ff = obs.get_asol()
+            if any(list(map( is_none, ff))):
+                raise ValueError("")
+        except:
+            raise ValueError("Cannot locate aspect solution files.  Please specify 'asolfile' parameter")
+    
+    if 0 == len( myparams.mskfile ):
+        try:
+            ff = obs.get_ancillary("mask")
+            if is_none(ff):
+                raise ValueError("")
+        except:
+            raise ValueError("Cannot locate mask file.  Please specify 'mskfile' parameter.")
+    elif "none" == myparams.mskfile.lower():
+        verb0("\nWARNING: mask file parmater set to 'none'; mask information will not be use.  This may lead to inaccuracies in the results\n")
+        
+    
+    if 0 == len( myparams.bpixfile ):
+        try:
+            ff = obs.get_ancillary("bpix")
+            if is_none(ff):
+                raise ValueError("")
+        except:
+            raise ValueError("Cannot locate bad pixel file.  Please specify 'bpixfile' parameter.")
+    elif "none" == myparams.bpixfile.lower():
+        verb0("\nWARNING: badpixel file parmater set to 'none'; badpixel information will not be use.  This may lead to inaccuracies in the results\n")
+        
+    inst = get_single_keyword(myparams.infile, "instrume" )
+    if "HRC" == inst:
+    
+        if 0 == len( myparams.dtffile ):
+            try:
+                ff = obs.get_ancillary("dtf")
+                if is_none(ff):
+                    raise ValueError("")
+            except:
+                raise ValueError("Cannot locate HRC dead time factors file.  Please specify 'dtffile' parameter.")
+        elif "none" == myparams.dtffile.lower():
+            verb0("\nWARNING: dead time factors file parmater set to 'none'; DTF information will not be use.  This may lead to inaccuracies in the results\n")
+            
+    
+
+
+#-----------------------------------------
+
+
+def build_infile_stacks( pars ):
+    """Collect the stacks of input files and make sure all are consistent.
+    """
+    import stk as stk
+    def build( infiles, copysize  ):
+        try:
+            ss = stk.build( infiles )
+            if 0 == len(ss):  raise RuntimeError("empty stack")
+        except:
+            ss = [""]
+        if len(ss) == 1:
+            return( ss*copysize )
+        elif len(ss) == copysize:
+            return ss
+        else:
+            raise IOError("Wrong number of files provided")
+
+    evt_files = stk.build( pars["infile"] )
+    if len(evt_files) != len(set(evt_files)):
+        raise IOError("The same event file can not be input multiple times")
+    fov_files = build( pars["fovfile"], len(evt_files) )
+    asp_files = build( pars["asolfile"], len(evt_files) ) # Err!  May have > 1 asol file.
+    msk_files = build( pars["mskfile"], len(evt_files) )
+    bad_files = build( pars["bpixfile"], len(evt_files) )
+    dtf_files = build( pars["dtffile"], len(evt_files) )
+    
+    infiles = list(zip( evt_files, fov_files, asp_files, msk_files, bad_files, dtf_files ))
+    return infiles
+
+
+def process_single_obi( myparams, pars ):
+    """
+    Process a single set of parameters, looping over srcs and energy bands
+    """
+    # Get started
+    src,bkg = make_regions( myparams)
+    check_pos_inside_fov( myparams )
+
+    with_bands = stk.build(myparams.bands)
+    for at_energy in with_bands:
+    
+        get_counts( myparams, at_energy, src, bkg )        
+        get_psf_fractions( myparams, at_energy, src, bkg )
+        
+        taskrunner = TaskRunner()
+        outfiles = get_net_rate_aper( taskrunner, myparams, at_energy, src, bkg )
+        srcfiles,bkgfiles = get_model_independent_flux(taskrunner, myparams, at_energy, src, bkg )
+        mfluxfiles = get_model_flux( taskrunner, myparams, at_energy, src, bkg, (at_energy == with_bands[0]) )        
+        photfluxfiles = get_fluximage_flux( taskrunner, myparams, at_energy, src, bkg )
+
+        # ---
+        taskrunner.run_tasks( processes=myparams.nproc )
+        # ---
+      
+        add_aprates_to_output( myparams, at_energy, outfiles )
+        add_effevt_to_outfile( myparams, at_energy, srcfiles, bkgfiles )
+        add_photflux_to_outfile( myparams, at_energy, photfluxfiles)
+        scale_eff2evt_fluxes( myparams, at_energy)
+        add_modelflux_to_output( myparams, at_energy, mfluxfiles )
+        scale_modelflux_fluxes( myparams, at_energy )
+
+        cleanup_outfile( myparams, pars, at_energy )
+
+
+    # keep arf/rmf around until end so we only make once
+    cleanup_tempfiles(myparams, src,bkg)
+
+
+## This has to be global so it can be pickled.    
+from collections import namedtuple
+Params = None
+
+#
+# Main Routine
+#
+def obi_main(pars):
+    # get parameters
+    global Params    # We need to make this global so it can be pickeled for taskrunner
+
+    infiles = build_infile_stacks( pars )
+    is_single_obi = ( len(infiles) == 1 )
+
+    stk_pars = []
+
+    # Loop over infiles
+    #for ii,evt,fov,asp,msk,bad,dtf in enumerate(infiles):
+    for ii,infile in enumerate(infiles):
+        obipars = pars.copy()
+
+        obipars["infile"] = infile[0]
+        obipars["fovfile"] = infile[1]
+        obipars["asolfile"] = infile[2]
+        obipars["mskfile"] = infile[3]
+        obipars["bpixfile"] = infile[4]
+        obipars["dtffile"] = infile[5]
+
+        if False == is_single_obi:
+            obipars["outroot"] = "{}_obi{:03d}".format( pars["outroot"], ii)
+
+        set_bands(obipars)        
+        Params = namedtuple( 'Params', obipars.keys() )
+        myparams = Params( *tuple(obipars.values()))
+        check_parameters( myparams )
+
+        verb1("Processing OBI {:03d}".format(ii))
+        process_single_obi( myparams, pars )
+
+        # save info
+        stk_pars.append( myparams )
+
+    
+    return stk_pars
+
+
+
+@lw.handle_ciao_errors( toolname, __revision__)
+def main():
+    global Params    # We need to make this global so it can be pickeled for taskrunner
+
+    # Load parameters
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(toolname, "rw", sys.argv, 
+        verbose={"set":lw.set_verbosity, "cmd":verb1} )
+    set_nproc(pars)
+    
+    stk_pars = obi_main(pars)   
+
+    # Do this after above so bands is set correctly
+    pars["bands"] = stk_pars[0].bands
+    Params = namedtuple( 'Params', pars.keys() )
+    myparams = Params( *tuple(pars.values()))
+
+    if len(stk_pars) == 1:
+        summarize_results( myparams, obi=None, single=True )
+        return
+
+    #merged_fluxes = merge_counts( stk_pars, myparams) 
+    #modelflux_vals = merge_modelflux( stk_pars, myparams )
+    #merge_write_output( stk_pars, myparams, modelflux_vals, merged_fluxes)
+
+    for ii,ss in enumerate(stk_pars):
+        summarize_results( ss, obi=ii, single=False )
+    #summarize_results( myparams, obi=None, single=False )
+    
+    
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as E:
+        print ("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+  
+

@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr 'unix&#37;'>
+]>
+<cxchelptopics>
+  <ENTRY key="hrc_bkgrnd_lookup" context="tools" 
+	 refkeywords="HRC HRCI HRC-I background blank sky blank-sky subtract spectra spectrum lookup" 
+	 seealsogroups="resptools">
+    <SYNOPSIS>
+      Find the matching HRC "blank-sky" dataset (event file or spectrum) for an observation
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+	The hrc_bkgrnd_lookup script is used to find the HRC-I
+	background (i.e. "blank sky") dataset from the CALDB that
+	matches your observation. 
+	Unlike acis_bkgrnd_lookup the HRC background datasets
+	come in two types - event or spectrum - and
+	are generated from stowed observations (where the HRC
+	is not at the focal plane of the Chandra mirrors).
+      </PARA>
+
+      <PARA>
+	Please see the following HRC threads:
+	<HREF
+	link="http://cxc.harvard.edu/ciao/threads/hrci_bg_events/">The
+	HRC-I Background Event Files</HREF> and
+	<HREF
+	link="http://cxc.harvard.edu/ciao/threads/hrci_bg_spectra/">The
+	HRC-I Background Spectra Files</HREF>.
+	Note that there are no versions of these datasets for
+	HRC-S observations.
+      </PARA>
+
+      <PARA>
+	The results of the CALDB search are written to the outfile
+	parameter as well as being written to the screen, making them
+	accessible by calling:
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; pget hrc_bkgrnd_lookup outfile</LINE>
+	</SYNTAX>
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; hrc_bkgrnd_lookup evt2.fits event</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The matching HRC-I background event file is printed to the screen and stored
+	    in the outfile parameter of the script.
+	    It can be accessed using the pget tool:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; set bg = `pget hrc_bkgrnd_lookup outfile`</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; hrc_bkgrnd_lookup evt2.fits spectrum</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The matching HRC-I background spectrum file is printed to the screen and stored
+	    in the outfile parameter of the script.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" reqd="yes">
+	<SYNOPSIS>
+	  The file for which you want a background file
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This can be any file which contains the necessary
+	    header keywords about the observation; an event file or
+	    a file created from an event file (e.g. image or spectrum)
+	    should suffice.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="caltype" type="string" def="event" reqd="yes">
+	<SYNOPSIS>
+	  What type of background file?
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Should the event or spectrum version of the background
+	    file be used?
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="outfile" type="file">
+	<SYNOPSIS>
+	  HRC background file to use
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter will be set to the name of the HRC
+	    background files selected from the CALDB to match your
+	    observation.  The file names include the full path.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="blname" type="string" def="none">
+	<SYNOPSIS>
+	  What block identifier should be added to the filename?
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter determines whether any block identifier
+	    should be included in the filename and, if so, what
+	    form should the identifier be in. The allowed
+	    values are:
+	  </PARA>
+
+	  <PARA title="blname=none">
+	    No identifier is added; this is the default value.
+	    The output will look something like
+	  </PARA>
+	  <VERBATIM>hrciD2007-09-17pibgspecN0001.fits</VERBATIM>
+
+	  <PARA title="blname=name">
+	    Add the name of the block to the file, so the
+	    output will look something like
+	  </PARA>
+	  <VERBATIM>hrciD2007-09-17pibgspecN0001.fits[SPECTRUM]</VERBATIM>
+
+	  <PARA title="blname=number">
+	    Add the number of the block to the file using the DataModel
+	    numbering scheme ([1] refers to the first block).
+	    The output will look something like
+	  </PARA>
+	  <VERBATIM>hrciD2007-09-17pibgspecN0001.fits[2]</VERBATIM>
+
+	  <PARA title="blname=cfitsio">
+	    Add the number of the block to the file using the CFITSIO
+	    numbering scheme ([0] refers to the first block).
+	    The output will look something like
+	  </PARA>
+	  <VERBATIM>hrciD2007-09-17pibgspecN0001.fits[1]</VERBATIM>
+
+	</DESC>
+      </PARAM>
+
+      <PARAM name="verbose" type="integer" def="0" min="0" max="5">
+	<SYNOPSIS>
+	  Debug level (0=no debug information)
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    In most cases the default verbose level (of 0)
+	    is the correct value to use. Higher values may prove
+	    useful when trying to track down problems with the
+	    script. Two useful values are:
+	  </PARA>
+	  <PARA title="Verbose=2">
+	    Setting verbose=2 will display the version of the
+	    script being used together with basic information
+	    derived from the input file.
+	    It also lists the equivalent calquiz call (or calls)
+	    that you would need to make to select the files.
+	  </PARA>
+	  <PARA title="Verbose=5">
+	    Setting verbose=5 lists the CALDB lookup that the
+	    script is using to select the background file.
+	  </PARA>
+	</DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the CIAO 4.6.1 (December 2013) Release">
+      <PARA>
+	The script has been updated to run in CIAO 4.6.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA title="Downloading the script">
+	This script is not an official part of the CIAO release but is
+	made available as "contributed" software via the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF>
+	for help on installing the package.
+      </PARA>
+
+      <PARA title="Downloading the CALDB background files">
+	The HRC-I background spectra are provided as part of the default
+	CALDB install, but the background event files are packaged
+	separately. See the <HREF
+	link="http://cxc.harvard.edu/ciao/download/caldb.html">CALDB
+	download page</HREF> for more information. 
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/hrc_bkgrnd_lookup.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

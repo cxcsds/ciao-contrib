@@ -1,0 +1,208 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY key="correct_periscope_drift" context="tools"
+         refkeywords="aspect solution motion source coordinates astrometry alignment
+         correction temporal drift sub-arcsec sub-pixel subarcsec subpixel thermal
+         periscope alignment psf"
+         seealsogroups="" displayseealsogroups="pixtools asptools">
+
+    <SYNOPSIS>
+        Correct a Chandra aspect solution for temporal drift calculated from a fit of the
+        drift in the sky positions of the events in a supplied circle region.
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+        Thermal cycling on the spacecraft can result in an apparent temporal drift of the sky
+        position of an X-ray source during an observation.  This appears as a drift of up to about
+        0.5 arcsec in X-ray event sky X, Y coordinates over time.  Because of the thermal
+        variation time scales, this effect is usually most prominent in long observations (more
+        than about 50 ksec).
+      </PARA>
+      <PARA>
+        As of DS 8.4, a drift correction is applied to the aspect solution using the periscope
+        gradients telemetry.  However, temporal drifts have continued to increase with thermal
+        variation of the spacecraft.  Therefore the Aspect team suggests that to accomplish
+        science related to sub-arcsec source structure, users should follow this thread to correct
+        residual drift induced by the periscope.  This requires a relatively bright, on-axis
+        source (within
+        a few arcmin off-axis angle) to perform a "self-calibration" of the aspect solution.
+      </PARA>
+      <PARA>
+        This tool takes as input a source aspect solution and event files and returns a
+        new/corrected aspect solution that may be applied to the events to correct
+        residual temporal drift.
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+       <QEXAMPLE>
+         <SYNTAX>
+           <LINE>
+              % correct_periscope_drift 
+infile=pcadf537654279N001_asol1.fits.gz 
+evtfile=acisf16659N001_evt2.fits.gz 
+x=4133.76 
+y=4078.74 
+radius=6 
+outfile=driftcorr_asol1.fits 
+verbose=2
+           </LINE>
+         </SYNTAX>
+         <DESC>
+<VERBATIM>
+Running: correct_periscope_drift
+  version = 0.1
+with parameters:
+  infile=pcadf537654279N001_asol1.fits.gz
+  evtfile=acisf16659N001_evt2.fits.gz
+  outfile=driftcorr_asol1.fits
+  verbose=2
+  and ASCDS_INSTALL is /soft/ciao-4.8
+------------------------------------------------------------
+Fitting a line to the data to get reduced stat errors
+Fitting a polynomial of degree 2 to the data
+Fitting a line to the data to get reduced stat errors
+Fitting a polynomial of degree 2 to the data
+------------------------------------------------------------
+Fit results
+Events show drift range of 0.24 arcsec in yag axis
+Max absolute correction of 0.14 arcsec for yag axis
+Events show drift range of 0.20 arcsec in zag axis
+Max absolute correction of 0.11 arcsec for zag axis
+------------------------------------------------------------
+Writing out corrected aspect solution file to driftcorr_asol1.fits
+To review fit see correction plots in:
+corr_fit_yag.png
+corr_data_yag.png
+corr_fit_zag.png
+corr_data_zag.png
+</VERBATIM>
+
+         </DESC>
+       </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+   <PARAMLIST>
+     <PARAM name="infile" type="file" filetype="input" reqd="yes" stacks="no">
+       <SYNOPSIS>
+         Input Chandra aspect solution.
+       </SYNOPSIS>
+     </PARAM>
+
+     <PARAM name="evtfile" type="file" filetype="input" reqd="yes" stacks="no">
+       <SYNOPSIS>
+         Input Chandra event file (evt1 or evt2).
+       </SYNOPSIS>
+       <DESC>
+          <PARA>
+            The event file should have been made with/processed with the aspect solution
+            supplied with infile (evtfile ASOLFILE header key value should match infile)
+          </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="outfile" type="file" filetype="output" reqd="yes" stacks="no">
+       <SYNOPSIS>
+         Output filename for corrected aspect solution file
+       </SYNOPSIS>
+     </PARAM>
+
+     <PARAM name="corr_plot_root" type="string" filetype="output" reqd="no" stacks="no">
+       <SYNOPSIS>
+         Output prefix for fit and data plots.
+       </SYNOPSIS>
+       <DESC>
+          <PARA>
+            The output prefix for fit and data plots.  The
+            output names will look like ${corr_plot_root}_fit_${axis}.png and
+            ${corr_plot_root}_data_${axis}.png where ${axis} will be 'yag' or 'zag'.
+          </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="x" type="float" min="1">
+       <SYNOPSIS>
+         Sky X position of center of circle region used to extract events to fit correction.
+       </SYNOPSIS>
+     </PARAM>
+
+     <PARAM name="y" type="float" min="1">
+       <SYNOPSIS>
+         Sky Y position of center of circle region used to extract events to fit correction.
+       </SYNOPSIS>
+     </PARAM>
+
+     <PARAM name="radius" type="float" min="0">
+       <SYNOPSIS>
+         Radius in pixels of circle region used to extract events to fit correction.
+       </SYNOPSIS>
+     </PARAM>
+
+     <PARAM name="src_min_counts" type="float" min="0" def="250">
+       <SYNOPSIS>
+         Minimum number of counts required in extracted source region (below which the
+         tool will complain and not fit).
+       </SYNOPSIS>
+     </PARAM>
+
+     <PARAM name="corr_poly_degree" type="integer" min="1" max="8" def="2">
+       <SYNOPSIS>
+         Degree of polynomial used in the fit model to fit and correct drift in the two
+         Aspect Camera axes.
+       </SYNOPSIS>
+     </PARAM>
+
+     <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+       <SYNOPSIS>
+        Amount of tool chatter level.
+       </SYNOPSIS>
+     </PARAM>
+
+     <PARAM name="clobber" type="boolean" def="no">
+       <SYNOPSIS>
+           Overwrite output files if they already exist?
+       </SYNOPSIS>
+     </PARAM>
+
+   </PARAMLIST>
+
+   <ADESC title="Caveats">
+        <PARA title="Bad fits">
+            This tool is provides output plots of the fits of the events.  The user
+            must evaluate those plots to determine if a correction is warranted and
+            if the output fit is reasonable.  This tool should not be blindly applied
+            to observations in aggregate.
+        </PARA>
+        <PARA title="Cannot be run headless or without ChIPS">
+            The output plots are not optional.
+        </PARA>
+        <PARA title="Counts needed for good fit">
+            The tool is not intended for short observations (less than 50ks) and
+            will not fit observations well without a bright point-like source.
+        </PARA>
+        <PARA title="Multiple aspect solutions files">
+            This tool is only intended for observations with single aspect solution files.
+        </PARA>
+   </ADESC>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <LASTMODIFIED>September 2016</LASTMODIFIED>
+
+
+    </ENTRY>    
+</cxchelptopics>

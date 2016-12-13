@@ -1,0 +1,1727 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr "unix&#37;">
+]>
+
+<cxchelptopics>
+  <ENTRY key="fluximage" context="tools"
+	 refkeywords="flux fluxed exp exposure img image map
+	              exposure-map exposuremap expmap emap
+		      photon erg time unit units
+		      correct corrected normalize normalized xygrid
+		      band bands combine merge mergeall merge-all merge_all
+		      csc soft medium hard broad wide weight weights
+		      spectral spectrum background bkg particle time subtract scale
+		      BEVTFILE BKGMETH BKGSCALE STATFILT"
+	 seealsogroups="mergescripts"
+	 displayseealsogroups="resptools">
+    
+    <SYNOPSIS>
+      Create exposure-corrected images and exposure maps for an observation.
+    </SYNOPSIS>
+    
+    <DESC>
+      <PARA>
+	The fluximage script creates exposure-corrected images of
+	an ACIS or HRC observation given an events file and one or more
+	energy bands. It automates the creation of the aspect histogram,
+	instrument, and exposure maps. 
+	The output image size can be 
+	automatically chosen to cover all the data in the observation,
+	or it can be set to match an existing image.
+	For HRC-I observations, the HRC background files from the Chandra
+	CALDB are used - if installed - to subtract off the particle background and so
+	reduce the
+	<HREF link="http://cxc.harvard.edu/ciao/threads/expmap_hrci/index.html#caveat">ring
+	artifacts</HREF> that can be seen in HRC-I data
+	(this can be turned off by setting the hidden background parameter
+	to "none").
+      </PARA>
+
+      <PARA>
+	For recently-processed data the script can be run with only
+	two parameters: for example
+      </PARA>
+      
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; fluximage evt2.fits out/</LINE>
+	</SYNTAX>
+      </PARA>
+      
+      <PARA>
+	creates a number of files in the directory out/, including
+	the exposure-corrected image, out/broad_flux.img (ACIS)
+	or out/wide_flux.img (HRC).
+      </PARA>
+      
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; download_chandra_obsid 1843</LINE>
+	  <LINE>&pr; cd 1843</LINE>
+	  <LINE>&pr; chandra_repro indir=. outdir=repro</LINE>
+	  <LINE>&pr; fluximage . fluxed/</LINE>
+	  <LINE>&pr; ds9 fluxed/broad_flux.img</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we download ObsId 1843 from the Chandra archive (an
+            ACIS observation), reprocess
+	    it using chandra_repro, and then create an
+	    exposure-corrected image of the
+	    data using the CSC broad band (0.5 to 7 keV with an effective
+	    energy of 2.3 keV) in the directory
+	    fluxed/ (this directory will be created if it does not
+	    exist). As the infile parameter is set to a directory,
+	    the script searches for any files that match the
+	    pattern "./repro/*evt*", "./primary/*evt*", then
+	    "./*evt".
+	    In this case the script picks
+ 	    repro/acisf01843_repro_evt2.fits.
+	  </PARA>
+	  <PARA>
+	    The output image contains all ACIS ccds that were
+	    on in the observation and has been binned to 8 ACIS pixels
+	    (so an output pixel scale of 3.936 arcseconds on a side).
+	    The events file is used to locate all the necessary files
+	    (which, due to chandra_repro, have all been copied to the repro/
+	    directory).
+	    Finally ds9 is used to view the exposure-corrected
+	    image, the name of which includes the energy range, effective
+	    energy used and the binning factor.
+	  </PARA>
+	  <PARA>
+	    Note that reprocessing your data - whether via chandra_repro or
+	    manually - is not required to use fluximage. It does however
+	    ensure that the necessary keywords are included in the
+	    events file (old data may be missing
+	    one or more of the keywords used to identify the ancillary data
+	    files) and that the latest calibrations have been applied.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage repro/acisf01843_repro_evt2.fits fluxed/</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    This is a repeat of the previous example except that the
+	    event file to use is listed explicitly as the infile
+	    parameter value.
+	  </PARA>
+	  <PARA>
+	    Specifying the exact file to use is necessary when using
+	    interleaved-mode observations, since there are two event
+	    files in the directory. For instance:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; fluximage 10551/repro/acisf10551e1_repro_evt2.fits out/e1</LINE>
+	      <LINE>&pr; fluximage 10551/repro/acisf10551e2_repro_evt2.fits out/e2</LINE>
+	      <LINE>&pr; ds9 out/e1_broad_flux.img out/e2_broad_flux.img &amp;</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+	  
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage repro/ fluxed/ binsize=4 clobber+</LINE>
+	  <LINE>&pr; ds9 fluxed/broad_flux.img</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we repeat the analysis but use half the bin
+	    size (4 instead of 8, giving a pixel size of 1.968 arcseconds on a side).
+	    The clobber mode has been set to yes to ensure the output from the
+	    previous example does not call the script to fail.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage "evt2.fits[ccd_id&lt;4]" acisi/ binsize=2</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here a Data Model filter is used to restrict the output to
+	    the ACIS I array (ie ccd_id values of 0 to 3).
+	    The output image axis range is calculated so that it just covers the data
+	    in the input events file (after applying any Data Model filters).
+	  </PARA>
+	  <PARA>
+	    The script will reflect any previous filtering applied to the file,
+	    so the following will create the same output (the use of clobber
+	    ensures that the existing data will be over-written):
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; dmcopy "evt2.fits[ccd_id&lt;4]" acisi.evt</LINE>
+	      <LINE>&pr; fluximage acisi.evt acisi/ binsize=2 clobber=yes</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage evt2.fits fimg bands=csc,broad</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example four separate exposure-corrected images
+	    are created: one each for the CSC soft, medium, hard and
+	    broad energy bands. As with the previous example the names
+	    of the ancillary files - such as bad-pixel file and aspect
+	    solution - are read from the header of the events file.
+	  </PARA>
+	  <PARA>
+	    Since the outroot does not end with a / character then
+	    the the output files will be created in the same directory
+	    as the events file, with names like
+	    fimg_soft_flux.img.
+	  </PARA>
+	  <PARA>
+	    It is also possible to run the script once for each band;
+	    so the following is equivalent to the single run above:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; fluximage evt2.fits fimg bands=soft</LINE>
+	      <LINE>&pr; fluximage evt2.fits fimg bands=medium</LINE>
+	      <LINE>&pr; fluximage evt2.fits fimg bands=hard</LINE>
+	      <LINE>&pr; fluximage evt2.fits fimg bands=broad</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; make_instmap_weights wgts.txt "xsphabs.gal*powlaw1d.pl" \</LINE>
+	  <LINE>     paramvals="gal.nh=0.45;pl.gamma=1.7" emin=0.5 emax=7 ewidth=0.25</LINE>
+	  <LINE>&pr; fluximage evt2.fits fimg/ bands=wgts.txt</LINE>
+	  <LINE>&pr; ds9 fimg/band1_flux.img</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example we use a weights file (wgts.txt), 
+	    created by make_instmap_weights, so that the
+	    exposure map is the weighted sum of a range of
+	    energies rather than evaluated at a single energy.
+	    The output files will be labelled "band1", so the
+	    exposure-corrected image will be called "fimg/band1_flux.fits".
+	    The energy range used to create the images is
+	    calculated from the contents of the weights file,
+	    so in this case 0.5 to 7 keV.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage evt2.fits fimg bands=csc,0.5:7:3,wgt1.dat,wgt2.dat</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we combine the three different forms for specifying
+	    an energy band - using a label ("csc"), an explicit range
+	    ("0.5:7:3"), and weights files ("wgt1.dat" and "wgt2.dat")
+	    to create 6 exposure-corrected images.
+	    The files using the weights file "wgt1.dat" are labelled
+	    "band1" and those using "wgt2.dat" are labelled "band2".
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; download_chandra_obsid 6202</LINE>
+	  <LINE>&pr; cd 6202</LINE>
+	  <LINE>&pr; chandra_repro indir=. outdir=repro</LINE>
+	  <LINE>&pr; fluximage repro/ fluxed/</LINE>
+	  <LINE>&pr; ds9 fluxed/wide_flux.img</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we use a HRC-I observation,
+	    for which the default "bands=default" setting
+	    is the same as setting "bands=wide".
+	    The "wide" band uses all events (since the spectral
+	    response of HRC-I is so broad), and evaluates the exposure
+	    map at an energy of 1.5 keV.
+	    The default binning value for HRC data is 32.
+	    If the 
+	    Chandra CALDB package "HRC background event files" is installed
+	    then the appropriate background file will be subtracted
+	    from your data in order to 
+	    <HREF link="http://cxc.harvard.edu/ciao/threads/expmap_hrci/index.html#caveat">ring
+	    artifacts</HREF> that can be seen in HRC-I data.
+	  </PARA>
+	  <PARA>
+            When background subtraction is used, the BEVTFILE
+            keyword is set to the the name of the background event file; for
+            example:
+	  </PARA>
+          <PARA>
+            <SYNTAX>
+              <LINE>&pr; dmkeypar fluxed/wide_flux.img BEVTFILE echo+</LINE>
+              <LINE>/data/CALDB/data/chandra/hrc/bkgrnd/hrciD2005-01-01bkgrndN0002.fits</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    To turn off this step, set the background parameter to "none";
+	    e.g.
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; pset fluximage background=none</LINE>
+	      <LINE>&pr; fluximage repro/hrcf00144_repro_evt2.fits fluxed2/</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage hrcf00144_repro_evt2.fits fluxed/ bands=30:200:1.1 bin=16</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Band limits can also be given for HRC observaitons, but the lower
+	    and upper limits are in PI channels rather than energy.
+	    Here we specify the PI limits to use for the images (30 to 200), with 
+	    the exposure map created at 1.1 keV.
+	    The final image is called fluxed/30-200_flux.img and uses
+	    a bin size of 16 HRC pixels (2.1088 arcseconds).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage evt2.fits fi_ bands=csc xygrid=acisi/broad.img</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we use multiple bands (csc is a short form for "soft,medium,hard"),
+	    write files to the current directory with a prefix of "fi_" (rather than
+	    to a separate directory), and use the xygrid parameter to
+	    make the data match the sky area covered by the
+	    acisi/broad.img (in this case the result of a previous run of
+	    the script but it can be any file which can be processed by the
+	    get_sky_limits script).
+	    The binsize parameter is not used in this case.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; pset fluximage xygrid="3428.5:5476.5:2,6874.5:7898.5:2"</LINE>
+	  <LINE>&pr; fluximage evt2.fits zoom</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we explicitly give the grid for the output images.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage repro/ fluxed/ parallel=no</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this case, by setting parallel to no, only a single
+	    processor will be used.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage repro/ fluxed/ nproc=-1</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The nproc parameter allows you to control the number of
+	    processors that are used; in this case (nproc=-1), 
+	    all-but-one of them (if your machine has 4 processors then
+	    nproc=3 could be used instead).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage evt2.fits fimg badpixfile=caldb</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we use the bad-pixel file in the CALDB, rather than the
+	    observation-specific bad-pixel file (the value of the BPIXFILE
+	    keyword in evt2.fits).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage evt2.fits fimg bands=0.5:6:2 parallel=no</LINE>
+	  <LINE>&pr; ds9 fimg_0.5-6_flux.img</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here a manually-specified band is used - 0.5 to 6 keV with
+	    an effective energy (that is, the energy used to calculate
+	    the exposure map), of 2 keV.
+	  </PARA>
+	  <PARA>
+	    The computation only uses a single processor since the
+	    parallel parameter is set to no.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage evt2.fits out badpixfile=bpix1.fits asolfile=@asol.lis</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example most of the ancillary data files are specified explicitly rather than
+	    read in from the header of the events file.
+	    The aspect solution is read in from the stack of files listed in
+	    the file asol.lis (see 
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/stack.html">'ahelp stack'</HREF>
+	    for more information on this syntax)
+	    and the bad-pixel file is taken from bpix1.fits.
+	  </PARA>
+	  <PARA>
+	    As the maskfile is "", the parameter events file evt2.fits
+	    will be used to determine the file by using the MASKFILE parameter.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage "evt2.fits[sky=box(4096,4096,600,600)]" acisi/ binsize=0.25</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here the exposure-corrected image is created using pixels that are a quarter the width
+	    of the default ACIS pixel. A spatial filter has been applied to restrict
+	    the calculation to a small area around the aim point of the observation,
+	    since this is where the Chandra spatial resolution is high enough to
+	    make this analysis worthwhile.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; fluximage evt2.fits qlook_ units=time</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we use the units parameter to create an exposure map which
+	    has units of seconds, so the exposure-corrected image will
+	    have units of
+	    count/s. In this case the monochromatic setting used as part
+	    of the bands setting is ignored; that is bands=broad and
+	    bands=0.5:7:1 will produce the same output (since they
+	    both use an energy filter of 0.5 to 7.0 keV).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" reqd="yes">
+	<SYNOPSIS>
+	  The events file to use.
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The events file can include Data Model filters to
+	    restrict the area used, or the chips processed; for example
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>infile="evt2.fits[sky=region(clus.reg)]"</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    This file is used to determine the location of the ancillary
+	    files - such as aspect solution and bad-pixel file - if they
+	    are not
+	    explicitly given. If you have used chandra_repro to reprocess
+	    your data then all the necessary files will be in the same
+	    directory as the reprocessed events file.
+	  </PARA>
+	  <PARA title="Using a directory name">
+	    If the infile parameter is set to a directory name - 
+	    e.g. "repro" or "." - then the following search is
+	    made, where dirname represents the directory name used:
+	  </PARA>
+	  <LIST>
+	    <ITEM>dirname/repro/*evt*</ITEM>
+	    <ITEM>dirname/primary/*evt*</ITEM>
+	    <ITEM>dirname/*evt*</ITEM>
+	  </LIST>
+	  <PARA>
+	    The script will display which file it finds.
+	    If there are no matches, or multiple matches
+	    in the same directory then
+	    the script will fail.
+	    DataModel filters - such as "[ccd_id=0:3]" - can not
+	    be used when only a directory name is given.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="outroot" type="string" reqd="yes">
+	<SYNOPSIS>
+	  Root name for the output files.
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If the
+	    parameter ends in "/" then the output files are placed
+	    in this directory (which will be created if necessary),
+	    otherwise it is prepended to the file names, with a "_" added.
+	    So, with bands=broad and outroot=fi/ the 
+	    exposure-corrected image is
+	    called fi/broad_flux.img whereas with outroot=fi the file
+	    is fi_broad_flux.img.
+	  </PARA>
+	  <PARA>
+	    An empty outroot value, or one set to ".", will cause the
+	    output files to be written to the current working directory
+	    with no prefix.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="bands" type="string" def="default">
+	<SYNOPSIS>
+	  What energy or PI band, or bands, should be used?
+	</SYNOPSIS>
+	
+	<DESC>
+	  <PARA>
+	    The script will create an exposure-corrected image - 
+	    along with supporting data products - for each band.
+	    A band can be given using a name (which will
+	    use the appropriate definitions from the Chandra Source
+	    Catalog), by explicit limits, or by giving
+	    the name of a file containing the spectral weights
+	    (see <HREF link="http://cxc.harvard.edu/ciao/ahelp/make_instmap_weights.html">ahelp 
+	    make_instmap_weights</HREF>).
+	  </PARA>
+	  <PARA>
+	    For the first two options, 
+	    the names for the output files are created using the
+	    minimum and maximum limits for each band.
+	    When using a weights file, the output files are
+	    labelled using "band1" to "bandn", where n is the number
+	    of weights file given to the parameter. 
+	  </PARA>
+	  
+	  <PARA title="The default setting">
+	    The value of 'default' is converted to 'broad' for
+	    ACIS data and 'wide' for HRC data.
+	  </PARA>
+	  
+	  <PARA title="Band names">
+	    The following names - based on the definitions from the
+	    <HREF link="http://cxc.harvard.edu/csc/columns/ebands.html">Chandra Source Catalog</HREF>
+	    - can be used; energies are given in keV and the effective
+	    energy is the monochromatic energy used to calculate the exposure map for the band:
+	  </PARA>
+	  <TABLE>
+	    <ROW>
+	      <DATA>Band name</DATA><DATA>Minimum Energy</DATA><DATA>Maximum Energy</DATA><DATA>Effective Energy</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>broad</DATA><DATA>0.5</DATA><DATA>7.0</DATA><DATA>2.3</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>soft</DATA><DATA>0.5</DATA><DATA>1.2</DATA><DATA>0.92</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>medium</DATA><DATA>1.2</DATA><DATA>2.0</DATA><DATA>1.56</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>hard</DATA><DATA>2.0</DATA><DATA>7.0</DATA><DATA>3.8</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>ultrasoft</DATA><DATA>0.2</DATA><DATA>0.5</DATA><DATA>0.4</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>wide</DATA><DATA>n/a</DATA><DATA>n/a</DATA><DATA>1.5</DATA>
+	    </ROW>
+	  </TABLE>
+	  
+	  <PARA title="CSC">
+	    The value "csc" can be used as a short form for the
+	    combination of "soft,medium,hard".
+	  </PARA>
+	  
+	  <PARA title="Explicit ranges">
+	    If you want to use different values to those of the CSC then
+	    you can use the format lo:hi:eff where
+	  </PARA>
+
+	  <TABLE>
+	    <ROW><DATA>Value</DATA><DATA>Description</DATA></ROW>
+	    <ROW>
+	      <DATA>lo</DATA>
+	      <DATA>
+		The minimum value to use: for ACIS this value is in
+		keV and must be given, for HRC it is in PI channels
+		and can be left blank.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>hi</DATA>
+	      <DATA>
+		The maximum value to use: for ACIS this value is in
+		keV and must be given, for HRC it is in PI channels
+		and can be left blank.
+	      </DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>eff</DATA>
+	      <DATA>
+		The effective energy for the instrument map and exposure
+		map, in keV. This is required for both ACIS and HRC
+		observations.
+	      </DATA>
+	    </ROW>
+	  </TABLE>
+	  
+	  <PARA title="Spectral weights">
+	    If a filename is given then it is assumed to be an ASCII
+	    file containing spectral weights; two colums giving the
+	    energy in keV and the weight value for that energy.
+	    This file can be created using the make_instmap_weights script,
+	    the save_instmap_weights() routine from the
+	    sherpa_contrib.utils module, or manually; see the description
+	    of the 
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/mkinstmap.html#plist.spectrumfile">spectrumfile
+	    parameter of mkinstmap</HREF>
+	    for more information on the format of this file.
+	  </PARA>
+	  
+	  <PARA>
+	    The energy limits to use for the images are calculated from
+	    this file. If the file contains two lines (before the data)
+	    with the format
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE># ENERG_LO = elo</LINE>
+	      <LINE># ENERG_HI = ehi</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    then the elo and ehi values are taken for the limits (they
+	    are assumed to be in keV). This format is created by
+	    the make_instmap_weights script and the save_instmap_weights()
+	    routine.
+	    If these lines do not exist, or the elo/ehi values are not
+	    valid numbers, then the limits will be calculated from
+	    the first column using the formulae (x1 is the
+	    first value, xn is the last, and xm the last-but-one value):
+	    <EQUATION>elo = (3 * x1 - x2) / 2</EQUATION>
+	    <EQUATION>ehi = (3 * xn - xm) / 2</EQUATION>
+	  </PARA>
+	  
+	  <PARA title="Multiple bands">
+	    Multiple bands can be given either by using the name "csc"
+	    or by using a comma-separated list. The different schemes
+	    can be combined, so the following are all valid
+	    (where wgt1.dat and wgt2.dat are weights files):
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>bands="csc,broad"</LINE>
+	      <LINE>bands="0.5:7:2.5,ultrasoft"</LINE>
+	      <LINE>bands="0.5:7:2.5,csc,wgt1.dat,wgt2.dat"</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    At present multiple bands can not be used with HRC data.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="xygrid" type="string" def="">
+	<SYNOPSIS>
+	  xygrid for output or filename
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    When left at the default (empty) value, the 
+	    script calculates the xygrid for the output
+	    image based on the observational data; the
+	    skyfov tool is used to determine the maximum
+	    area of the sky that is covered by the
+	    input data. In this mode the bin size is
+	    determined by the binsize parameter.
+	  </PARA>
+	  <PARA>
+	    When set, it can either be:
+	  </PARA>
+	  <LIST>
+	    <ITEM>a filename,</ITEM>
+	    <ITEM>a grid specification of the form
+	    "xlo:xhi:#nx or dx,ylo:yhi:#ny or dy".</ITEM>
+	  </LIST>
+	  <PARA>
+	    If a filename is given then its sky
+	    range is used to determine the output;
+	    this is useful if you want to create an
+	    exposure-corrected
+	    image that matches an existing image.
+	    Otherwise the grid range is given explicitly;
+	    examples include "3824.5:5112.5:#161,4008.5:5296.5:#161"
+	    and "3824.5:5112.5:8,4008.5:5296.5:8".
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="binsize" type="real" def="INDEF" min="0">
+	<SYNOPSIS>
+	  Image binning factor
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter is only used when xygrid is set to ""
+	    (which is the default setting).
+	  </PARA>
+	  <PARA>
+	    When set to INDEF a default value is used: 
+	    8 for ACIS data and 32 for HRC data.
+	    The binning factor has units of the 
+	    SKY pixel (0.492" for ACIS and 0.1318" for HRC),
+	    so binsize=4 for an ACIS observation will create
+	    images with 1.968 arcsecond pixels.
+	    The value need not be an integer, and can be less
+	    than 1 if you want to look at small-scale structure near
+	    the aim point of the observation; in this case it is strongly
+	    suggested that a spatial filter is applied to ensure 
+	    manageable file sizes.
+	  </PARA>
+	</DESC>
+      </PARAM>    
+      
+      <PARAM name="asolfile" type="file" stacks="yes">
+	<SYNOPSIS>
+	  Aspect solution for the observation.
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If the value is empty then the ASOLFILE keyword from
+	    the events file will be used to find the
+	    file(s) to use. 
+	    Unlike the other ancillary products, an aspect
+	    solution is required for the script to run.
+	  </PARA>
+	  <PARA>
+	    The aspect solution files have names like
+	    pcadf*_asol1.fits and are included in the
+	    output directory of the chandra_repro script.
+	    If multiple asol files exist for the observation
+	    and you want to explicitly select them - rather than
+	    use the file names given in the ASOLFILE keyword - then use
+	    the stack syntax (e.g. a comma, or space, separated
+	    string as described in
+	    <HREF
+		link="http://cxc.harvard.edu/ciao/ahelp/stack.html">"ahelp
+	    stack"</HREF> for more information).
+	    So to use asol1.fits and asol2.fits you could say
+	    <EQUATION>asolfile="asol1.fits,asol2.fits"</EQUATION>
+	    or
+	    <EQUATION>asolfile="asol1.fits asol2.fits"</EQUATION>
+	    The files do not have to be given in time order.
+	  </PARA>
+	  <PARA>
+	    Aspect histograms - the output of the asphist tool - can
+	    not be used here.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="badpixfile" type="file">
+	<SYNOPSIS>
+	  Input bad pixel file
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If the
+	    parameter is empty then the 
+	    BPIXFILE keyword in the events file will be used.
+	  </PARA>
+	  <PARA>
+	    A value of "CALDB" will use the CalDB bad-pixel
+	    file and "NONE" will use no bad-pixel file
+	    (the value is case insensitive).
+	    The bad-pixel file is not required to run the
+	    script, but care should be taken when analyzing the
+	    output if it is not used.
+	  </PARA>
+	  <PARA>
+	    The bad-pixel file has a name like
+	    acisf*bpix1.fits and is included in the
+	    output directory of the chandra_repro script.
+	    If you have used or created a custom bad-pixel file 
+	    for the observation then this should
+	    be used.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="maskfile" type="file">
+	<SYNOPSIS>
+	  Mask file for the observation.
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If the 
+	    parameter is empty then the 
+	    MASKFILE keyword in the events file will be used.
+	    A value of "NONE" will use no mask file in the
+	    analysis; in this case care should be taken when
+	    analyzing the results since the exposure map
+	    will not be correct if the data was taken
+	    using a sub array (i.e. not all the chips or ccds
+	    were read out).
+	  </PARA>
+	  <PARA>
+	    The mask file has a name like
+	    acisf*msk1.fits and is included in the
+	    output directory of the chandra_repro script.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="dtffile" type="file">
+	<SYNOPSIS>
+	  Input dtf file for HRC observations
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>This parameter is only used with HRC observations.</PARA>
+	  <PARA>
+	    If the 
+	    parameter is empty then the 
+	    DTFFILE keyword in the events file will be used.
+	    A value of "NONE" will mean that only a mean
+	    DTF value will be used.
+	  </PARA>
+	  <PARA>
+	    The parameter block has a name like
+	    hrcf*dtf1.fits and is included in the
+	    output directory of the chandra_repro script.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="units" type="string" def="default">
+	<SYNOPSIS>
+	  Units for the exposure map
+	</SYNOPSIS>
+	
+	<DESC>
+	  <PARA>
+	    This parameter determines the units of the instrument
+	    and exposure maps.
+	  </PARA>
+	  <TABLE>
+	    <ROW>
+	      <DATA>units</DATA><DATA>Exposure map</DATA><DATA>Exposure-corrected image</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>default</DATA><DATA>cm^2 s count / photon</DATA><DATA>photon / cm^2 / s</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>area</DATA><DATA>cm^2 count / photon</DATA><DATA>photon / cm^2</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>time</DATA><DATA>s</DATA><DATA>count / s</DATA>
+	    </ROW>
+	  </TABLE>
+	  <PARA>
+	    This parameter combines the normalize parameter of
+	    mkexpmap and the modifiers for the detsubsys and mirror
+	    parameters of mkinstmap (see 'ahelp ardlib').
+	  </PARA>
+	  <PARA title="Converting from the normalize parameter">
+	    To replicate the old normalize=no setting, use units=default
+	    and for normalize=yes use units=area.
+	  </PARA>
+	  <PARA title="What is units=time equivalent to?">
+	    When units=time is used, instrument maps are created with
+	    the additional settings:
+	  </PARA>
+	  <LIST>
+	    <ITEM>
+	      ";IDEAL" is appended to the
+	      detsubsys parameter to remove any correction for the
+	      detector quantum efficiency (QE), quantum efficiency
+	      uniformities (QEU), 
+	      or the ACIS contamination model;
+	    </ITEM>
+	    <ITEM>
+	      the mirror parameter is set to "HRMA;area=1" rather than
+	      "HRMA" to ignore the effective area of the Chandra mirrors;
+	    </ITEM>
+	    <ITEM>
+	      and the dafile parameter is set to "NONE" to 
+	      remove the ACIS "dead area" correction, which accounts for
+	      the (small) decrease in detector efficiency due to the
+	      background cosmic ray flux.
+	    </ITEM>
+	  </LIST>
+	  <PARA>
+	    The result is that the instrument map pixels have values of
+	    0 or 1.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="expmapthresh" type="string" def="1.5%">
+	<SYNOPSIS>
+	  Remove low-exposure regions?
+	</SYNOPSIS>
+	
+	<DESC>
+	  <PARA>
+	    If set to "" then no clipping of the counts image
+	    or exposure map
+	    is performed before creating the exposure-corrected
+	    image.
+	  </PARA>
+	  <PARA>
+	    When set, the parameter determines how the 
+	    counts image and exposure map
+	    are clipped before being combined together to
+	    create the exposure-corrected image.
+	    This can be used to  exclude those
+	    pixels at the edge of a chip which, due to the
+	    strong gradient in the exposure map, end up
+	    dominating the final image.
+	  </PARA>
+	  <PARA>
+	    For a full list of supported options, see the
+	    description of the cut parameter of dmimgthresh.
+	    Here we discuss the two most common options:
+	  </PARA>
+	  <LIST>
+	    <ITEM>
+	      expmapthresh="2%", which excludes those pixels where the
+	      exposure map falls below 2% of its peak value,
+	    </ITEM>
+	    <ITEM>
+	      and expmapthresh="100", which excludes those pixels where
+	      exposure map value is less than 100 (in this case the 
+	      value of the units parameter is important).
+	    </ITEM>
+	  </LIST>
+	  <PARA>
+	    Note that both the counts image and the exposure map
+	    are thresholded before being combined.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="background" type="string" def="default">
+	<SYNOPSIS>
+	  Method for background removal (HRC-I)
+	</SYNOPSIS>
+	
+	<DESC>
+	  <PARA>
+	    This parameter is only used for HRC-I data.
+	    The reason for subtracting the particle background
+	    component is to help 
+	    remove the 
+	    <HREF link="http://cxc.harvard.edu/ciao/threads/expmap_hrci/index.html#caveat">"rings" seen in exposure-corrected HRC-I data</HREF>,
+	    but does significantly increase the time
+	    taken to run the script.
+	  </PARA>
+	  <PARA>
+	    If set to "none", or no HRC-I background CALDB
+	    file can not be found, then the data is processed with
+	    no background subtraction. 
+	  </PARA>
+	  <PARA title="method=default">
+	    This is the same as method=time.
+	  </PARA>
+	  <PARA title="method=time">
+	    This setting scales the background file by the
+	    ratio of the observation to background exposure
+	    times. It is the method used in the thread
+	    discussed above.
+	  </PARA>
+	  <PARA title="method=particle">
+	    This option scales
+	    the background by the ratio of the counts
+	    in the range determined by the bkgparams
+	    parameter, rather than by exposure
+	    time.
+	  </PARA>
+
+          <PARA title="Header keywords">
+            The full path to the selected background event file is
+            added to the header file of the background-subtracted image
+            and fluxed image using the BEVTFILE keyword.
+	    The scaling method and factor are added to the relevant files
+	    using the BKGMETH and BKGSCALE keywords, respectively.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="bkgparams" type="string" def="[pi=300:500]">
+	<SYNOPSIS>
+	  Optional argument for background subtraction
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This is only used when background subtraction occurs
+	    and the method being used is set to "particle".
+	    The parameter is taken to be 
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/dmfiltering.html">a
+	    Data Model filter</HREF>
+	    to apply to both the observation and the 
+	    particle background file, and is expected to
+	    be of the form "[pi=lo:hi]". It is used to select
+	    a subset of the observation that represents
+	    the particle background - i.e. it is 
+	    not strongly
+	    "contaminated" by cosmic emission - but
+	    is close enough (in PI) to the source emission
+	    to minimise differences in the spectral shape of
+	    the particle emission between the observation and
+	    that seen in the background observations.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="random" type="integer" def="0" min="0">
+        <SYNOPSIS>
+          Random seed for randomization.  
+        </SYNOPSIS>
+
+         <DESC>
+           <PARA>
+	     The random parameter is sent to reproject_events
+	     when processing the HRC-I background files to
+	     match the observation. A value of 0 uses the
+	     system time to seed the random number generator.
+           </PARA>
+         </DESC>
+      </PARAM>
+ 
+      <PARAM name="parallel" type="boolean" def="yes">
+	<SYNOPSIS>
+	  Run processes in parallel?
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    When run on a multi-processor system, many of the
+	    tasks can be run in parallel to reduce the
+	    execution time of the script.
+	    Since the tasks are likely to be memory or I/O-bound,
+	    the reduction in run time will be less than the
+	    number of cores on a machine.
+	    When parallel=yes, the default behaviour is to use all
+	    the CPU processors, but this can be changed with
+	    the nproc parameter.
+	  </PARA>
+	  <PARA>
+	    This option can be ignored when run on a single-processor
+	    system.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="nproc" type="integer" def="INDEF">
+	<SYNOPSIS>
+	  Number of processors to use
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter is only used when parallel=yes. It determines
+	    the number of processors to use. If maxproc is the actual
+	    number of processors on your machine, then
+	    a value of INDEF - the default value - means that all
+	    maxproc processors will be used.  A positive value
+	    means to use that number of processors (any value
+	    larger than maxproc will be set to maxproc).
+	    A negative value is added to maxproc (and any value less
+	    than one is set to one).
+	  </PARA>
+	  <!--
+	      <TABLE>
+	      <CAPTION>
+	      The number of processors to be used
+	      for a variety of nproc and maxproc values (assuming parallel=yes).
+	      </CAPTION>
+	      <ROW>
+	      <DATA>nproc argument</DATA>
+	      <DATA>maxproc</DATA>
+	      <DATA>number of processors used</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>INDEF</DATA>
+	      <DATA>4</DATA>
+	      <DATA>4</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>INDEF</DATA>
+	      <DATA>2</DATA>
+	      <DATA>2</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>INDEF</DATA>
+	      <DATA>1</DATA>
+	      <DATA>1</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>3</DATA>
+	      <DATA>4</DATA>
+	      <DATA>3</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>3</DATA>
+	      <DATA>2</DATA>
+	      <DATA>2</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>3</DATA>
+	      <DATA>1</DATA>
+	      <DATA>1</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>-1</DATA>
+	      <DATA>4</DATA>
+	      <DATA>3</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>-1</DATA>
+	      <DATA>2</DATA>
+	      <DATA>1</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>-1</DATA>
+	      <DATA>1</DATA>
+	      <DATA>1</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>-2</DATA>
+	      <DATA>4</DATA>
+	      <DATA>2</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>-2</DATA>
+	      <DATA>2</DATA>
+	      <DATA>1</DATA>
+	      </ROW>
+	      <ROW>
+	      <DATA>-2</DATA>
+	      <DATA>1</DATA>
+	      <DATA>1</DATA>
+	      </ROW>
+	      </TABLE>
+	  -->
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="tmpdir" type="string" def="${ASCDS_WORK_PATH}">
+	<SYNOPSIS>
+	  Directory for temporary files. 
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Directory for storing temporary files that
+	    require further processing before becoming useful.
+	    If the directory does not exist then it will be created
+	    for use by the script, and then deleted.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="cleanup" type="boolean" def="yes">
+	<SYNOPSIS>
+	  Cleanup intermediary files on exit.
+	</SYNOPSIS>
+	
+	<DESC>
+	  <PARA>
+	    If set to "yes", the intermediate data products
+	    are deleted when the script ends, leaving only the counts
+	    image, clipped counts image, combined exposure map,
+	    and exposure-corrected image.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="clobber" type="boolean" def="no">
+	<SYNOPSIS>
+	  Overwrite existing files?
+	</SYNOPSIS>
+      </PARAM>
+      
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+	<SYNOPSIS>
+	  Output verbosity.
+	</SYNOPSIS>
+	
+	<DESC>
+	  <PARA>
+	    The default verbosity value of 1 prints status
+	    messages as the script runs.  Higher verbosity
+	    settings print the commands that are being run.
+	    Setting verbose=0 turns off most of the screen
+	    output (some output is currently unavoidable).
+	  </PARA>
+	</DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Energy bands">
+      <PARA>
+	The energy bands - when given by name - are taken from the
+	<HREF link="http://cxc.harvard.edu/csc/columns/ebands.html">Chandra Source Catalog definitions.</HREF>
+	The default bands setting (i.e. "default") means
+	to use the "broad" band setting for ACIS data 
+	and the "wide" band setting for HRC data.
+	Another common choice (for ACIS data) is "csc", which 
+	creates the "soft", "medium", and "hard" bands.
+      </PARA>
+      <PARA>
+	Examples of specifying the bands are:
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; fluximage evt2.fits out/</LINE>
+	  <LINE>&pr; fluximage evt2.fits out/ bands=soft</LINE>
+	  <LINE>&pr; fluximage evt2.fits out/ bands=csc</LINE>
+	  <LINE>&pr; fluximage evt2.fits out/ bands=csc,broad</LINE>
+	  <LINE>&pr; fluximage evt2.fits out/ bands=wgt.dat</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	which use
+      </PARA>
+      <LIST>
+        <ITEM>the default band (so broad for ACIS, wide for HRC),</ITEM>
+	<ITEM>the soft band,</ITEM>
+	<ITEM>the CSC bands (i.e. soft, medium, and hard),</ITEM>
+	<ITEM>and four bands (soft, medium, hard, and broad),</ITEM>
+	<ITEM>and a spectral-weights file (wgt.dat), created either manually
+	or with the make_instmap_weights script.</ITEM>
+      </LIST>
+      <PARA>
+	The examples and description of the
+	bands parameter describe how either
+      </PARA>
+      <LIST>
+	<ITEM>
+	  explicit energy or PI ranges and
+	  effective energies,
+	</ITEM>
+	<ITEM>
+	  or a spectral weights file
+	</ITEM>
+      </LIST>
+      <PARA>
+	can be specified.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Parallel processing">
+      <PARA>
+	When analyzing an observation with multiple chips (ACIS) or
+	HRC-S plates, or if using multiple energy bands, the
+	execution time can be reduced by running some steps in
+	parallel. This is controlled by the parallel flag,
+	which defaults to yes.
+	The nproc parameter controls the number of processors that will be used;
+	the default is to use all of then.
+	If run on a single-processor machine then both
+	parameters are ignored.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Output files">
+      <PARA>
+	The primary output files are named using the following scheme:
+      </PARA>
+      
+      <TABLE>
+	<ROW><DATA>Flag</DATA><DATA>Type</DATA><DATA>Filename</DATA></ROW>
+	<ROW><DATA>E</DATA><DATA>Counts image</DATA><DATA>outroot_blabel.img</DATA></ROW>
+	<ROW><DATA>E</DATA><DATA>Exposure map</DATA><DATA>outroot_blabel.expmap</DATA></ROW>
+	<ROW><DATA>C</DATA><DATA>Clipped counts image</DATA><DATA>outroot_blabel_thresh.img</DATA></ROW>
+	<ROW><DATA>C</DATA><DATA>Clipped exposure map</DATA><DATA>outroot_blabel_thresh.expmap</DATA></ROW>
+	<ROW><DATA>A</DATA><DATA>Exposure-corrected image</DATA><DATA>outroot_blabel_flux.img</DATA></ROW>
+      </TABLE>
+      
+      <PARA>
+	where blabel is either the band name (e.g. soft, broad, ...),
+	"lo-hi" where lo and hi are the limits of the 
+	range (keV for ACIS, PI for HRC), or band1 to bandn (when using spectral
+	weight files).
+	The Flag column indicates when the file is created (when cleanup=yes):
+	A indicates always, T is for when the expmapthresh parameter is
+	set, and E is for when the the expmapthresh parameter is empty.
+      </PARA>
+      <PARA>
+	The above is when outroot does not end in a "/"; if it does then
+	remove "outroot_" and the files will be created in the directory
+	named by outroot. Examples of the exposure-corrected image
+	name for a combination of bands and outroot settings are given
+	in the following table:
+      </PARA>
+      
+      <TABLE>
+	<CAPTION>Names of the exposure-corrected images</CAPTION>
+	<ROW>
+	  <DATA>outroot</DATA>
+	  <DATA>bands=broad</DATA>
+	  <DATA>bands=0.5:2:1.5 (ACIS)</DATA>
+	  <DATA>bands=30:200:1.1 (HRC)</DATA>
+	  <DATA>bands=wgt.dat</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>fimg</DATA>
+	  <DATA>fimg_broad_flux.img</DATA>
+	  <DATA>fimg_0.5-2_flux.img</DATA>
+	  <DATA>fimg_30-200_flux.img</DATA>
+	  <DATA>fimg_band1_flux.img</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>odir/</DATA>
+	  <DATA>odir/broad_flux.img</DATA>
+	  <DATA>odir/0.5-2_flux.img</DATA>
+	  <DATA>odir/30-200_flux.img</DATA>
+	  <DATA>odir/band1_flux.img</DATA>
+	</ROW>
+	<ROW>  
+	  <DATA>odir/fimg</DATA>
+	  <DATA>odir/fimg_broad_flux.img</DATA>
+	  <DATA>odir/fimg_0.5-2_flux.img</DATA>
+	  <DATA>odir/fimg_30-200_flux.img</DATA>
+	  <DATA>odir/fimg_band1_flux.img</DATA>
+	</ROW>
+      </TABLE>
+      
+      <PARA>
+	For HRC data, using bands=::eval results in a label
+	of "all" being used.
+      </PARA>
+      
+      <PARA>
+	The intermediary files follow the same rule for outroot and have
+	the form given below, where ccd refers to the plate number for HRC
+	data:
+      </PARA>
+      
+      <TABLE>
+	<ROW><DATA>Type</DATA><DATA>Filename</DATA></ROW>
+	<ROW><DATA>Aspect histograms</DATA><DATA>outroot_ccd.asphist</DATA></ROW>
+	<ROW><DATA>Instrument maps</DATA><DATA>outroot_ccd_blabel.instmap</DATA></ROW>
+	<ROW>
+	  <DATA>Per chip/plate exposure maps</DATA>
+	  <DATA>outroot_ccd_blabel.expmap</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>HRC-I image (no background subtraction)</DATA>
+	  <DATA>outroot_unsubtracted.img</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>HRC-I image of the particle background</DATA>
+	  <DATA>outroot_particle_bgnd.img</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>HRC-I image after background subtraction</DATA>
+	  <DATA>outroot.img</DATA>
+	</ROW>
+      </TABLE>      
+      
+      <PARA>
+	By default, the intermediary per-chip data products are
+	removed after the script has completed running. To save
+	these (potentially numerous) files, set the cleanup
+	parameter to 'no'. 
+      </PARA>
+    </ADESC>     
+    
+    <ADESC title="Output image area and size">
+      <PARA>
+	The default behavior - when xygrid="" - is to calculate the output image
+	size so that it covers all the data:
+	a FOV file is created for the observation and the limits
+	of this file are used to determine the X and Y range
+	of the image.
+	In this mode the binning is set by the binzise parameter, is 
+	in units of the native pixel size (i.e. 0.492" for
+	ACIS and 0.1318" for HRC), and can be set to sub-pixel
+	values (e.g. 0.5).
+      </PARA>
+      <PARA>
+	The tool can also be given an explicit grid for the output
+	image size using the xygrid parameter (in this mode the binsize
+	parameter is ignored). The grid can either be:
+      </PARA>
+      <LIST>
+	<ITEM>a filename,</ITEM>
+	<ITEM>or a grid specification, of the form "xlo:xhi:#nx or dx,ylo:yhi:#ny or dy".</ITEM>
+      </LIST>
+      <PARA>
+	When given a file, the sky range of the file is used for
+	the output (e.g. the get_sky_limits tool is run on the
+	file and its xygrid parameter value is used).
+	Otherwise, the grid is given using the same format as the
+	xygrid parameter of mkexpmap; examples include:
+	<EQUATION>3824.5:5112.5:8,4008.5:5296.5:8</EQUATION>
+	and
+	<EQUATION>3824.5:5112.5:#161,4008.5:5296.5:#161</EQUATION>
+      </PARA>
+      
+      <PARA>
+	If the requested grid results in the last row or column being
+	partially filled - in other words the width or height divided by the
+	bin size is not a whole number - then the exposure map values in the
+	column or row will be over estimated (since they are calculated assuming
+	that the pixel is "full").
+      </PARA>
+      
+      <PARA>
+	The default binsize parameter value (of default) is
+	equivalent to 8 (ACIS) or 32 (HRC) pixels.
+      </PARA>
+      
+      <PARA title="Handling filter or grids that do not overlap the observation">
+	The tool will error out when there is no overlap between the observation
+	and the xygrid (if given) or any spatial filter applied to the input file.
+      </PARA>
+    </ADESC>
+    
+    <ADESC title="Required data files">
+      <PARA>
+	For observations that has been reprocessed by chandra_repro, then
+	all that is needed is to give the events file since the
+	required ancillary files can be found using the
+	header of the events file (the chandra_repro script ensures
+	that all the files needed for this script are copied to the same
+	directory as the events file).
+	These ancillary files can be located in one of the following
+	directories, relative to the events file:
+      </PARA>
+      
+      <LIST>
+	<ITEM>.</ITEM>
+	<ITEM>repro/</ITEM>
+	<ITEM>primary/</ITEM>
+	<ITEM>secondary/</ITEM>
+	<ITEM>../repro/</ITEM>
+	<ITEM>../primary/</ITEM>
+	<ITEM>../secondary/</ITEM>
+      </LIST>
+      
+      <PARA>
+	If the files are not in one of these directories, they
+	have been renamed, or new versions have been created during
+	your analysis (e.g. a new bad-pixel file or a reprojected 
+	aspect solution created
+	by reproject_aspect) then
+	they can be explicitly set using the following parameters:
+      </PARA>
+      
+      <TABLE>
+	<CAPTION>Ancillary data products</CAPTION>
+	<ROW>
+	  <DATA>Parameter name</DATA><DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>asolfile</DATA>
+	  <DATA>
+	    The aspect solution for the observation, which may be
+	    split over multiple files.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>badpixfile</DATA>
+	  <DATA>
+	    The bad-pixel file for an observation. If set to CALDB then
+	    the bad-pixel file in the Chandra CalDB will be used rather
+	    than the observation-specific version. If set to NONE then
+	    the instrument map, and hence exposure map, will be created
+	    with no bad pixels.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>maskfile</DATA>
+	  <DATA>
+	    The mask file for an observation. This determines the active area of each
+	    CCD or chip (e.g. if a sub-array was used).
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>dtffile</DATA>
+	  <DATA>
+	    The Dead-Time Factor correction file for HRC observations.
+	  </DATA>
+	</ROW>
+      </TABLE>
+      
+      <PARA>
+	The only required information is that provided by the
+	aspect solution file(s); any other file can be ignored,
+	(either explicitly, by setting the parameter to NONE, or
+	implicitly because it can not be found), in which case the appropriate
+	correction or information is ignored.
+      </PARA>
+    </ADESC>
+    
+    <ADESC title="Processing steps">
+      <PARA>
+	The script primarily makes use of the asphist, mkinstmap, and
+	mkexpmap tools; generally following the outline of the
+	"Step-by-Step Guide" sections of the "Exposure
+	Maps" threads of the <HREF link="http://cxc.cfa.harvard.edu/ciao/threads/imag.html">"Imaging"
+	science analysis threads</HREF>.  The following steps are taken to create the data products:  
+      </PARA>
+      <LIST>
+	<ITEM>skyfov and get_fov_limits: to determine the output image area</ITEM>
+	<ITEM>dmcopy: to create an events image with the specified binning factor</ITEM>
+	<ITEM>hrc_bkgrnd_lookup, reproject_events, and dmimgcalc: to subtract the particle background (HRC-I only)</ITEM>
+	<ITEM>asphist: to build the aspect histogram(s)</ITEM>
+	<ITEM>mkinstmap: to calculate the instrument map(s) for the effective energy given for each energy band</ITEM>
+	<ITEM>mkexpmap: to calculate the exposure map(s) in each energy band</ITEM>
+	<ITEM>dmimgcalc: to combine the exposure maps if there are multiple ACIS CCDs or HRC-S plates</ITEM>
+	<ITEM>dmimgthresh: to make a "threshold cut" before dividing the image by the exposure map, to reduce the noise at the edge of the chip (optional)</ITEM>
+	<ITEM>dmimgcalc: to normalize the image by the exposure map</ITEM>
+      </LIST>
+
+      <PARA title="Background subtraction of HRC-I data">
+	HRC-I data will have an estimate of the particle background
+	subtracted from the data before dividing by the exposure map
+	if the background parameter is not set to none
+	and the CALDB "HRC background event files" package is
+	installed.
+	This step is intended to reduce the 
+	<HREF link="http://cxc.harvard.edu/ciao/threads/expmap_hrci/index.html#caveat">ring
+	artifacts</HREF> that can be seen in HRC-I data. The
+	raw files used to create the background-subtracted image
+	are retained when the cleanup parameter is set to no.
+	In this case, assuming the output fluxed image is called
+	wide_flux.img, then
+      </PARA>
+      <PARA>
+      <EQUATION>wide_flux.img = wide_thresh.img / wide_thresh.expmap</EQUATION>
+      <EQUATION>wide_thresh.img = wide_unsubtracted.img - s * wide_particle_bgnd.img</EQUATION>
+      <EQUATION>scale_time = observation exposure time / particle background exposure time</EQUATION>
+      <EQUATION>scale_particle = observation counts PI=300:500 / particle background counts PI=300:500</EQUATION>
+      </PARA>
+      <PARA>
+	where the thresholding step has been ignored for
+	simplicity and s=scale_time (method=default) or s=scale_particle (method=particle).
+	The backgtround method and scaling factor are written to the header
+	of the relevant files as the BKGMETH and BKGSCALE keywords.
+	The name of the background event file used is stored in the BEVTFILE keyword.
+      </PARA>
+      <PARA title="STATUS filtering">
+	The STATUS filter used to create the observation event file
+	is used to filter the particle background file; this
+	value is displayed on screen and written to the background
+	files as the STATFILT keyword.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.8.2 (January 2016) release">
+      <PARA>
+	The random parameter has been added. It is used to control the
+	random parameter of reproject_events when background subtracting
+	HRC-I data.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.6 (September 2014) release">
+      <PARA title="Minor improvements">
+	There have been minor improvements to error messages and 
+	better support for data with missing keywords, such as that
+	produced by 
+	<HREF link="http://cxc.harvard.edu/ciao/dictionary/marx.html">Marx</HREF>.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.5 (June 2014) release">
+      <PARA title="Filtering the aspect solution by the event file GTI">
+	The skyfov is run in order to calculate the sky range covered
+	by each observation; e.g. see
+	<HREF
+	    link="http://cxc.harvard.edu/ciao/ahelp/get_fov_limits.html">ahelp
+	get_fov_limits</HREF>. The aspect solutions are now filtered
+	by the good-time intervals (GTI) of the event file - that is, the script sets
+	<EQUATION>aspect=asol1.fits[@evt.fits]</EQUATION>
+       (assuming the aspect solution is called asol1.fits and the
+       event file evt.fits) when calling skyfov. This should not
+       change most results but may produce slightly-smaller 
+       output images in cases where the GTI of the observation 
+       covers only a small fraction of the aspect solution.
+      </PARA>
+
+      <PARA title="HRC-I analysis">
+	It is now possible to apply a PI filter range for the
+	images by specifying PI limits in the bands parameter, that
+	is bands=30:200:1.2 will use a PI range of 30 to 200
+	when creating all the imaging products. The monochromatic
+	energy used for the instrument map is still given in keV,
+	so 1.2 keV in this example.
+      </PARA>
+      <PARA>
+	A new subtraction method, which scales the
+	background to match the data using the ratio of the
+	counts in the band PI=300:500 (this can be
+	changed with the new bkgparams parameter), can be selected by setting
+	method=particle. The default method uses the exposure
+	times of the observation and particle background files for
+	the scaling.
+	The scaling method and factor are added to the relevant files
+	using the BKGMETH and BKGSCALE keywords, respectively.
+      </PARA>
+      <PARA>
+	The status filter used to filter the HRC-I particle background
+	file is now included in the screen output at the default
+	verbosity level and added to the particle background
+	files (retained when cleanup=no) using the STATFILT keyword.
+	The background-unsubtracted files retained when cleanup=no
+	now match the documentation (rather than include the
+	typo 'undsubtracted').
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.3 (March 2014) release">
+      <PARA title="Removing individual instrument-map files">
+	The per-chip instrument map files are now deleted when
+	cleanup=yes and multiple bands were supplied.
+      </PARA>
+      <PARA title="HRC-I background files">
+	The original and background-subtracted images
+	are now retained when cleanup=no; they are named
+	outroot_unsubtracted.img 
+	and
+	outroot_particle_bgnd.img respectively.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.2 (February 2014) release">
+      <PARA>
+        There have been some internal changes to try and avoid
+        incompatibilities between CIAO and FTOOLS parameter files.
+      </PARA>
+      <PARA title="Setting maskfile to NONE">
+	The bug which meant that maskfile could not be set to "NONE"
+	has been fixed.
+      </PARA>
+      <PARA title="The BEVTFILE keyword for HRC-I datasets">
+        The BEVTFILE keyword is added to HRC-I datasets when background
+        subtraction is used; it contains the name of the background event
+        file used.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.1 (December 2013) release">
+      <PARA title="Removal of the pbkfile parameter">
+	The pbkfile parameter has been removed as it is no longer needed
+	to run mkinstmap on ACIS observations.
+	This means that it is no longer possible to turn off the 
+	<HREF link="http://cxc.harvard.edu/ciao/why/acisdeadarea.html">ACIS dead-area correction</HREF>
+	for the exposure map; users who need this flexibility
+	will have to generate the exposure maps manually (e.g.
+	the 
+	<HREF link="http://cxc.harvard.edu/ciao/threads/expmap_acis_single/">ACIS single-chip thread</HREF>).
+      </PARA>
+      <PARA>
+	For old data sets the removal of the pbkfile parameter can lead to 
+	error messages about missing keywords;
+	in this case please download the latest archive version of your
+	observation with download_chandra_obsid and then reprocess with chandra_repro.
+      </PARA>
+      <PARA title="mkinstmap obsfile parameter">
+	The mkinstmap tool is now run with the obsfile parameter set to the
+	observation event file rather than the aspect histogram for the chip or
+	plate.
+      </PARA>
+    </ADESC>
+    
+    <ADESC title="Changes in the scripts 4.5.4 (August 2013) release">
+      <PARA>
+        The description of the bands parameter has been updated to point out
+        that when using the explicit format - e.g. a:b:c - for an energy band
+        then the a and b values are required for ACIS data but should not be
+        set for HRC data.
+      </PARA>
+      <PARA>
+        The handling of files with a DataModel filter has been improved.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.2 (April 2013) release">
+      <PARA title="Aspect solutions">
+	The program now checks that the aspect-solution files are
+	not aspect histograms.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.1 (December 2012) release">
+      <PARA>
+	The script has been updated to work in CIAO 4.5.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+	See the
+	<HREF link="http://cxc.harvard.edu/ciao/bugs/fluximage.html">bugs page
+	for this script</HREF> on the CIAO website for an up-to-date
+	listing of known bugs. 
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>January 2016</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

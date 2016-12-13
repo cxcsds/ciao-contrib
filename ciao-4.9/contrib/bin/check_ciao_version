@@ -1,0 +1,253 @@
+#!/usr/bin/env python
+
+"""
+
+Copyright (C) 2011, 2014, 2015, 2016
+          Smithsonian Astrophysical Observatory
+
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+Usage:
+
+  ./check_ciao_version
+  ./check_ciao_version <local version file>
+
+  Use --help for further information.
+
+Aim:
+
+  Check that the CIAO and CALDB installations are up to date.
+
+  If called with no argument then the tool will check against a
+  version file on the CXC web site, and so requires on-line access.
+
+  If called with an argument, the check will be made against the given
+  version file. This is intended for testing purposes only.
+
+  CIAO must have been started before running this tool.
+
+  If there is an error the tool will exit with a non-zero status.
+
+"""
+
+toolname = "check_ciao_version"
+version = "09 December 2016"
+
+import os
+import sys
+import glob
+from optparse import OptionParser
+
+from six.moves import urllib
+import six
+
+import socket
+
+try:
+    from ciao_contrib.logger_wrapper import handle_ciao_errors, \
+        set_handle_ciao_errors_debug
+    from ciao_contrib._tools import versioninfo
+    from ciao_contrib.caldb import get_caldb_dir, \
+        get_caldb_installed, check_caldb_version
+
+except ImportError:
+    sys.stderr.write("# {} ({}): ERROR ".format(toolname, version) +
+                     "Unable to load a CIAO module. Has CIAO " +
+                     "been started?\n")
+    sys.exit(1)
+
+
+help_str = """
+Check that the installed CIAO is up to date.
+
+The script checks that the installed CIAO and CALDB is up to date,
+which requres that it downloads a file from the CIAO web site.
+
+"""
+
+
+copyright_str = """
+Copyright (C) 2011, 2014, 2015, 2016  Smithsonian Astrophysical Observatory
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+"""
+
+
+def report_update_info():
+    "Write out generic 'how to install CIAO' info"
+
+    print("\nPlease use the ciao-install script from")
+    print("    http://cxc.harvard.edu/ciao/download/")
+    print("to update your CIAO installation.")
+
+
+def compare_versions(ciao, latest, installed):
+    """Compare the versions, displaying all those packages that are
+    out of date. ciao is the value of $ASCDS_INSTALL.
+
+    We special case the over-all version; if this is out of date then
+    we do not bother checking any sub-packages and we exit the program
+    with a non-zero exit status.
+
+    True is returned if all packages are up to date, False otherwise.
+
+    """
+
+    # We assume that the installed version can not be newer than the
+    # latest version.
+    #
+    vlatest = latest["CIAO"]
+    vinstalled = installed["CIAO"]
+
+    if vlatest != vinstalled:
+        print("The CIAO installation at {0}".format(ciao))
+        print("   has version   {0}".format(vinstalled))
+        print("   the latest is {0}".format(vlatest))
+        report_update_info()
+        sys.exit(1)
+
+    updates = []
+    for (ik, iv) in six.iteritems(installed):
+        if ik == "CIAO": continue
+        lv = latest[ik]
+        if iv != lv:
+            updates.append((ik, iv, lv))
+
+    if updates == []:
+        print("The CIAO  installation at {0} is up to date.".format(ciao))
+        return True
+
+    else:
+        print("Using the CIAO installation at {0}\n".format(ciao))
+
+        nu = len(updates)
+        if nu == 1:
+            print("The following package:")
+        else:
+            print("The following packages:")
+
+        fmt = "    {0:10s}:  {1}"
+        for (pname, iver, _) in updates:
+            print(fmt.format(pname, iver))
+
+        if nu == 1:
+            print("\nneeds updating to:")
+        else:
+            print("\nneed updating to:")
+
+        for (pname, _, lver) in updates:
+            print(fmt.format(pname, lver))
+
+        print("")
+        return False
+
+
+# Logic also in check_ciao_caldb: should re-factor
+#
+def compare_caldb():
+    """Check the CALDB is up to date."""
+
+    caldb = get_caldb_dir()
+
+    (cver, cdat) = get_caldb_installed(caldb)
+    rval = check_caldb_version(cver)
+
+    cinfo = "The CALDB installation at {0}".format(caldb)
+    if os.path.islink(caldb):
+        lname = os.path.realpath(caldb)
+        cinfo += " (link to {0})".format(lname)
+
+    if rval is None:
+        print("{0} is up to date.".format(cinfo))
+        return True
+
+    else:
+        print(cinfo)
+        print("  has version: {0}".format(cver))
+        print("  latest is:   {0}".format(rval[1]))
+        return False
+
+
+@handle_ciao_errors(toolname, version)
+def doit():
+    """Run the code."""
+
+    opts = OptionParser(usage="%prog",
+                        description=help_str)
+    opts.add_option("-c", "--copyright", dest="list_copyright",
+                    action="store_true",
+                    help="List the copyright for the script and exit.")
+    opts.add_option("-v", "--version", dest="list_version",
+                    action="store_true",
+                    help="List the version of the script and exit.")
+
+    opts.add_option("--debug", dest="debug",
+                    action="store_true",
+                    help="Provide debugging information on error.")
+
+    opts.set_defaults(list_copyright=False, list_version=False)
+
+    (options, args) = opts.parse_args()
+
+    if options.debug:
+        set_handle_ciao_errors_debug(True)
+
+    nargs = len(args)
+    if nargs > 1:
+        opts.print_help()
+        return
+
+    elif options.list_copyright:
+        print(copyright_str)
+        return
+
+    elif options.list_version:
+        print(version)
+        return
+
+    ciao = os.getenv("ASCDS_INSTALL")
+    if ciao is None:
+        # unlikely to get here since able to load ciao_contrib
+        raise IOError("$ASCDS_INSTALL is not defined; has CIAO been started?")
+
+    installed = versioninfo.get_installed_versions(ciao)
+    if nargs == 1:
+        latest = versioninfo.read_latest_versions(args[0])
+    else:
+        latest = versioninfo.get_latest_versions()
+
+    # Check versions
+    flag = compare_versions(ciao, latest, installed)
+    flag &= compare_caldb()
+
+    if not flag:
+        report_update_info()
+
+
+if __name__ == "__main__":
+    doit()

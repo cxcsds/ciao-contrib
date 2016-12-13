@@ -1,0 +1,259 @@
+#!/usr/bin/env python
+
+# Copyright (C) 2015, 2016 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+from __future__ import print_function
+
+
+
+toolname = "readout_bkg"
+__revision__ = "13 Sep 2016"
+
+
+# 
+# Create a background map component based on the readout streak from
+# bright extended objects as described in
+#
+# http://adsabs.harvard.edu/abs/2005ApJ...628..655V  
+#
+# http://cxc.harvard.edu/contrib/maxim/make_readout_bg
+#
+# This code differs from above in how it deals with the exposure correction.
+# Rather than hack GTIs and exposure times, we modify the dead-time
+# correction (DTCOR) value.  Traditionally this value is less than 1.0,
+# but by setting it to > 1 we can encode the expanded exposure need to
+# properly normalize things.
+#
+# There may also be some difference in handling of badpixel files.
+#
+
+
+import sys
+import os
+from glob import glob
+
+
+import ciao_contrib.logger_wrapper as lw
+lgr = lw.initialize_logger(toolname)
+verb0 = lgr.verbose0
+verb1 = lgr.verbose1
+verb2 = lgr.verbose2
+
+
+def setup_tmpdir(indir, work_path):
+    """
+    We're going to run chandra_repro to run a_p_e and the various dmcopy
+    commands needed to filter badpixels, status, GTIs.  Therefore we
+    need to create|preserve the primary/ and secondary/ directories.
+    
+    For now, let's just do symbolic links.
+
+    OOT : Out Of Time
+    """
+
+    from tempfile import mkdtemp
+    tmpdir = mkdtemp( prefix="tmp.readout_oot_bkg_", dir=work_path )
+    os.mkdir( tmpdir+"/primary")
+    os.mkdir( tmpdir+"/secondary")
+    for gg in glob("{}/primary/*".format(indir)):
+        os.symlink( os.path.abspath(gg), "{}/primary/{}".format(tmpdir, os.path.basename(gg)))
+    for gg in glob("{}/secondary/*".format(indir)):
+        os.symlink( os.path.abspath(gg), "{}/secondary/{}".format(tmpdir, os.path.basename(gg)))    
+
+    verb1("Working in temporary directory: {}".format(tmpdir))
+    return tmpdir
+
+
+def locate_evt1(indir):
+    """
+    Make sure we have 1, and only 1, Level 1 event file.    
+    """
+
+    evts = glob( "{}/secondary/*evt1.fits*".format(indir) )
+    if len(evts) == 0:
+        raise RuntimeError("ERROR: No level1 event files found in {}/secondary".format(indir))
+    if len(evts) != 1:
+        raise RuntimeError("ERROR: Multiple event1 files found in {}/secondary".format(indir))
+
+    verb1("Using event file {}".format(evts[0]))
+    return evts[0]
+
+
+def update_dtcor( tab ):
+    """
+    Modify the dtcor to account for hyper-exposure-times.
+    
+    The ONTIME keyword will still be the length of the observation, but the
+    EXPOSURE, LIVETIME and per-chip keywords will be longer.
+
+    This is a lot less invasive than trying to modify GTI blocks and 
+    deal with various individual keywords.    
+    """
+
+
+    exptime = tab.get_key_value("EXPTIME") # ie 3.2
+    timedel = tab.get_key_value("TIMEDEL") # ie 3.24102
+    dtcor = tab.get_key_value("DTCOR")
+    
+    new_dtcor = dtcor*( exptime / ( timedel-exptime)) # should be >> 1
+    tab.get_key("DTCOR").value = new_dtcor
+
+    verb1("Modifying DTCOR keyword to account for hyperexposure: from {:.3f} to {:.3f}".format( dtcor, new_dtcor))
+
+    # Save original dtcor in new keyword
+    from pycrates import CrateKey, add_key
+    kk = CrateKey()
+    kk.name="DTCOR0"
+    kk.value=dtcor
+    add_key(tab,kk)
+    
+
+def randomize_chipy( tab, seed ):
+    """
+    Randominze the chipy values.  The FIRSTROW and NROWS are used to
+    allow subarray data to be used.  (windows would require additional work.)
+    """    
+
+    # get chip range (subarrays)
+    first = tab.get_key_value("FIRSTROW")+1
+    last = tab.get_key_value("NROWS")+first-2 
+
+    verb1("Randomizing chipy values between {} and {}".format( first, last-1 ))
+
+    # Change 'chip' vector column values
+    import numpy as np
+    old_chipx = tab.get_column("chipx").values
+    np.random.seed(seed)
+    new_chipy = np.random.randint( first, last, tab.get_nrows()).astype("int16")
+    tab.get_column("chip").values=np.array(list(zip(old_chipx, new_chipy )))
+    
+
+def update_event_file( evt, seed ):
+    """
+    Update the event 1 data, and copy it into place in the secondary/
+    directory where chandra_repro will find it.
+    """
+
+    from pycrates import read_file
+    tab = read_file( evt )
+
+    if seed <= 0:
+        # Let numpy doit
+        seed = None
+    randomize_chipy( tab, seed )
+    update_dtcor( tab )
+        
+    modfile = evt.replace(".gz", "").replace("evt1","randchipy_evt1")
+    verb1("Saving modified events to {}".format(modfile))
+
+    os.unlink(evt) # This removes the symlink to the orig file.
+    tab.update_signature()
+    tab.get_dataset().write( modfile)
+    
+
+def repro(tmpdir, check_vf_pha=False ):
+    """
+    Runs chandra_repro which runs acis_process_events to do coords and
+    various dmcopy's to do status/grade/time filtering.
+        
+    If you want the vf_pha set, then set below.
+    """
+
+    from ciao_contrib.runtool import chandra_repro
+    verb1("Running chandra_repro")
+    chandra_repro( tmpdir, outdir="", badpixel=False, set_ardlib=False, check_vf_pha=check_vf_pha)
+
+
+def copy_output( tmpdir, outfile ):    
+    """
+    Copy the new level2 event file to the user output file name.  
+    We use dmcopy to add history records
+    
+    """
+
+    evt = glob("{}/repro/*evt2.fits".format(tmpdir))
+    if 1 != len(evt):
+        raise RuntimeError("Something went wrong in chandra_repro")
+    
+    from ciao_contrib.runtool import dmcopy
+    verb1("Copying output file")
+    dmcopy( evt[0], outfile, clobber=True )
+
+
+def cleanup( tmpdir ):
+    """
+    Remove temp dir
+    """
+
+    from shutil import rmtree
+    verb1("Cleaning up temporary files")
+    rmtree( tmpdir )
+
+
+def summary( outfile ):
+    """
+    Provide a short summary
+    """
+
+    from pycrates import read_file
+    tab = read_file(outfile)
+    exposure = tab.get_key_value("exposure")
+    verb1("\nOutput background file : {}".format(outfile))
+    verb1("The effective exposure is {:.2f} ks".format( exposure/1000.0))
+    
+    
+@lw.handle_ciao_errors( toolname, __revision__)    
+def main():
+    """
+    Main routine
+    """
+
+    # Load parameters
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(toolname, "rw", sys.argv, 
+        verbose={"set":lw.set_verbosity, "cmd":verb1} )
+
+    from ciao_contrib._tools.fileio import outfile_clobber_checks
+    outfile_clobber_checks(pars["clobber"], pars["outfile"] )
+
+    indir=pars["indir"]
+    outfile=pars["outfile"]
+
+    tmpdir = setup_tmpdir( indir, pars["tmpdir"] )
+    try:
+        evt1 = locate_evt1( tmpdir )
+        update_event_file( evt1, int(pars["random"]))
+        repro( tmpdir, check_vf_pha=pars["check_vf_pha"] )
+        copy_output( tmpdir, outfile )
+    finally:
+        cleanup(tmpdir)
+
+    from ciao_contrib.runtool import add_tool_history
+    add_tool_history( pars["outfile"], toolname, pars, toolversion=__revision__)
+
+    summary(outfile)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as E:
+        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+
+

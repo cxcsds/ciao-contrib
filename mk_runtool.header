@@ -1,0 +1,2465 @@
+
+# Python35Support (initial version, more checking needed)
+
+#
+# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016
+#           Smithsonian Astrophysical Observatory
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+# TODO
+#
+#   use try/finally and context generators to make sure resources,
+#   such as parameter files, are closed. This has been done in _run()
+#   but are there other areas where it could be done?
+#
+
+"""
+
+Summary
+=======
+
+This module allows users to run CIAO command-line tools by calling a
+function with the name of the tool: for example
+
+  dmcopy("in.fits", "out.fits", clobber=True, option="all")
+  print(dmstat(infile="img.fits", centroid=False, verbose=0))
+
+If using ChIPS, Sherpa, or IPython then the output will be displayed
+on-screen, so you can just say
+
+  dmstat(infile="img.fits", centroid=False, verbose=0)
+
+Paremeters may also be set before running the tool using the syntax
+toolname.paramname - e.g. the dmstat call above can be written as
+
+  dmstat.centroid = False
+  dmstat.median = True
+  dmstat("evt2.fits[bin sky=::1]")
+
+or even
+
+  dmstat.centroid = False
+  dmstat.median = True
+  dmstat.infile = "evt2.fits[bin sky=::1]"
+  dmstat()
+
+Once the tool has been run the parameters can be accessed; for instance
+
+  dmstat("simple.dat", median=True)
+  print("Median = {0}".format(dmstat.out_median))
+
+or
+
+  acis_bkgrnd_lookup("evt2.fits")
+  match = acis_bkgrnd_lookup.outfile
+  print("Found file: {0}".format(match))
+
+There is also support for those parameter files which have no associated
+tools - e.g. lut, colors, or ardlib. So you can say
+
+  print("Location of LUT 'a' is {0}".format(lut.a))
+
+but you cannot run these commands. Attempting to do so will result in
+an error like
+
+  colors()
+  TypeError: 'CIAOParameter' object is not callable
+
+Parameter handling
+==================
+
+Names
+-----
+
+In the summary, the full parameter names were given, but - as with the
+command-line version - the names can be abbreviated to any unique
+prefix. This means that the following can also be used:
+
+  print(dmstat("evt2.fits[bin sky=::1]", cen=False, med=True))
+
+or
+
+  dmstat.cent = False
+  dmstat.med = True
+  dmstat.inf = "evt2.fits[bin sky=::1]"
+  dmstat()
+
+The use of an invalid parameter name - both in <toolname>.<parname>
+and in the argument list when calling the tool - will result in an
+error. For example:
+
+  dmstat.niter = 10
+  AttributeError: There is no parameter for dmstat that matches 'niter'
+
+  dmstat.c = True
+  AttributeError: Multiple matches for dmstat parameter 'c', choose from:
+    centroid clip
+
+When using abbreviations, be aware that some apparently valid names
+will conflict with reserved Python keywords; one example is using "in"
+for a parameter like "infile". This will result in a Syntax Error.
+
+There is one note for the above: a few parameters can not be represented
+as Python identifiers since they contain a '-' character (they are all
+ardlib parameters). For these parameters, the name used in this
+module has the '-' replaced with '_', so you would use
+
+  ardlib.AXAF_HRC_I_BADPIX_FILE
+
+to refer to the AXAF_HRC-I_BADPIX_FILE parameter of ardlib.
+
+Values
+------
+
+Plesae see the NOTE below for information on how this information is
+slightly different for the dmgti and fullgarf tools.
+
+When the module is imported, each tool is set up so that its
+parameters are set to the CIAO default values. Once the tool has run,
+the settings are updated to match any changes the tool may have made
+to the parameter settings (e.g. setting values such as outfile or
+out_median).
+
+When a parameter is set for a tool - e.g.
+
+  acis_process_events.infile = "evt2.fits"
+
+then this setting ONLY applies to this routine; it does NOT write the
+value to the on-disk parameter file for the tool.
+
+If a tool relies on any other parameter file - e.g. many of the
+Chandra instrument tools will implicitly use the ardlib parameter file
+- then these settings are obtained using that tools parameter file
+(i.e. the file located in the PFILES environment variable), and NOT
+from the settings for that tool or parameter file in this module.
+
+Therefore setting
+
+  ardlib.AXAF_ACIS0_BADPIX_FILE = "bpix1.fits[ccd_id=0]"
+
+will *NOT* change the on-disk ardlib parameter file, and hence this
+setting will not be used by any tool that needs it. To save the
+settings to disk, use the write_params method:
+
+  ardlib.write_params()
+
+will write to the system ardlib.par file and either of
+
+  ardlib.write_params("store")
+  ardlib.write_params("store.par")
+
+will write to the file store.par in the current working
+directory.
+
+The read_params() can be used to read in settings from a
+parameter file - e.g.
+
+  ardlib.read_params()
+  ardlib.read_params("store.par")
+
+Handling of stacks
+------------------
+
+There is limited support for using arrays when setting a parameter
+that can accept a stack (see "ahelp stack" for background
+information). String and file parameters may be set using an array,
+in which case the value is automatically converted into a
+comma-separated string.
+
+There is no support for converting a parameter value from a stack into
+an array; the stk.build() routine can be used for this.
+
+It is planned to handle stacks that exceed the maximimum parameter
+length by using a temporary file to contain the values when the tool
+is run; the current behavior in this case should be to throw an error
+that the expected and stored parameter values do not match.
+
+An example of use is:
+
+  dmstat.punlearn()
+  dmstat.median = False
+  dmstat.centroid = False
+  dmstat(["file1.img", "file2.img"])
+
+After the above, the dmstat.infile parameter will be set to the string
+
+  "file1.img,file2.img"
+
+NOTE: special case for dmgti and fullgarf
+-----------------------------------------
+
+There are only two known tools - dmgti and fullgarf -
+that do not support the <@@name.par> syntax (see 'ahelp parameter' for more
+information on this functionality). Care should be taken to avoid running
+multiple copies of these tools at the same time; if this is likely to happen
+use the set_pfiles() routine to set up individual user parameter directories.
+
+Displaying the current setting
+------------------------------
+
+The print command can be used to display the current parameter settings
+of a tool; for instance
+
+  print(dmimgcalc)
+  Parameters for dmimgcalc:
+
+  Required parameters:
+                infile =                  Input file #1
+               infile2 =                  Input file #2
+               outfile =                  output file
+             operation =                  arithmetic operation
+
+  Optional parameters:
+                weight = 1                weight for first image
+               weight2 = 1                weight for second image
+             lookupTab = ${ASCDS_CALIB}/dmmerge_header_lookup.txt  lookup table
+               clobber = False            delete old output
+               verbose = 0                output verbosity
+
+The tool also acts as a Python iterator, so you can loop through
+the parameter names and values using code like the following:
+
+  for (pname, pval) in dmimgcalc:
+    print("{0} = {1}".format(pname, pval))
+
+Resetting parameter values
+--------------------------
+
+The parameter values for a tool can be reset using the punlearn()
+method - e.g.
+
+  dmstat.punlearn()
+
+Parameter redirects
+-------------------
+
+There is limited support for setting a parameter value using the
+"re-direct" funtionality of the parameter library - e.g. values like
+")sclmin", which mean use the value of the sclmin parameter of the
+tool . Such re-directs can only be used to parameter values from the
+same tool, so the value ")dmstat.centroid" is not permitted.
+
+Types
+-----
+
+The parameter types have been converted into Python equivalents using
+the following table:
+
+  Parameter type    Python type
+  s                 string
+  f                 string
+  b                 bool
+  i                 int
+  r                 float
+
+When using string or filename parameters, you do not need to add
+quotes around the name if it contains a space - so you can say
+
+  inf = "evt2.fits[energy=500:2000,sky=region(src.reg)][bin sky=::1]"
+  dmcopy(inf, "img.fits")
+
+Excluded parameters
+-------------------
+
+The following parameters are not included for the tools:
+
+  - the mode parameter
+
+  - any parameter that can only be set to a single value is
+    ignored
+
+Parameter constraints
+---------------------
+
+There is currently no access to the constraints on a parameter, namely
+whether it has a lower- or upper-limit set, or is restricted to a set
+of values.
+
+How is the tool run?
+====================
+
+The tool is always run with the mode set to 'hl', so that there will
+be no querying the user for arguments.
+
+  dmstat.punlearn()
+  print(dmstat("img.fits", centroid=False, median=True))
+
+or
+
+  dmstat.punlearn()
+  dmstat.infile = "img.fits"
+  dmstat.cent = False
+  dmstat.med = True
+  print(dmstat())
+
+If there was an error running the tool then an IOError will be raised,
+otherwise the screen output of the tool will be returned (including
+any output to STDERR, since it is possible for a CIAO tool to run
+successfully and produce output on the STDERR channel).
+
+To avoid problems with running multiple copies of a tool at the same
+time, the tool is run using its own parameter file, supplied using the
+"@@<filename>" form of the tool. This should be invisible to users of
+this module.
+
+As noted above in the 'special case for dmgti and fullgarf' section,
+this method is not used for these two tools. You may need to use
+set_pfiles() to set up a unique PFILES environment if you are run
+either of these tools multiple times simultaneously; an alternative
+is to use the new_pfiles_environment() context manager to automate the
+creation of a new PFILES environment and directory for each run.
+
+Detecting errors
+================
+
+An IOError is raised if the tool returns a non-zero exit
+status. Unfortunately some CIAO tools still return a zero exit status
+when they error out; for such cases it will appear as if the tool ran
+successfully. The full screen output is included in the error, with
+each line indented for readability at the ChIPS/Sherpa/IPython prompt.
+
+As an example,
+
+  dmcopy("in.fits[cols x", "out.fits")
+
+raises the error
+
+  IOError: An error occurred while running 'dmcopy':
+
+    Failed to open virtual file in.fits[cols x
+    # DMCOPY (CIAO 4.5): DM Parse error: unmatched [ or (: [cols x
+
+The PFILES environment variable
+===============================
+
+When a tool is run, it is supplied with all the parameter values
+so that there should be no problem with multiple versions of the
+tool being run at the same time.
+
+However, some tools make use of other parameter files - e.g. many of
+the instrument tools such as mkinstmap or mkrmf - and these are
+accessed using the standard CIAO parameter system. For standard CIAO
+installations this means that the PFILES environment (see "ahelp
+parameter" or http://cxc.harvard.edu/ciao/ahelp/parameter.html for
+more information) is used.
+
+The module provides a set_pfiles() routine which changes the location
+of the user directory for parameter files. See 'help set_pfiles' for
+more information on this. The get_pfiles() routine provides access to
+the current settings.
+
+If you are using any instrument-specific tools it is suggested that
+you call set_pfiles() with a unique directory name, rather than with
+no argument. The new_pfiles_environment() context manager can be used
+to create a temporary directory which is used to store the parameter
+files and is then deleted on exit. An example of its use is
+
+  with new_pfiles_environment():
+      # The following tools are run with a PFILES directory
+      # that is automatically deleted at the end of the block
+      #
+      mki = make_tool("make_tool")
+      mki.clobber = True
+      mki.pixelgrid = "1:1024:1,1:1024:1"
+      mki.maskfile = "msk1.fits"
+
+      for ccd in [0,1,2,3]:
+          mki.obsfile = "asphist{0}.fits[asphist]".format(ccd)
+          mki.detsubsys = "ACIS-{0}".format(ccd)
+          for energy in [1,2,3,4,5]:
+              mki(monoenergy=energy,
+                  out="imap{0}_e{1}.fits".format(ccd,energy))
+
+See 'help new_pfiles_environment' for more information.
+
+Using multiple versions of a tool
+=================================
+
+You can set up multiple "copies" of a tool using the make_tool
+routine. This can be useful if you wish to set up common, but
+different, parameter values for a tool. For instance to run the dmstat
+tool with median set to False and True you could define two separate
+versions dms1 and dms2 using
+
+  dms1 = make_tool("dmstat")
+  dms1.median = True
+  dms2 = make_tool("dmstat")
+  dms2.median = False
+
+and then run them on files
+
+  dms1("src1.dat")
+  dms1("src2.dat")
+
+  dms2("src1.dat")
+  dms2("src2.dat")
+
+The new_tmpdir() and new_pfiles_environment() context managers can
+also be useful when running multiple tools.
+
+Setting the HISTORY record of a file
+====================================
+
+The add_tool_history routine allows you to set the HISTORY record of
+a file in a format that can be read by the dmhistory tool. This is
+useful when writing your own scripts and you want to record the
+parameter values used by the script to create any output files.
+
+Verbose level
+=============
+
+If the CIAO verbose level is set to 2 then the command-line used to
+run the tool is logged, as long as a logging instamce has been created
+using ciao_contrib.logger_wrapper.initialize_logger. As an example
+
+  from ciao_contrib.logger_wrapper import initialize_logger, set_verbosity
+
+  initialize_logger("myapp")
+  set_verbosity(2)
+  dmstat.punlearn()
+  dmstat("src1.dat[cols x]", median=True, centroid=True)
+
+will create the additional screen output
+
+  Running tool dmstat using:
+  >>> dmstat "src1.dat[cols x]" median=yes
+
+Note that the output only lists hidden parameters if they are not set
+to their default value.
+
+"""
+
+import sys
+import os
+import stat
+import operator
+import subprocess
+import time
+import tempfile
+import errno
+import shutil
+import glob
+import re
+
+import six
+
+from collections import namedtuple
+from contextlib import contextmanager
+
+# only used to check for floating-point equality
+import numpy as np
+
+import paramio as pio
+import stk
+import cxcdm
+
+from ciao_contrib.logger_wrapper import initialize_module_logger
+
+# This is to throw out any date-encoded parameter files which end in
+# _YYYYMMDD.HH:MM:SS.par.  I could be clever and specialize this
+# (e.g. since we know the first digit of month must be 0 or 1) but
+# leave that for now.
+#
+dtime = re.compile("_\d{8}\.\d{2}:\d{2}:\d{2}\.par$")
+
+logger = initialize_module_logger("runtool")
+
+v2 = logger.verbose2
+v3 = logger.verbose3
+v4 = logger.verbose4
+v5 = logger.verbose5
+
+ParValue = namedtuple("ParValue",
+                      ["name", "type", "help", "default"])
+ParSet   = namedtuple("ParSet",
+                      ["name", "type", "help", "default", "options"])
+ParRange = namedtuple("ParRange",
+                      ["name", "type", "help", "default", "lo", "hi"])
+
+
+class UnknownParamError(TypeError):
+    """The parameter is not defined for this tool.
+
+    This is just to provide a slightly-more user friendly error
+    message than the standard Python error in this case.
+    """
+
+    pass
+
+
+def _from_python(type, value):
+    """Return a string representation of value, where
+    type is the paramio "type" of the parameter
+    (e.g. one of "b", "i", "r", "s", "f").
+
+    A value of None for numeric types is converted to
+    INDEF and "" for strings/filenames.
+    """
+
+    if type == "b":
+        if value is None:
+            raise ValueError("boolean values can not be set to None")
+        elif value:
+            return "yes"
+        else:
+            return "no"
+    elif type in "ir":
+        if value is None:
+            return "INDEF"
+        else:
+            return str(value)
+    elif value is None:
+        return ""
+    else:
+        return str(value)
+
+
+def _to_python(type, value):
+    """Return the Python representatiopn of the input value, which is
+    a string. The type value is the the paramio "type" of the
+    parameter (e.g. one of "b", "i", "r", "s", "f").
+
+    Values converted to None: INDEF for numeric types and "" for
+    strings.
+
+    Numeric types with a value of '' (or are all spaces) are converted to 0.
+    """
+
+    if type == "b":
+        return value == "yes"
+
+    elif type == "i":
+        if value == "INDEF":
+            return None
+        elif str(value).strip() == "":
+            return 0
+        else:
+            return int(value)
+
+    elif type == "r":
+        if value == "INDEF":
+            return None
+        elif str(value).strip() == "":
+            return 0.0
+        else:
+            return float(value)
+
+    elif value == "":
+        return None
+
+    elif value is None:
+        raise ValueError("Did not expect to be sent None in _to_python")
+
+    else:
+        return str(value)
+
+
+def _values_equal(ptype, val1, val2):
+    """Decide whether two values are equal (or nearly equal) for the
+    given parameter type (e.g. one of 'b', 'i', 'r', 's', 'f').
+
+    val1 and val2 are assumed to be the output of _to_python(ptype, ...).
+    """
+
+    if ptype != "r" or (val1 is None and val2 is None):
+        return val1 == val2
+
+    else:
+        return np.allclose([val1], [val2])
+
+
+def _partial_match(matches, query, qtype="s"):
+    """Returns the value from matches - an iterable - that has
+    query as its unique prefix. The query type is given
+    by qtype; it is normally expected to be 's' but can be other
+    values; note that prefix matching is only done if ptype is 's'.
+
+    Return values:
+
+      no match         - None
+      one match        - (value, True)
+      multiple matches - (matches, False)
+
+    """
+
+    if query in matches:
+        return (query, True)
+
+    elif qtype != "s":
+        return None
+
+    else:
+        out = [v for v in matches if v.startswith(query)]
+        nout = len(out)
+        if nout == 0:
+            return None
+
+        elif nout == 1:
+            return (out[0], True)
+
+        else:
+            return (out, False)
+
+
+def _time_delta(stime, etime):
+    """Returns a "nice" string representing the time
+    difference between stime and etime (with etime > stime).
+    """
+
+    dt = time.mktime(etime) - time.mktime(stime)
+    if dt < 1.0:
+        return "< 1 sec"
+
+    def myint(f):
+        return int(f + 0.5)
+
+    def stringify(val, unit):
+        out = "{0} {1}".format(val, unit)
+        if val > 1:
+            out += "s"
+        return out
+
+    d = myint(dt // (24 * 3600))
+    dt2 = dt % (24 * 3600)
+    h = myint(dt2 // 3600)
+    dt3 = dt % 3600
+    m = myint(dt3 // 60)
+    s = myint(dt3 % 60)
+
+    if d > 0:
+        lbl = stringify(d, "day")
+        if h > 0:
+            lbl += " {0}".format(stringify(h, "hour"))
+
+    elif h > 0:
+        lbl = stringify(h, "hour")
+        if m > 0:
+            lbl += " {0}".format(stringify(m, "minute"))
+
+    elif m > 0:
+        lbl = stringify(m, "minute")
+        if s > 0:
+            lbl += " {0}".format(stringify(s, "second"))
+
+    else:
+        lbl = stringify(s, "second")
+
+    return lbl
+
+
+def _value_needs_quoting(val):
+    """Returns True if the given value needs quoting when
+    used on the command-line as a parameter value.
+
+    """
+
+    # TODO: are there other problem situations/characters?
+    #
+    sval = str(val)
+    for char in ' [(";':
+        if char in sval:
+            return True
+
+    return False
+
+
+def _quote_value(val):
+    """Given a string representing a parameter value, return the
+    string adding quotes if necessary."""
+
+    if _value_needs_quoting(val):
+        return '"{0}"'.format(val)
+    else:
+        return val
+
+
+def _log_par_file_contents(parfile):
+    "Log the contents of the given parameter file"
+
+    if logger.getEffectiveVerbose() < 4:
+        return
+
+    v4("***** Start of parameter file")
+    with open(parfile, "r") as ofh:
+        for line in ofh.readlines():
+            v4("** {0}".format(line.strip()))
+
+    v4("***** End of parameter file")
+
+
+class CIAOPrintableString(str):
+    """Wraps strings so that they are formatted nicely when
+    'auto-displayed' by ipython. Essentially the same as
+    pychips.utils.ChipsPrintableString."""
+
+    def __init__(self, string):
+        self.str = string
+
+    def __str__(self):
+        return self.str
+
+    def __repr__(self):
+        return self.str
+
+
+def is_an_iterable(val):
+    """Return True if this is an iterable but not a string.
+
+    This is a stop-gap routine to handle Python 2.7 to 3.5
+    conversion, since in 2.7 strings did not have an __iter__
+    method but they do now. Ideally the code would be rewritten
+    to avoid this logic.
+    """
+
+    return not isinstance(val, six.string_types) \
+        and hasattr(val, "__iter__")
+
+
+# See
+#   http://stackoverflow.com/questions/2693883/dynamic-function-docstring
+# for some work on adding individualized doc strings to
+# class instances
+#
+# Could add __eq__/__neq__ methods, comparing parameter values
+#
+class CIAOParameter(object):
+    """Simulate a CIAO parameter file. This class lets you set and get
+    parameter settings as if you were using the pset/pget command-line
+    tools, but using an attribute style - e.g.
+
+      print("The green color is {0}".format(colors.green))
+      ardlib.AXAF_ACIS0_BADPIX_FILE = "bpix.fits[ccd_id=0]"
+
+    To list all the parameters use the print() command, or convert to
+    a string; for example
+
+      print(geom)
+      txt = "We have\n\n{0}".format(geom)
+
+    As with the command-line tools, the parameters can be specified
+    using any unique prefix of the name (case sensitive), so you can
+    say
+
+       ardlib.AXAF_ACIS0_B
+
+    to reder to the AXAF_AXIS0_BADPIX_FILE parameter. Using a
+    non-unique prefix will result in an error listing the possible
+    matches - so using ardlib.AXAF_ACIS0 will throw
+
+    AttributeError: Multiple matches for ardlib parameter 'AXAF_ACIS0', choose from:
+      AXAF_ACIS0_QE_FILE AXAF_ACIS0_QEU_FILE AXAF_ACIS0_BADPIX_FILE AXAF_ACIS0_CONTAM_FILE
+
+    and if there is no match - e.g. colors.bob - you see
+
+    AttributeError: There is no parameter for colors that matches 'bob'
+
+    The object is not callable (ie runnable); for that use the CIAOTool
+    subclass.
+
+    NOTES
+    =====
+
+    Setting a parameter value ONLY changes the object itself; it does
+    NOT change the on-disk parameter file. To write the values to disk
+    use the write_params() method.
+
+    Any '-' characters in a parameter name are converted to '_'
+    instead. At present this only occurs for several ardlib parameters.
+
+    There is limited support for stacks; you can set any file or
+    string parameter to an array which is converted to a
+    comma-separated set of values. Note that there is no check that
+    the parameter accepts stacks (since this is not encoded in the
+    parameter file). The stack module can be used to convert a
+    parameter value from the stack format into an attay
+
+    """
+
+    def __init__(self, toolname, reqs, opts):
+        """reqs is the list of the required parameters for
+        the tool, and opts is the list of optional parameters
+        (either may be []).
+
+        The reqs and opts arrays are list of named tuples; support
+        types are ParValue, ParSet, and ParRange.
+        """
+
+        self._toolname = toolname
+        self._required = [p.name.replace('-', '_') for p in reqs]
+        self._optional = [p.name.replace('-', '_') for p in opts]
+        self._parnames = self._required + self._optional
+
+        z1 = list(six.moves.zip(self._required, reqs))
+        z2 = list(six.moves.zip(self._optional, opts))
+        self._store = dict(z1 + z2)
+
+        # we include names that are not mapped just to make it easier
+        z1 = list(six.moves.zip(self._required,
+                                [p.name for p in reqs]))
+        z2 = list(six.moves.zip(self._optional,
+                                [p.name for p in opts]))
+        self._orig_parnames = dict(z1 + z2)
+
+        self._defaults = dict([(pname, self._store[pname].default)
+                               for pname in self._parnames])
+        # should only be accessed via _set/get_param_value
+        self._settings = {}
+        self._index = 0
+        self.punlearn()
+
+    def _get_param_value(self, pname):
+        """Returns the parameter value. This should be used instead of
+        accessing self._settings directly, and should not be used by
+        external code, which should use the <object>.parname
+        interface.
+
+        pname must be the full parameter name.
+        """
+
+        # at present do nothing extra
+        if pname not in self._parnames:
+            raise ValueError("Invalid parameter name: {0}".format(pname))
+
+        val = self._settings[pname]
+        return val
+
+    def _set_param_value(self, pname, nval):
+        """Sets the parameter value. This should be used instead of
+        accessing self._settings directly, and should not be used by
+        external code, which should use the <object>.parname
+        interface.
+
+        pname must be the full parameter name and nval is assumed to
+        be of the correct type (although arrays are converted into
+        comma-separated lists here)
+        """
+
+        # at present do nothing extra
+        if pname not in self._parnames:
+            raise ValueError("Invalid parameter name: {0}".format(pname))
+
+        if is_an_iterable(nval):
+            # should really enforce the type constraint for safety
+            # here
+            svals = [str(v) for v in nval]
+            self._settings[pname] = ",".join(svals)
+
+        else:
+            self._settings[pname] = nval
+
+    def __repr__(self):
+        return "<CIAO parameter file: {0}>".format(self._toolname)
+
+    def _param_as_string(self, pname):
+        "Return a string representation of the parameter"
+
+        pi = self._store[pname]
+        pval = self._get_param_value(pname)
+
+        # need !s for value to keep booleans as True or False,
+        # otherwise gets converted to 0/1; is this a bug in Python 2.6.2?
+        # since "{0}".format(True) == "True"
+        #       "{0:5}".format(True) == "1    "
+        #       "{0!s:5}".format(True) == "True "
+        #
+
+        # QUS: do we want to do any manipulation of the data here?
+        # if pi.type == "f" and pval is None:
+        #     pval = "INDEF"
+
+        if pi.type in "sf" and pval is None:
+            pval = ""
+
+        return "{0:>20} = {1!s:<15}  {2}".format(pname, pval, pi.help)
+
+    def __str__(self):
+        """Return a multi-line output listing the parameter names and values"""
+        out = ["Parameters for {0}:".format(self._toolname)]
+
+        if len(self._required) > 0:
+            out.extend(["", "Required parameters:"])
+        for pname in self._required:
+            out.append(self._param_as_string(pname))
+
+        if len(self._required) > 0:
+            out.extend(["", "Optional parameters:"])
+        for pname in self._optional:
+            out.append(self._param_as_string(pname))
+        return "\n".join(out)
+
+    # could say @property here, but since we use __setattr__
+    # it seems that we can (have to?) trap write access there
+    #
+    def toolname(self):
+        """The name of the tool (or parameter file)"""
+        return self._toolname
+
+    def punlearn(self):
+        """Reset the parameter values to their default settings"""
+        v5("Calling punlearn on tool {0}".format(self._toolname))
+        self._settings = self._defaults.copy()
+
+    def _expand_parname(self, pname):
+        """Returns the parameter name that matches pname (using a
+        unique sub-string check); if there is no match or multiple
+        matches then an UnknownParamError is thrown.
+
+        The check is case sensitive.
+        """
+
+        ans = _partial_match(self._parnames, pname)
+        if ans is None:
+            raise UnknownParamError(
+                "There is no parameter for {0} that matches '{1}'".format(self._toolname, pname))
+
+        elif ans[1]:
+            return ans[0]
+
+        else:
+            raise UnknownParamError(
+                "Multiple matches for {0} parameter '{1}', choose from:\n  {2}".format(self._toolname,
+                                                                                       pname,
+                                                                                       " ".join(ans[0])))
+
+    def _validate(self, pname, val, store=True):
+        """Check that val is a valid value for the parameter and
+        save it (if store is True). pname should be an exact parameter
+        name, and not a partial match. val may be a string redirect.
+        """
+
+        v5("Entering _validate for name={} ".format(pname) +
+           "val={} (type={}) ".format(val, type(val)) +
+           "store={}".format(store))
+
+        pinfo = self._store[pname]
+        ptype = pinfo.type
+
+        # pstr is used for informational and error messages only
+        #
+        is_redirect = str(val).startswith(")")
+        if is_redirect:
+            pval = self._eval_redirect(val)
+            pstr = "{0} -> {1}".format(val, pval)
+        else:
+            pval = val
+            pstr = str(val)
+
+        isiterable = is_an_iterable(pval)
+        if isiterable and ptype in "bir":
+            raise ValueError("The {0}.{1} value can not be set to an array (sent {2})".format(self._toolname, pname, pstr))
+
+        if ptype == "b":
+            v5("Validating {0}.{1} val={2} as a boolean".format(self._toolname, pname, pstr))
+            if pval == "no":
+                pval = False
+            else:
+                pval = bool(pval)
+
+        elif ptype == "i":
+            v5("Validating {0}.{1} val={2} as an integer".format(self._toolname, pname, pstr))
+            if pval == "INDEF":
+                pval = None
+
+            elif str(pval).strip() == "":
+                pval = 0
+
+            elif pval is not None:
+                try:
+                    pval = int(pval)
+                except (ValueError, TypeError):
+                    raise ValueError("The {0}.{1} parameter must be an integer, sent {2}".format(self._toolname, pname, pstr))
+
+        elif ptype == "r":
+            v5("Validating {0}.{1} val={2} as a float".format(self._toolname, pname, pstr))
+            if pval == "INDEF":
+                pval = None
+
+            elif str(pval).strip() == "":
+                pval = 0.0
+
+            elif pval is not None:
+                try:
+                    pval = float(pval)
+                except (ValueError, TypeError):
+                    raise ValueError("The {0}.{1} parameter must be a float, sent {2}".format(self._toolname, pname, pstr))
+
+        elif pval == "":
+            pval = None
+
+        elif pval is not None:
+            if isiterable:
+                # assuming you can't have a stack with an options setting
+                pval = [str(v) for v in pval]
+            else:
+                pval = str(pval)
+
+        if hasattr(pinfo, "lo") and hasattr(pinfo, "hi"):
+
+            v5("Validating {0}.{1} val={2} against min/max={3}/{4}".format(self._toolname, pname, pval, pinfo.lo, pinfo.hi))
+
+            if pval is not None:
+                if not self._check_param_limit(pname, pval, pinfo.lo, operator.gt):
+                    raise ValueError("{0}.{1} must be >= {2} but set to {3}".format(
+                        self._toolname, pname, pinfo.lo, pstr))
+
+                if not self._check_param_limit(pname, pval, pinfo.hi, operator.lt):
+                    raise ValueError("{0}.{1} must be <= {2} but set to {3}".format(
+                        self._toolname, pname, pinfo.hi, pstr))
+
+        elif hasattr(pinfo, "options"):
+
+            v5("Validating {0}.{1} val={2} against {3}".format(self._toolname, pname, pval, pinfo.options))
+
+            matches = _partial_match(pinfo.options, pval, qtype=ptype)
+            if matches is None:
+                efmt = "The parameter {0} was set to {1} when it must be one of:\n  {2}"
+                raise ValueError(efmt.format(pname, pstr, " ".join([str(o) for o in pinfo.options])))
+
+            elif not matches[1]:
+                # can only get multiple matches for strings
+                raise ValueError("The parameter {0} was set to {1} which matches:\n  {2}".format(pname, pstr, " ".join(matches[0])))
+
+            else:
+                pval = matches[0]
+
+            # convert back to Python type
+            pval = _to_python(ptype, pval)
+
+        if store:
+            if is_redirect:
+                nval = val
+            else:
+                nval = pval
+
+            v5("Setting {0}.{1} to {2} ({3})".format(self._toolname, pname, nval, type(nval)))
+            self._set_param_value(pname, nval)
+
+    def __getattr__(self, parname):
+        """Provide support for read using tool.parameter syntax"""
+        try:
+            pname = self._expand_parname(parname)
+        except UnknownParamError as ue:
+            raise AttributeError(str(ue))
+
+        return self._get_param_value(pname)
+
+    def __setattr__(self, name, val):
+        """Provide support for write using via tool.parameter syntax"""
+        if name.startswith("_"):
+            object.__setattr__(self, name, val)
+
+        elif name == "toolname":
+            raise AttributeError("can not set toolname attribute")
+
+        else:
+            try:
+                pname = self._expand_parname(name)
+            except UnknownParamError as ue:
+                raise AttributeError(str(ue))
+
+            self._validate(pname, val, store=True)
+
+    def __len__(self):
+        """Return the number of parameters of the tool"""
+        return len(self._parnames)
+
+    def __contains__(self, parname):
+        """Returns True if parname is a parameter of the tool;
+        parname can be any unique prefix of the parameter name."""
+        matches = _partial_match(self._parnames, parname)
+        return (matches is not None) and matches[1]
+
+    # TODO: check whether the iterator works
+    def __iter__(self):
+        """Iterate through the parameters of the tool, returning
+        (name,value) pairs."""
+        return self
+
+    # TODO: check whether the iterator works
+    def next(self):
+        """Return the next parameter (name,value) pair for the tool."""
+        if self._index == len(self._parnames):
+            raise StopIteration
+        old = self._index
+        self._index = old + 1
+        pname = self._parnames[old]
+        return (pname, self._get_param_value(pname))
+
+    def _create_parfile_copy(self, parfile=None):
+        """Copy the parameter file for the given tool into the given
+        file name (parfile). If parfile is None then a temporary file
+        is created in $ASCDS_WORK_PATH (or the default value if this
+        environment variable does not exist).
+
+        It is up to the caller to make sure that this file
+        is deleted once it has been finished with (e.g.  in case of
+        errors).
+
+        The routine returns the name of the parameter file.
+        """
+
+        toolname = self._toolname
+        v5("_create_parfile_copy called for {0} with parfile={1}".format(toolname, parfile))
+
+        if parfile is None:
+            tmpfile = True
+            try:
+                tmpdir = os.environ["ASCDS_WORK_PATH"]
+            except KeyError:
+                v2("WARNING: $ASCDS_WORK_PATH is not set, using default temp dir to create a parameter file for {}".format(self._toolname))
+                tmpdir = None
+            # Add in the toolname to the suffix to make tracking down what
+            # is being run a bit easier
+            pfh = tempfile.NamedTemporaryFile(dir=tmpdir,
+                                              suffix=".{}.par".format(toolname),
+                                              delete=False,
+                                              mode="w")
+            parfile = pfh.name[:]
+
+        else:
+            tmpfile = False
+            pfh = open(parfile, "w")
+
+        try:
+            ofile = pio.paramgetpath(toolname)
+            v5("Copying par file {0} to {1}".format(ofile, parfile))
+            with open(ofile, "r") as ifh:
+                for line in ifh.readlines():
+                    pfh.write(line)
+
+            pfh.close()
+
+        except:
+            v5("Deleting par file due to error: {0}".format(parfile))
+            os.unlink(parfile)
+            raise
+
+        return parfile
+
+    def _update_parfile_write(self, parfile, stackfiles):
+        """Part of _update_parfile(): here we write out the
+        parameters to the given file name.
+
+        stackfiles is the dictionary of temporary files created to store
+        long parameter values/stacks; key is the parameter name and
+        value is the filename. It is modified by this routine.
+
+        Any new temporary files are created in $ASCDS_WORK_PATH,
+        or the default value if this does not exist.
+        """
+
+        try:
+            tmpdir = os.environ["ASCDS_WORK_PATH"]
+        except KeyError:
+            # Do not warn because we may not actually use it
+            # v2("WARNING: $ASCDS_WORK_PATH is not set, using /tmp to create a parameter file for {}".format(self._toolname))
+            tmpdir = None
+
+        try:
+            fp = pio.paramopen(parfile, "wLH")
+
+            for pname in self._parnames:
+                try:
+                    pval = self._get_param_value(pname)
+                except KeyError:
+                    v5("skipping setting parameter {0} as not set".format(pname))
+                    continue
+
+                oname = self._orig_parnames[pname]
+                ptype = self._store[pname].type
+                if oname == pname:
+                    v5("setting parameter {0} type={1} val={2}".format(pname, ptype, pval))
+                else:
+                    v5("setting parameter {0}->{1} type={2} val={3}".format(pname, oname, ptype, pval))
+
+                nval = _from_python(ptype, pval)
+
+                if len(nval) > 1023:
+                    if ptype in "bir":
+                        raise ValueError("Parameter {0}.{1} exceeds 1023 characters in length!".format(self._toolname, pname))
+
+                    # We rely on the calling routine to delete these
+                    # files, even in case of an error. The parameter name
+                    # is added just to make tracking down information
+                    # a bit easier.
+                    #
+                    sfh = tempfile.NamedTemporaryFile(dir=tmpdir,
+                                                      delete=False,
+                                                      mode="w",
+                                                      suffix=".{}.stk".format(pname))
+                    sname = sfh.name[:]
+                    stackfiles[pname] = sname
+                    v5("setting parameter {0} via an external stack file: {1}".format(pname, sname))
+
+                    # Not sure if a really long file name is okay in a stack file
+                    # but the only other solution is to exit with an error.
+                    #
+                    for s in stk.build(nval):
+                        sfh.write(s)
+                        sfh.write("\n")
+
+                    sfh.close()
+
+                    # NOTE:
+                    #   use @- rather than @ so that the path to the stack file
+                    #   is not included into the stack output. It is expected
+                    #   that the user has set the paths correctly if required.
+                    #
+                    #   This may be changed back to just @, depending on how
+                    #   testing goes.
+                    #      pio.pset(fp, oname, "@" + sname)
+                    pio.pset(fp, oname, "@-" + sname)
+
+                else:
+                    pio.pset(fp, oname, nval)
+
+            pio.pset(fp, "mode", "hl")
+            pio.paramclose(fp)
+
+        except Exception as ee:
+            # Try to provide a helpful message to the user. The
+            # paramio module raises Exceptions, so we want to
+            # replace these by some generic text, but leave
+            # anything more-specific alone. In Python 2.7 this was
+            # done by differentiating between Exception and
+            # StandardError but this does not work in Python 3,
+            # so use an explicit check on the type.
+            #
+            if type(ee) == Exception:
+                raise IOError("Unable to write to parameter file:\n" +
+                              "  {}".format(parfile))
+            else:
+                raise
+
+    def _update_parfile_verify(self, parfile, stackfiles):
+        """Part of _update_parfile(): here we verify that the
+        parameters in parfile are the expected values.
+
+        stackfiles is the dictionary of temporary files created to store
+        long parameter values/stacks.
+
+        Note that if an external stack file is used we do not currently
+        validate its values (it should be, for safety, but isn't).
+
+        """
+
+        v5("Verifying parameter settings")
+        try:
+            fp = pio.paramopen(parfile, "rH")
+
+            for pname in self._parnames:
+
+                try:
+                    # pval = "@" + stackfiles[pname]
+                    pval = "@-" + stackfiles[pname]
+                    v5("parameter {0} has been set to an ".format(pname) +
+                       "external stack file")
+
+                except KeyError:
+                    try:
+                        pval = self._get_param_value(pname)
+
+                    except KeyError:
+                        v5("skipping verifying parameter " +
+                           "{0} as not set".format(pname))
+                        continue
+
+                oname = self._orig_parnames[pname]
+                ptype = self._store[pname].type
+                if oname == pname:
+                    v5("verifying parameter {0} type={1} is val={2}".format(pname, ptype, pval))
+                else:
+                    v5("verifying parameter {0}<-{1} type={2} is val={3}".format(pname, oname, ptype, pval))
+
+                oval = _to_python(ptype, pio.pget(fp, oname))
+
+                # darn: need to deal with re-directs and environment
+                # variables; this is a hack and probably want to
+                # re-think this a bit
+                #
+                # Env. variable expansion only happens if the value
+                # is enclosed in {}, so
+                #    $ASCDS_CALIB
+                # is left alone but
+                #    ${ASCDS_CALIB}
+                # is expanded by pio.pget(). For now just rely on
+                # any text begining with ${ as meaning it should be
+                # expanded.
+                #
+                if str(pval).startswith(")"):
+                    nval = _to_python(ptype, pio.pget(fp, pval[1:]))
+                    pstr = "{0} -> {1}".format(pval, nval)
+                    pval = nval
+
+                elif str(pval).startswith("${"):
+                    nval = os.path.expandvars(pval)
+                    pstr = "{0} -> {1}".format(pval, nval)
+                    pval = nval
+
+                else:
+                    pstr = pval
+
+                if not _values_equal(ptype, oval, pval):
+                    raise IOError("Unable to store {0}.{1}, should be\n    '{2}' ({3})\n  but parameter file contains\n    '{4}' ({5})".format(
+                        self._toolname, pname, pstr, type(pval), oval, type(oval)))
+
+            pio.paramclose(fp)
+
+        except Exception as ee:
+            # The paramio module throws Exceptions, so try and clean
+            # those up but leave more-specific exceptions alone.
+            #
+            if type(ee) == Exception:
+                raise IOError("Unable to check values in parameter " +
+                              "file:\n  {}".format(parfile))
+            else:
+                raise
+
+    def _update_parfile(self, parfile):
+        """Update the supplied file, which is assumed to be a
+        copy of the parameter file for this tool, with the
+        contents of the current parameter settings.
+
+        parfile should either be the name of the tool or
+        end in .par; a ValueError is thrown if this does not
+        hold.
+
+        Parameters which are too long to be set with paramio.pset will
+        be stored using an external stack file. In this case the
+        routine returns a dictionary where the keys are the names of
+        these parameters and the values the file names (which should
+        be deleted after use). The dictionary will be empty if no
+        long parameters are found.
+
+        """
+
+        if parfile != self._toolname and not parfile.endswith(".par"):
+            raise ValueError("parfile argument is not the tool name nor does it end in .par ({0})".format(parfile))
+
+        v5("_update_parfile[{0}] called for {1}".format(self._toolname,
+                                                        parfile))
+
+        stackfiles = {}
+        try:
+            self._update_parfile_write(parfile, stackfiles)
+            self._update_parfile_verify(parfile, stackfiles)
+
+        except:
+
+            # ensure any temporary stack files are cleaned up
+            for sname in six.itervalues(stackfiles):
+                try:
+                    v5("Deleting temporary stack file due to error: {0}".format(sname))
+                    os.unlink(sname)
+                except OSError:
+                    pass
+
+            raise
+
+        v5("_update_parfile[{0}] returning {1}".format(self._toolname, stackfiles))
+        return stackfiles
+
+    def _get_command_line_args(self, simplify=True, nameall=False, quote=False):
+        """Return an array of tuples (parname, parval) for the
+        tool.
+
+        If nameall is False (the default) then parname will be None
+        for parameters that do not need their name included (so
+        automatic parameters that are not empty).
+
+        If simplify is True (the default) then only those hidden
+        parameters that are not set to their default value will
+        be included.
+
+        Parameter values are not quoted unless quote is True (the
+        default is False).
+
+        Parameter names are converted from Python to their actual names
+        (only relevant for the ardlib parameters).
+
+        """
+
+        out = []
+        use_name = nameall
+        for pname in self._required:
+            oname = self._orig_parnames[pname]
+            pval = self._get_param_value(pname)
+            ptype = self._store[pname].type
+
+            pval = _from_python(ptype, pval)
+            if pval == "":
+                use_name = True
+
+            if not use_name:
+                oname = None
+
+            if quote:
+                pval = _quote_value(pval)
+
+            out.append((oname, pval))
+
+        for pname in self._optional:
+            oname = self._orig_parnames[pname]
+            pval = self._get_param_value(pname)
+            if simplify and self._defaults[pname] == pval:
+                continue
+
+            ptype = self._store[pname].type
+            pval = _from_python(ptype, pval)
+            if quote:
+                pval = _quote_value(pval)
+
+            out.append((oname, pval))
+
+        return out
+
+    def _display_command_line(self, simplify=True):
+        """Log - at a verbose level of 2 - the command line that would
+        be entered by a user. Note that we include all parameters,
+        even if they match their default values, unless simplify is
+        True.
+
+        This does not try to do anything clever with parameter values
+        which have been written out as a temporary stack file; the
+        screen output will use the '@-<filename>' value rather than try
+        to convert it back to a comma-separated list.
+
+        """
+
+        if logger.getEffectiveVerbose() < 2:
+            return
+
+        out = [">>> {0}".format(self._toolname)]
+        for (pname, pval) in self._get_command_line_args(simplify=simplify, quote=True):
+            if pname is None:
+                outstr = pval
+            else:
+                outstr = "{0}={1}".format(pname, pval)
+
+            out.append(outstr)
+
+        v2("Running tool {0} using:".format(self._toolname))
+        v2(" ".join(out))
+
+    def write_params(self, parfile=None):
+        """Write the current parameter settings to a
+        parameter file. If parfile is None then the default
+        parameter file for the tool is used, otherwise
+        parfile is expected to be the name of the file (if
+        it does not exist it is created).
+
+        If parfile is given and does not end in '.par' then
+        the suffix is automatically appended to the file.
+
+        Any parameters longer than 1023 characters are written
+        out, as a stack, to a temporary file and replaced
+        by "@-<name of temporary file>". A dictionary of
+        these parameters is returned, with the key being the
+        parameter name and the value the name of the relevant
+        temporary file. It is the users responsibility to delete
+        these temporary files.
+
+        If there are no long parameters then the routine returns
+        None.
+        """
+
+        if parfile is None:
+            pname = self._toolname
+
+        else:
+            pname = parfile
+            if not pname.endswith(".par"):
+                pname += ".par"
+            self._create_parfile_copy(pname)
+
+        stackfiles = self._update_parfile(pname)
+        if pname == self._toolname:
+            msg = "Wrote to the {0} parameter file".format(self._toolname)
+        else:
+            msg = "Wrote parameters for {0} to {1}".format(self._toolname, pname)
+
+        v3(msg)
+
+        if len(stackfiles) == 0:
+            return None
+        else:
+            v3("Parameters contain temporary stacks:")
+            for (k, v) in six.iteritems(stackfiles):
+                # v3("   {0}.{1} -> @{2}".format(self._toolname, k, v))
+                v3("   {0}.{1} -> @-{2}".format(self._toolname, k, v))
+
+            return stackfiles
+
+    def read_params(self, parfile=None):
+        """Read the parameter settings from the on-disk parameter file
+        and use them to update the settings of the object.  If parfile
+        is None then the default parameter file for the tool is used,
+        otherwise parfile is expected to be the name of the parameter
+        file to use (if it does not end in .par then the suffix is
+        automatically appended).
+        """
+
+        if parfile is None:
+            pname = self._toolname
+
+        else:
+            pname = parfile
+            if not pname.endswith(".par"):
+                pname += ".par"
+
+        try:
+            fp = pio.paramopen(pname, "rH")
+            for pn in self._settings:
+                on = self._orig_parnames[pn]
+                # QUS: should we do type conversion here, rather than
+                # go through the whole __setattr__ work?
+                nval = pio.pget(fp, on)
+                setattr(self, pn, nval)
+
+            pio.paramclose(fp)
+
+        except Exception as ee:
+            # The paramio module throws Exceptions, so try and clean
+            # those up but leave more-specific exceptions alone.
+            #
+            if type(ee) == Exception:
+                raise IOError("Unable to read from parameter file:" +
+                              "\n  {}".format(pname))
+            else:
+                raise
+
+        if pname == self._toolname:
+            msg = "Read from the {} parameter file".format(self._toolname)
+        else:
+            msg = "Read parameters for {} from {}".format(self._toolname,
+                                                          pname)
+
+        v3(msg)
+
+
+# This is a base class; you are expected to use one of
+#
+#    CIAOToolParFile
+#    CIAOToolDirect
+#
+class CIAOTool(CIAOParameter):
+    """Run a CIAO tool using a Python object/function, with
+    read/write access to the parameter values. For example
+
+      dmcopy("in.fits[col3>2.2][cols col2,col2]",
+             "out.dat[kernel text/simple]", clobber=True)
+
+    which can also be written as
+
+      dmcopy.infile = "in.fits[col3>2.2][cols col2,col2]"
+      dmcopy.outfile = "out.dat[kernel text/simple]"
+      dmcopy(clob=True)
+
+    The call returns the screen output of the tool (both the stdout
+    and stderr channels). This can be stored in a variable or - if
+    called from an interactive Python session such as ChIPS, Sherpa or
+    IPython - it can be automatically displayed, e.g.
+
+     dmstat("sources.dat[z=0.3:0.8][cols z,lx,kt]", median=True)
+
+    If the return value is empty (including all spaces) then None
+    is returned.
+
+    As with the command-line parameter interface, parameters can be
+    named using a unique prefix; for instance the use of clob above
+    to set the clobber parameter.
+
+    After running the tool, the parameter values can be inspected:
+    for instance
+
+      dmstat("evt2.fits[energy=500:7000,sky=region(src.reg)][bin sky=::1]",
+             cent=False, med=True)
+      print("Median = {0}".format(dmstat.out_median))
+
+    If the tool returns a non-zero status code indicating an error
+    then an IOError will be raised.
+    """
+
+    def __repr__(self):
+        return "<CIAO tool: {0}>".format(self._toolname)
+
+    def _eval_redirect(self, pval):
+        """Return the value pval, which can be a
+        'redirect' - e.g. ")parname" - or a normal value.
+
+        At present there is only support for redirects within
+        the same tool.
+        """
+
+        if str(pval).startswith(")"):
+            v5("Expanding redirect: input={0}".format(pval))
+            # the '-'/'_' replacement is prob. not worth doing
+            newpar = pval[1:].replace('-', '_')
+            if newpar in self._settings:
+                newval = self._eval_redirect(self._get_param_value(newpar))
+                v5(" -> {0}".format(newval))
+                return newval
+
+            else:
+                raise ValueError("Parameter redirect value of {0} is not supported".format(pval))
+
+        else:
+            return pval
+
+    def _check_param_limit(self, pname, pval, plimit, op):
+        """Check that pval (the value of the parameter pname)
+        returns True for op(pval, plimit) OR that pval == plimit.
+
+        Returns True if it is valid (or there is no limit), False if not.
+
+        op is expected to be either operator.lt or operator.gt. You
+        use operator.gt when plimit is the parameter minimum and
+        operator.lt when it is the parameter maximum
+
+        The check is ignored if plimit is None, and we assume that pval
+        is an actual value - ie not a redirect. plimit may be a redirect.
+
+        pval can be None, which will likely cause the check to fail
+        (but this is not guaranteed).
+        """
+
+        if plimit is None:
+            return True
+
+        else:
+            lim = self._eval_redirect(plimit)
+
+        return pval == lim or op(pval, lim)
+
+    def _validate_parameters(self):
+        """Checks that the parameter settings are valid. This
+        uses the stored value for each parameter, otherwise
+        the parameter is not checked.
+
+        A ValueError is thrown if there is an error.
+        """
+
+        # Loop through the approx order in the parameter file
+        #
+        for pname in self._parnames:
+            self._validate(pname, self._get_param_value(pname), store=False)
+
+    def _process_argument_list(self, args, kwargs):
+        """Check that the input args/kwargs are correct and set the
+        values for the supplied parameters.
+
+        We no longer exit if the required args are not supplied in
+        args/kwargs, since the user may have set them using
+           toolname.paramname = ...
+        or want to use the default values.
+
+        The values are also validated here.
+
+        """
+
+        toolname = self._toolname
+        parnames = self._parnames
+
+        if len(args) > len(parnames):
+            raise TypeError("{0} takes at most {1} arguments ({2} given)".format(toolname, len(parnames), len(args)))
+
+        # We validate the arguments in order; not completely clear it is
+        # worth it, but there may be some redirected parameters for which
+        # this order makes sense (in particular for range checks).
+        #
+        store = dict(zip(parnames, args))
+        store.update(kwargs)
+
+        nstore = {}
+        for (pname, pval) in six.iteritems(store):
+            parname = self._expand_parname(pname)
+            nstore[parname] = pval
+
+        for pname in [pn for pn in self._parnames if pn in nstore]:
+            pval = nstore[pname]
+            v5("Setting parameter {0} to {1} [from {2}]".format(pname,
+                                                                pval,
+                                                                type(pval)))
+            self._validate(pname, pval, store=True)
+
+    def punlearn(self):
+        self._runtimes = None
+        CIAOParameter.punlearn(self)
+
+    def get_runtime_details(self):
+        """Returns a dictionary of the information on the last time the
+        routine was called. The keywords are
+
+          args   - the command-line arguments for the tool as a list of
+                   tuples (parname, parval).
+          start  - the start time as returned by time.localtime()
+          end    - the end time as returned by time.localtime()
+          delta  - a string giving the run time in a "nice" format
+                   (e.g. '< 1 sec', '1 minute 34 seconds')
+          code   - the return code (0 for success, otherwise an error)
+          output - the screen output
+
+        and keywords may not be present if the tool has not been
+        run since initialization or the last call to punlearn(),
+        or execution of the tool failed.
+
+        The time values are not intended to give an accurate
+        representation of the runtime of the tool.
+
+        """
+
+        rval = {}
+        if self._runtimes is not None:
+            for (k, v) in six.iteritems(self._runtimes):
+                rval[k] = v
+
+        return rval
+
+    def __call__(self, *args, **kwargs):
+        """Run the tool. Returns the stdout and stderr of the tool as a single
+        string on success (or None if the contents are empty/only contain
+        spaces), otherwise throws an IOError. The parameter settings
+        of the object are updated to reflect any changes made by the tool.
+
+        """
+
+        raise NotImplementedError
+
+
+class CIAOToolParFile(CIAOTool):
+    """Run a CIAO tool using a separate parameter file.
+
+    See the help for CIAOTool for information on this
+    class.
+
+    """
+
+    def _run(self, parfile):
+        """Run the tool, using the given parameter file.
+
+        Returns the return code and the screen output of the tool.
+
+        """
+
+        # We include mode=hl in both the parameter file and explicitly on
+        # the command line to try and catch those tools that do not handle
+        # parameter redirects; the error message may be confusing but at
+        # least it should not appear to hang. Hopefully these are all now
+        # instances of CIAOToolDirect instead, but leave in just in case.
+        #
+        self._runtimes = None
+
+        args = self._get_command_line_args(simplify=False, nameall=True)
+        stime = time.localtime()
+        v4("Starting {0} at {1}".format(self._toolname, time.asctime(stime)))
+        self._runtimes = {"start": stime, "args": args}
+
+        # As stderr is merged into stdout, only need to care about the
+        # first item returned by communicate.
+        proc = subprocess.Popen([self._toolname,
+                                 "@@{0}".format(parfile),
+                                 "mode=hl"],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT)
+        out = proc.communicate()
+        sout = out[0]
+
+        # Python 2.7 returns a string for sout, Python 3.5 returns
+        # bytes.
+        #
+        # Question: is this the best approach?
+        if not six.PY2:
+            sout = sout.decode()
+
+        etime = time.localtime()
+        rval = proc.returncode
+        self._runtimes["code"] = rval
+
+        v4("{0} finished at {1}".format(self._toolname, time.asctime(etime)))
+        self._runtimes["end"] = etime
+        self._runtimes["delta"] = _time_delta(stime, etime)
+        self._runtimes["output"] = sout
+        v4("Run time = {0}".format(self._runtimes["delta"]))
+        v4("Return code = {0}".format(rval))
+        return (rval, sout)
+
+    def __call__(self, *args, **kwargs):
+
+        # processing the argument list also validates them
+        self._process_argument_list(args, kwargs)
+
+        parfile = self._create_parfile_copy()
+        stackfiles = {}
+        try:
+            stackfiles = self._update_parfile(parfile)
+            self._display_command_line()
+            _log_par_file_contents(parfile)
+            (rval, sout) = self._run(parfile)
+            _log_par_file_contents(parfile)
+
+            if rval == 0:
+                self.read_params(parfile)
+                for pname in stackfiles:
+                    oval = self._get_param_value(pname)
+                    v5("Replacing {0}.{1} = {2}".format(self._toolname, pname, oval))
+                    nval = stk.build(oval)
+                    if len(nval) == 1: nval = nval[0]
+                    v5("  by {0}".format(nval))
+                    self._set_param_value(pname, nval)
+
+                txt = sout.rstrip()
+                if txt == "":
+                    retval = None
+                else:
+                    retval = CIAOPrintableString(txt)
+
+            else:
+                sep = "\n  "
+                smsg = sep.join(sout.rstrip().split("\n"))
+                raise IOError("An error occurred while running '{0}':{1}{2}".format(self._toolname, sep, smsg))
+
+        finally:
+            for v in stackfiles.values():
+                v5("Deleting stack file: {0}".format(v))
+                os.unlink(v)
+
+            v5("Deleting par file: {0}".format(parfile))
+            os.unlink(parfile)
+
+        return retval
+
+
+class CIAOToolDirect(CIAOTool):
+    """Run a CIAO tool directly. This is for those tools
+    that do not support the @@foo.par syntax for accessing
+    an external parameter file. Care should be taken when
+    running multiple instances of these tools, since there
+    is the possibility that multiple writes or reads of the
+    same parameter file could be made.
+
+    See the help for CIAOTool for information on this
+    class.
+
+    """
+
+    def _run(self):
+        """Run the tool, giving all the parameter on the command line.
+
+        Returns the return code and the screen output of the tool.
+
+        At present there is no attempt to automatically create stack
+        files for those parameters that are too long as is done in
+        CIAOToolParFile.
+
+        """
+
+        self._runtimes = None
+
+        args = self._get_command_line_args(simplify=False, nameall=True)
+        v5("Argument list for {0} = \n{1}".format(self._toolname, args))
+        pargs = [self._toolname, "mode=hl"]
+        pargs.extend(["{0}={1}".format(name, val) for (name, val) in args])
+        stime = time.localtime()
+        v4("Starting {0} at {1}".format(self._toolname, time.asctime(stime)))
+        self._runtimes = {"start": stime, "args": args}
+
+        # As stderr is merged into stdout, only need to care about the
+        # first item returned by communicate.
+        proc = subprocess.Popen(pargs,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT)
+        out = proc.communicate()
+        sout = out[0]
+
+        # Python 2.7 returns a string for sout, Python 3.5 returns
+        # bytes.
+        #
+        # Question: is this the best approach?
+        if not six.PY2:
+            sout = sout.decode()
+
+        etime = time.localtime()
+        rval = proc.returncode
+        self._runtimes["code"] = rval
+
+        v4("{0} finished at {1}".format(self._toolname, time.asctime(etime)))
+        self._runtimes["end"] = etime
+        self._runtimes["delta"] = _time_delta(stime, etime)
+        self._runtimes["output"] = sout
+        v4("Run time = {0}".format(self._runtimes["delta"]))
+        v4("Return code = {0}".format(rval))
+        return (rval, sout)
+
+    def __call__(self, *args, **kwargs):
+
+        # processing the argument list now validates them too
+        self._process_argument_list(args, kwargs)
+        # self._validate_parameters()
+
+        self._display_command_line()
+        (rval, sout) = self._run()
+
+        if rval == 0:
+            # Assume there is a par file we can read from
+            # NOTE: this means that settings don't persist in quite
+            # the same way as they do for CIAOToolParFile instances
+            # (e.g. hidden params will be reset).
+            #
+            self.read_params()
+            txt = sout.rstrip()
+            if txt == "":
+                retval = None
+            else:
+                retval = CIAOPrintableString(txt)
+
+        else:
+            sep = "\n  "
+            smsg = sep.join(sout.rstrip().split("\n"))
+            raise IOError("An error occurred while running '{0}':{1}{2}".format(self._toolname, sep, smsg))
+
+        return retval
+
+
+def get_pfiles(userdir=True):
+    """Returns the user portion of the PFILES environment variable
+    when userdir is True, otherwise the system portion. If the value
+    is empty returns None, otherwise it is an array of directories.
+    """
+
+    if "PFILES" not in os.environ:
+        raise IOError("The PFILES environment variable is not set.")
+
+    pfiles = os.environ["PFILES"]
+    paths = pfiles.split(";")
+    if len(paths) != 2:
+        raise IOError("Expected the PFILES environment variable to contain 1 ';' character, but found {0}".format(len(paths) - 1))
+
+    if userdir:
+        rval = paths[0]
+    else:
+        rval = paths[1]
+
+    if rval == "":
+        return None
+    else:
+        return rval.split(":")
+
+
+def set_pfiles(userdir=None, userdirs=None):
+    """Set the user directory of the PFILES environment variable. This
+    only affects tools called from within this Python session. It can
+    be particularly useful when using tools which access ancillary
+    parameter files - such as the ardlib parameter file used by
+    many of the instrument tools (e.g. mkinstmap) - to make sure
+    that they pick up the right settings.
+
+    If userdir is not None, the value is checked to see if it is a
+    directory, and the routine will raise an IOError if it does not
+    exist or is not a directory. If userdirs is not None then it is
+    taken to be an array of directories - sush as that returned by
+    get_pfiles() - each of which is checked for and then used to set
+    up the user path. The userdir argument is used if both are not
+    None.
+
+    If userdir and userdirs are None then the user directory is
+    removed from the PFILES setting. This can be useful to avoid
+    problems with running multiple copies of the tool at the same time
+    but is not normally needed when using the commands provided by
+    this module, since they take care to make sure each tool is called
+    with all its parameters in order to avoid this issue (this is only
+    strictly true for those tools supported by the CIAOToolParFile
+    class; those in the CIAOToolDirect class may have problems when
+    multiple instances are run at the same time with the same PFILES
+    setting).
+
+    """
+
+    if "PFILES" not in os.environ:
+        raise IOError("The PFILES environment variable is not set.")
+
+    pfiles = os.environ["PFILES"]
+    paths = pfiles.split(";")
+    if len(paths) != 2:
+        raise IOError("Expected the PFILES environment variable to contain 1 ';' character, but found {0}".format(len(paths) - 1))
+
+    syspath = paths[1]
+
+    if userdir is None and userdirs is None:
+        newpath = ""
+
+    else:
+        if userdir is None:
+            udirs = userdirs
+        else:
+            udirs = [userdir]
+
+        for dname in udirs:
+            if os.path.isdir(dname):
+                continue
+
+            elif os.path.exists(dname):
+                raise IOError("{0} exists but is not a directory".format(dname))
+
+            else:
+                raise IOError("{0} does not exist".format(dname))
+
+        newpath = ":".join(udirs)
+
+    os.environ["PFILES"] = "{0};{1}".format(newpath, syspath)
+
+
+# Context managers for
+#  a) creating a temporary directory that will be deleted
+#     on exit
+#  b) creating a temporary directory and use it for the user component
+#     of the PFILES environment variable; this directory is cleaned up
+#     on exit and the previous PFILES setting restored
+#
+
+@contextmanager
+def new_tmpdir(dirname=None, tmpdir=None):
+    """A context manager which creates a new temporary directory
+    and ensures that it is removed on exit. The name of the
+    directory is returned so it can be used as
+
+      with new_tmpdir() as tdir:
+          # Run evalpos using this as the tmpdir parameter
+          epos = make_tool("evalpos")
+          epos(..., tmpdir=tdir)
+
+    If dirname is None then a randomly-generated directory name is
+    used; this may not be ideal if a large amount of data is placed in
+    the directory (it depends on where tempfile.mkdtemp places the
+    directory). This directory will be placed in tmpdir (if not None),
+    or $ASCDS_WORK_PATH, or the default value - tempfile.gettempdir() - if
+    this environment variable does not exist.  Unlike dirname, tmpdir
+    must already exist.
+
+    If dirname is not None then:
+
+      a) it can not refer to an existing path
+      b) if it is not absolute then it is converted into an
+         absolute path using the current working directory.
+
+    Unlike tempfile.mkdtemp() there is no guarantee that this directory
+    is created safely or with permissions valid only for the user.
+
+    This is a simpler version of
+
+       http://bugs.python.org/issue5178
+
+    """
+
+    if dirname is None:
+        if tmpdir is None:
+            try:
+                tmpdir = os.environ["ASCDS_WORK_PATH"]
+            except KeyError:
+                tmpdir = tempfile.gettempdir()
+
+        try:
+            dname = tempfile.mkdtemp(dir=tmpdir, prefix="tmpdir")
+        except OSError as ose:
+            if ose.errno == errno.ENOENT:
+                raise IOError("The directory tmpdir={} does not exist!".format(tmpdir))
+            elif ose.errno == errno.ENOTDIR:
+                raise IOError("The tmpdir={} argument does not refer to a directory!".format(tmpdir))
+            else:
+                raise ose
+
+    else:
+        dname = os.path.abspath(dirname)
+        if os.path.exists(dname):
+            raise IOError("Already exists: {0}".format(dname))
+
+        else:
+            os.makedirs(dname)
+
+    try:
+        yield dname
+
+    finally:
+        # There has been at least one reported case when the rmtree fails
+        # because the directory is not empty. So it might make sense
+        # to catch any errors here, except that the belief is that the
+        # failure was because the .par file did not have write
+        # permission - due to a since-fixed error in new_pfiles_environment
+        # - so it is better to keep as is and inform us of any problems.
+        #
+        shutil.rmtree(dname)
+
+
+def _copy_par_file(parfile, dirname):
+    """Copy parfile to the directory dirname.
+
+    This also makes sure that the copied file has write
+    permission since it is intended to be used when paccess
+    (or whatever approach is currently in use) fails
+    and a manual copy is required.
+    """
+
+    # v5("Copying {} to {}".format(parfile, dirname))
+    shutil.copy2(parfile, dirname)
+    parname = os.path.basename(parfile)
+    nfile = os.path.join(dirname, parname)
+    st = os.stat(nfile)
+    nmode = st.st_mode | stat.S_IWUSR
+    # v5(" .. and changing mode from {} to {}".format(st.st_mode, nmode))
+    os.chmod(nfile, nmode)
+
+
+@contextmanager
+def new_pfiles_environment(ardlib=True,
+                           copyuser=True,
+                           dirname=None,
+                           tmpdir=None):
+    """A context manager which creates a new parameter directory,
+    copies over the existing ardlib parameter file to it (if ardlib is
+    True), and then sets the PFILES env. var to use this directory
+    (for the user path). The block of code is executed and then the
+    temporary parameter directory is removed and the preceeding PFILES
+    setting is restored.
+
+    The options are, along with their default values:
+
+        ardlib   = True
+        copyuser = True
+        dirname  = None
+        tmpdir   = None
+
+    This is particularly useful if you are going to run multiple
+    copies of the same tool, whether with Python's multiprocessing
+    module or by running several copies of your code at the same
+    time. If you do not use this routine, or a similar technique, then
+    you run the risk of an inconsistent or invalid parameter file, and
+    hence invalid results, because the file has been changed by
+    different processes.  The example below shows how you can use this
+    context manager to avoid this problem.
+
+    If the copyuser argument is True then, prior to executing the
+    block of code, the user parameter directory (or directories) are
+    scanned for any parameter files that are not available in the
+    system path and these .par files are copied over. This is to
+    support those users who use the user path to set up custom tools
+    and scripts (these really should be added to the system part of
+    the path, but it's sometimes easier just to add to the user part
+    of the path). There is the potential for a race condition here (in
+    that if an external process is editing a parameter file whilst it
+    is being copied the result may be an invalid parameter file).
+
+    See the new_tmpdir context manager for details of how the
+    temporary directory is created (the dirname and tmpdir arguments
+    are passed through for this).
+
+    An example of use:
+
+      # The asphist/mkinstmap/mkexpmap call below will use their own
+      # PFILES directory and so will not collide with other runs of
+      # these tools (or changes to the default ardlib parameter file
+      # since this has been copied over to the new directory)
+      #
+      def getemap(ccd, gridstr):
+          with new_pfiles_environment(ardlib=True):
+              afile = "asphist{0}.fits".format(ccd)
+              ah = make_tool("asphist")
+              ah(infile="asol1.fits", outfile=afile,
+                 evtfile="evt2.fits[ccd_id={0}]".format(ccd),
+                 clobber=True)
+
+              ifile = "imap{0}.fits".format(ccd)
+              mki = make_tool("mkinstmap")
+              mki(outfile=ifile, monoenergy=1.7, pixelgrid="1:1024:1,1:1024:1",
+                  obsfile=afile+"[asphist]", detsubsys="ACIS-{0}".format(ccd),
+                  maskfile="msk1.fits", clobber=True)
+
+              efile = "emap{0}.fits".format(ccd)
+              mke = make_tool("mkexpmap")
+              mke(asphistfile=afile, outfile=efile, instmapfile=ifile,
+                  xygrid=gridstr, clobber=True)
+
+
+    """
+
+    # I did think about just adding the new directory to the start of
+    # the user path, but then any existing parameter files in the
+    # pre-existing directories will be used, which is not what we
+    # want. So we seem to be stuck with this awkward set up for now.
+    #
+    # There is a possibility of file corruption here, since we could
+    # copy a parameter file as it is being edited by another process.
+    # For now keep as an acceptable risk since the user has this
+    # possibility at the shell prompt when run.
+    #
+    # A helpdesk user had problems using fluximage after starting
+    # LHEASOFT and CIAO, where resetting the original PFILES
+    # environment in the finally block causes a failure with an error
+    # message about being unable to find a directory which has been
+    # randomly generated. There have been problems in repeating the
+    # issue, so rather than resolve this, we manually store and restore
+    # the full PFILES environment variable rather than use set_pfiles,
+    # since we assume that if it was valid before hand then it should
+    # be valid afterward too.
+    #
+    ardlibpath = pio.paramgetpath('ardlib')
+    odirs = get_pfiles()
+    origpfiles = os.environ['PFILES']
+    v5("About to overide user PFILES setting: {0} from {1}".format(odirs, origpfiles))
+
+    with new_tmpdir(dirname=dirname, tmpdir=tmpdir) as dname:
+
+        v5("Setting up {0} as new user PFILES directory".format(dname))
+        set_pfiles(dname)
+
+        try:
+
+            if copyuser and odirs is not None:
+                v5("Checking parameter directories: {}".format(odirs))
+                null = open(os.devnull, 'wb')
+
+                # We scan through all the directories in reverse order
+                # (to try and mimic the priority of the parameter library)
+                # and copy over any interesting parameter files we find.
+                #
+                # As noted, there are issues with this, including
+                #  - how to actually find and copy .par values
+                #  - what happens if there are problems copying over .par
+                #    files (seen in a multi-threaded case which had
+                #    temporary .par files [from runtool] appearing within
+                #    the directory from which we are copying, so the code
+                #    tried to copy them over, but the file was deleted before
+                #    the copy, causing a crash)
+                #
+                # Note
+                #   if copyuser=True and ardlib=True then the ardlib file may
+                #   be copied twice, which seems wasteful.
+                #
+                for od in odirs[::-1]:
+                    v5("Checking in: {}".format(od))
+                    # we want to exclude the 'backup copies' that
+                    # get stored, so reject any name that
+                    # ends in "_YYYYMMDD.HH:MM:SS.par"
+                    #
+                    for pname in glob.glob("{0}/*.par".format(od)):
+                        bname = os.path.basename(pname)
+                        if dtime.search(bname) is not None:
+                            continue
+
+                        v5("Checking file: {}".format(bname))
+                        bname = bname[:-4]
+                        try:
+                            # Used to use pio.paramgetpath since this
+                            # just finds the parameter file;
+                            # pio.pacccess will also copy it, which we
+                            # don't want here. However, paramgetpath
+                            # will error out if the parameter file is
+                            # invalid, as some FTOOLS parameter files
+                            # are. So, we have moved to using the
+                            # following approach, using an
+                            # un-advertised feature of the parameter
+                            # library (attempt 2). This also fails, so
+                            # left with the following, which is not
+                            # ideal and makes me think that we should
+                            # either just copy everything or drop the
+                            # approach completely.
+                            #
+                            # Attempt 1:
+                            #  pio.paramgetpath(bname)
+                            #   - catch Exception
+                            #
+                            # Attempt 2:
+                            #  phdl = pio.paramopen(bname, "r>") # restrict search to system path
+                            #  pio.paramclose(phdl)
+                            #  - catch IOError
+                            #
+                            subprocess.check_call(['paccess', bname],
+                                                  stdout=null, stderr=null)
+
+                        except subprocess.CalledProcessError:
+                            v5("Copying over {0} as not in system path (or paccess failed)".format(pname))
+                            try:
+                                _copy_par_file(pname, dname)
+                            except IOError as ioe:
+                                v5("WARNING: skipping copy of {} because of: {}".format(pname, ioe))
+
+            if ardlib:
+                # Question: why not try the paccess route here first?
+                # If the user has asked for ardlib to be copied then
+                # error out if it can't be (unlike the generic file copy above)
+                #
+                v5("About to copy over ardlib parameter file: {0}".format(ardlibpath))
+                _copy_par_file(ardlibpath, dname)
+
+            yield dname
+
+        finally:
+            v5("About to restore PFILES setting to {0}".format(origpfiles))
+            os.environ['PFILES'] = origpfiles
+
+
+def add_comment_lines(infile, comments):
+    """Add the text in comments to infile as a COMMENT (adding to the
+    most-interesting block). comments can either be a string or
+    an array of strings.
+
+    infile is a string. If comments is the empty array then nothing
+    is done, but empty comments are added (so comments=[] does nothing
+    but comments=[""] will add a blank comment line)
+    """
+
+    if isinstance(comments, six.string_types):
+        cs = [comments]
+    else:
+        cs = comments
+
+    if cs == []:
+        return
+
+    v4("Adding comments to {}".format(infile))
+    bl = cxcdm.dmBlockOpen(infile, update=True)
+    try:
+        for comment in cs:
+            v4("COMMENT: {}".format(comment))
+            cxcdm.dmBlockWriteComment(bl, 'COMMENT', comment)
+
+    finally:
+        cxcdm.dmBlockClose(bl)
+
+
+def add_tool_history(infiles, toolname, params,
+                     toolversion=None, tmpdir=None):
+    """Add a CIAO history block to each of the files in infiles saying
+    that toolname was run with the given set of parameters (a
+    key/value dictionary). If infiles is a single string then it is
+    assumed to be the name of a single file.
+
+    A comment line is also added saying
+
+        <toolname> version <toolversion>
+
+    when toolversion is not None.
+
+    The process is done with a temporary PFILES environment (using the
+    new_pfiles_environment context manager, passing through the tmpdir
+    argument) to avoid problems with clobbering an existing parameter
+    file.
+    """
+
+    msg = "Adding HISTORY record for {} ".format(toolname)
+    if toolversion is not None:
+        msg += "({}) ".format(toolversion)
+
+    v2(msg)
+    v3("Params: {}".format(params))
+
+    # special case a single file
+    if isinstance(infiles, six.string_types):
+        infiles = [infiles]
+
+    with new_pfiles_environment(ardlib=False, copyuser=False, tmpdir=tmpdir):
+        # would like to just say
+        # pio.pset(toolname, params)
+        # but for now do it manually
+        #
+        pio.punlearn(toolname)
+        fp = pio.paramopen(toolname, "wL")
+        for (k, v) in six.iteritems(params):
+            v3("Checking parameter <{}> value <{}> type={}".format(k, v,
+                                                                   type(v)))
+            if isinstance(v, bool):
+                if v:
+                    val = "yes"
+                else:
+                    val = "no"
+            else:
+                val = str(v)
+
+            v3(" -> {}={}".format(k, v))
+            pio.pset(fp, k, val)
+
+        pio.paramclose(fp)
+
+        if toolversion is not None:
+            comments = ["{} version {}".format(toolname, toolversion)]
+        else:
+            comments = None
+
+        for infile in infiles:
+            v2("Adding history to " + infile)
+            if comments is not None:
+                add_comment_lines(infile, comments)
+
+            dmhistory(infile=infile, tool=toolname, action="put")
+
+
+parinfo = {}
+
+
+# We use list_tools rather than the more semantically-correct name
+# list_parameters as it is probably less confusing for the intended
+# audience, and to match make_tool
+#
+def list_tools(tools=True, params=True):
+    """Returns a list of parameter files used by this
+    module.
+
+    If tools is True then the list includes those parameter files
+    that have an associated exectuable (ie are a "tool").
+
+    If params is True then the list includes those parameter files
+    which do not have a tool (so just a parameter file).
+    """
+
+    allowed = []
+    if tools:
+        allowed.append(True)
+    if params:
+        allowed.append(False)
+
+    out = [pname for (pname, pi) in six.iteritems(parinfo)
+           if pi["istool"] in allowed]
+    out.sort()
+    return out
+
+
+# Those tools which can not be run using <toolname> @@foo.par.
+# As of CIAO 4.6 this is now a small list!
+_no_par_file = ["dmgti", "fullgarf"]
+
+
+def make_tool(toolname):
+    """Returns an object that can be used to call the
+    given toolname.
+    """
+
+    if toolname in parinfo:
+        pi = parinfo[toolname]
+        if pi["istool"]:
+            if toolname in _no_par_file:
+                cfunc = CIAOToolDirect
+            else:
+                cfunc = CIAOToolParFile
+        else:
+            cfunc = CIAOParameter
+
+        return cfunc(toolname, pi["req"], pi["opt"])
+
+    else:
+        raise ValueError("The tool '{0}' is not available.".format(toolname))
+
+# Auto-generated code follows
+#

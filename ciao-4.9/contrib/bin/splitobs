@@ -1,0 +1,438 @@
+#! /usr/bin/env python
+
+#
+# Copyright (C) 2013-2014,2016 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+from __future__ import print_function
+
+
+toolname = "splitobs"
+__revision__ = "13 Sep 2016"
+
+import os
+import sys
+
+import glob
+import shutil    
+
+
+
+import ciao_contrib.logger_wrapper as lw
+lw.initialize_logger(toolname)
+lgr = lw.get_logger(toolname)
+verb0 = lgr.verbose0
+verb1 = lgr.verbose1
+verb2 = lgr.verbose2
+verb3 = lgr.verbose3
+verb5 = lgr.verbose5
+
+
+from pycrates import read_file
+
+
+TODO = """
+
+Intentionally skipping 
+   primary/orbit* 
+   secondary/aspect/ 
+   secondary/ephem/
+   supporting/ 
+dirs.
+
+"""
+
+
+
+
+class ChandraObs( object ):
+    """
+    Base class with common methods
+    """
+
+    def relocate(self, outroot):
+        raise NotImplementedError("This method must be implemented in derived classes")
+
+    def __init__( self, indir, tabs, clobber ):
+        self.tabs = tabs
+        self.indir = indir
+        self.clobber = clobber
+
+    def make_dirs( self, outroot, suffix ):
+        """
+        Create the output directories
+        """
+
+        for dd in ["primary", "secondary"] :  # skip secondary/aspect and supporting
+            outdir = "{}_{}/{}".format( outroot, suffix, dd)
+            if not self.clobber and os.path.exists(outdir):
+                raise IOError("Directory {} exists and clobber is set to no".format(outdir))
+
+            try:
+                os.makedirs(outdir )
+            except OSError as e:
+                if e.args[0] == 17:  # File exists
+                    verb0("WARNING: Directory {} already exists, will use it".format(outdir))
+                else:
+                    raise e
+
+
+    def copy( self, inglob, outdir ):
+        """
+        Copy a glob of file names
+        """        
+
+        to_cp = list(glob.glob(inglob))
+
+        if to_cp is None or 0 == len(to_cp):
+            return
+        
+        for ff in to_cp:
+            bn = os.path.basename(ff)
+            outnm = outdir+"/"+bn
+            if os.path.exists( outnm ):
+                verb0("Overwriting file '{}'".format(outnm))
+            shutil.copy2( ff, outnm )
+    
+    @staticmethod
+    def get_exposure( outdir ):
+        """
+        Report the exposure time of evt1 file in output dir        
+        """
+        
+        evt1 = glob.glob(outdir+"/secondary/*evt1.fits*")
+        if 0 == len(evt1):
+            raise IOError("There should be one event file by now")
+        if len(evt1) > 1 :
+            raise IOError("There should only be one event file now")
+        
+        exposure = read_file( evt1[0] ).get_key_value("EXPOSURE")
+        
+        estr = "{:.1f} ks".format( float(exposure)/1000.0)
+        return estr
+        
+
+
+class InterleavedMode( ChandraObs ):
+    """
+    Interleaved mode obseravation.
+    
+    The files in interleaved are easier since they are never combined
+    in L2.  Everything _e1_ is e1, everything e2 is e2, and 
+    everthing that isn't either (eg pcad and level 0 files) are
+    common to both.
+    """
+
+    def __init__( self, indir, infiles, clobber ):
+        super( InterleavedMode, self).__init__(indir,infiles, clobber)
+
+    def relocate( self, outroot):
+        self.make_dirs( outroot, "e1")
+        self.make_dirs( outroot, "e2")
+        
+        for ee in ["e1", "e2"]:
+            # Copy primary and secondary products
+            self.copy( self.indir+"/primary/*_"+ee+"_*", outroot+"_"+ee+"/primary")
+            self.copy( self.indir+"/secondary/*_"+ee+"_*", outroot+"_"+ee+"/secondary")
+            # PCAD files are common between e1 and e2
+            self.copy( self.indir+"/primary/pcad*", outroot+"_"+ee+"/primary")
+            # So are L0 files
+            self.copy( self.indir+"/secondary/*0.fits*", outroot+"_"+ee+"/secondary")
+
+            exposure = self.get_exposure( "{}_{}".format( outroot, ee ))
+            verb1( "Created: {}_{}, exposure={}".format( outroot, ee, exposure))
+        
+
+    
+class MultiObi(ChandraObs):
+    """
+    Multi OBI observation
+    """
+
+    @staticmethod
+    def _get_biases( infiles ):
+        """
+        Bias file names are stored in BIASFILn keywords where n goes from 0
+        to 9.  This routine collects them into a single comma separated
+        list (akin to multi asol files)
+        """
+        retval = []
+        for tab in infiles:
+            bk = [x for x in tab.get_keynames() if x.startswith("BIASFIL") ] #  filter( lambda x: x.startswith("BIASFIL"), tab.get_keynames())
+            bv = [tab.get_key_value(x) for x in bk ] # map( lambda x: tab.get_key_value(x), bk )
+            retval.append( ",".join(bv))
+        return retval
+
+
+    def __init__( self, indir, infiles, clobber ):
+        """
+        Multi obi datasets are harder to deal with.  More info is needed
+        to ID which files go in which obi's subdir.
+        """
+
+        obis = [x.get_key_value("OBI_NUM") for x in infiles ] # map( lambda x: x.get_key_value("OBI_NUM"), infiles )
+        obidirs = [ "{:03d}".format(int(x)) for x in obis ]
+        self.obinum = dict(zip(obis, obidirs))
+
+        self.asols = dict(zip( obis, map( lambda x: x.get_key_value("ASOLFILE"), infiles )))
+        self.pbks = dict(zip(obis, map( lambda x: x.get_key_value("PBKFILE"), infiles )))
+        self.biases = dict(zip( obis, self._get_biases( infiles )))
+        self.gratings = dict(zip(obis, map( lambda x: x.get_key_value("GRATING"), infiles )))
+
+        super( MultiObi, self).__init__(indir,infiles, clobber)
+
+
+    def relocate( self, outroot ):
+        """
+        Copy the multi obi files to their output dirs
+        """
+
+        for k in self.obinum:
+            self.make_dirs( outroot, self.obinum[k])
+        
+        for oo in self.obinum:
+            for d in ["primary", "secondary"]:
+                # Multi-obi L1 file names have 5 digit obsid underscore 3 digit obinum
+                self.copy( "{}/{}/*f?????_{}N0*".format( self.indir, d, self.obinum[oo]), 
+                           "{}_{}/{}".format(outroot, self.obinum[oo], d ) )
+
+            # L2 files are common (albeit useless) between OBIs
+            self.copy("{}/primary/*2.fits*".format( self.indir),
+                      "{}_{}/primary".format(outroot, self.obinum[oo] ))
+
+            # Now the extra work to separate the ASOL, PBK, and BIAS files, 
+            # each of these is time based.  We use header info to locate
+            # files by name in their standard dirs.
+            
+            if self.asols[oo]:
+                for asol in self.asols[oo].split(","):
+                    self.copy("{}/primary/{}*".format( self.indir, asol),
+                              "{}_{}/primary".format(outroot, self.obinum[oo] ))
+            
+            if self.pbks[oo]:
+                self.copy("{}/secondary/{}*".format( self.indir, self.pbks[oo]),
+                          "{}_{}/secondary".format(outroot, self.obinum[oo] ))
+            
+            if self.biases[oo]:
+                for bias in self.biases[oo].split(","):
+                    self.copy("{}/secondary/{}*".format( self.indir, bias),
+                              "{}_{}/secondary".format(outroot, self.obinum[oo] ))
+            
+            if self.gratings[oo] in ['HETG', 'LETG']:
+                self.teardown_evt2(oo,outroot+"_{}".format(self.obinum[oo]))
+            
+
+            exposure = self.get_exposure( "{}_{}".format( outroot,self.obinum[oo]  ))
+            verb1( "Created: {}_{}, exposure={}".format( outroot,self.obinum[oo], exposure ))
+            
+    
+
+    def teardown_evt2( self, obi, outroot ):
+        """
+        So much code for only 4 obsids ...
+
+        The l2 event file has multiple REGION extensions that are 
+        appropriate for each individual obi.  To be useful we need
+        to extract the correct block, renamed to be simply REGION
+        and create an obi-level, level2 event file.
+        
+        """
+        from ciao_contrib.runtool import dmcopy
+        from ciao_contrib.runtool import dmappend
+        
+        evt2_in = glob.glob( outroot+"/primary/*evt2.fits*")[0]
+        evt2_out = outroot+"/primary/"+os.path.basename(evt2_in).strip(".gz").replace("N", "_{}N".format(self.obinum[obi]))
+
+        
+        dmcopy( evt2_in, evt2_out, clobber=True, option="")
+
+        # We know there are only at most 3 region blocks based on data
+        # in the archive.  Mostly only have 2, only obsid 433 has 3.
+
+        for rr in ["region", "region2", "region3"]:  
+            try:
+                tab = read_file( evt2_in+"[{}]".format(rr))
+            except:
+                continue
+            obinum = tab.get_key_value("OBI_NUM")
+            if int(obinum) == int(obi):
+                # Rename block to be 'region' to make uniform
+                dmappend( evt2_in+"[{}][REGION]".format(rr), evt2_out )
+                break
+        
+        os.unlink( evt2_in )
+
+
+
+def check_val( infiles, keywrd ):
+    """
+    Check the same keyword in list of files. All must be the same or
+    exception is thrown
+    """
+    tocheck = [x.get_key_value(keywrd) for x in infiles ] # map( lambda x: x.get_key_value(keywrd), infiles )
+    if len(set(tocheck)) != 1:
+        raise RuntimeError("Multiple ({0}) {1} values found".format(len(set(tocheck)),keywrd))
+
+
+#
+# The tuple of OBS_ID/OBI_NUM/CYCLE defines a unique Chandra Dataset.
+#
+#  Interleaved mode observations have the same OBS_ID and OBI_NUM, only
+#  value of CYCLE is different, and it must be 'P' or 'S', and only 1 of
+#  each.
+#
+#  Multi Obi observations have the same OBS_ID, but different OBI_NUMs.
+#  Technically there could have been mutli-obi, interleaved mode
+#  observations, but there are none and multi-obi observations have
+#  been discontinued -- so there never will be.  
+#
+#  We use these rules to determine which this observation is.
+#
+#
+
+
+def is_interleaved(infiles):
+    """
+    Is this a set of interleaved mode evt1 files?
+    """
+
+    # interleaved are always 2 evt1 files
+    if len(infiles) != 2:
+        return False
+
+    
+
+    try:
+        check_val(infiles, "OBS_ID")
+        check_val(infiles, "OBI_NUM")
+    except Exception as ee:
+        return False
+
+    tocheck = [ x.get_key_value("CYCLE") for x in  infiles ]
+
+    # One should be 'P' and the other should be 'S'
+    if tocheck[0] == 'P' and tocheck[1] == 'S':
+        return True
+    elif tocheck[0] == 'S' and tocheck[1] == 'P':
+        return True
+    else:
+        if tocheck[0] == tocheck[1]:
+            raise RuntimeError("CYCLE keyword values are the same.  One should be 'P' and the other 'S'")
+        
+        raise RuntimeError("Unknown set of CYCLE keywords: {}".format(tocheck))
+
+
+def is_multiobi(infiles):
+    """
+    Is this a multi-obi obsid?
+    """
+    try:
+        check_val(infiles, "OBS_ID")
+        check_val(infiles, "CYCLE")  # They should all be 'P'
+    except:
+        return False
+
+    tocheck = [x.get_key_value("OBI_NUM") for x in infiles ]
+    
+    if len(tocheck) != len(set(tocheck)):
+        raise RuntimeError("OBI_NUM values in the evt1 files are not unique, they should be.")
+    
+    return True
+    
+
+
+def split_tg_regions():
+    """
+    multi obi evt2 files for tg observations have multi region blocks
+    that should be split for each obi
+    """
+    pass
+
+
+def check_indir( indir, clobber ):
+    """
+    
+    """
+    
+    if not os.path.exists(indir+"/secondary"):
+        raise IOError("ERROR: The input directory does not contain the secondary subdirectory")
+    
+    if not os.path.exists(indir+"/primary"):
+        raise IOErrror("ERROR: The input directory does not contain the primary subdirectory")
+    
+    evt1 = locate_evt1_files( indir+"/secondary")
+
+
+    tabs = [read_file(x) for x in evt1]   # Open files only once 
+
+    interleaved = is_interleaved( tabs )
+    multiobi = is_multiobi( tabs )
+
+    
+    if interleaved and multiobi:
+        raise RuntimeError("No observation is both interleaved and multi-obi.  Make sure directories are uncluttered.")
+    elif interleaved:
+        return InterleavedMode( indir, tabs, clobber )
+    elif multiobi:
+        return MultiObi(indir, tabs, clobber)
+    else:
+        # Hopefully we don't get here, excpetions should be thrown earlier
+        raise RuntimeError("Observation is neither interleaved nor multiobi.  Make sure directories are uncluttered.")
+
+
+def locate_evt1_files( indir ):
+    """
+    
+    """
+    retval = glob.glob( indir+"/*evt1.fits*")
+    if retval is None or 0 == len(retval):
+        raise IOError("Cannot locate level1 event files in directory '{}'".format(indir))
+    
+    if 1 == len(retval):
+        raise RuntimeError("Only one level 1 event file found; no need to run this script")
+    
+    return(retval)
+    
+
+
+#
+# Main Routine
+#
+@lw.handle_ciao_errors( toolname, __revision__)
+def main():
+    # get parameters
+    from ciao_contrib.param_soaker import get_params
+
+    # Load parameters
+    pars = get_params(toolname, "rw", sys.argv, 
+                verbose={"set":lw.set_verbosity, "cmd":verb1} )
+    
+    obs = check_indir(pars["indir"], (pars["clobber"]=="yes") )
+    obs.relocate(pars["outroot"])
+
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as E:
+        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+  
+
+

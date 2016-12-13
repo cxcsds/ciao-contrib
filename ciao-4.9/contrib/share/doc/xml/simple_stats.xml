@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="simple_stats" context="contrib"
+         refkeywords="stats stat statistic statistics min max mean median stddev stdev sigma array simple"
+         seealsogroups="analysis">
+
+    <SYNOPSIS>
+      Calculate several basic statistic values for a data array
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>simple_stats(array)</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The simple_stats() routine calculates several simple statistics for 
+	the input data (the array argument), such as the mean, median, and
+	standard deviation.
+	For more control over the calculation use the
+	routines in the numpy module.
+      </PARA>
+
+      <PARA title="Loading the routine">
+	The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from ciao_contrib.utils import *
+</VERBATIM>
+
+      <TABLE>
+	<CAPTION>Arguments</CAPTION>
+	<ROW>
+	  <DATA>Name</DATA><DATA>Default value</DATA><DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>array</DATA><DATA/>
+	  <DATA>The array of data used to calculate the statistic values.</DATA>
+	</ROW>
+      </TABLE>
+      
+      <PARA title="The return value">
+	The return value is an object with the following fields:
+      </PARA>
+      
+      <TABLE>
+        <ROW>
+          <DATA>Field</DATA><DATA>Value</DATA>
+        </ROW>
+        <ROW>
+          <DATA>npts</DATA><DATA>The number of elements in the array.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>min</DATA><DATA>The minimum value in the array.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>max</DATA><DATA>The maximum value in the array.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>total</DATA><DATA>The sum of all the array elements.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>mean</DATA><DATA>The mean value of the array.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>median</DATA><DATA>The median value of the array.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>stddev</DATA><DATA>The standard deviation of the array, calculated using the biased estimator
+	(so the mean level is calculated using the number of elements and not "number of elements - 1").</DATA>
+        </ROW>
+      </TABLE>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; x = [0, 1, 2, 3, 2, 3, 4, 2, 1, 5]</LINE>
+	  <LINE>&pr; s = simple_stats(x)</LINE>
+        </SYNTAX>
+        <DESC>
+
+          <PARA>
+	    The return value of s is an object which contains the calculated statistics
+	    of the array:
+          </PARA>
+
+<VERBATIM>
+&pr; print (s)
+npts   = 10
+min    = 0
+max    = 5
+total  = 23
+mean   = 2.3
+median = 2.0
+stddev = 1.41774468788
+&pr; print ("The mean is {0} +- {1}".format(s.mean, s.stddev))
+The mean is 2.3 +- 1.41774
+</VERBATIM>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; img = read_image("emap.fits")</LINE>
+	  <LINE>&pr; ivals = get_imagevals(img)</LINE>
+	  <LINE>&pr; ix = numpy.isfinite(ivals)</LINE>
+	  <LINE>&pr; simg = simple_stats(ivals[ix])</LINE>
+        </SYNTAX>
+        <DESC>
+	  <PARA>
+	    Here we use the Crates read_image() and get_imagevals() to read in the
+	    contents of the image "emap.fits". Since it may contain "invalid" numbers,
+	    such as NaN and Infinity, we filter out these values before calculating
+	    the statistics (simg).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <LASTMODIFIED>June 2010</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

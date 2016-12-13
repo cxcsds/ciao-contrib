@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr "unix&#37;">
+]>
+<cxchelptopics>
+  <ENTRY key="splitroi"
+	 context="tools" 
+	 refkeywords="split convert roi roisplit region regions reg combine dmfilth format ascii "
+	 seealsogroups="detecttools regiontools">
+
+    <SYNOPSIS>Convert the output of roi into a format usable by dmfilth</SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>splitroi infiles outhead</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	This script takes the output of the roi tool - a set of
+	FITS files, one per source, each with a SRCREG and BKGREG block - 
+	and converts them into ASCII region files that can be used
+	by dmfilth.
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/threads/diffuse_emission/">An Image
+	of Diffuse Emission</HREF>
+	thread for more information.
+      </PARA>
+
+      <PARA>
+	Unlike most CIAO scripts and tools, this script does not
+	have a parameter file. It will also over-write any existing
+	file; those called outhead + ".src.reg" and outhead + ".bg.reg".
+      </PARA>
+
+      <PARA title="Viewing the output in ds9">
+	The script creates two ASCII region files: outhead.src.reg and
+	outhead.bg.reg. In all but the most-simple cases these files
+	can not be directly viewed by ds9. The dmmakereg tool can be
+	used to convert to a FITS region file, and that can then be
+	read by ds9. For example, assuming that splitroi has been
+	run with the outhead argument set to sources, then
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; punlearn dmmakereg</LINE>
+	  <LINE>&pr; dmmakereg "region(sources.bg.reg)" sources.bg.fits</LINE>
+	  <LINE>&pr; ds9 img.fits -region sources.bg.fits</LINE>
+	</SYNTAX>
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; roi ... outsrcfile=src%d.fits ...</LINE>
+	  <LINE>&pr; splitroi src\*fits sources</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we convert the src*fits files created by roi into
+	    two ASCII region files - sources.src.reg and sources.bg.reg
+	    - which can then be used as the values of the
+	    srclist and bkglist parameters of dmfilth. For example:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; pset dmfilth srclist=@sources.src.reg</LINE>
+	      <LINE>&pr; pset dmfilth bkglist=@sources.bg.reg</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    The \ in src\*fits is needed to ensure that the script, rather than
+	    the shell, does the file search. The following example shows other
+	    ways that multiple files can be passed through to the script.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; splitroi src1.fits,src2.fits,src3.fits sources</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The first argument supports the CIAO
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/stack.html">stack 
+	    syntax</HREF>,
+	    so here we use a comma-separated list of files. An alternative
+	    is to use the "@" syntax to read in the names from a file, e.g.
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; ls -1 sources/src*fits > srcs.dat</LINE>
+	      <LINE>&pr; splitroi @srcs.dat sources</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <ADESC title="Changes in the December 2012 Release">
+      <PARA>
+	The script has been updated to work in CIAO 4.5.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <!--
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/acis_clear_status_bits.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+	listing of known bugs.
+      </PARA>
+    </BUGS>
+    -->
+
+    <LASTMODIFIED>November 2012</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

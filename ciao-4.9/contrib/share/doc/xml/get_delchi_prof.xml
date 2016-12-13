@@ -1,0 +1,133 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="get_delchi_prof" context="contrib" pkg="sherpa"
+	 refkeywords="profile circular elliptical radial ellipse plot plotting data resid residual residuals delchi sigma"
+	 seealsogroups="sh.plot sh.profile">
+
+    <SYNOPSIS>
+      Return the data used to create the radial or elliptical profile of
+      the residuals (data - model)/error to imaging data.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>get_delchi_prof( [id], [model=None,
+      rstep=None, rmin=None, rmax=None, rlo=None, rhi=None,
+      xpos=None, ypos=None, ellip=None, theta=None,
+      group_counts=None, group_snr=None,
+      recalc=True] )</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The get_delchi_prof() command calculates the radial - or elliptical - profile of 
+	the residuals to imaging data and returns an object containing the values.
+	The profile is defined by the existing model
+	compenents, although it is possible to over-ride these values.
+      </PARA>
+
+      <PARA>
+        The residual values are calculated as 
+        <EQUATION>(data - model) / error</EQUATION>
+        The get_resid_prof() command can be used if you want to use
+        <EQUATION>data - model</EQUATION>
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.profiles import *
+</VERBATIM>
+
+      <PARA title="Argument options">
+        The argument options are the same as for the prof_delchi() command -
+	except that the label and overplot arguments are not supported - 
+        and are described in its ahelp page. 
+      </PARA>
+
+      <PARA title="Fields returned by get_delchi_prof">
+	The following table lists the fields in the object returned by
+	the get_delchi_prof() command. These values can also be seen by
+	using the print command on the object:
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; d = get_delchi_prof(rstep=10)</LINE>
+	  <LINE>&pr; print (d)</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <TABLE>
+	<ROW><DATA>Field name</DATA><DATA>Description</DATA></ROW>
+	<ROW><DATA>xlo</DATA><DATA>The lower-limits of the radial bins</DATA></ROW>
+	<ROW><DATA>xhi</DATA><DATA>The upper-limits of the radial bins</DATA></ROW>
+	<ROW><DATA>y</DATA><DATA>The calculated profile value; sum of (data - model) / area</DATA></ROW>
+	<ROW><DATA>yerr</DATA><DATA>The error on y</DATA></ROW>
+	<ROW><DATA>xlabel</DATA><DATA>The label for the X axis</DATA></ROW>
+	<ROW><DATA>ylabel</DATA><DATA>The label for the Y axis</DATA></ROW>
+	<ROW><DATA>labels</DATA><DATA>The labels giving the profile parameters</DATA></ROW>
+	<ROW><DATA>title</DATA><DATA>The plot title</DATA></ROW>
+	<ROW><DATA>histo_prefs</DATA><DATA>The preferences for the plot</DATA></ROW>
+      </TABLE>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; d10 = get_delchi_prof(group_snr=10)</LINE>
+          <LINE>&pr; d20 = get_delchi_prof(group_snr=20)</LINE>
+          <LINE>&pr; erase()</LINE>
+          <LINE>&pr; add_histogram(d10.xlo, d10.xhi, d10.y, d10.yerr)</LINE>
+          <LINE>&pr; add_histogram(d20.xlo, d20.xhi, d20.y, d20.yerr, ["line.color", "red"])</LINE>
+          <LINE>&pr; set_plot_xlabel(d10.xlabel)</LINE>
+          <LINE>&pr; set_plot_ylabel(d10.ylabel)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Two profiles of the same dataset are calculated; d10 uses a signal-to-noise
+	    ratio of 10 and d20 a value of 20. The return values are then used to plot
+	    up the profiles using ChIPS commands to compare the plots (the d20 results
+	    are shown in green).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+	   
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_delchi("src1", group_counts=100)</LINE>
+	  <LINE>&pr; da = get_delchi_prof(recalc=False)</LINE>
+	  <LINE>&pr; prof_delchi("src2", rlo=da.xlo, rhi=da.xhi, overplot=True)</LINE>
+          <LINE>&pr; set_histogram(["symbol.color", "orange"])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    A profile is calculated and displayed for the dataset "src1". The bin
+	    edges from this are then used to create a profile for the dataset "src2",
+	    which is overlain on the first plot using orange symbols.
+	    Note that recalc is set to False
+	    in the call to get_delchi_prof() to avoid unnescessary re-calculations.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>December 2009</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

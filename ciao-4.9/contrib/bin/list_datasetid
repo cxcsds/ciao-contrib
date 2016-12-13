@@ -1,0 +1,324 @@
+#! /usr/bin/env python
+
+# 
+# Copyright (C) 2013, 2016  Smithsonian Astrophysical Observatory
+# 
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+
+import sys
+import os
+import stk
+from cxcdm import *
+
+import ciao_contrib.logger_wrapper as lw
+
+toolname = "list_datasetid"
+version = "13 Sep 2016"
+
+lw.initialize_logger(toolname, verbose=1)
+v1 = lw.make_verbose_level(toolname, 1)
+v2 = lw.make_verbose_level(toolname, 2)
+
+
+def get_keyword_if_exists( block, keylist, key ):
+    """
+    Get keyword value if it exists, returns None if not found.
+    """
+    if key not in keylist:
+        return None
+    d,_v = dmKeyRead( block, key )
+    try:
+        v = _v.decode("ascii")
+    except:
+        v = _v
+    return v
+
+
+def add_value_if_not_none( key, keyvals, slash="/" ):
+    if key in keyvals and keyvals[key] is not None:
+        return(slash+str( keyvals[key] ))
+    else:
+        return ""
+
+
+def summarize_config_lvl1( keyvals ):
+    
+    """
+      Chandra/ACIS/None observation Obsid/Obi/Cycle of Object taken in TIMED/FAINT/Full Frame mode on Date for Time ks by Observer"
+    
+    """
+    
+    retstr = "ObsId "+add_value_if_not_none( "obs_id", keyvals, slash="")
+    return retstr
+    
+
+def summarize_config_lvl2( keyvals ):
+    retstr  = add_value_if_not_none("telescop", keyvals, slash="")
+    retstr += " "
+    retstr += add_value_if_not_none("detnam", keyvals, slash="")
+    if keyvals["grating"] not in [None, "NONE"]:
+        retstr += add_value_if_not_none("grating", keyvals)
+    retstr += " ObsId "
+    retstr += add_value_if_not_none( "obs_id", keyvals, slash="")
+    
+    return retstr
+
+
+def summarize_config_lvl3( keyvals ):
+    
+    """
+      Chandra/ACIS/None observation Obsid/Obi/Cycle of Object taken in TIMED/FAINT/Full Frame mode on Date for Time ks by Observer"
+    
+    """
+    ## TODO: Add versions: ascdsver, caldbver, revision
+    
+    retstr  = add_value_if_not_none("telescop", keyvals, slash="")
+    retstr += " "
+    retstr += add_value_if_not_none("detnam", keyvals, slash="")
+    if keyvals["grating"] not in [None, "NONE"]:
+        retstr += add_value_if_not_none("grating", keyvals)
+    retstr += " observation number "
+    retstr += add_value_if_not_none( "obs_id", keyvals, slash="")
+    retstr += " of "
+    retstr += add_value_if_not_none( "object", keyvals, slash="")
+    retstr += " taken in "
+    retstr += add_value_if_not_none( "datamode", keyvals, slash="")
+    retstr += add_value_if_not_none( "readmode", keyvals)
+    retstr += add_value_if_not_none( "nrows", keyvals )
+    retstr += " mode on "    
+    retstr += add_value_if_not_none( "date-obs", keyvals, slash="")
+    retstr += " for "
+    retstr += add_value_if_not_none( "livetime", keyvals, slash="")
+    retstr += " ksec by PI "
+    retstr += add_value_if_not_none( "observer", keyvals, slash="" )
+    
+    return retstr
+
+
+
+def get_chandra_config( block, keylist, info_level ):
+    
+    """
+    telescop, detnam, 
+    """
+
+    getlist = [ "telescop", "detnam", "date-obs", "livetime", "grating", "datamode", "readmode", "object", "observer", "obs_id", "obi_num", "cycle", "nrows" , "sim_z" ]
+    getvals = [ get_keyword_if_exists( block, keylist, k) for k in getlist ]
+    
+    retvals = dict(zip(getlist, getvals ))
+
+    if retvals["telescop"] == "CHANDRA":
+        retvals["telescop"] = "Chandra"
+    
+    if retvals["detnam"] and retvals["detnam"].startswith("ACIS"):
+        retvals["detnam"] = retvals["detnam"].split("-")[0]
+    
+    if retvals["livetime"]:
+        rlt = float( retvals["livetime"] ) /1000.0 # ksec
+        rlt = int( (rlt+0.5)*10) / 10.0 # round to 1 decimal place
+        retvals["livetime"] = rlt
+    
+    if retvals["nrows"]:
+        if int(retvals["nrows"]) < 1022:
+            retvals["nrows"] = "SUBARRAY"
+        else:
+            retvals["nrows"] = "FULLFRAME"
+
+    # split off time
+    if retvals["date-obs"]:
+        retvals["date-obs"] = retvals["date-obs"].split("T")[0]
+
+    # make capitalization consistnet
+    if retvals["observer"]:
+        retvals["observer"] = " ".join([x.capitalize() for x in retvals["observer"].split()])
+
+    if retvals["cycle"]:
+        if retvals["cycle"] == 'P':
+            retvals["cycle"] = "PRIMARY"
+        elif retvals["cycle"] == 'S':
+            retvals["cycle"] = "SECONDARY"
+        elif retvals["cycle"] == 'B':
+            retvals["cycle"] = "BOTH"  # L0 files
+        else:
+            #Unknown, pass same value along
+            pass
+
+    # sim_z positive is HRC aimpoints
+    # sim_z < -205 is ACIS-I aimpoint
+    # sim_z > -205 is ACIS-S aimpoint
+            
+    if 3 == info_level:
+        return retvals,summarize_config_lvl3(retvals)
+    elif 2 == info_level:
+        return retvals,summarize_config_lvl2(retvals)
+    elif 1 == info_level:
+        return retvals,summarize_config_lvl1(retvals)
+    else:
+        return retvals, None
+        
+
+    
+    
+
+def find_or_construct_dsident( block, ds_idents, info_level ):
+    """
+    Get DS_IDENT value or DS_IDxxx value from header if it exists.
+    Otherwise, look at the OBS_ID keyword for Chandra files and 
+    use that.
+    """    
+    keylist = [dmGetName(x).lower() for x in dmBlockGetKeyList( block ) ]
+
+    keyvals,obsinfo = get_chandra_config( block, keylist, info_level )
+
+    def add_if_more_info( v ):
+        if v not in ds_idents:
+            ds_idents[v] = obsinfo
+        else:
+            if obsinfo and len(obsinfo) > len(ds_idents[v]):
+                ds_idents[v] = obsinfo
+
+    # Look for DS_IDxxx keywords that have values that start with 'ADS'
+    ds_idvals = [x for x in keylist if x.startswith("ds_id") ] # filter( lambda x: x.startswith("ds_id"), keylist )
+    for ds_id in ds_idvals:
+        d,v = dmKeyRead( block, ds_id )
+        v = v.decode("ascii")
+        # chandra asol files have a bogus value, skip them
+        if 'ADS/Sa.CXO#obs/00000' == v:
+            continue
+
+        if v and v.startswith("ADS"):
+            add_if_more_info( v )
+
+    if 'obs_id' in keylist:
+        # otherwise, look for Chandra OBS_ID values
+        if keyvals["telescop"].lower() != "chandra":
+            return
+
+        v = keyvals["obs_id"]
+        # if string value (should be) then strip off spaces
+        if hasattr( v, 'strip' ):
+            v=v.strip()
+
+        try:
+            iv = int(v)
+            if iv < 1:
+                raise ValueError("Bad OBS_ID value")
+            ds_ident = "ADS/Sa.CXO#obs/{:05d}".format(iv)                
+            add_if_more_info( ds_ident )
+        except:
+            v2( "Unknown obsid value = '{}'".format(v))
+
+
+def parse_cl_args( ):
+    """
+    Parse command line args to extract list of files to check.
+    """
+    from optparse import OptionParser
+    pp = OptionParser()
+    pp.add_option("-d", "--detail", dest="level", default="2", type="int", 
+        help="amount of info to be included in LaTeX macro.\n0:none to 3:maximum" )
+    
+    (ops,args) = pp.parse_args()
+
+    if ops.level not in range(4):
+        raise ValueError("Detail level must be between 0 and 3")
+    info_level = ops.level
+    
+    withwarn = True
+    if 0 == len(args):
+        args.append("*.fits,*.fits.gz")
+        withwarn = False
+    
+    # Check list to only pick up files (not directories)
+    files_to_check = []
+    for ff in args: # sys.argv[1:]:
+        for s in stk.build(ff):
+            if not os.path.exists( s ):
+                if withwarn: v1( "{} does not exist. Skipping it.".format(s))
+                continue
+            if not os.path.isfile(s) :
+                v1( "{} is not a file.  Skipping it.".format(s))
+                continue            
+            files_to_check.append( s )    
+
+    if len( files_to_check ) == 0:
+        raise ValueError("No usable files specified")
+
+    return info_level,files_to_check
+    
+
+def print_results(ds_idents):
+    """
+    Report results.
+    
+    There are two formats
+    
+    \dataset [ADS/...]{Some text} and
+    \dataset {ADS/...}
+
+    since we don't know what the {Some text} might be we use the 2nd flavor.
+    """
+
+    if len(ds_idents) == 0:
+        v1("\nNo dataset identifiers were found.\n")
+    else:
+        v1( "\nThe following dataset identifiers were found:")
+        med = list(ds_idents.keys())
+        med.sort()
+        for dd in med:
+            if ds_idents[dd]:
+                v1( r"  \dataset[{}]{{{}}}".format( dd, ds_idents[dd] ))
+            else:
+                v1( r"  \dataset{{{}}}".format( dd.replace("#", r"\#")))
+            
+
+@lw.handle_ciao_errors(toolname, version)
+def list_datasetid():
+    """
+    Main routine to look through all blocks of all files
+    """
+    #    if len( sys.argv ) < 2:
+    #        #raise ValueError( "Usage: {} filenames".format(sys.argv[0] ))
+    #        #sys.exit(1)
+    #        sys.argv.append("*.fits,*.fits.gz")
+    #        #sys.argv.append("*.fits.gz")
+        
+
+    info_level,files_to_check = parse_cl_args()
+    
+    ds_idents = {}
+    for ff in files_to_check:
+        try:
+            tt = dmDatasetOpen( ff )
+        except Exception as E:
+            v1(str(E)+".  Skipping it.")
+            continue
+
+        for bb in range( dmDatasetGetNoBlocks(tt)  ):
+            block = dmDatasetMoveToBlock( tt, bb+1 )
+            find_or_construct_dsident( block, ds_idents, info_level )
+
+        dmDatasetClose(tt)
+    
+    print_results( ds_idents)
+
+
+if __name__ == "__main__":
+    list_datasetid()
+    sys.exit(0)
+
+

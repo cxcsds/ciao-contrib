@@ -1,0 +1,182 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="make_image_crate" context="contrib"
+         refkeywords="make create image crate metadata pix pixel pixels array arrays
+		      imagecrate"
+         seealsogroups="cr.io">
+
+    <SYNOPSIS>
+      Create an IMAGECrate from an array.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>make_image_crate(pixvals)</LINE>
+      <LINE/>
+      <LINE>The return value is an IMAGECrate.</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	This routine provides a quick means of creating an IMAGE Crate from
+	an array of values.
+      </PARA>
+      <PARA title="Loading the routine">
+	The routine can be loaded into a ChIPS or Sherpa session by saying:
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>from crates_contrib.utils import *</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA title="Writing the data out to file">
+	The write_file() command can be used to write the data out
+	to file in FITS binary or ASCII formats.
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; cr = make_image_crate([1, 2, 3, 4, 5])</LINE>
+	  <LINE>&pr; write_file(cr, "img.fits")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The one-dimensional array of integers 1 to 5 is written out to 
+	    the file img.fits:
+	  </PARA>
+<VERBATIM>
+&pr; !dmlist img.fits blocks
+ 
+--------------------------------------------------------------------------------
+Dataset: img.fits
+--------------------------------------------------------------------------------
+ 
+     Block Name                          Type         Dimensions
+--------------------------------------------------------------------------------
+Block    1: IMAGE                          Image      Int4(5)
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; (y, x) = np.mgrid[1:251, 1:201]</LINE>
+ 	  <LINE>&pr; dx = x - 100</LINE>
+ 	  <LINE>&pr; dy = y - 120</LINE>
+	  <LINE>&pr; a = np.pi * 3 / 4</LINE>
+	  <LINE>&pr; xn = dx * np.cos(a) + dy * np.sin(a)</LINE>
+	  <LINE>&pr; yn = dy * np.cos(a) - dx * np.sin(a)</LINE>
+	  <LINE>&pr; r2 = (xn**2 * 0.8**2 + yn**2)  / 0.8**2</LINE>
+	  <LINE>&pr; z = np.exp(-r2 / (20*20))</LINE>
+	  <LINE>&pr; cr = make_image_crate(z)</LINE>
+	  <LINE>&pr; cr.name = 'ELGAUSS'</LINE>
+	  <LINE>&pr; write_file(cr, 'z.img')</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we create a 2D elliptical gaussian, centered at
+	    (100,120) with an ellipticity of 0.2 and rotated by
+	    135 degrees,
+	    within an array of size (200,250).
+	    The 
+	    <HREF link="http://docs.scipy.org/doc/numpy-1.7.0/reference/generated/numpy.mgrid.html">mgrid</HREF>
+	    call creates two 2-D arrays set to the x and y coordinates
+	    of the array; we start at 1
+	    rather than 0 since the FITS coordinate system
+	    has 1,1 as the center of the lower-left pixel. 
+	    The formula for the gaussian is taken from 
+	    "ahelp gauss2d".
+	  </PARA>
+<VERBATIM>
+&pr; !dmstat z.img 
+ELGAUSS(X, Y)
+    min:	4.3649283641e-46 	      @:	( 200 250 )
+    max:	1 	      @:	( 100 120 )
+cntrd[log] :	( 100 120 )
+cntrd[phys]:	( 100 120 )
+sigma_cntrd:	( 14.292603045 17.109341909 )
+   good:	50000 
+   null:	0 
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; ds = CrateDataset()</LINE>
+	  <LINE>&pr; ivals = np.arange(12).reshape(3,4)</LINE>
+	  <LINE>&pr; col1 = np.arange(1, 5)</LINE>
+	  <LINE>&pr; col2 = np.random.randint(10, 20, size=col1.size)</LINE>
+	  <LINE>&pr; cr1 = make_image_crate(ivals)</LINE>
+	  <LINE>&pr; cr2 = make_table_crate(col1, col2, colnames=['INDEX', 'RANDVAL'])</LINE>
+	  <LINE>&pr; add_crate(ds, cr1)</LINE>
+	  <LINE>&pr; add_crate(ds, cr2)</LINE>
+	  <LINE>&pr; write_file(ds, 'blocks.fits')</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we use 
+	    <HREF link="http://cxc.harvard.edu/ahelp/cratedataset.html">a CrateDataset object</HREF>
+	    to store two blocks - an image and then a table - which is written out to blocks.fits:
+	  </PARA>
+<VERBATIM>
+&pr; !dmlist blocks.fits blocks
+ 
+--------------------------------------------------------------------------------
+Dataset: blocks.fits
+--------------------------------------------------------------------------------
+ 
+     Block Name                          Type         Dimensions
+--------------------------------------------------------------------------------
+Block    1: IMAGE                          Image      Int4(4x3)
+Block    2: TABLE                          Table         2 cols x 4        rows
+</VERBATIM>
+	  <PARA>
+	    The
+	    <HREF link="http://docs.scipy.org/doc/numpy-1.7.0/reference/generated/numpy.random.randint.html">NumPy randint routine</HREF>
+	    is used to create random integers betwen 10 and 19 (inclusive).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Adding or changing metadata">
+      <PARA>
+	The crate has a name of 'IMAGE' and contains two keywords, CREATOR and DATE.
+	These can be changed, or other values added, using Crates routines.
+      </PARA>
+      <PARA title="The block name">
+	<SYNTAX>
+	  <LINE>&pr; cr.name = 'HISTVALS'</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	will change the block name.
+      </PARA>
+      <PARA title="Keywords">
+	The set_key() routine is an easy way to add or edit a keyword,
+	while get_key() and add_key() provide a more powerful
+	way of handling keywords. The delete_key() routine removes
+	keywords.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+ 
+    <LASTMODIFIED>December 2013</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

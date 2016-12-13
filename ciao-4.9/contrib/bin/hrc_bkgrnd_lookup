@@ -1,0 +1,210 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2010, 2011, 2013, 2015
+#           Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Usage
+=====
+
+hrc_bkgrnd_lookup infile {event | spectrum}
+
+Aim
+===
+
+Find the HRC blank-sky datasets for a given observation (either
+the event files or PI spectra).
+
+The input event file is used to find the observation information.
+
+The script prints the matching background file to the screen.
+"""
+
+# Note: I have copied the behavior of acis_bkgrnd_lookup for what
+# gets displayed at verbose=0, even if it doesn't quite match
+# the script guidelines.
+#
+
+toolname = "hrc_bkgrnd_lookup"
+version = "12 November 2015"
+
+import os
+import sys
+
+import paramio as pio
+import pycrates
+import caldb4
+
+import ciao_contrib.logger_wrapper as lw
+import ciao_contrib.cxcdm_wrapper as cdm
+from ciao_contrib.param_wrapper import open_param_file
+
+lw.initialize_logger(toolname)
+
+v1 = lw.make_verbose_level(toolname, 1)
+v2 = lw.make_verbose_level(toolname, 2)
+v5 = lw.make_verbose_level(toolname, 5)
+
+
+def process_command_line(argv):
+    """Handle the parameter input for this script."""
+
+    if argv is None or argv == []:
+        raise ValueError("argv argument is None or empty")
+
+    pinfo = open_param_file(argv, toolname=toolname)
+    fp = pinfo["fp"]
+
+    infile = pio.pget(fp, "infile")
+    if infile.strip() == "":
+        raise ValueError("infile parameter is empty")
+
+    caltype = pio.pget(fp, "caltype")
+    blname = pio.pget(fp, "blname")
+    verbose = pio.pgeti(fp, "verbose")
+
+    pio.pset(fp, "outfile", "")
+
+    pio.paramclose(fp)
+
+    # Set tool and module verbosity
+    lw.set_verbosity(verbose)
+
+    return {"progname": pinfo["progname"],
+            "parname": pinfo["parname"],
+            "infile": infile,
+            "caltype": caltype,
+            "blname": blname,
+            "verbose": verbose }
+
+
+def display_start_info(opts):
+    v1("Running: {0}".format(opts["progname"]))
+    v1("  version: {0}".format(version))
+    v2("with parameters:")
+    v2("  infile={0}".format(opts["infile"]))
+    v2("  caltype={0}".format(opts["caltype"]))
+    v2("  blname={0}".format(opts["blname"]))
+    v2("  verbose={0}".format(opts["verbose"]))
+    v2("  and CALDB is set to  {0}".format(os.getenv("CALDB")))
+    v2("  and ASCDS_INSTALL is {0}".format(os.getenv("ASCDS_INSTALL")))
+
+
+def display_keyword_values(opts, cr):
+    v2("  DETNAM   = {0}".format(cr.get_key_value("DETNAM")))
+    v2("  GRATING  = {0}".format(cr.get_key_value("GRATING")))
+    v2("  DATE     = {0}  to  {1}".format(cr.get_key_value("DATE-OBS"),
+                                          cr.get_key_value("DATE-END")))
+
+
+def find_bkgrnd_files(opts):
+    """Does all the work; opts should be a dictionary
+    with the following keys
+
+      progname
+      parname
+      infile
+      caltype
+      blname
+      verbose
+
+    """
+
+    display_start_info(opts)
+
+    ctype = opts["caltype"]
+    if ctype == "event":
+        product = "BKGRND"
+    elif ctype == "spectrum":
+        product = "PIBGSPEC"
+    else:
+        # should not occur, unless the user has changed the parameter file
+        raise ValueError("Unexpected caltype value of {0}".format(ctype))
+
+    inf = opts["infile"]
+    cr = pycrates.read_file(inf)
+
+    def get_key(key, error=True):
+        r = cr.get_key_value(key)
+        if r is None and error:
+            raise ValueError("No {} keyword found in: {}".format(key, inf))
+        else:
+            return r
+
+    inst = get_key("INSTRUME")
+    if inst != "HRC":
+        raise ValueError("Expected INSTRUME keyword of HRC but found " +
+                         "{0} in {1}".format(inst, inf))
+
+    display_keyword_values(opts, cr)
+
+    v5("Setting up CALDB query")
+    cdb = caldb4.Caldb(telescope='CHANDRA', instrume="HRC",
+                       product=product, infile=inf)
+
+    v5("CALDB query:\n{}".format(cdb))
+    matches = cdb.search
+    v5("CALDB result:\n{}".format(matches))
+
+    nmatch = len(matches)
+    if nmatch == 0:
+        raise IOError("Unable to find a HRC background file for:\n  " +
+                      "infile={0}\n".format(inf))
+
+    elif nmatch > 1:
+        # Try the .allneeded field to indicate missing fields; in CIAO 4.6 this
+        # field will now contain only those fields missing in infile since
+        # .search has been called.
+        missing = [i[0] for i in cdb.allneeded]
+        emsg = "Multiple HRC background files found for:\n  " + \
+               "infile={0}\n".format(inf)
+        if missing != []:
+            emsg += "  Missing keys={}\n".format(", ".join(missing))
+
+        raise ValueError(emsg)
+
+    bn = opts["blname"]
+    if bn == "number":
+        bn = "cxcdm"
+
+    fname = cdm.convert_block_number(matches[0], system=bn, insystem="cfitsio")
+    v2("Background file is {0}".format(fname))
+
+    v5("Finished")
+    print(fname)
+
+    mode = "wL"
+    pn = opts["parname"]
+    v5("Opening parameter file (mode={0}) using name={1}".format(mode, pn))
+    fp = pio.paramopen(pn, mode)
+    pio.pset(fp, "outfile", fname)
+    pio.paramclose(fp)
+
+
+@lw.handle_ciao_errors(toolname, version)
+def hrc_bkgrnd_lookup(args):
+    "Run the tool"
+    opts = process_command_line(args)
+    find_bkgrnd_files(opts)
+
+
+if __name__ == "__main__":
+    hrc_bkgrnd_lookup(sys.argv)

@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY     pr  "unix&#x25; ">
+  <!ENTITY cltool "symmetrize">
+]>
+<cxchelptopics>
+  <ENTRY key="&cltool;" context="tools"
+	 refkeywords="grating spectroscopy spectrum letg
+		      leg gratings symmetry hrc-s hrcs tg_d eefrac"
+	 seealsogroups="analysis tgtools dewiggle detilt">
+    <SYNOPSIS>
+          Adjust the tg_d values of LETG/HRC-S evt2 data to make cross-dispersion 
+	  profiles more symmetric
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>&cltool; infile outfile</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	&cltool; reads in an LETG/HRC-S evt2 file (usually this will
+	be the output of the detilt command) and adjusts the TG_D
+	values of all events.  This makes the cross-dispersion
+	profiles more symmetric about TG_D=0 so that EEFRAC values
+	(used in the gRMF) will be accurate even when using
+	narrower-than-standard spectral extraction regions.  See
+	<HREF link="http://cxc.harvard.edu/cal/Letg/LetgHrcEEFRAC/index.html#wiggles">
+	  Corrections to TG_D for Wiggles, Tilt, and Asymmetry
+	</HREF>
+	for details. Only TG_D values are affected; the output file
+	will not exhibit any changes if displayed in sky or detector
+	coordinates.
+      </PARA>
+
+      <PARA>
+	&cltool; is generally used in combination with the dewiggle and detilt
+	commands--also contributed software tools--to prepare LETG/HRC-S spectra 
+	so that narrower spectral extraction regions can be used to improve the 
+	S/N of low-S/N data.
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+
+	  <LINE>
+	    &cltool; input_evt2.fits output_evt2.fits clobber+
+	  </LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Run the program with the clobber parameter enabled.
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+
+      <PARAM name="infile"  type="file"  reqd="yes"  stacks="no">
+	<DESC>
+	  <PARA>
+	    Input FITS file event list with columns TG_D and TG_MLAM.
+	  </PARA>
+	</DESC>
+
+      </PARAM>
+
+      <PARAM name="outfile" type="file" reqd="yes" def="" stacks="no"
+	     filetype="output">
+	<DESC>
+	  <PARA>
+	    Output FITS file event list with modified TG_D column.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="sfile"  type="file"
+	     def="${ASCDS_CONTRIB}/data/eefracIDEAL09.symm78corr" stacks="no">
+	<DESC>
+	  <PARA>
+	    File containing the TG_D correction as a function of wavelength.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+        <PARAM name="verbose" type="integer"  def="0" min="0" max="5">
+          <SYNOPSIS>Tool chatter level</SYNOPSIS>
+          <DESC>
+            <PARA>
+          Controls the amount of information tool prints to the screen.
+            </PARA>
+          </DESC>
+
+        </PARAM>
+
+        <PARAM name="clobber" type="boolean"  def="no" >
+          <SYNOPSIS>Remove outfile if it already exists?</SYNOPSIS>
+        </PARAM>
+
+
+    </PARAMLIST>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This tool is not an official part of the CIAO release but is
+	made available as "contributed" software via the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+	instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+	See the
+	<HREF link="http://cxc.harvard.edu/ciao/bugs/">bugs page</HREF>
+	on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>September 2015</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

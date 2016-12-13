@@ -1,0 +1,137 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="prof_delchi" context="contrib" pkg="sherpa"
+	 refkeywords="profile circular elliptical radial ellipse plot plotting resid residual residuals delchi"
+	 seealsogroups="sh.plot sh.profile">
+
+    <SYNOPSIS>
+      Plot a radial or elliptical profile of the residuals (data - model)/error to imaging data.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>prof_delchi( [id], [model=None,
+      rstep=None, rmin=None, rmax=None, rlo=None, rhi=None,
+      xpos=None, ypos=None, ellip=None, theta=None,
+      group_counts=None, group_snr=None,
+      label=True, recalc=True, overplot=False] )</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The prof_delchi command calculates the radial - or elliptical - profile of 
+	the residuals to imaging data (data - model)/error and plots it.
+	The profile is defined by the existing model
+	compenents, although it is possible to over-ride these values.
+      </PARA>
+
+      <PARA>
+        The residual values are calculated as 
+	<EQUATION>(data - model) / error</EQUATION>
+	The prof_resid() command can be used if you want to plot
+	<EQUATION>data - model</EQUATION>
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.profiles import *
+</VERBATIM>
+
+      <PARA title="Argument options">
+        The argument options are the same as for the prof_data() command,
+        and are described in its ahelp page.
+      </PARA>
+
+      <PARA title="Errors">
+	See the ahelp file for the prof_data() for a discsussion of how
+	errors are calculated:
+      </PARA>
+      <PARA>
+	<SYNTAX><LINE>unix% ahelp -b DESC prof_data</LINE></SYNTAX>
+      </PARA>
+
+      <PARA title="Changing the plot defaults">
+	The get_delchi_prof_prefs() returns the current plot
+	preferences used by prof_delchi().
+	Changing these settings will therefore change the
+	appearance of any new plots created by prof_delchi().
+	For example
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; get_delchi_prof_prefs()["xlog"] = True</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	will cause any new residual plots to use logarithmic scaling for the X axis.
+	A full list of the preferences can be found by saying
+      </PARA>
+      <PARA>
+	<SYNTAX><LINE>unix% ahelp get_delchi_prof_prefs</LINE></SYNTAX>
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prof_delchi()</LINE>
+          <LINE>&pr; log_scale(X_AXIS)</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; prefs = get_delchi_prof_prefs()</LINE>
+          <LINE>&pr; prefs["xlog"] = True</LINE>
+          <LINE>&pr; prof_delchi()</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The preferences are set so that the x axis should be drawn
+	    using log scaling. Setting the get_delchi_prof_prefs values only
+	    affects plots made after the change; to change an existing plot
+	    you need to use ChIPS commands such as log_scale() and linear_scale().
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prof_delchi(group_snr=15)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The residuals are plotted after the bins have been grouped so that each
+	    bin has a signal to noise ratio of 15 or more,
+	    where the calculation is done using the data and not the residual values.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_delchi(rlo=[0,10,20,40,60,100,200])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Calculate the residual profile in radial bins with low/high limits of
+	    0-10, 10-20, 20-40, 40-60, 60-100, 100-200.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>December 2009</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

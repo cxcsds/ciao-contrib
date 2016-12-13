@@ -1,0 +1,266 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="save_instmap_weights" context="contrib" pkg="sherpa"
+	 refkeywords="write_instmap_weights save write create mkinstmap instmap instrument map imap spectrumfile spectral weight weights fluxtype flux erg ergs photon photons"
+	 seealsogroups="sh.wgts" displayseealsogroups="sh.save">
+
+    <SYNOPSIS>
+      Write out the model spectrum in the form required by mkinstmap
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>save_instmap_weights( [id=None,] outfile [, clobber=False, fluxtype="photon"] )</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The save_instmap_weights() command writes out the current model
+	values in the form expected by the CIAO mkinstmap tool.
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/threads/spectral_weights/">Calculating Spectral Weights</HREF>
+	thread for further information on how to use this routine.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.utils import *
+</VERBATIM>
+
+      <TABLE>
+	<CAPTION>Arguments</CAPTION>
+	<ROW>
+	  <DATA>Name</DATA><DATA>Default value</DATA><DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>id</DATA>
+	  <DATA>None (which means use the value of get_default_id)</DATA>
+	  <DATA>Which dataset to use.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>outfile</DATA>
+	  <DATA></DATA>
+	  <DATA>The name of the file to create.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>clobber</DATA>
+	  <DATA>True</DATA>
+	  <DATA>Should the file be overwritten if it already exists:
+	  True means yes, otherwise no.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>fluxtype</DATA>
+	  <DATA>"photon"</DATA>
+	  <DATA>The units for the instrument map are cm^2 count / &lt;fluxtype>. The 
+	  valid options for this argument are "photon" (the default) or "erg".
+	  </DATA>
+	</ROW>
+
+      </TABLE>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; dataspace1d(0.5, 7, 0.1)</LINE>
+          <LINE>&pr; set_source(xsphabs.abs1 * powlaw1d.p1)</LINE>
+          <LINE>&pr; abs1.nh = 0.07</LINE>
+          <LINE>&pr; p1.gamma = 1.7</LINE>
+          <LINE>&pr; plot_instmap_weights()</LINE>
+          <LINE>&pr; save_instmap_weights("imap.dat")</LINE>
+	</SYNTAX>
+	<DESC>
+
+          <PARA>
+	    We want to create a weights file for the energy range 0.5 to 7 keV, using
+	    an absorbed power law as the model.
+	  </PARA>
+
+	  <PARA>
+	    The dataspace1d command is used to set the grid over which the model
+	    is evaluated; in this case we go from 0.5 to 7 keV with a step
+	    size of 0.1 keV.
+	    The next lines set the source model and set the relevant parameters.
+	    In this case we do not need to change the amplitude/normalization of the power
+	    law since the weights are normalized to a value of 1.0. If you had
+	    multiple source terms in your model expression then you would need
+	    to set the relative normalizations of the various components.
+	  </PARA>
+
+	  <PARA>
+	    Finally we plot the weights and then save them to the ASCII file
+	    "imap.dat". This file can then be used as input to the spectrumfile
+	    parameter of mkinstmap.
+	  </PARA>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; save_instmap_weights(3, "wgts.dat")</LINE>
+	</SYNTAX>
+	<DESC>
+
+          <PARA>
+	    The weights are calculated using the model and grid defined for dataset 3.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; save_instmap_weights(3, "wgts.dat", False)</LINE>
+	</SYNTAX>
+	<DESC>
+
+          <PARA>
+	    As in the previous example, 
+	    the weights are calculated using the model and grid defined for dataset 3,
+	    but this time the routine will not overwrite wgts.dat if it already exists.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; save_instmap_weights("wgts.dat", clobber=False)</LINE>
+	</SYNTAX>
+	<DESC>
+
+          <PARA>
+	    The weights are calculated using the model and grid defined for the default
+	    dataset, and written to wgts.dat only if the file does not already
+	    exist.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; save_instmap_weights("wgts.dat", fluxtype="erg")</LINE>
+	</SYNTAX>
+	<DESC>
+
+          <PARA>
+	    The weights are calculated in order to create an instrument map with units of
+	    cm^2 count / erg rather than the default of cm^2 count / photon.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Notes">
+      <PARA title='Calculating the weights when fluxtype="photon"'>
+	For a model spectrum which has units of photon/cm^2/s as a function
+	of energy (i.e. the model is integrated across each bin, as is the
+	case with X-Spec and Sherpa models), then the weights are calculated using
+	the formula
+	<EQUATION>weight_i = y_i / sum(y_i)</EQUATION>
+	where sum(y_i) is the sum of the model spectrum over all the bins
+	being used. These weights can then be used to create an instrument
+	map with units of cm^2 count / photon.
+      </PARA>
+      <PARA title='Calculating the weights when fluxtype="erg"'>
+	In order to create an instrument map with units of cm^2 photon / erg,
+	the weights are calculated using the following equation, where
+	e_i is the energy of the ith bin in keV:
+	<EQUATION>weight_i = y_i / (1.60217653e-09 * sum(e_i * y_i))</EQUATION>
+      </PARA>
+      <PARA>
+	Unlike the default case - of fluxtype="photon" - these weights will not sum
+	up to 1; typical values will vary between 1e7 and 1e9, depending on the
+	bin width and spectral shape.
+      </PARA>
+      <PARA title="Creating the energy grid">
+	The simplest way to create the grid is to use the dataspace1d command:
+	if you want an instrument map created over the energy range e1 to e2
+	(in keV), then say
+      </PARA>
+<VERBATIM>
+&pr; dataspace1d(e1, e2, edelta)
+</VERBATIM>
+      <PARA>
+	where edelta is the width of each bin. The idea is to select a bin width
+	over which the combination of effective area and detector sensitivity
+	is approximately flat; too large a step size may result in an incorrect
+	result, whereas too small a step size will result in increasing the
+	processing time of mkinstmap. See the 
+	<HREF link="http://space.mit.edu/CXC/docs/expmap_intro.ps.gz">"Introduction to Exposure Maps" document</HREF>
+	for more information.
+      </PARA>
+      <PARA>
+	You can also use the energy grid defined by a PHA file, 
+	for example the following will use the energy bins in the
+	range 0.5 to 7 keV:
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; load_pha("src.pha")</LINE>
+	  <LINE>&pr; notice(0.5, 7)</LINE>
+	  <LINE>&pr; set_source(xsphabs.gal * xspowerlaw.pl)</LINE>
+	  <LINE>&pr; gal.nh = 0.23</LINE>
+	  <LINE>&pr; pl.phoindex = 1.5</LINE>
+	  <LINE>&pr; save_instmap_weights("wgt.txt")</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA title="Creating an instrument and exposure map">
+	The weights file created by save_instmap_weights() should be
+	used as the value of the spectrumfile parameter of mkinstmap
+	(in which case the monoenergy parameter is ignored). If
+	fluxtype is "photon" (the default) then the resulting image will
+	be in units of cm^2 count / photon; this can then be converted
+	into an exposure map (using mkexpmap) with units of cm^2 count
+	/ photon or cm^2 count / photon / s (if normalize is set to
+	yes or no respectively).  If the fluxtype paramter
+	if set to "erg" then the instrument map units will effectively be cm^2 count /
+	erg and the corresponding exposure map will have units of
+	cm^2 count / erg or cm^2 count / erg / s.
+      </PARA>
+      <PARA>
+	So, if you divide a counts image by the exposure map - created
+	with normalize=no - then you will
+	get an estimate of the flux per pixel in units of photon/cm^2/s
+	(fluxtype="photon") or erg/cm^2/s (fluxtype="erg").
+	Note that this estimate depends strongly on how closely the source
+	spectrum matches the one used to create the weights file; if the
+	spectrum differs significantly then the estimate can easily be out by
+	at least 50 or 100%.
+	Care must therefore be taken when analyzing extended sources with
+	variations in spectral shape, or when performing background subtraction,
+	since the cosmic X-ray background is likely to have a different spectrum
+	to the source.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the October 2012 release">
+      <PARA title="Metadata">
+        The output file now contains comment lines that contain
+	the low and high edges of the energy range, the
+	model expression used to create the weights, and the
+        file creation time. This information is used by
+	fluximage, flux_obs, and merge_obs to create
+	weighted exposure maps.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>October 2012</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

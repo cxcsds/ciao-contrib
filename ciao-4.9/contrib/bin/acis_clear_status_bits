@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+#
+#  Copyright (C) 2011, 2014, 2016  Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+
+Usage:
+  acis_clear_status_bits evtfile
+
+Aim:
+
+Resets the STATUS column of evtfile for use in chandra_repro/standard processing
+of ACIS event files introduced in CIAO 4.4.
+
+Sets the bits 1-5, 14-20, and 23 to 0 (False).
+
+The edits are made in place and so will not work if the input file
+is gzip-encoded. There is no check that the input file is valid other than
+that it contains a STATUS column.
+
+"""
+
+toolname = "acis_clear_status_bits"
+version = "12 September 2016"
+
+import os
+import sys
+
+# This is only needed for development.
+try:
+    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
+        if os.path.isdir(_pathdir):
+            os.sys.path.insert(1, _pathdir)
+        else:
+            print("*** WARNING: no {}".format(_pathdir))
+
+        del _libname
+        del _pathdir
+        del _thisdir
+
+except KeyError:
+    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+
+import ciao_contrib.logger_wrapper as lw
+import ciao_contrib.cxcdm_wrapper as cdw
+
+help_str = """Usage:
+
+  {0} filename
+  {0} --help
+
+Version: {1}
+
+Aim:
+
+Clear the status bits in an ACIS events file set by the pipeline
+and that are not cleared by acis_process_events.
+
+There is no parameter file for the tool as there is only one parameter,
+the events file to change (note that it is changed in place and so
+the file needs to be uncompressed before use).
+
+This script has been added to support re-processing Chandra data using
+the bad-pixel/afterglow pipeline. Please see the
+"Reprocessing Data to Create a New Level=2 Event File" thread at
+
+  http://cxc.harvard.edu/ciao/threads/createL2/
+
+for more information.
+""".format(toolname, version)
+
+@lw.handle_ciao_errors(toolname, version)
+def acis_clear_status_bits(fname):
+   "Run the tool"
+
+   cdw.clear_acis_status_bits(fname, toolname)
+
+if __name__ == "__main__":
+
+   if "--help" in sys.argv or "-h" in sys.argv:
+      sys.stdout.write(help_str)
+      sys.exit(0)
+
+   args = lw.preprocess_arglist(sys.argv)
+   if len(args) != 2:
+      sys.stderr.write("Usage: {0} <eventfile>\n\nUse --help for brief help.\n".format(toolname))
+      sys.exit(1)
+
+   acis_clear_status_bits(args[1])

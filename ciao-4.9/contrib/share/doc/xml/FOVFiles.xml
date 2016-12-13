@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY key="FOVFiles" context="contrib" 
+    refkeywords="check_fov FOVFiles fov region field view" seealsogroups=""
+    displayseealsogroups="pixtools regiontools"
+    > 
+    <SYNOPSIS>
+    Check which FOV files contains the specified RA,Dec location.
+    </SYNOPSIS>
+    <SYNTAX>
+<LINE>
+    from ciao_contrib.region.check_fov import FOVFiles
+</LINE>
+    </SYNTAX>
+
+    <DESC>
+        <PARA>
+            The Chandra Field Of View (FOV) files contain
+            polygon regions for each active chip.  The
+            X and Y columns are in physical coordinates specific
+            to the tangent plane of each observation; however,
+            they also provide a WCS to map the polygons to
+            celestial coordinates.            
+        </PARA>
+        <PARA>
+            The FOVFiles class parses a stack of FOV files
+            in celestial coordinates and provides an 'inside' method
+            to check which files cover a specified RA,Dec location.
+        </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+        <QEXAMPLE>
+           <SYNTAX>
+             <LINE>&gt;&gt;&gt; from ciao_contrib.region.check_fov import FOVFiles</LINE> 
+             <LINE>&gt;&gt;&gt; my_obs = FOVFiles( "acis_fov1.fits")</LINE>
+             <LINE>&gt;&gt;&gt; ii = my_obs.inside( 23.1221, -34.111)</LINE>
+             <LINE>&gt;&gt;&gt; print ii</LINE>
+             <LINE>['acis_fov1.fits']</LINE>
+            </SYNTAX>        
+            <DESC>
+                <PARA>
+                    Parses the FOV file, acis_fov1.fits, in 
+                    celestial coordinates.   The 
+                    object that is created can then be used
+                    to check if a position is located within
+                    it.  The name of the FOV file that contains
+                    the location is returned in a list.
+                </PARA>            
+            </DESC>
+        </QEXAMPLE>    
+
+        <QEXAMPLE>
+           <SYNTAX>
+             <LINE>&gt;&gt;&gt; from ciao_contrib.region.check_fov import FOVFiles</LINE> 
+             <LINE>&gt;&gt;&gt; my_obs = FOVFiles( "acis_fov1.fits")</LINE>
+             <LINE>&gt;&gt;&gt; ii = my_obs.inside(0,0)</LINE>
+             <LINE>&gt;&gt;&gt; print ii</LINE>
+             <LINE>[]</LINE>
+            </SYNTAX>        
+            <DESC>
+                <PARA>
+                    Same as above, but with a different set of coordinates.
+                    Since the position does not fall within the 
+                    specified FOV file, the list returned is empty.
+                </PARA>            
+            </DESC>
+        </QEXAMPLE>    
+
+        <QEXAMPLE>
+           <SYNTAX>
+             <LINE>&gt;&gt;&gt; from ciao_contrib.region.check_fov import FOVFiles</LINE> 
+             <LINE>&gt;&gt;&gt; my_obs = FOVFiles( "acis*.fits")</LINE>
+             <LINE>&gt;&gt;&gt; ii = my_obs.inside(45.6621, +12.3312)</LINE>
+             <LINE>&gt;&gt;&gt; print ii</LINE>
+             <LINE>['acis_obs5_fov1.fits', 'acis_obs2_fov1.fits']</LINE>
+            </SYNTAX>        
+            <DESC>
+                <PARA>
+                    This example demostrates a stack of 
+                    FOV files being input.  The "*" behaves like
+                    the normal UNIX wildcard match.  The inside
+                    method will a list with all the
+                    FOV file names that enclose the location.
+                </PARA>            
+            </DESC>
+        </QEXAMPLE>    
+            
+        <QEXAMPLE>
+           <SYNTAX>
+             <LINE>&gt;&gt;&gt; from ciao_contrib.region.check_fov import FOVFiles</LINE> 
+             <LINE>&gt;&gt;&gt; from coords.format import sex2deg</LINE> 
+             <LINE>&gt;&gt;&gt; my_obs = FOVFiles( "@acis.lis,@hrc.lis")</LINE>
+             <LINE>&gt;&gt;&gt; ra,dec = sex2deg( "12:34:56.1", "+19:34:56")</LINE>
+             <LINE>&gt;&gt;&gt; ii = my_obs.inside( ra, dec )</LINE>
+             <LINE>&gt;&gt;&gt; print ii</LINE>
+             <LINE>['hrc_obs15_fov1.fits', 'acis_obs233_fov1.fits']</LINE>
+            </SYNTAX>        
+            <DESC>
+                <PARA>
+            Since everything is done in celestial coordinates, both
+            ACIS and HRC files can be processed at the same time.  
+            This example also shows how to use the 
+            coords.format routine sex2deg to convert from sexadecimal
+            to degrees.
+                </PARA>            
+            </DESC>
+        </QEXAMPLE>    
+
+        
+
+    </QEXAMPLELIST>
+
+  <LASTMODIFIED>May 2014</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>
+

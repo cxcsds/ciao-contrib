@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="splitobs"
+         context="tools" 
+         refkeywords="obsid obs_id obi obi_num obinum cycle multiobi multi-obi interleaved interleave alternating exposure e1 e2 separate split"
+         seealsogroups="contrib.cda">
+
+    <SYNOPSIS>`splitobs' separates the data products for Multi-Obi and ACIS interleaved observations</SYNOPSIS>
+
+    <DESC>
+      <PARA>
+        Most Chandra datasets contain a single level 1 event file produced from
+        a single observation interval 
+	("<HREF link="http://cxc.harvard.edu/ciao/dictionary/obi.html">obi</HREF>").  
+	There are two classes
+        of observation configurations where this is not the case.
+      </PARA>
+      
+      <!-- cannot have HREF in list's ITEMs,blah! -->
+      <!-- I changed : to an explicit number as I'm not sure how the former
+           would look in the HTML version -->
+
+      <PARA title="1) Mutli-Obi observations.">
+          See the
+        <HREF link="http://cxc.harvard.edu/ciao/why/multiobi.html">Why topic
+        on Multi-OBI observations</HREF>.
+      </PARA>
+
+
+      <PARA title="2) ACIS Interleaved, or Alternating Exposure mode observations.">
+        See the 
+        <HREF link="http://cxc.harvard.edu/ciao/dictionary/altexp.html">Alternating 
+        Exposure mode dictionary entry.
+        </HREF>
+     </PARA>
+
+    <PARA>
+      This script automates the per-obi file selection to seprate
+      the datasets into different directories for both interleaved and 
+      mutli-obi observations. The separated directories can then be
+      processed as if they were separate observations (e.g. with
+      <HREF link="http://cxc.harvard.edu/ciao/ahelp/chandra_repro.html">chandra_repro</HREF>).
+    </PARA>
+     <PARA>
+      Both of these classes of observations are exceptionally uncommon.  
+      They have two (or in one 
+      case three) level 1 event files that need to be 
+      processed separately. The tricky part is separating the
+      auxiliary files (aspect solution, mask, bad pixel, biases) that belong     
+      with each Level 1 event file, and in the case of Multi-OBI observations
+      performed with the Gratings, to separate the correct REGION extension
+      for each OBI.
+      </PARA>
+    </DESC>
+
+
+    <QEXAMPLELIST>
+        <QEXAMPLE>
+          <SYNTAX>
+          <LINE>% splitobs indir=1612 outroot=1612</LINE>
+          </SYNTAX>
+<DESC>
+<PARA>
+OBS_ID 1612 is an interleaved mode observation.  Here the _e1_ and _e2_
+files are split into separate directories and copies are made of the
+auxiliary files.
+</PARA>
+
+<VERBATIM>
+% /bin/ls  
+1612  1612_e1  1612_e2
+% /bin/ls -1 1612*/secondary/*evt* 
+1612/secondary/acisf01612_000N004_e1_evt1.fits.gz
+1612/secondary/acisf01612_000N004_e2_evt1.fits.gz
+1612_e1/secondary/acisf01612_000N004_e1_evt1.fits.gz
+1612_e2/secondary/acisf01612_000N004_e2_evt1.fits.gz
+</VERBATIM>
+
+<PARA>
+For interleaved mode observations, "_e1" and "_e2" are appended to the
+outroot parameter.
+</PARA>
+</DESC>
+        
+        </QEXAMPLE>
+    <QEXAMPLE>
+    <SYNTAX>
+    <LINE>% splitobs 3764 mode=h</LINE>
+    </SYNTAX>
+    <DESC>
+    <PARA>
+    The multi-obi observation OBS_ID=3764 is split into its two
+    OBIs.  The zero-padded 3 digit OBI_NUM value is appended to 
+    the outroot and the files associated with each OBI are
+    copied into the correctly directory:
+    </PARA>
+<VERBATIM>
+% /bin/ls -d 3764*
+3764  3764_001	3764_003
+</VERBATIM>    
+
+<PARA>
+Note: as with this observation, OBI_NUM values do no always start at 0 and they are not
+continuous. The OBI_NUM values do not have to have been observed in numeric order.
+</PARA>
+
+<PARA>
+The _001 and _003 event files are copied to the appropriate directories 
+and the correct aspect solution, and other auxiliary files are also
+split.
+</PARA>
+    
+<VERBATIM>
+% /bin/ls 3764*/secondary/*evt1.fits* 
+3764/secondary/hrcf03764_001N003_evt1.fits.gz
+3764/secondary/hrcf03764_003N003_evt1.fits.gz
+3764_001/secondary/hrcf03764_001N003_evt1.fits.gz
+3764_003/secondary/hrcf03764_003N003_evt1.fits.gz
+
+% /bin/ls 3764*/primary/*asol1.fits* 
+3764/primary/pcadf186708443N003_asol1.fits.gz
+3764/primary/pcadf190260958N003_asol1.fits.gz
+3764_001/primary/pcadf186708443N003_asol1.fits.gz
+3764_003/primary/pcadf190260958N003_asol1.fits.gz
+</VERBATIM>
+
+<PARA title="Gratings Datasets">
+This observation was also performed with the LETG.  The
+level 2 event file from the Chandra archive contains separate REGION
+blocks for each OBI:
+</PARA>
+
+<VERBATIM>
+% dmlist 3764/primary/hrcf03764N004_evt2.fits.gz blocks
+ 
+--------------------------------------------------------------------------------
+Dataset: 3764/primary/hrcf03764N004_evt2.fits.gz
+--------------------------------------------------------------------------------
+ 
+     Block Name                          Type         Dimensions
+--------------------------------------------------------------------------------
+Block    1: PRIMARY                        Null        
+Block    2: EVENTS                         Table        16 cols x 4328706  rows
+Block    3: GTI                            Table         2 cols x 3        rows
+Block    4: REGION                         Table         8 cols x 2        rows
+Block    5: REGION2                        Table         8 cols x 2        rows
+</VERBATIM>
+
+<PARA>
+These region blocks are needed for example by chandra_repro when
+recalibrating and processing the data.  The correct REGION extension 
+has also been extracted and a per-obi level 2 event file, evt2, has been
+provided in each OBI's primary/ directory
+</PARA>
+
+<VERBATIM>
+% /bin/ls 3764*/primary/*evt2*
+3764/primary/hrcf03764N004_evt2.fits.gz
+3764_001/primary/hrcf03764_001N004_evt2.fits
+3764_003/primary/hrcf03764_003N004_evt2.fits
+</VERBATIM>
+
+
+<PARA>Note: the Level 2 file name now contains the _001 or _003 OBI_NUM
+in the file name whereas from the archive it does not.</PARA>
+
+
+    </DESC>
+    </QEXAMPLE>
+    </QEXAMPLELIST>
+
+
+    <PARAMLIST>
+      <PARAM name="indir" type="file" reqd="yes">
+        <SYNOPSIS>Input directory name</SYNOPSIS>
+        <DESC>
+          <PARA>
+            This should be the top level input directory name, 
+            usually this will be the OBS_ID.
+            It should contain the standard 'primary' and 'secondary'
+            subdirectories.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="outroot" type="file" reqd="yes" def=")indir">
+        <SYNOPSIS>Output root directory name</SYNOPSIS>
+        <DESC>
+          <PARA>
+          For interleaved mode observations the script will create
+          and populate ${outroot}_e1 and ${outroot}_e2 subdirectories.
+          For multi-obi observations, the script will create
+          ${outroot}_00n subdirectories where 'n' is the OBI_NUM
+          value.
+          </PARA>
+          <PARA>The default value of root is ")indir" which 
+          sets the outroot equal to the indir value.  Thus
+          if for example the multi-obi OBS_ID 3764 will has indir=3764 
+          outdir=")indir" it will create two directories: 3764_001 and 3764_003.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+
+
+        <PARAM name="verbose" def="1" min="0" max="5" type="integer">
+     <SYNOPSIS>
+     Amount of information printed to the terminal
+     </SYNOPSIS>
+    
+    </PARAM>
+      <PARAM name="clobber" type="boolean" def="no" >
+        <SYNOPSIS>Overwrite files if output directories exist?</SYNOPSIS>
+        <DESC>
+           <PARA>
+             If the output directory exists and clobber=no the tool
+             will error out even if files do not exist.  If the 
+             output directory exists and is
+             populated with files and clobber=yes, the tool will
+             overwrite files.
+           </PARA>
+        </DESC>
+      </PARAM>
+    </PARAMLIST>
+        
+        
+    <ADESC title="Other files">
+      <PARA>
+        This script only copies the files in the data directory that are
+        needed for data analysis.  Things such as the V&amp;V report,
+        JPEG images, on-orbit aspect solution (osol) and any 
+        supporting files (README, oif.fits, level 0 event files) are
+        not copied.
+      </PARA>
+    </ADESC>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+   <BUGS><PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/splitobs.html">bugs page
+        for this tool</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA></BUGS>
+
+   <LASTMODIFIED>April 2015</LASTMODIFIED>
+
+
+</ENTRY>
+</cxchelptopics>

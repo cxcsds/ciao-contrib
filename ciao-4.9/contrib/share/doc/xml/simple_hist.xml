@@ -1,0 +1,183 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="simple_hist" context="contrib"
+         refkeywords="histogram hist bin binning data array simple"
+         seealsogroups="analysis">
+
+    <SYNOPSIS>
+      Create a one-dimensional histogram of a data array
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>simple_hist(array, nbins=10, min=None, max=None, step=None)</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The simple_hist() routine calculates a one-dimensional histogram of the input data
+	(the array argument).
+	For more control over the calculation use the numpy.histogram() routine.
+      </PARA>
+
+      <PARA title="Loading the routine">
+	The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from ciao_contrib.utils import *
+</VERBATIM>
+
+      <TABLE>
+	<CAPTION>Arguments</CAPTION>
+	<ROW>
+	  <DATA>Name</DATA><DATA>Default value</DATA><DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>array</DATA><DATA/>
+	  <DATA>The array of data to histogram.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>nbins</DATA><DATA>10</DATA>
+	  <DATA>The number of bins to use to create the histogram (only
+	  used when step is None).</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>min</DATA><DATA>None</DATA>
+	  <DATA>The value to use for the lower edge of the first
+	  bin; if None then the minimum data value will be used.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>max</DATA><DATA>None</DATA>
+	  <DATA>The value to use for the upper edge of the last
+	  bin; if None then the minimum data value will be used.
+	  It can be over-ridden if step is not None.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>step</DATA><DATA>None</DATA>
+	  <DATA>The bin width to use (this overrides the nbins value).</DATA>
+	</ROW>
+      </TABLE>
+
+      <PARA title="The return value">
+	The return value is an object with the following fields:
+      </PARA>
+      
+      <TABLE>
+        <ROW>
+          <DATA>Field</DATA><DATA>Value</DATA>
+        </ROW>
+        <ROW>
+          <DATA>xlow</DATA><DATA>The lower edges of each bin.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>xhigh</DATA><DATA>The upper edges of each bin.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>y</DATA><DATA>The number of elements of array that fall within each bin.</DATA>
+        </ROW>
+      </TABLE>
+
+      <PARA title="Histogram calculation">
+	The histogram is calculated using evenly-spaced bins; for all but the
+	last bin the range is half-open, so that if it has edges xlow_i and xhigh_i then
+	a value falls in this bin if it has a value in the range
+	<EQUATION>xlow_i &lt;= x &lt; xhigh_i</EQUATION>
+      </PARA>
+      
+      <PARA>
+	The last bin is considered closed, so a value falls in this bin if
+	<EQUATION>xlow_last &lt;= x &lt;= xhigh_last</EQUATION>
+      </PARA>
+
+      <PARA title="Bin edges">
+	If step is not given (i.e. it is None), then the bin width is
+	calculated as
+	<EQUATION>(max - min) / nbins</EQUATION>
+      </PARA>
+
+      <PARA>
+	If step is given then it is used as the bin width and the upper edge
+	will be adjusted to ensure there are an integer number of bins: so if
+	the input values are min=0, max=1, and step=0.4 the histogram will be
+	calculated for the bins 0 to 0.4, 0.4 to 0.8, and 0.8 to 1.2.
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; x = [0, 1, 2, 3, 2, 3, 4, 2, 1]</LINE>
+	  <LINE>&pr; h = simple_hist(x)</LINE>
+	  <LINE>&pr; add_histogram(h.xlow, h.xhigh, h.y)</LINE>
+        </SYNTAX>
+        <DESC>
+
+          <PARA>
+	    The return value of h is an object with the fields "xlow", "xhigh", and "y",
+	    which contain the lower and upper bin edges and the histogram values respectively.
+	    These fields are used to plot up the histogram using the ChIPS
+	    add_histogram() routine.
+          </PARA>
+
+<VERBATIM>
+&pr; print (h)
+xlow  = Float64[10]
+xhigh = Float64[10]
+y     = Int32[10]
+&pr; print (h.y)
+[1 0 2 0 0 3 0 2 0 1]
+</VERBATIM>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; x = [0, 1, 2, 3, 2, 3, 4, 2, 1]</LINE>
+	  <LINE>&pr; h = simple_hist(x, step=1)</LINE>
+        </SYNTAX>
+        <DESC>
+
+          <PARA>
+	    The step size (width) of each bin is set to 1, which results in:
+          </PARA>
+
+<VERBATIM>
+&pr; print (h)
+xlow  = Float64[4]
+xhigh = Float64[4]
+y     = Int32[4]
+&pr; print (h.y)
+[1 2 3 3]
+</VERBATIM>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; img = read_image("emap.fits")</LINE>
+	  <LINE>&pr; ivals = get_piximgvals(img)</LINE>
+	  <LINE>&pr; ix = np.isfinite(ivals)</LINE>
+	  <LINE>&pr; h = simple_hist(ivals[ix], nbins=20)</LINE>
+        </SYNTAX>
+        <DESC>
+	  <PARA>
+	    Here we use the Crates read_image() and get_piximgvals() to read in the
+	    contents of the image "emap.fits". Since it may contain "invalid" numbers,
+	    such as NaN and Infinity, we filter out these values before calculating
+	    the histogram (using 20 bins).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <LASTMODIFIED>June 2010</LASTMODIFIED>
+
+ </ENTRY>
+</cxchelptopics>

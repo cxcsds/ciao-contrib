@@ -1,0 +1,129 @@
+#!/usr/bin/env python
+
+# 
+# Copyright (C) 2011, 2012  Smithsonian Astrophysical Observatory
+# 
+# 
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Split up the data created by roi into a form usable by dmfilth.
+
+Usage:
+
+  splitroi infiles outhead
+
+where infiles is the list of files to use (output) and outhead
+gives the head/stem of the output files created:
+
+  outhead.src.reg
+  outhead.bg.reg
+
+"""
+
+toolname = "splitroi"
+version = "08 November 2012"
+
+import sys
+
+import pycrates
+import region
+import stk
+
+import ciao_contrib.logger_wrapper as lw
+
+def rparse(fname):
+    """Parse region from file name, raising a more user-friendly
+    error than region.regParse.
+    """
+
+    try:
+        return region.regParse("region({})".format(fname))
+
+    except ValueError as ve:
+        if str(ve) == "regParse() Could not parse region string":
+            raise ValueError("{} is not a region file".format(fname))
+        else:
+            raise ve
+
+def extract_regions(fname):
+    """Returns (srcreg, bkgreg)
+
+    which are the source and background regions from the
+    file fname, assumed to be created by roi (so has
+    SRCREG and BKGREG extensions).
+
+    At present the regions are string representations
+    of the regions.
+    """
+
+    s = rparse(fname + "[SRCREG]")
+    b = rparse(fname + "[BKGREG]")
+    return (region.regRegionString(s),
+            region.regRegionString(b))
+
+def collect_regions(fnames):
+    """Given a set of file names, return
+    (srcreg, bkgreg) which consists of
+    string representations of all the SRCREG and BKGREG blocks
+    in these files.
+    """
+
+    out = [extract_regions(fname) for fname in fnames]
+    s, b = zip(*out)
+    return ("\n".join(s), "\n".join(b))
+
+@lw.handle_ciao_errors(toolname, version)
+def create_region_files(fnames, srcfile, bkgfile):
+    """Write ASCII region files to srcfile and bkgfile containing
+    the contents of the SRCREG and BKGREG blocks of the list
+    of file names in fnames (e.g. the output of a roi run).
+
+    The output files will over-write existing files if they
+    exist.
+    """
+    
+    (s, b) = collect_regions(fnames)
+    
+    with open(srcfile, 'w') as fh:
+        fh.write(s)
+        fh.write("\n")
+        
+    with open(bkgfile, 'w') as fh:
+        fh.write(b)
+        fh.write("\n")
+        
+if __name__ == "__main__":
+
+    arglist = lw.preprocess_arglist(sys.argv)
+
+    if len(arglist) != 3:
+        sys.stderr.write("Usage: splitroi infiles outhead\n\n")
+        sys.stderr.write("Example:\n")
+        sys.stderr.write("   splitroi src\*.fits sources\n\n")
+        sys.stderr.write("will split the SRCREG and BKGREG blocks from the src*.fits files\n")
+        sys.stderr.write("and create the ASCII region files sources.src.reg and sources.bg.reg.\n")
+        sys.exit(1)
+
+    infiles = stk.build(arglist[1])
+    outhead = arglist[2]
+
+    create_region_files(infiles,
+                        "{}.src.reg".format(outhead),
+                        "{}.bg.reg".format(outhead))
+    
+    

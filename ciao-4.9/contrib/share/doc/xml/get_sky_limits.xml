@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <!--* seealsogroups is pretty random here *-->
+  <ENTRY key="get_sky_limits" context="tools" refkeywords="limit
+							   limits sky
+							   region
+							   bound
+							   bounding
+							   box filter
+							   filtering
+							   dmfilter
+							   xygrid"
+	 seealsogroups="bintools fovtools">
+    <SYNOPSIS>Find the region covered by an image in sky coordinates</SYNOPSIS>
+    <DESC>
+      <PARA>
+	There are a number of times when you want to create an image 
+	- e.g. by filtering an event file or running mkexpmap - that covers
+	the same region of sky as an existing image.
+	Given the image, this script returns the correct expressions to use 
+	as a DM filter (see 'ahelp dmsyntax') and for the
+	xygrid parameter of mkexpmap.
+      </PARA>
+      <PARA>
+	The script produces screen output describing the size of the
+	supplied image and the sky limits (as long as the verbose parameter is
+	not 0). The results can be read from the screen, but they
+	are also stored in the "dmfilter" and "xygrid" parameters of the
+	parameter file (whatever the verbose setting).
+	These can then be accessed using the pget
+	tool ("ahelp tools pget") or parameter library
+	functions ("ahelp paramio").
+      </PARA>
+
+      <PARA>
+	See the 
+	<HREF link="http://cxc.harvard.edu/ciao/threads/match_binning/">Match 
+	  the Binning of an Image thread</HREF>
+	on the CIAO web site for more information.
+      </PARA>
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>
+	    get_sky_limits source.fits
+	  </LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we run get_sky_limits with the source.fits file as input (which
+	    should be an image file).
+	    With the default verbose level (of 1), the following output will
+	    be displayed to the screen (the values depend on the input file):
+	  </PARA>
+
+<VERBATIM>
+unix% get_sky_limits source.img verbose=1
+Running: get_sky_limits
+  version: 25 March 2011
+Checking binning of image: source.img
+  Image has 1232 x 1237 pixels
+  Pixel size is 1.0 by 1.0
+  Lower left (0.5,0.5) corner is X,Y= 3721.5, 3037.5
+  Upper right (1232.5,1237.5) corner is X,Y= 4953.5, 4274.5
+  DM filter is:
+    X=3721.5:4953.5:#1232,Y=3037.5:4274.5:#1237
+  mkexpmap xygrid value is:
+    3721.5:4953.5:#1232,3037.5:4274.5:#1237
+</VERBATIM>
+
+	  <PARA>
+	    The output information is contained in the last four
+	    lines, and is also stored in the parameter file
+	    in the "dmfilter" and "xygrid" parameters:
+	  </PARA>
+
+<VERBATIM>
+unix% pget get_sky_limits dmfilter
+X=3721.5:4953.5:#1232,Y=3037.5:4274.5:#1237
+unix% pget get_sky_limits xygrid
+3721.5:4953.5:#1232,3037.5:4274.5:#1237
+</VERBATIM>
+
+	  <PARA>
+	    You can store these values in shell variables -
+	    e.g. for csh/tcsh users:
+	  </PARA>
+
+<VERBATIM>
+unix% set dmf = `pget get_sky_limits dmfilter`
+unix% dmcopy "evt2.fits[energy=500:2000][bin $dmf]" img.500-2000
+</VERBATIM>
+
+	  <PARA>
+	    - or by using the
+	    redirection capabilities of the parameter interface - 
+	  </PARA>
+
+<VERBATIM>
+unix% mkexpmap xygrid=")get_sky_limits.xygrid" ...other parameters..
+</VERBATIM>
+
+	  <PARA>
+	    See "ahelp parameter" for more information on the capabilities of the parameter
+	    interface.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>
+	    get_sky_limits "evt2.fits[sky=region(src.reg)][bin sky=1]"
+	  </LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    You can still use the DM virtual file syntax to 
+	    filter an events file - you just need to make sure that you end
+	    up with a binning specification too.
+	  </PARA>
+	  <PARA>
+	    Here we have split the filtering step from the binning one since
+	    saying
+	    <EQUATION>[bin sky=circle(4023,4100,54)]</EQUATION>
+	    would result in an 8192x8192 image (for an ACIS observation),
+	    which is unlikely to be the desired result.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+    <PARAMLIST>
+      <PARAM name="image" type="string" filetype="input" reqd="yes">
+	<SYNOPSIS>
+	  Image for which you want to know the binning
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The name of the image (or if an event file it
+	    must contain a DM binning specification) for which
+	    you want to know the sky limits.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="precision" type="real" min="0" def="1">
+	<SYNOPSIS>
+	  Precision [# decimal points] for output numbers
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The number of decimal places to use when calculating the sky
+	    limits. So, if the x limits were 1023.45 and 1439.204
+	    then the output would be:
+	  </PARA>
+
+	  <TABLE>
+	    <ROW>
+	      <DATA>Precision</DATA><DATA>X min</DATA><DATA>X max</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>0</DATA><DATA>1023</DATA><DATA>1439</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>1</DATA><DATA>1023.5</DATA><DATA>1439.2</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>2</DATA><DATA>1023.45</DATA><DATA>1439.20</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>3</DATA><DATA>1023.450</DATA><DATA>1439.204</DATA>
+	    </ROW>
+	  </TABLE>
+
+	  <PARA>
+	    It is unlikely that you need to change this parameter from its
+	    default value of 1.
+	    Although you can set the value to 0, it is not guaranteed that any
+	    filters calculated at this precision will be correct.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="dmfilter" type="string">
+	<SYNOPSIS>
+	  DM filter syntax to match image
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    When the script has finished this parameter will contain
+	    the DM filter expression (see "ahelp dmsyntax") needed
+	    to filter an events file (or image) to match the
+	    input image.
+	  </PARA>
+
+	  <PARA>
+	    An example of its use would be (using csh/tcsh syntax):
+	  </PARA>
+
+<VERBATIM>
+unix% get_sky_limits emap.img ver=0
+unix% set filt = `pget get_sky_limits dmfilter`
+unix% echo $filt
+X=3721.5:4953.5:#1232,Y=3037.5:4274.5:#1237
+unix% dmcopy "evt2.fits[bin $filt]" match.img
+</VERBATIM>
+
+	  <PARA>
+	    Here we run the script to find out the limits of emap.img,
+	    with verbose set to 0 to avoid any screen output, and then store
+	    the DM filter expression in the shell
+	    variable filt. This is then used in the dmcopy call to bin
+	    an event file, creating the file match.img.
+	  </PARA>
+
+	  <PARA>
+	    This expression can be used to filter images as well as event files.
+	    However note that it will not be correct if the binning
+	    of the image being filtered does not match that of the original
+	    image.
+	  </PARA>
+
+	</DESC>
+      </PARAM>
+      <PARAM name="xygrid" type="string">
+	<SYNOPSIS>
+	  xygrid parameter for mkexpmap to match image
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Set the xygrid parameter of mkexpmap to this value
+	    so as to create an exposure map that
+	    covers the same area of sky as the input image.
+	  </PARA>
+
+	  <PARA>
+	    An example of its use would be:
+	  </PARA>
+
+<VERBATIM>
+unix% get_sky_limits src.img ver=0
+unix% pset mkexpmap xygrid=")get_sky_limits.xygrid"
+</VERBATIM>
+
+	  <PARA>or</PARA>
+
+<VERBATIM>
+unix% get_sky_limits src.img ver=0
+unix% set xyg = `pget get_sky_limits xygrid`
+unix% pset mkexpmap xygrid=$xyg
+</VERBATIM>
+
+	  <PARA>
+	    In the first example we use paramater indirection
+	    (see "ahelp parameter") to set the xygrid parameter
+	    of mkexpmap equal to that of get_sky_limits.
+	    This requires that mkexpmap is run before the get_sky_limits
+	    parameter file is changed; a safer alternative is shown
+	    in the second example (using csh/tcsh syntax).
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="verbose" type="integer" min="0" max="5" def="0">
+	<SYNOPSIS>
+	  Verbose level
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If set to a non-zero value then the tool will
+	    print information to the screen when it is run.
+	    The extra information prduced when verbose is greater than 1
+	    is only likely to be useful when debugging the script.
+	  </PARA>
+          <PARA>
+            The script version is displayed when the verbose parameter is set
+            to 2 or higher.
+          </PARA>
+	</DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the October 2012 Release">
+      <PARA>
+	The script now errors out if sent a table rather than an image.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+	This script is not an official part of the CIAO release but is
+	made available as "contributed" software via the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+	Please see this page for installation instructions - such as how to
+	ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+    <BUGS>
+      <PARA title="Using the dmfilter parameter value to filter images">
+	The dmfilter parameter value can be used to filter
+	images as well as event files.
+	However note that it will not be correct if the binning
+	of the image being filtered does not match that of the original
+	image.
+      </PARA>
+      <PARA title="Setting precision to 0">
+	When the precision parameter is set to 0 there is no
+	guarantee that the resulting filters will be correct.
+      </PARA>
+    </BUGS>
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

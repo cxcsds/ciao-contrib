@@ -1,0 +1,86 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="identify_name" context="contrib"
+         refkeywords="identify find name object source resolver resolve coord coordinate coordinate coords
+		      position pos ra dec CADC NED IPAC VizieR CDS query
+		      coords.resolver coords_resolver"
+	 seealsogroups="contrib.coords">
+
+    <SYNOPSIS>
+      Find the position of an astronomical object using NED or CDS.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>from coords.resolver import identify_name</LINE>
+      <LINE>(ra, dec, coordsys) = identify_name(name)</LINE>
+      <LINE/>
+      <LINE>ra and dec are in decimal degrees, coordsys is a string</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The identify_name routine calls the Astronomical 
+        <HREF link="http://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/NameResolver">name resolver</HREF>
+        provided by the Canadian Astronomy Data Center (CADC).
+        Given a name, it returns the Right Ascension, Declination,
+        and coordinate system. If no position can be found then
+        a ValueError is raised.
+        This call requires a working internet connection, and so
+        may fail (e.g. if the CADC service is temporarily unavailable).
+      </PARA>
+
+      <PARA title="Loading the routine">
+	The routine can be loaded into a Python session or script by saying:
+      </PARA>
+
+<VERBATIM>
+from coords.resolver import identify_name
+</VERBATIM>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; from coords.resolver import identify_name</LINE>
+	  <LINE>&pr; (ra, dec, csys) = identify_name('sirius')</LINE>
+	  <LINE>&pr; print("RA={} Dec={} system={}".format(ra, dec, csys))</LINE>
+          <LINE>RA=101.28854 Dec=-16.71314 system=ICRS</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            Here we find the position of Sirius.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>(ra, dec, csys) = identify_name('made up name')</LINE>
+          <LINE>ValueError: No position found matching the name 'made up name'.</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            If a position is not recognized then a ValueError is raised.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Changes in the scripts 4.5.4 (August 2013) release">
+      <PARA>
+        The routine now uses the service at 
+        http://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/NameResolver
+        rather than the more-specific version previously used:
+        http://www1.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/NameResolver.
+      </PARA>
+    </ADESC>
+
+    <LASTMODIFIED>August 2013</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

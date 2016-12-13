@@ -1,0 +1,656 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY tool "convert_xspec_user_model">
+
+ <!ENTITY upr "unix&#37;">
+ <!ENTITY spr "sherpa>">
+ <!ENTITY xspec "XSPEC">
+
+]>
+<cxchelptopics>
+  <ENTRY key="convert_xspec_user_model" context="tools"
+	 refkeywords="xspec x-spec user model compile build
+		      initpackage lmodel.dat model.dat
+		      f2py udmget lmod cfitsio no-xspec noxspec
+		      sherpa_contrib.xspec.local xspec.local
+		      local lmod
+		      "
+         seealsogroups=""
+	 >
+
+    <SYNOPSIS>
+      Compile a &xspec; user model for use in Sherpa *experimental*
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>&tool; name modelfile [extrafile [extrafile [..]]</LINE>
+      <LINE/>
+      <LINE>Unlike most CIAO contributed scripts, there is no parameter file.</LINE>
+      <LINE/>
+      <LINE>The supported command-line flags can be found using -h/--help:</LINE>
+      <LINE/>
+      <LINE>--no-xspec   do not include &xspec; libraries when building</LINE>
+      <LINE>--cfitsio    include the CFITSIO library when building</LINE>
+      <LINE>-c / --clobber will overwrite existing files.</LINE>
+      <LINE>-p / --prefix flags are used to control the user model names.</LINE>
+      <LINE>-k / --keep flags keep the .pyf file used in compilation.</LINE>
+      <LINE>-v / --verbose changes the amount of screen output.</LINE>
+      <LINE>-f / --f2py passes through arguments to the f2py call.</LINE>
+      <LINE>--version prints the script version</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The &tool; tool will compile a &xspec; user model into a form
+	usable by Sherpa; it is therefore similar to the "initpackage"
+	command in &xspec;.  Unlike the initpackage command, this
+	script does not require that the &xspec; source package is
+	installed, and is not run from Sherpa but the command line.
+      </PARA>
+
+      <PARA>
+	This script is *experimental* and will not work
+	for all models; please see the "Known Problems"
+	section below for more information and contact the
+	<HREF link="http://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	if you find problems or models that it will not compile.
+	At present any model requiring access to the udmget
+	&xspec; routine is not supported.
+      </PARA>
+
+      <PARA>
+	The script takes the model file - often called model.dat or
+	lmodel.dat - and the source code in the working directory,
+	using them to create a Python module consisting of the
+	compiled model and some supporting Python code that creates
+	the Sherpa model.  The output is a Python module, whose name
+	is the first argument to the script. This can be loaded into
+	Sherpa by saying (assuming that you ran '&tool; relxill ...'
+	and that you are in the same directory):
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&spr; import relxill</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	or, by using the lmod rouine, which allows you to load in
+	models from other directories, displays a list of the
+	models in the module, and imports all the convolition
+	routines into the current namespace:
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&spr; from sherpa_contrib.xspec.local import lmod</LINE>
+	  <LINE>&spr; lmod('relxill', '/data/models/relxill')</LINE>
+	</SYNTAX>
+      </PARA>
+	
+
+      <PARA>
+	At this point the models can then be used; the default
+	behavior of the script is to add the prefix "xs"
+	to the model name (in a similar manner to how Sherpa uses
+	the prefix "xs" for the &xspec; models), but this
+	can be changed using the --prefix flag, as shown
+	below in the examples.
+      </PARA>
+
+      <PARA title="Convolution models">
+	<!--
+	The interface to the &xspec; convolution models has
+	not been thoroughly tested, so take care when
+	using them!
+	-->
+	The interface to XSPEC convolution models has not been
+	updated for CIAO 4.9 and should not be used at this time.
+	<!-- TODO: update when fixed -->
+      </PARA>
+
+      <PARA>
+	The convolution models require a slightly different interface,
+	which is designed to follow the Sherpa load_conv and load_psf
+	commands. For each convolution model there will be a corresponding
+	load_XXX command; e.g. if the model file contains a convolution
+	model called specconv then there will be a 
+	load_specconv command (note that this naming scheme
+	ignores the value of the --prefix flag).
+	If you have used the "import name" form, shown above,
+	then you have to use "name.load_specconv" to call the function.
+	This can be avoided by importing the symbols directly - e.g.
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&spr; from relxill import load_specconv</LINE>
+	  <LINE>&spr; from relxill import *</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	- or by using the lmod routine discussed earlier
+	(see <HREF link="http://cxc.harvard.edu/ciao/ahelp/lmod.html">ahelp lmod</HREF>).
+      </PARA>
+
+      <PARA>
+	The load routines take a single argument, a string
+	giving the model name, which can then be used as a model
+	component and any parameters changed. For example,
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&spr; load_specconv("convmdl")</LINE>
+	  <LINE>&spr; print(convmdl)</LINE>
+          <LINE>...</LINE>
+	  <LINE>&spr; convmdl.spin = 3.2</LINE>
+	  <LINE>&spr; set_source(convmdl(powlaw1d.pl))</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	where this assumes that the specconv model has
+	a spin parameter.
+      </PARA>
+
+      <PARA title="Table models">
+	Sherpa already supports additive and multiplicative
+	table models using the 
+	<HREF link="http://cxc.harvard.edu/sherpa/ahelp/load_table_model.html">load_table_model command</HREF>.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; ls *.f</LINE>
+	  <LINE>mdl.f</LINE>
+	  <LINE>&upr; &tool; mymodel lmodel.dat</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The mymodel module is created, which contains the model(s)
+	    defined in the file lmodel.dat and with code in mdl.f.
+	    If the script completes successfully then it will have
+	    created the directory mymodel/, and you can then load
+	    it into Sherpa with the command:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&spr; import mymodel</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    At this point any additive or multiplicative model
+	    will be available using the &xspec; name with the prefix
+	    "xs". So, if lmodel.dat contained models mdl1 and mdl2
+	    then instances of these models can be created and
+	    inspected as any other Sherpa model; for example
+	    (assuming mdl2 has an alpha component):
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&spr; set_source(xsphabs.galabs * xsmdl1.mdl)</LINE>
+	      <LINE>&spr; xsmdl2.gas</LINE>
+	      <LINE>&spr; print(mdl)</LINE>
+	      <LINE>&spr; gas.alpha = 2</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; &tool; mymodel2 lmodel.dat --prefix</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this case the model names are not preceeded by "xs",
+	    as in the example above, because the --prefix argument has
+	    been given. This means that instead of saying
+	    xsmdl1.mdl you would just say mdl1.mdl.
+	  </PARA>
+	  <PARA>
+	    Note that there is no check that the model names do not
+	    match existing Sherpa models or function names, so there
+	    is a chance for confusion.
+	  </PARA>
+	  <PARA>
+	    To use a different prefix than "xs" supply an argument to
+	    the --prefix flag, but it must start with a capital letter - 
+	    e.g.
+	    <EQUATION>--prefix XSUM</EQUATION>
+	    would make the model name be xsummdl1 rather than xsmdl1.mdl.
+	    The requirement for a capital letter is because the name is
+	    also used to create a Python class (this class is not used
+	    in normal use of Sherpa).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; ls *.c</LINE>
+	  <LINE>polar.c polarutils.c</LINE>
+	  <LINE>&upr; &tool; polar lmodel_polar.dat --clobber</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here the models in the file lmodel_polar.dat - with C code
+	    automatically picked up from the polar.c and polarutils.c
+	    files - are compiled to create a polar module.
+	    The --clobber argument is used to delete any existing version
+	    of the module.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; &tool; foo model.dat --no-xspec --cfitsio</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this case the model uses CFITSIO to read in files, but
+	    not other &xspec; libraries. This may cause problems when
+	    trying to load the module, due to differences in the FORTRAN
+	    compiler used to build CIAO and the model code. If this
+	    happens then &tool; will fail, so the --no-xspec and --cfitsio
+	    flags are used to try to avoid this problem.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+	    
+    </QEXAMPLELIST>
+
+    <ADESC title="Loading the module">
+      <PARA title="Loading a model from a different directory">
+	Since the code generates a Python module, you can
+	load in modules from different directories by
+	adjusting your PYTHONPATH environment variable or
+	the os.sys.path array. We provide a simple wrapper
+	routine, lmod, in the sherpa_contrib.xspec.local
+	package, which can be used in a similar manner to the
+	&xspec; lmod command. For example, after
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&upr; cd /data/models</LINE>
+	  <LINE>&upr; &tool; mymod model.dat</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	you can load in the model package with the following:
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&spr; from sherpa_contrib.xspec.local import lmod</LINE>
+	  <LINE>&spr; lmod("mymod", "/data/models")</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	which will also display the models contained in the
+	module; see
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/lmod.html">ahelp lmod</HREF>
+	for more information.
+      </PARA>
+      <PARA title="Automatically loading the module into Sherpa">
+	Models can automatically be loaded into Sherpa by taking
+	advantage of the IPython startup directory. Any Python file
+	in $HOME/.ipython-ciao/profile_sherpa/startup/ will be
+	loaded when Sherpa is started up, so add a file to this
+	directory - e.g. 90-xspec-models.py - with commands to 
+	set up the models. An example file is shown below; adjust
+	as appropriate:
+      </PARA>
+<VERBATIM>
+import os
+
+from sherpa_contrib.xspec.local import lmod
+# This assumes that &tool; was run in the two directories
+# given in the lmod command:
+lmod("carbatm", "/data/models/carbatm", verbose=False)
+lmod("relxill", "/data/models/relxill", verbose=False)
+
+# The carbatm model needs to know where the data files are
+# via &xspec; settings; relxill via an environment variable:
+set_xsxset("CARBATM", "/data/models/carbatm")
+os.environ["RELLINE_TABLES"] = "/data/models/relxill"
+
+# display a screen message to remind me what I have loaded
+print("&xspec; models: carbatm and relxill")
+</VERBATIM>
+      <PARA>
+        Starting Sherpa will display the message before the
+	first prompt:
+      </PARA>
+<VERBATIM>
+&upr; sherpa -n
+&xspec; models: carbatm and relxill
+sherpa-1&gt;
+</VERBATIM>
+      <PARA>
+	The verbose flag is set to False when calling lmod()
+	to avoid the model names always being displayed
+	when Sherpa is started.
+      </PARA>
+
+      <PARA title="Notes">
+	This only works for the Sherpa application. If you
+	have loaded up Sherpa into ChIPS, an IPython session,
+	or a script then you wil have to manually load in the
+	models you need.
+      </PARA>
+
+      <PARA title="Change in the IPython configuration directory">
+	The location of the IPython configuration directory changed
+	in CIAO 4.8 to $HOME/.ipython-ciao/. In CIAO 4.5 to 4.7,
+	inclusive, it was $HOME/.ipython-ciao45/.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Known Problems">
+      <PARA>
+	Please contact the
+	<HREF link="http://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	if you have a problem or need to use an unsupported
+	feature, such as platform or language.
+      </PARA>
+      <PARA title="Platform support">
+	The OS-X support is limited.
+      </PARA>
+      <PARA title="Language support">
+	All the languages supported by &xspec; user models - i.e.
+	C, C++, and Fortran - should be supported, as long
+	as the compiler is compatible with that used
+	to compile the &xspec; models in CIAO (see below).
+      </PARA>
+      <PARA title="No support for udmget">
+	Those models that require the --udmget flag
+	to the &xspec; initpackage are not supported
+	at this time.
+      </PARA>
+      <PARA title="Model types">
+	Sherpa only supports the additive, multiplicative,
+	and convolution models; other models will be ignored.
+	The convolution models have only been lightly tested.
+      </PARA>
+      <PARA>
+	Models that need to be re-evaluated per spectrum 
+	or that calculate model variances 
+	are converted but there has been no testing to see
+	if they work correctly (note that Sherpa ignores
+	the error array that is returned by these models).
+      </PARA>
+      <PARA>
+	When using convolution models, one possible 
+	problem is if you have ignored an energy - or
+	wavelength - range within the data; if this 
+	range is larger than the RMF at this energy
+	then it may be possible that the convolution
+	will not properly account for edge effects.
+      </PARA>
+      <PARA title="Choice of module name">
+	The first argument to &tool; is used to 
+	create a Python module of the same name that can then
+	be loaded into Sherpa or a Python script.
+	It can not match the name of one of the models (once
+	the prefix value has been added), and it 
+	should not match other Python modules or common symbols,
+	otherwise it could confuse users.
+	There is only limited checking to see whether there
+	are possible name clashes for the module and model
+	names.
+      </PARA>
+      <PARA title="Parameter types">
+	Periodic parameters are not supported.
+      </PARA>
+      <PARA title="Accessing &xspec; routines">
+	The default behavior is to try and link against the
+	&xspec; libraries, but the results have not been
+	well tested. One known problem is if the gfortran
+	version is significantly different to that used to
+	build the &xspec; models provided as part of
+	<!--
+	    CIAO (gcc/gfortran version 4.? in CIAO 4.8),
+	-->
+	CIAO,
+	which can lead to errors such as
+      </PARA>
+<VERBATIM>
+undefined symbol: _gfortran_copy_string
+</VERBATIM>
+      <PARA>
+	If the model does not make use of the &xspec; libraries
+	then the --no-xspec flag can be used to avoid linking
+	against the &xspec; code, which may help in this
+	situation.
+      </PARA>
+      <PARA>
+	If the model does not use the &xspec; libraries but
+	it does use CFITSIO then try both the --no-xspec and
+	--cfitsio flags; an example of when this is needed is
+	seeing messages such as
+      </PARA>
+<VERBATIM>
+undefined symbol: ftgmsg_
+</VERBATIM>
+      <PARA>
+	The --f2py option can be used to fine-tune the compile and link
+	options used by f2py if the --no-xspec and --cfitsio options
+	are insufficient. The --keep argument is useful here, 
+	since it displays the
+	f2py command line used by the script/
+      </PARA>
+      <PARA title="External files or set up">
+	The equivalent location of the spectral/xspec/
+	directory of &xspec; is the 
+	$ASCDS_INSTALL/ots/spectral/modelData/ directory.
+	The 
+	<HREF link="http://cxc.harvard.edu/sherpa/ahelp/set_xsxset.html">set_xsxset command</HREF>
+	can be used to set an &xspec;
+	"xset" variable, if the model uses these to define
+	alternative locations for data files or other
+	configuration information. The os.environ
+	directionary can be used to set an environment 
+	variable if these are used by the model; for example
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&spr; set_xsxset('CARBATM', '/data/models/data/carbatm')</LINE>
+	  <LINE>&spr; os.environ['TBLLOC'] = '/data/models/data'</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	will set the CARBATM &xspec; variable and the
+	TBLLOC environment variable.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Parameter names">
+      <PARA>
+	Not all parameter names are usable in Sherpa, due
+	to the Python grammar. Below is
+	a list of the conversion rules used, but if you are in
+	doubt then just print out an instance of a model
+	to see what the names are.
+      </PARA>
+      <PARA>
+	The conversion rules are:
+      </PARA>
+      <LIST>
+	<ITEM>The @ character is replaced with the string At.</ITEM>
+	<ITEM>The name break is converted to break_, lambda to lambda_, type to type_; any
+	  parameter surrounded by &lt; and &gt; has these characters
+	  removed and _ave added to the end (so "&lt;kT&gt;" would
+	  be changed to "kT_ave"); and a name ending with "(...)"
+	  is replaced by "_..." (so "Rin(G)" becomes "Rin_G").
+	</ITEM>
+	<ITEM>Any invalid character for a Python symbol is replaced by _.</ITEM>
+      </LIST>
+    </ADESC>
+
+    <ADESC title="What does the script do?">
+      <PARA>
+	The compilation of the code is handled by the
+	f2py script (despite the name it can also handle C code;
+	see the <HREF link="http://cens.ioc.ee/projects/f2py2e/">F2PY home page</HREF>
+	for more information).
+      </PARA>
+      <PARA>
+	There are two parts to the process:
+      </PARA>
+      <LIST>
+	<ITEM>create a module of the compiled code</ITEM>
+	<ITEM>create the Python interface to this compiled code.</ITEM>
+      </LIST>
+      <PARA>
+	The model definition file is parsed to extract all the models,
+	which provides details on the model name, its type (such
+	as additive or multiplicative), the arguments, the 
+	name of the routine that evaluates the model, and 
+	the language used for this routine.
+	The parsing follows the definition given in the
+	<HREF link="http://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSappendixLocal.html">&xspec;
+	  appendix on local models</HREF>.
+      </PARA>
+      <PARA title="Creating the compiled code">
+	This information is then used to create a f2py signature file
+	which defines the interface we want to have in Python to the
+	compiled code.  The signature file is named &lt;module&gt;.pyf
+	in the working directory and is deleted by default but can be
+	retained using the --keep flag, which will also display the
+	coommand-line arguments used to run f2py, in case it needs
+	changing.  The signature file then processed by f2py to create the
+	compiled module, which is moved to the location
+	&lt;module&gt;/_&lt;module&gt;.so.
+      </PARA>
+      <PARA>
+	If the f2py call fails, then the command-line used to run it
+	will be displayed and the signature file will not be deleted.
+	Extra flags
+	can be passed through to f2py using the --f2py (or -f) 
+	flag; for instance
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&upr; &tool; mdl lmodel.dat -f="-DDBG" -f="-L/opt/local/lib" -f="-lmutils"</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	will add the options -DDBG, -L/opt/local/lib, and
+	-lmutils to the f2py call.
+	Use
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&upr; $ASCDS_INSTALL/ots/bin/f2py -h</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	for more information on the flags supported by f2py.
+      </PARA>
+      <PARA title="What files are compiled?">
+	The following files in the current working directory are
+	compiled: *.f, *.f03, *.f90, *.c, *.cxx, *.C, and
+	*.cc. Note that if C++ models - i.e. those with a
+	C_ prefix in the model.dat file - cause the script
+	to create a file called wrap_&lt;modulename&gt;.cxx,
+	which is also compiled by f2py and then deleted
+	(unless --keep is specified).
+      </PARA>
+
+      <PARA title="Creating the python code">
+	The script creates one Python file, __init__py, in the directory,
+	which contains the classes for the models along with the
+	code needed to "install" them into Sherpa (e.g. so that
+	they are included in the output of list_models).
+	The model class names are created by appending the
+	model name from the definition file to the prefix
+	value (which defaults to "XS"); since Python class
+	names have to start with a capital letter the prefix
+	must be capitalised (or, if blank, then the first
+	character of the model name is capitalized).
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.9.0 (December 2016) release">
+      <PARA>
+	The script has been updated to work with CIAO 4.9 but has
+	only seen very-limited testing. There is still no support
+	for convolution models.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.8.2 (January 2016) release">
+      <PARA title="Support for models with an initialization string">
+	XSPEC models which use an initialization string, such as the
+	<HREF link="http://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/models/snapec.html">snapec model</HREF>
+	can now be converted.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+	This script has not been updated to reflect changes made
+	in Sherpa in this release. Please contact the
+	<HREF link="http://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	if you need to use this script.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.6 (September 2014) release">
+      <PARA>
+	The script is new in this release.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Notes">
+      <PARA>
+	This script is not an official part of the CIAO release but is
+	made available as "contributed" software via the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+	instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA title="No support for convolution models">
+	The support for XSPEC convolution models was broken with
+	the release of CIAO 4.8
+	and the code has not yet been updated to address this.
+      </PARA>
+      <PARA title="Support on El-Capitan and later">
+	The security changes in OS-X El-Capitan mean that an
+	additional step may be required, after running
+	convert_xspec_user_model. If the tool reports a failure
+	when trying to import the module (which it does to check
+	that the build was a success) then try the following
+	command (replacing lname with the first argument to the
+	convert_xspec_user_model call):
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&upr; install_name_tool `ls -1 name/*so` -change libcfitsio.2.dylib @rpath/../ots/lib/libcfitsio.2.dylib</LINE>
+	</SYNTAX>
+      </PARA>
+    </BUGS>
+    <!--
+    <BUGS>
+      <PARA>
+	See the
+	<HREF link="http://cxc.harvard.edu/ciao/bugs/convert_xspec_user_model.html">bugs page
+	for this script</HREF> on the CIAO website for an up-to-date
+	listing of known bugs. 
+      </PARA>
+    </BUGS>
+    -->
+
+    <LASTMODIFIED>December 2016</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

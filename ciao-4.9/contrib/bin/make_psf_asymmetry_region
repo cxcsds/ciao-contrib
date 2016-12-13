@@ -1,0 +1,252 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2010, 2011, 2015
+#           Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Create a region file highlighting the position of the PSF
+asymmetry for a source at a given SKY location (x,y).
+
+For more information, see
+
+  http://cxc.harvard.edu/ciao/caveats/psf_artifact.html
+
+"""
+
+toolname = "make_psf_asymmetry_region"
+version = "12 November 2015"
+
+import sys
+import os
+from collections import namedtuple
+
+import subprocess as sbp
+
+import paramio as pio
+import pycrates
+
+from ciao_contrib.logger_wrapper import handle_ciao_errors, \
+    initialize_logger, make_verbose_level, set_verbosity
+from ciao_contrib.param_wrapper import open_param_file
+
+# set up the logger
+#
+initialize_logger(toolname)
+v1 = make_verbose_level(toolname, 1)
+v3 = make_verbose_level(toolname, 3)
+
+# Store the data for a region describing the PSF
+# anomaly's location
+#
+PSFRegion = namedtuple('PSFRegion', 'x y theta1 theta2 rmin rmax')
+
+
+def get_anomaly_location(x, y, roll, scale):
+    """Given a location (x,y) in sky coordinates, the roll
+    in degrees, following Chandra convention, and the scale
+    of the sky coordinates (pixel width in arcseconds), return
+    a PSFRegion describing the location of the PSF anomaly.
+
+    """
+
+    # feature is at PA of 195 +- 25 which is 170 to 220
+    # but PA is theta - 90 which gives us
+    #
+    theta1 = (90.0 + 195.0 - 25.0 - roll) % 360
+    theta2 = (90.0 + 195.0 + 25.0 - roll) % 360
+
+    # rmin = 0
+    # rmax = 0.8 / scale
+
+    rmin = 0.6 / scale
+    rmax = 1.0 / scale
+
+    return PSFRegion(x, y, theta1, theta2, rmin, rmax)
+
+
+def location_to_region(anom, filename=None, regformat="ciao"):
+    """Convert an anomaly location (PSFRegion) to a string
+    containing a region. The regformat can be CIAO (for a PIE
+    region) or ds9 (for a PANDA region).
+
+    If filename is not None it indicates the file to which
+    the region is related.
+    """
+
+    for fname in ["x", "y", "theta1", "theta2", "rmin", "rmax"]:
+        if not hasattr(anom, fname):
+            raise ValueError("Input argument does not have a '{0}' attribute.".format(fname))
+
+    if regformat == "ciao":
+        return "pie({0},{1},{2},{3},{4},{5})".format(anom.x,
+                                                     anom.y,
+                                                     anom.rmin,
+                                                     anom.rmax,
+                                                     anom.theta1,
+                                                     anom.theta2)
+
+    elif regformat == "ds9":
+        out = ["# Region file fomat: DS9 version 4.1"]
+        if filename is not None:
+            out.append("# Filename: {0}".format(filename))
+
+        out.append("physical")
+        out.append(
+            "panda({0},{1},{2},{3},1,{4},{5},1)".format(anom.x,
+                                                        anom.y,
+                                                        anom.theta1,
+                                                        anom.theta2,
+                                                        anom.rmin,
+                                                        anom.rmax))
+        return "\n".join(out)
+
+    else:
+        raise ValueError("Unrecognized format '{0}' must be ciao or ds9".format(regformat))
+
+
+def get_data_from_file(fname):
+    """Return the information we need for calculating the
+    location of the anomaly.
+    """
+
+    cr = pycrates.read_file(fname)
+    roll = cr.get_key_value("ROLL_NOM")
+    if roll is None:
+        raise IOError("No ROLL_NOM keyword in {}".format(fname))
+
+    detnam = cr.get_key_value("DETNAM")
+    if detnam is None:
+        raise IOError("No DETNAM keyword in {}".format(fname))
+
+    v3("ROLL_NOM={} DETNAM={}".format(roll, detnam))
+
+    if detnam.startswith("ACIS-"):
+        scale = 0.492
+
+    elif detnam.startswith("HRC-"):
+        scale = 0.13175
+
+    else:
+        # e.g. Merged?
+        raise IOError("Unexpected DETNAM of '{0}' in\n{1}".format(detnam,
+                                                                  fname))
+
+    return {"roll": roll, "scale": scale}
+
+
+def create_anomaly_region(infile, x, y, outfile, regformat="ciao",
+                          clobber=False):
+    """Create a regionfile called outfile that highlights the
+    PSF anomaly location for the observation stored in infile (needs
+    ROLL_NOM and DETNAM keywords) for a source with sky coordinates
+    of (x,y).
+
+    If clobber is False then outfile will not be overwritten if it
+    exists.
+
+    regformat should be ciao or ds9 and controls the format used for the
+    region file.
+    """
+
+    if not clobber and os.path.exists(outfile):
+        raise IOError("Output file {0} exists and clobber is no.".format(outfile))
+
+    fdata = get_data_from_file(infile)
+    reg = get_anomaly_location(x, y, fdata["roll"], fdata["scale"])
+    outstr = location_to_region(reg, regformat=regformat)
+
+    with open(outfile, "w") as fh:
+        fh.write(outstr)
+        fh.write("\n")
+        fh.flush()
+
+    v1("Created: {0}".format(outfile))
+
+
+def process_command_line(argv):
+    "Get the command-line arguments returning a dictionary"
+
+    if argv is None or argv == []:
+        raise ValueError("argv argument is None or empty")
+
+    pinfo = open_param_file(argv, toolname=toolname)
+    fp = pinfo["fp"]
+
+    infile = pio.pget(fp, "infile")
+    if infile.strip() == "":
+        raise ValueError("infile parameter is empty")
+
+    outfile = pio.pget(fp, "outfile")
+    if outfile.strip() == "":
+        raise ValueError("outfile parameter is empty")
+
+    x = pio.pgetd(fp, "x")
+    y = pio.pgetd(fp, "y")
+    fmt = pio.pgetstr(fp, "format")
+    display = pio.pgetb(fp, "display")
+    verbose = pio.pgeti(fp, "verbose")
+    clobber = pio.pgetb(fp, "clobber")
+    pio.paramclose(fp)
+
+    set_verbosity(verbose)
+
+    if not clobber and os.path.exists(outfile):
+        raise IOError("clobber is no and outfile ({0}) exists".format(outfile))
+
+    return {"infile": infile, "outfile": outfile,
+            "x": x, "y": y, "clobber": clobber,
+            "display": display, "format": fmt,
+            "verbose": verbose}
+
+
+@handle_ciao_errors(toolname, version)
+def runit(args):
+    "Run the program"
+    opts = process_command_line(args)
+    infile = opts["infile"]
+    outfile = opts["outfile"]
+    x = opts["x"]
+    y = opts["y"]
+    fmt = opts["format"]
+    create_anomaly_region(infile, x, y, outfile,
+                          regformat=fmt,
+                          clobber=opts["clobber"])
+
+    if opts["display"]:
+        v1("Starting ds9")
+        comm = ["ds9", infile]
+        if fmt == "ciao":
+            comm.extend(["-region", "format", "ciao"])
+
+        comm.extend(["-region", outfile,
+                     "-pan", "to", str(x), str(y), "physical",
+                     "-zoom", "4",  # zoom level is a guess
+                     ])
+
+        v3("Calling: {0}".format(" ".join(comm)))
+        sbp.Popen(comm)
+
+
+if __name__ == "__main__":
+    runit(sys.argv)
+    sys.exit(0)
+
+# end

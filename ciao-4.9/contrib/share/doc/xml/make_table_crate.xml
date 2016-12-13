@@ -1,0 +1,301 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="make_table_crate" context="contrib"
+         refkeywords="make create table crate metadata col cols column columns array arrays
+                      dict dictionary ordereddict recarray structured struct
+		      tablecrate"
+         seealsogroups="cr.io sh.write sh.arrays crutils.cols">
+
+    <SYNOPSIS>
+      Create a TABLECrate from a set of arrays, a dictionary, or a structured array.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>make_table_crate(col1, ..., coln [, colnames=None])</LINE>
+      <LINE>make_table_crate(dictionary [, colnames=None])</LINE>
+      <LINE>make_table_crate(structarray [, colnames=None])</LINE>
+      <LINE/>
+      <LINE>The return value is a TABLECrate.</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	This routine provides a quick means of creating a TABLECrate from
+	a set of arrays, a dictionary, or a NumPy structured array.
+      </PARA>
+      <PARA title="Loading the routine">
+	The routine can be loaded into a ChIPS or Sherpa session by saying:
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>from crates_contrib.utils import *</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA title="Column content: dictionary">
+	If a single argument is given and it acts like a Python dictionary,
+        then it is used to define both the column names and values (the
+	dictionary keys and values respectively). The dictionary values
+	are assumed to be arrays and follow the same rules as if
+	given individually, as described in the "Column contents: separate arguments"
+	section below.
+      </PARA>
+      <PARA>
+	If the colnames argument is given then it is used to determine the
+	order of the columns in the output crate. This argument acts as a column
+	filter on the input dictionary, since any dictionary keys not in colnames
+	are not added to the crate.
+      </PARA>
+      <PARA>
+	If colnames is None then the argument of the columns is determined by the
+	dictionary itself - i.e. the order returned by its keys() method.
+	Use the collections.OrderedDict class if you need a specific order (or 
+	explicitly specify it using the colnames argument).
+      </PARA>
+
+      <PARA title="Column content: structured array">
+	If the argument is a
+	<HREF link="http://docs.scipy.org/doc/numpy-1.7.0/user/basics.rec.html">NumPy
+	structured array</HREF> then it is used to determine the column
+	names and values and the order of the columns. The colnames
+	argument can be used to re-order or subset the columns as
+	with dictionaries.
+      </PARA>
+
+      <PARA title="Column content: separate arguments">
+	The data to add to the Crate is given as the col1 to coln arguments;
+	they can be Python arrays (e.g. [1,2,3]) or numpy arrays (e.g.
+	np.arange(4)), can be multi-dimensional (e.g. for vector columns),
+	and can include string vectors. Each column should contain a single
+	datatype, and all will be padded to the length of the longest
+	array. The padding is 0 for numeric columns and "" or "IND" for
+	string arrays.
+      </PARA>
+      <PARA>
+	If the optional colnames argument is not given then the 
+	columns will be named "col1" to "coln", where n is the number of
+	columns. To use your own names, supply an array of strings to the
+	colnames argument. This array must match the number of columns.
+      </PARA>
+      <PARA title="Writing the data out to file">
+	The write_file() command can be used to write the data out
+	to file in FITS binary or ASCII formats. If you do not need to
+	add metadata to the crate then the write_columns() routine
+	can also be used.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; a = [1, 2, 3, 4, 5]</LINE>
+	  <LINE>&pr; b = 2.3 * np.asarray(a)**2</LINE>
+	  <LINE>&pr; c = ["src a", "src b", "", "multiple sources", "x"]</LINE>
+	  <LINE>&pr; cr = make_table_crate(a, b, c)</LINE>
+	  <LINE>&pr; print(get_col_names(cr))</LINE>
+	  <LINE>['col1' 'col2' 'col3']</LINE>
+	  <LINE>&pr; write_file(cr, "src.fits")</LINE>
+	  <LINE>&pr; write_file(cr, "src.dat[opt kernel=text]")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    A table crate is created (cr) that contains the three arrays, stored
+	    as columns "col1", "col2", and "col3". The crate is written out to
+	    the file "src.fits", which is in binary FITS format, and "src.dat",
+	    which is in ASCII format using the TEXT/SIMPLE format (see the
+	    <HREF link="http://cxc.harvard.edu/ciao/ahelp/dmascii.html">dmascii
+	      ahelp page</HREF> for more information).
+	    The contents of src.dat are
+	  </PARA>
+<VERBATIM>
+&pr; !cat src.dat
+#TEXT/SIMPLE
+# col1 col2 col3
+1 2.300000000000 "src a"
+2 9.200000000000 "src b"
+3 20.70000000000 ""
+4 36.80000000000 "multiple sources"
+5 57.50000000000 x
+</VERBATIM>
+	  <PARA>
+	    and the column listing for "src.fits" is:
+	  </PARA>
+<VERBATIM>
+&pr; !dmlist src.fits cols
+ 
+-----------------------------------------------------------
+Columns for Table Block TABLE
+-----------------------------------------------------------
+ 
+ColNo  Name       Unit        Type             Range
+   1   col1                    Int4           -                    
+   2   col2                    Real8          -Inf:+Inf            
+   3   col3                    String[16]                          
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; cr = make_table_crate(a, b, c, colnames=['x', 'y', 'comment'])</LINE>
+	  <LINE>&pr; cr.name = 'SRCS'</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    This time the column names are set to "x", "y", and "comment"
+	    rather than "col1", "col2", and "col3". The block name is
+	    changed from 'TABLE' to 'SRCS'.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; x = [1, 2, 3, 4]</LINE>
+	  <LINE>&pr; y = np.arange(10).reshape(5,2)</LINE>
+	  <LINE>&pr; cr = make_table_crate(x, y, colnames=["x", "y"])</LINE>
+	  <LINE>&pr; set_key(cr, 'NORMFLAG', True, desc="Is the data normalized?")</LINE>
+	  <LINE>&pr; write_file(cr, "example.fits")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we highlight
+	  </PARA>
+	  <LIST>
+	    <ITEM>handling multi-dimensional arrays (y),</ITEM>
+	    <ITEM>dealing with arrays of different length (x has 4 scalars and y has 5 pairs),</ITEM>
+	    <ITEM>and adding additional metadata to the Crate.</ITEM>
+	  </LIST>
+	  <PARA>
+	    The output file looks like:
+	  </PARA>
+<VERBATIM>
+&pr; !dmlist example.fits data,clean
+#  x          y[2]
+          1                  0 1
+          2                  2 3
+          3                  4 5
+          4                  6 7
+          0                  8 9
+</VERBATIM>
+	  <PARA>
+	    and the header keyword was set (the routine automatically sets
+	    the CREATOR and DATE keywords).
+	  </PARA>
+<VERBATIM>
+&pr; !dmlist example.fits header,clean
+CREATOR              make_table_crate               tool that created this output
+DATE                 2013-11-14T09:58:51            Date and time of file creation
+NORMFLAG             TRUE                           Is the data normalized?
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; icr = read_file("lc.fits")</LINE>
+	  <LINE>&pr; x = copy_colvals(icr, "time")</LINE>
+	  <LINE>&pr; y = copy_colvals(icr, "rate")</LINE>
+	  <LINE>&pr; ocr = make_table_crate({"dt": x - x[0], "rate": rate})</LINE>
+	  <LINE>&pr; write_file("lc2.fits")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we create a new table crate based on the time and rate columns
+	    of the file lc.fits. The new table has two columns, "dt" and "rate",
+	    and is written out to the file lc2.fits.
+	    Since we use a Python dictionary then the order of the columns in the
+	    crate is not guaranteed; the easiest way to force an ordering is to use
+	    the colnames option; e.g.
+	  </PARA>
+          <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; d = {"dt": x - x[0], "rate": rate}</LINE>
+	      <LINE>&pr; ocr = make_table_crate(d, colnames=["dt", "rate"])</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; ds = CrateDataset()</LINE>
+	  <LINE>&pr; col1 = np.arange(1, 5)</LINE>
+	  <LINE>&pr; col2 = np.random.randint(10, 20, size=col1.size)</LINE>
+	  <LINE>&pr; ivals = np.arange(12).reshape(3,4)</LINE>
+	  <LINE>&pr; cr1 = make_table_crate(col1, col2, colnames=['INDEX', 'RANDVAL'])</LINE>
+	  <LINE>&pr; cr2 = make_image_crate(ivals)</LINE>
+	  <LINE>&pr; add_crate(ds, cr1)</LINE>
+	  <LINE>&pr; add_crate(ds, cr2)</LINE>
+	  <LINE>&pr; write_file(ds, 'blocks.fits')</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we use 
+	    <HREF link="http://cxc.harvard.edu/ahelp/cratedataset.html">a CrateDataset object</HREF>
+	    to store two blocks - a table and then an image - which is written out to blocks.fits:
+	  </PARA>
+<VERBATIM>
+&pr; !dmlist blocks.fits blocks
+ 
+--------------------------------------------------------------------------------
+Dataset: blocks.fits
+--------------------------------------------------------------------------------
+ 
+     Block Name                          Type         Dimensions
+--------------------------------------------------------------------------------
+Block    1: PRIMARY                        Null        
+Block    2: TABLE                          Table         2 cols x 4        rows
+Block    3: IMAGE                          Image      Int4(4x3)
+</VERBATIM>
+          <PARA>
+	    Since a FITS table can not start with a TABLE block, an empty
+	    PRIMARY block has been automatically created by the write_file command.
+	  </PARA>
+	  <PARA>
+	    The
+	    <HREF link="http://docs.scipy.org/doc/numpy-1.7.0/reference/generated/numpy.random.randint.html">NumPy randint routine</HREF>
+	    is used to create random integers betwen 10 and 19 (inclusive).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+
+    <ADESC title="Adding or changing metadata">
+      <PARA>
+	The crate has a name of 'TABLE' and contains two keywords, CREATOR and DATE.
+	These can be changed, or other values added, using Crates routines.
+      </PARA>
+      <PARA title="The block name">
+	<SYNTAX>
+	  <LINE>&pr; cr.name = 'HISTVALS'</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	will change the block name.
+      </PARA>
+      <PARA title="Keywords">
+	The set_key() routine is an easy way to add or edit a keyword,
+	while get_key() and add_key() provide a more powerful
+	way of handling keywords. The delete_key() routine removes
+	keywords.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+ 
+    <LASTMODIFIED>December 2013</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

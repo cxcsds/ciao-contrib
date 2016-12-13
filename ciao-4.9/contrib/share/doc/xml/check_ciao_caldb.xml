@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY     pr  "unix&#x25; ">
+]>
+<cxchelptopics>
+  <ENTRY key="check_ciao_caldb" context="tools"
+	 refkeywords="caldb install installation calibration check verify test chkcif latest version"
+	 seealsogroups="caltools install py.caldb">
+    <SYNOPSIS>
+      A tool to test the installation of the CIAO Calibration Database (CALDB)
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>check_ciao_caldb</LINE>
+      <LINE>check_ciao_caldb --latest</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The check_ciao_caldb tool allows users to easily
+	check that the
+	CIAO Calibration Database (CALDB) is installed correctly.
+	It is intended to be used after installing or upgrading
+	CIAO, or to help diagnose problems seen with other CIAO
+	toos.
+      </PARA>
+      <PARA>
+	The tool only tests the basic installation, and so
+	provides a quick and easy test.
+	It does not
+	perform the same verification steps as 
+	either the 
+	calvalid tool from CIAO (see "ahelp calvalid")
+	or the 
+	the chkcif
+	tool from the FTOOLS package (as described on the
+	<HREF link="http://cxc.harvard.edu/caldb/downloads/index.html#dl_verify">Download the CIAO
+	CALDB</HREF>
+	page), which should be used for a more thorough evaluation.
+      </PARA>
+      <PARA title="Tool behavior">
+	As shown in the example below, the tool will print out some basic
+	information on the CALDB installation, and then exit with a status
+	value of 0 when the installation is correct. If there is a problem
+	then an error message will be displayed and the exit status
+	will be set to a non-zero value.
+      </PARA>
+      <PARA title="The --latest flag">
+	Calling the script with the --latest flag will check whether there
+	are any newer versions of the CALDB available. This step requires
+	internet access. If a newer version is available then see the
+	<HREF link="http://cxc.harvard.edu/caldb/downloads">CALDB downloads
+	page</HREF> or the 
+	<HREF link="http://cxc.harvard.edu/ciao/threads/ciao_install_tool/">ciao_install
+	thread</HREF>.
+      </PARA>
+      <PARA title="Availability">
+	The check_ciao_caldb tool is part of the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO contributed
+	scripts package</HREF> which should have been included as part
+	of the CIAO installation.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; check_ciao_caldb</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The tool accepts no arguments. If the Chandra CALDB is set up correctly
+	    then you should see something like the following:
+	  </PARA>
+<VERBATIM>
+CALDB environment variable = /soft/ciao-4.2/CALDB
+             CALDB version = 4.2.2
+             release date  = 2010-04-19T19:00:00 UTC
+CALDB query completed successfully.
+</VERBATIM>
+	  <PARA>
+	    The actual output will vary depending on where, and what version,
+	    of the CALDB is installed.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; check_ciao_caldb --latest</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    As the --latest flag has been given, the tool also checks whether there is a
+	    newer version of the CALDB available. The extra screen output will either be:
+	  </PARA>
+<VERBATIM>
+The CALDB installation is up to date.
+</VERBATIM>
+	  <PARA>
+	    when there is no newer version available, or
+	  </PARA>
+<VERBATIM>
+ERROR: The latest available CALDB version is &lt;latest version&gt;
+</VERBATIM>
+	  <PARA>
+	    for when there is.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+    
+    <ADESC title="What is checked?">
+      <PARA>
+	The script is intended to provide a simple check of the CALDB installation,
+	to pick up some of the common problems seen in HelpDesk tickets, rather
+	than a complete check of the integrity of the Chandra CALDB. It therefore
+	just checks that:
+      </PARA>
+      <LIST>
+	<ITEM>The CALDB envrionment variable exists, and points to a directory;</ITEM>
+	<ITEM>the directory contains a Chandra version file in the correct location;</ITEM>
+	<ITEM>and that a query for the DET_GAIN product (a basic element required for
+	re-processing ACIS event lists with acis_process_events) returns a file and that
+	this file can be read in.</ITEM>
+      </LIST>
+      <PARA>
+	The script does not check for any ancillary CALDB products that may have been
+	installed, such as the ACIS background files or the PSF libraries.
+      </PARA>
+      <PARA title="Version check">
+	The --latest flag causes the script to look at the
+	<HREF link="http://cxc.harvard.edu/caldb/downloads/releasenotes.html">CALDB release 
+	notes</HREF> page to look for the latest version released for CIAO,
+	and this value is compared against the version of the local CALDB
+	installation.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This tool is not an official part of the CIAO release but is
+	made available as "contributed" software via the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+	instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+	See the
+	<HREF link="http://cxc.harvard.edu/ciao/bugs/">bugs page</HREF>
+	on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

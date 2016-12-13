@@ -1,0 +1,639 @@
+#!/usr/bin/env python
+#
+#  Copyright (C) 2012, 2013, 2014, 2015, 2016
+#            Smithsonian Astrophysical Observatory
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Usage:
+
+  find_chandra_obsid 123.4 -0.12
+  find_chandra_obsid 3:0:4 0:0:12
+  find_chandra_obsid "15h 23m 2s" "-47d 34'"
+  find_chandra_obsid arp244
+  find_chandra_obsid 'arp 244'
+  find_chandra_obsid 2293
+
+Aim:
+
+Finds all publicly-available Chandra observations that overlap with
+a circle of radius 1 arcminute centered on the given coordinate. If a
+name is used then this is converted to a location by a name resolver;
+the case of a 5 (or less) digit integer is taken to be an ObsId and
+the location of this is used.
+
+The search radius can be changed using the radius parameter, units are
+arcminutes and 0 is a valid value.
+
+ra and dec support most common formats; the easiest is decimal
+degrees, but you can say
+
+  find_chandra_obsid "12h 3m 4s" "-0:12:34"
+
+Filtering by instrument or grating can be accomplished with the
+instrument and grating parameters.
+
+You can download the data by setting the download parameter to all or
+ask; the all option will download all matches whereas ask prompts the
+user whether to download each dataset.
+
+Note that the screen output is different when data is to be downloaded.
+
+The parameter handling is slightly odd; the mode of the parameter file
+is set to h rather than ql so that the dec parameter is only used if
+given (i.e. not prompted for), and we do not use l (learn) so that
+you can say
+
+  find_chandra_obsid 123.45 -0.1
+  find_chandra_obsid 'ngc 1333'
+
+A mirror of the Chandra Data Archive site (for data access, not for
+the initial query using the Footprint Service) can be used by setting
+the mirror parameter to the name of the FTP site, or by setting the
+CDA_MIRROR_SITE environment variable (the command-line argument takes
+preference). The mirror argument should point to the location of the
+byobsid directory and start with ftp:// - e.g. using the Chandra Data
+is equivalent to using a setting of
+ftp://cdaftp.cfa.harvard.edu/pub/. A username and password can be
+included in this setting, following
+http://tools.ietf.org/html/rfc3986, e.g.
+ftp://anonymous:foo@bar.org@cdaftp.cfa.harvard.edu/pub/.
+
+"""
+
+toolname = "find_chandra_obsid"
+version = "18 October 2016"
+
+import sys
+import os
+import math
+
+from six.moves import urllib
+import six
+
+import socket
+
+import paramio as pio
+
+# This is only needed for development.
+try:
+    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
+        if os.path.isdir(_pathdir):
+            os.sys.path.insert(1, _pathdir)
+        else:
+            print("*** WARNING: no {}".format(_pathdir))
+
+        del _libname
+        del _pathdir
+        del _thisdir
+
+except KeyError:
+    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib.param_wrapper import open_param_file
+
+from ciao_contrib.cda import search
+from ciao_contrib.cda import data
+
+import coords.format as coords
+from coords import resolver
+
+lw.initialize_logger(toolname)
+
+v1 = lw.make_verbose_level(toolname, 1)
+v2 = lw.make_verbose_level(toolname, 2)
+v3 = lw.make_verbose_level(toolname, 3)
+
+
+def protect_string(s):
+    """Surround a string by single or double quotes if
+    it contains a space."""
+
+    # not convinced it's worth going to the effort of protecting quotes
+    if " " in s:
+        if '"' in s:
+            return '"{}"'.format(s.replace('"', '\"'))
+        else:
+            return '"{}"'.format(s)
+
+    else:
+        return s
+
+
+def protect_strings(array):
+    """Return an array of strings that matches the input
+    but protects those elements that contain spaces."""
+
+    return [protect_string(s) for s in array]
+
+
+def _clean_ra(s):
+    """Given an RA in h:m:s format return a value that has
+    the values 0-padded and s in in .1f format."""
+
+    t = s.split(":")
+    if len(t) != 3:
+        raise ValueError("Expected h:m:s but sent '{}'".format(s))
+
+    return "{:0>2}:{:0>2}:{:04.1f}".format(t[0], t[1], float(t[2]))
+
+
+def _clean_dec(s):
+    """Given an Dec in d:m:s format return a value that has
+    the values 0-padded, s in in .2f format, and has a sign"""
+
+    t = s.split(":")
+    if len(t) != 3:
+        raise ValueError("Expected d:m:s but sent '{}'".format(s))
+
+    if t[0][0] == '-':
+        c = '-'
+        t[0] = t[0][1:]
+
+    else:
+        c = '+'
+        if t[0][0] == '+':
+            t[0] = t[0][1:]
+
+    return "{}{:0>2}:{:0>2}:{:05.2f}".format(c, t[0], t[1], float(t[2]))
+
+
+def max_len(array):
+    """Return the max array length in array (assumed to be strings)."""
+    return max([len(s) for s in array])
+
+
+imap = {
+    "all": None,
+    "acis": ["acis"],
+    "hrc": ["hrc"],
+    "acisi": ["acis-i"],
+    "aciss": ["acis-s"],
+    "hrci": ["hrc-i"],
+    "hrcs": ["hrc-s"]
+}
+
+
+gmap = {
+    "all": None,
+    "none": ["none"],
+    "letg": ["letg"],
+    "hetg": ["hetg"],
+    "any": ["letg", "hetg"]
+}
+
+
+def find_chandra_obsid(ra, dec, size=0.1, instrument="all", grating="all"):
+    """Run the query and return the output, or None if none found.
+
+    The instrument and grating strings are used to determine what
+    filters to apply to the results. They do not take the same values as
+    ciao_contrib.cda.search.search_chandra_archive(); instead
+
+    instrument is one of
+        all, acis, hrc, acisi, aciss, hrci, hrcs
+
+    grating is one of
+        all, none, leth, hetg, any
+    """
+
+    v2("Querying Chandra archive for ra={} dec={} radius={} inst={} grat={}".format(ra, dec, size, instrument, grating))
+    res = search.search_chandra_archive(ra, dec, size=size,
+                                        instrument=imap[instrument],
+                                        grating=gmap[grating])
+    if res is None:
+        return None
+
+    v3("Chandra search found {} results".format(len(res)))
+    obsinfo = search.get_chandra_obs(res, ra=ra, dec=dec, fmt=':')
+
+    nm = len(obsinfo['obsid'])
+    v3("After removing duplicates, have {} matches".format(nm))
+    return obsinfo
+
+
+def display_obsinfo(ra, dec, obsinfo, detail='basic'):
+    """Write the results out to the screen. The detail argument
+    determines which columns are written out.
+
+    The contents of obsinfo are changed by this routine.
+    """
+
+    if obsinfo is None:
+        v1("# No observations were found for ra={} dec={}".format(ra, dec))
+        return
+
+    # It would be nice if we could just create a TABLECrate and let it
+    # worry about the output!
+    #
+    nm = len(obsinfo['obsid'])
+
+    obsinfo['piname'] = protect_strings(obsinfo['piname'])
+    obsinfo['target'] = protect_strings(obsinfo['target'])
+    pilen = max_len(obsinfo['piname'])
+    tlen = max_len(obsinfo['target'])
+
+    if pilen < 6:
+        pilen = 6
+    if tlen < 6:
+        tlen = 6
+
+    if detail == 'obsid':
+        fmt = '{}'
+        hdr = '# obsid'
+        cols = ('obsid',)
+
+    elif detail == 'basic':
+        fmt = "{:<6} {:>6.1f} {:>6} {:>4} {:6.1f} {} {:>" + str(pilen) + \
+              "} {:>" + str(tlen) + "}"
+        hdr = "# obsid  sepn   inst grat   time    " + \
+              "obsdate {:>{}} {:>{}}".format('piname', pilen, 'target', tlen)
+        cols = ('obsid', 'separation', 'instrument', 'grating', 'exposure',
+                'obsdate', 'piname', 'target')
+
+        # strip out the time
+        obsinfo['obsdate'] = [d[:10] for d in obsinfo['obsdate']]
+
+    elif detail == 'all':
+
+        obsinfo['rastr'] = [_clean_ra(r) for r in obsinfo['rastr']]
+        obsinfo['decstr'] = [_clean_dec(r) for r in obsinfo['decstr']]
+
+        obsinfo['ra'] = ["{}".format(r) for r in obsinfo['ra']]
+        obsinfo['dec'] = ["{}".format(d) for d in obsinfo['dec']]
+        ralen = max_len(obsinfo['ra'])
+        declen = max_len(obsinfo['dec'])
+
+        fmt = "{:<6} {:>6.1f} {:>6} {:>4} {:6.1f} {:>10} {:>12} {} {:>" + \
+              str(pilen) + "} {:>" + str(tlen) + "} {:>" + str(ralen) + \
+              "} {:>" + str(declen) + "}"
+        cnames = ('inst', 'grat', 'time', 'rastr', 'decstr', 'obsdate',
+                  'piname', pilen, 'target', tlen, 'ra', ralen, 'dec', declen)
+        hdr = "# obsid sepn  {:>6} {:>4} {:>6} {:>10} {:>12} {:>19} {:>{}} {:>{}} {:>{}} {:>{}}".format(*cnames)
+        cols = ('obsid', 'separation', 'instrument', 'grating', 'exposure',
+                'rastr', 'decstr',
+                'obsdate', 'piname', 'target',
+                'ra', 'dec')
+
+    else:
+        raise ValueError("Invalid detail setting '{}'".format(detail))
+
+    v1(hdr)
+    for i in range(0, nm):
+        v1(fmt.format(*[obsinfo[c][i] for c in cols]))
+
+
+def print_download_help(nobsid):
+    """Display help for download query. nobsid is the number of obsids
+    left (> 0).
+    """
+
+    print("Download options are:")
+    print("    y  - download this ObsId")
+    print("    n  - do not download this ObsId")
+    if nobsid > 1:
+        print("    q  - do not download this or the remaining " +
+              "{} ObsIDs".format(nobsid - 1))
+        print("    a  - download this ObsId and the remaining " +
+              "{} ObsIDs".format(nobsid - 1))
+
+    print("    h  - display this information")
+
+
+def ask_download(nobsid):
+    """Ask the user if they want to download the current object.
+
+    nobsid is the number of obsids left to download, including this one.
+    """
+
+    # we allow the user to type q or a even if nobsid == 1,
+    # we just don't tell the user.
+    #
+    if nobsid > 1:
+        prompt = "Download [y, n, q, a, h]: "
+    else:
+        prompt = "Download [y, n, h]: "
+
+    print("")
+    while True:
+        resp = raw_input(prompt)
+        ans = resp.strip().lower()
+        if ans == "":
+            continue
+
+        elif ans == "h":
+            print_download_help(nobsid)
+
+        elif ans in "ynqa":
+            return ans
+
+        else:
+            print("Unrecognised option: {}".format(resp))
+
+
+def ask_obsids(ra, dec, obsinfo):
+    """Ask the user if each observation should be downloaded,
+    returning a list of obsid values, which may be empty.
+    """
+
+    obsids = []
+    nm = len(obsinfo['obsid'])
+
+    nchar = int(math.floor(math.log10(nm))) + 1
+
+    def display_obsid(i):
+        print("{:{}d}/{}: Obsid={} Sepn={:.1f} Inst={} Grat={} Exp={:.1f} ObsDate={}".format(
+            i + 1,
+            nchar,
+            nm,
+            obsinfo['obsid'][i],
+            obsinfo['separation'][i],
+            obsinfo['instrument'][i],
+            obsinfo['grating'][i],
+            obsinfo['exposure'][i],
+            obsinfo['obsdate'][i][:10],  # only want year-mm-dd not time
+        ))
+        print("{:{}}  PI={} Target={}".format(' ', nchar,
+                                              obsinfo['piname'][i],
+                                              obsinfo['target'][i]))
+
+    print("There were {} matching observations:\n".format(nm))
+    for i in range(0, nm):
+        display_obsid(i)
+
+    # Used to display the download help, but it is quite verbose and
+    # with the addition of the context sensitive output, potentially
+    # confusing.
+    #
+    print("")
+    print("Use h to get help on the download options.")
+    # print_download_help(nm)
+
+    for i in range(0, nm):
+        ntodo = nm - i
+        not_last = ntodo > 1
+        print("")
+        display_obsid(i)
+
+        opt = ask_download(ntodo)
+        if opt == "q":
+            if not_last:
+                print("Skipping the remaining {} ObsIDs.".format(ntodo))
+            break
+
+        elif opt == "n":
+            continue
+
+        elif opt == "y":
+            obsids.append(obsinfo['obsid'][i])
+
+        elif opt == "a":
+            if not_last:
+                print("Downloading the remaining {} ObsIDs.".format(ntodo))
+            obsids.extend([obsinfo['obsid'][j] for j in range(i, nm)])
+            break
+
+        else:
+            raise NotImplementedError("Internal error: ask_download() returned '{}'".format(opt))
+
+    print("")
+    ndownload = len(obsids)
+    if ndownload == 1:
+        print("Selected ObsID: {}".format(obsids[0]))
+        print("")
+
+    elif ndownload > 1:
+        print("Selected ObsIDs: {}".format(", ".join(map(str, obsids))))
+        print("")
+
+    return obsids
+
+
+def process_command_line(argv):
+    """Handle the parameter input for this script."""
+
+    if argv is None or argv == []:
+        raise ValueError("argv argument is None or empty")
+
+    pinfo = open_param_file(argv, toolname=toolname)
+
+    fp = pinfo["fp"]
+
+    ra = pio.pget(fp, "arg").strip()
+    if ra == "":
+        raise ValueError("A position (RA and Dec), ObsId, or object name " +
+                         "must be given, e.g.\n\n" +
+                         "  {} 180.47 -18.88\n".format(toolname) +
+                         "  {} '12 1 53' '-18 52 37'\n".format(toolname) +
+                         "  {} arp244\n".format(toolname) +
+                         "  {} 'arp 244'\n".format(toolname) +
+                         "  {} 8043\n".format(toolname))
+
+    dec = pio.pget(fp, "dec").strip()
+
+    radius = pio.pgetd(fp, "radius")
+    download = pio.pget(fp, "download")
+    instrument = pio.pget(fp, "instrument")
+    grating = pio.pget(fp, "grating")
+    detail = pio.pget(fp, "detail")
+    mirror = pio.pget(fp, "mirror")
+
+    verbose = pio.pgeti(fp, "verbose")
+
+    pio.paramclose(fp)
+
+    # Set tool and module verbosity
+    lw.set_verbosity(verbose)
+
+    args = [ra]
+    if dec != "":
+        args.append(dec)
+
+    return {"progname": pinfo["progname"],
+            "parname": pinfo["parname"],
+            "args": args,
+            "radius": radius,
+            "download": download,
+            "grating": grating,
+            "instrument": instrument,
+            "detail": detail,
+            "mirror": mirror.strip(),
+            "verbose": verbose}
+
+
+def isobsid(name):
+    """Return True if name is an obsid, that is, if
+    it has 1 to 5 digits in it only and is in the
+    range 1 to 65535.
+
+    Values like 0282 are treated as an obsid.
+    """
+
+    if name == '' or len(name) > 5:
+        return False
+
+    try:
+        oval = int(name)
+    except:
+        return False
+
+    return oval >= 1 and oval <= 65535
+
+
+def find_obsid_position(obsid):
+    """Return the RA and Dec (decimal degrees) of the given ObsID or None if
+    no obsid is be found.
+
+    Relies on the CDA interface
+      http://cda.harvard.edu/srservices/ocatDetails.do?obsid=<obsid>&format=text
+    and assumes that obsid is a valid obsid (i.e. no protection against URL
+    injection attects).
+
+    TODO: move into library code.
+    """
+
+    # assuming no need to protect or sanitize the input
+    url = 'http://cda.harvard.edu/srservices/ocatDetails.do?obsid={}&format=text'.format(obsid)
+
+    # error handling based on ciao_contrib.caldb.get_caldb_releases()
+    try:
+        ans = urllib.request.urlopen(url).read()
+    except urllib.error.URLError as ue:
+        if hasattr(ue, "reason"):
+            if hasattr(ue.reason, "errno") and ue.reason.errno == socket.EAI_NONAME:
+                raise IOError("Unable to reach the Chandra Data Archive - is the network down?")
+            else:
+                raise IOError("Unable to reach the Chandra Data Archive - {}".format(ue.reason))
+
+        elif hasattr(ue, "getcode"):
+            cval = ue.getcode()
+            if cval == 404:
+                raise IOError("The Chandra Data Archive site appears to be unreachable.")
+            else:
+                raise IOError("The Chandra Data Archive site returned {}".format(ue))
+
+        else:
+            raise IOError("Unable to access the Chandra Data Archive site - {}".format(ue))
+
+    # Ugly code; what is the better way to do this
+    if not isinstance(ans, six.string_types):
+        ans = ans.decode('utf8')
+
+    v3("==> Response from CDA query for ObsId={} is:".format(obsid))
+    v3(ans)
+    v3("<== end response")
+
+    # parse the result
+    #   lines are \n separated
+    #   drop comment lines beginning #
+    #   expect header line; line of lengths of the column name(?); data line
+    #
+    # do minimal validation on this
+    lines = [l for l in ans.split('\n') if not l.startswith('#')]
+    if len(lines) < 3:
+        return None
+    elif len(lines) > 3:
+        raise IOError("Unexpected response for ObsId {} from the Chandra Data Archive.".format(obsid))
+
+    hdrs = lines[0].split('\t')
+    data = lines[-1].split('\t')
+    out = dict(zip(hdrs, data))
+    v2("ObsId {OBSID} status={STATUS} RA={RA} Dec={Dec}".format(**out))
+    return coords.sex2deg(out['RA'], out['Dec'])
+
+
+def run_fco(opts):
+    "Given the user's input, find and optionally download the ObsIDS."
+
+    args = opts["args"]
+    nargs = len(args)
+    if nargs == 2:
+        v2("Converting {} and {} to decimal degrees.".format(args[0], args[1]))
+        (ra, dec) = coords.sex2deg(args[0], args[1])
+        v2("-> {} {}".format(ra, dec))
+
+    else:
+        # Special case 5-or-less character integer values as
+        # being an ObsId, otherwise try and resolve the name.
+        # This assumes that there are no objects out there
+        # with a name that could be an ObsId value!
+        # The fallover to check the name if no ObsId is found
+        # seems unnescessary; let's see.
+        #
+        name = args[0]
+        if isobsid(name):
+            v2("Looking for position of ObsId {}".format(name))
+            pos = find_obsid_position(name)
+        else:
+            pos = None
+
+        if pos is not None:
+            (ra, dec) = pos
+
+        else:
+            v2("Querying name resolvers for name={0}".format(name))
+            (ra, dec, csys) = resolver.identify_name(name)
+            if csys != 'ICRS':
+                raise ValueError("Unsupported format '{}' returned by the name resolver. Please contact the CXC HelpDesk.".format(csys))
+
+        v2("Found ra={} dec={}".format(ra, dec))
+        v2("    = {} {}".format(coords.deg2ra(ra, 'hms'),
+                                coords.deg2dec(dec, 'dms')))
+
+    obsinfo = find_chandra_obsid(ra, dec,
+                                 size=opts["radius"] / 60.0,
+                                 instrument=opts["instrument"],
+                                 grating=opts["grating"])
+
+    if opts["download"] == "none":
+        display_obsinfo(ra, dec, obsinfo, detail=opts["detail"])
+
+    elif obsinfo is None:
+        v1("No observations were found for ra={} dec={}".format(ra, dec))
+
+    else:
+        if opts["download"] == "all":
+            obsids = obsinfo['obsid']
+
+        else:
+            obsids = ask_obsids(ra, dec, obsinfo)
+
+        if obsids == []:
+            v1("No data has been selected for download.")
+        else:
+            v2("Going to download ObsIDs: {}".format(obsids))
+            mirror = data.get_mirror_location(opts["mirror"])
+            data.download_chandra_obsids(obsids, mirror=mirror)
+
+
+@lw.handle_ciao_errors(toolname, version)
+def fco(args):
+    """Run the script"""
+
+    opts = process_command_line(args)
+    v3("Running: {}".format(toolname))
+    v3("  version: {}".format(version))
+    run_fco(opts)
+
+
+if __name__ == '__main__':
+    fco(sys.argv)

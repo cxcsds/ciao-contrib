@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY key="acis_set_ardlib" context="tools" refkeywords="acis bpix bpix1 bad pixel badpixel badpix ardlib AXAF_ACIS_BADPIX_FILE" seealsogroups="resptools ardlib">
+    <SYNOPSIS>Sets the bad pixel parameters of the ardlib file to the given file</SYNOPSIS>
+
+    <DESC>
+      <PARA>
+	This script tells ardlib to use the specified ACIS bad pixel
+	file. It does this by setting the
+	AXAF_ACIS&lt;n&gt;_BADPIX_FILE parameters in the ardlib
+	parameter file for all the blocks in the input file which
+	match the string "BADPIX&lt;n&gt;", and all the other 
+	ACIS badpixel values are set to CALDB.
+	It does not work with HRC bad pixel files.
+     </PARA>
+
+     <PARA>
+        Each Chandra
+	observation comes with an observation-specific bad pixel file
+	(the *bpix1.fits file in the primary/ directory of the
+	distribution). It is also possible to create a bad pixel file
+	in CIAO, with the "acis_run_hotpix" tool (see "ahelp
+	acis_run_hotpix").  See the "<HREF
+	link="http://cxc.harvard.edu/ciao/threads/badpix/">Use
+	Observation-specific Bad Pixel Files</HREF>" and "<HREF
+	link="http://cxc.harvard.edu/ciao/threads/acishotpixels/">Identify 
+	ACIS Hot Pixels and Cosmic Ray Afterglows</HREF>" threads for 
+	more information.
+      </PARA>
+      
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>unix% acis_set_ardlib bpix1.fits</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    This sets the ACIS bad pixel parameters to use bpix1.fits,
+	    for all the BADPIX&lt;n&gt; blocks in that file. The
+	    script will print out the settings of all the
+	    AXAF_ACIS&lt;n&gt;_BADPIX_FILE parameters and the location
+	    of the ardlib parameter file. For example, if the bad-pixel
+	    file is in the directory /data/source/repro/ and
+	    only contains a BADPIX7 block then the output would look
+	    like:
+	  </PARA>
+<VERBATIM>
+Updated ardlib parameter file: /home/ciaouser/cxcds_param4/ardlib.par
+  AXAF_ACIS0_BADPIX_FILE -> CALDB
+  AXAF_ACIS1_BADPIX_FILE -> CALDB
+  AXAF_ACIS2_BADPIX_FILE -> CALDB
+  AXAF_ACIS3_BADPIX_FILE -> CALDB
+  AXAF_ACIS4_BADPIX_FILE -> CALDB
+  AXAF_ACIS5_BADPIX_FILE -> CALDB
+  AXAF_ACIS6_BADPIX_FILE -> CALDB
+  AXAF_ACIS7_BADPIX_FILE -> /data/source/repro/bpix1.fits[BADPIX7]
+  AXAF_ACIS8_BADPIX_FILE -> CALDB
+  AXAF_ACIS9_BADPIX_FILE -> CALDB
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>unix% acis_set_ardlib ../bpix1.fits</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    This sets the ACIS bad pixel parameters to use
+	    ../bpix1.fits. Using the default parameter settings -
+	    namely absolutepath=yes - means that the file name will be
+	    changed to an absolute path before the parameter names are
+	    set.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>unix% acis_set_ardlib bpix1.fits verbose=0</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    This runs the script without producing any screen output.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="badpixfile" type="string" filetype="input" reqd="yes" def="&quot;&quot;">
+	<SYNOPSIS>
+	  Bad pixel file for the observation.
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter is used to specify the name of the bad
+	    pixel file to use in the ardlib parameter file. It is
+	    searched for blocks that are called "BADPIX&lt;n&gt;", and
+	    the corresponding AXAF_ACIS&lt;n&gt;_BADPIX_FILE
+	    parameters in ardlib are set. Those chips which do not
+	    have a BADPIX block are set to "CALDB".
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="absolutepath" type="boolean" def="yes">
+	<SYNOPSIS>
+	  Use an absolute path in the parameter file.
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Should the AXAF_ACIS&lt;n&gt;_BADPIX_FILE parameters use
+	    the absolute path to the bad pixel file? If set to yes
+	    then the current working directory is prepended to the
+	    badpixfile parameter, which is then cleaned up to remove
+	    all occurrences of "." and "..". If set to no then the
+	    badpixfile parameter is used.
+	  </PARA>
+	  <PARA>
+	    The following table shows what the AXAF_ACIS0_BADPIX_FILE
+	    parameter would be set to when:
+	    </PARA>
+	    <LIST>
+	      <ITEM>the current working directory is
+	      /data/chandra/work,
+	      </ITEM>
+	      <ITEM>and the script is called
+	      with badpixfile set to "../obs/bpix1.fits", which contains
+	      a BADPIX0
+	      block.
+	      </ITEM>
+	    </LIST>
+	    <TABLE>
+	      <ROW>
+		<DATA>absolutepath parameter</DATA>
+		<DATA>AXAF_ACIS0_BADPIX_FILE setting</DATA>
+	      </ROW>
+	      <ROW>
+		<DATA>yes</DATA>
+		<DATA>/data/chandra/obs/bpix1.fits[BADPIX0]</DATA>
+	      </ROW>
+	      <ROW>
+		<DATA>no</DATA>
+		<DATA>../obs/bpix1.fits[BADPIX0]</DATA>
+	      </ROW>
+	    </TABLE>
+	</DESC>
+      </PARAM>
+      <PARAM name="ardlibfile" type="string" def="ardlib" filetype="input">
+	<SYNOPSIS>Parameter file to change.</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	  The name of the parameter file to change. This should be
+	  left as "ardlib" for most users.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="verbose" type="integer" min="0" max="5" def="0">
+	<SYNOPSIS>
+	  Verbosity (0 for no screen output)
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	  If set to 0 then the script will produce no screen output,
+	  other than parameter prompts, unless there is an error.
+	  When set to the default value of 1, the script will display
+	  the values of the AXAF_ACIS&lt;n&gt;_BADPIX_FILE parameters
+	  after it has set them. Values of 2 and higher provide
+	  debugging information.
+	  </PARA>
+	</DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+    
+    <ADESC title="Changes in the scripts 4.7.2 (April 2015) release">
+      <PARA title="Missing chips are set to CALDB">
+	The script now sets the AXAF_ACIS&lt;n&gt;_BADPIX_FILE
+	parameters to CALDB if there is no corresponding BADPIX&lt;n&gt;
+	block in the bad-pixel file. This was done to avoid problems
+	when switching between observations, which could lead to
+	invalid (or missing) bad-pixel files being used.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/acis_set_ardlib.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+	listing of known bugs.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

@@ -1,0 +1,130 @@
+#! /usr/bin/env python
+
+# 
+# Copyright (C) 2015  Smithsonian Astrophysical Observatory
+# 
+# 
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+
+"""Usage:
+  symmetrize infile outfile
+
+Options:
+
+Aim:
+
+  HRC-S/LETG cross-dispersion symmetrization.
+
+"""
+
+toolname = 'symmetrize'
+version = '01 September 2015'
+
+import sys
+import numpy as np
+import shutil
+import os
+
+import cxcdm
+import paramio
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib.runtool import add_tool_history
+from ciao_contrib.logger_wrapper import handle_ciao_errors
+from ciao_contrib.param_wrapper import open_param_file
+
+# Set up the logging/verbose code
+lw.initialize_logger(toolname)
+
+# Use v<n> to display messages at the given verbose level.
+#
+v1 = lw.make_verbose_level(toolname, 1)
+v2 = lw.make_verbose_level(toolname, 2)
+
+def print_version():
+    v1("Running {} version: {}\n".format(toolname, version))
+
+def read_symmetrization_correction_file(sfile):
+    d=np.loadtxt(sfile, unpack=True, skiprows=2)
+    return d[0], d[1]
+
+def update_tgd( params ):
+    infile = params['infile']
+    outfile = params['outfile']
+    sfile = params['sfile']
+    clobber = params['clobber']
+
+    v2("Reading symmetry data from '{}'\n".format(sfile))
+    scorr_wav, scorr_data = read_symmetrization_correction_file(sfile)
+    
+    if not clobber and os.path.isfile(outfile):
+        raise IOError("outfile={} exists and clobber=no".format(outfile))
+
+    v2("Copying '{}' -> '{}'\n".format(infile, outfile))
+    shutil.copy(infile, outfile)
+
+    v2("Opening {} for update\n".format(outfile))
+    bl = cxcdm.dmTableOpen(outfile, update=True)
+    nrows = cxcdm.dmTableGetNoRows(bl)
+
+    # can we access the columns? In CIAO 4.7 it throws a RuntimeError
+    # with no message if there's no column, so change it
+    v2("Reading TG_D, TG_MLAM\n")
+    try:
+        tg_d = cxcdm.dmTableOpenColumn(bl, 'tg_d')
+        tg_mlam = cxcdm.dmTableOpenColumn(bl, 'tg_mlam')
+    except RuntimeError as e:
+        if str(e).strip() == '':
+            raise ValueError("Unable to open columns TG_D, TG_MLAM")
+        else:
+            raise e
+    tg_d_vals = cxcdm.dmGetData(tg_d, 1, nrows)
+    tg_mlam_vals = cxcdm.dmGetData(tg_mlam, 1, nrows)
+
+    v2("Calculating new TG_D\n")
+    tg_d_vals -=  np.interp(tg_mlam_vals, scorr_wav, scorr_data/1000.)
+
+    v2("Updating TG_D\n")
+    cxcdm.dmSetData(tg_d, tg_d_vals)
+
+    v2("Closing '{}'\n".format(outfile))
+    cxcdm.dmTableClose(bl)
+
+def process_command_line(argv):
+    pinfo = open_param_file(argv, toolname=toolname)
+    fp = pinfo['fp']
+    params = {
+        'infile' : paramio.pgetstr(fp, 'infile'),
+        'outfile' : paramio.pgetstr(fp, 'outfile'),
+        'sfile' : paramio.pgetstr(fp, 'sfile'),
+        'clobber' : paramio.pgetb(fp, 'clobber')==1,
+        'verbose' : paramio.pgeti(fp, 'verbose'),
+    }
+    paramio.paramclose(fp)
+    lw.set_verbosity(params['verbose'])
+    return params
+
+@lw.handle_ciao_errors(toolname, version) # top-level routine
+def symmetrize(argv):
+    params = process_command_line(argv)
+    print_version()
+    update_tgd( params );
+
+    v2("Adding HISTORY entry to {}\n".format(params['outfile']))
+    add_tool_history(params['outfile'], toolname, params, toolversion=version)
+
+if __name__ == '__main__':
+    symmetrize(sys.argv)

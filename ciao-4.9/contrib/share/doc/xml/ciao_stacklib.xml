@@ -1,0 +1,242 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="ciao_stacklib" context="contrib"
+	 refkeywords="ciao_contrib.stacklib stacklib stack stk contrib contributed ciao
+		      script package module extra python py
+		      stk stk.build build deprecate deprecated
+		      expand_stack expand make_stackfile stackfile"
+	 seealsogroups="stack">
+
+    <SYNOPSIS>
+      Support routines for using stacks in CIAO (CIAO contributed package).
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>from ciao_contrib.stacklib import *</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The ciao_contrib.stacklib module provides one utility routine for
+	using CIAO stacks, and is provided as part of the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO contributed
+        scripts</HREF> package.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The module can be loaded into ChIPS or Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from ciao_contrib.stacklib import *
+</VERBATIM>
+
+      <PARA title="Contents">
+        The module provides two routines - expand_stack() and make_stackfile() -
+	which are described below.
+      </PARA>
+
+      <PARA title="expand_stack">
+	This routine is now deprecated (as of CIAO 4.5) since the build() routine from
+	the CIAO stk module has the same functionality.
+      </PARA>
+      <PARA>
+	The expand_stack() routine takes a single argument - a string - and
+	expand it using the stack libeary into an array of strings. If the
+	input argument is called pval, the following table shows the value
+	returned by expand_stack() for a range of inputs, where we have
+      </PARA>
+<VERBATIM>
+&pr; cat files.lis
+src1/a.fits 
+src2/b.fits
+</VERBATIM>
+      <TABLE>
+	<ROW>
+	  <DATA>Input (pval)</DATA>
+	  <DATA>Output from expand_stack(pval)</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>"src.fits"</DATA>
+	  <DATA>["src.fits"]</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>"src1.fits,src2.fits"</DATA>
+	  <DATA>["src1.fits", "src2.fits"]</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>"src1.fits[cols x,y] src2.fits[bin sky;energy]"</DATA>
+	  <DATA>["src1.fits[cols x,y]", "src2.fits[bin sky;energy]"]</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>"@src.lis"</DATA>
+	  <DATA>["src1/a.fits", "src2/b.fits"]</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>"@src.lis[cols time,energy]"</DATA>
+	  <DATA>["src1/a.fits[cols time,energy]", "src2/b.fits[cols time,energy]"]</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>"evt2.fits[ccd_id=lgrid(0:3:1)]"</DATA>
+	  <DATA>["evt2.fits[ccd_id=0]", "evt2.fits[ccd_id=1]",
+	         "evt2.fits[ccd_id=2]", "evt2.fits[ccd_id=3]"]</DATA>
+	</ROW>
+      </TABLE>
+
+      <PARA title="make_stackfile">
+	The routines in the ciao_contrib.runtool module
+	will convert array inputs to stack syntax, but sometimes it can be useful
+	to use make_stackfile() to create a temporary stack file directly.
+	The routine takes an array of strings and writes them
+	out to a temporary file, returning a reference to the temporary file. This
+	can then be used as input to tools that require a stack. The file itself
+	will be deleted when the variable goes out of scope, or it's close() method
+	is called.
+      </PARA>
+
+      <PARA>
+	The routine's signature is:
+	<EQUATION>make_stackfile(infiles, dir="/tmp/", suffix='')</EQUATION>
+	where infiles is the list of files to write as a stack and the dir
+	and suffix arguements are used by tempfile.NamedTemporaryFile to
+	create the temporary file (dir determines where the file is created
+	and suffix gives the suffix of the file). The return value is
+	a NamedTemporaryFile instance, so the .name attribute gives the name of
+	the file.
+      </PARA>
+
+      <PARA>
+	So, after
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>stk = make_stackfile(["foo.fits", "bar.fits", "baz.fits"])</LINE>
+	  <LINE>stkname = "@" + stk.name</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	you can use the stkname variable as input to a tool that accepts
+	a stack. Onceyou have finished with the stack you can call
+      </PARA>
+      <PARA>
+	<SYNTAX><LINE>stk.close()</LINE></SYNTAX>
+      </PARA>
+
+      <PARA>
+	or just let the stk variable go out of scope.
+      </PARA>
+
+      <PARA>
+	Each element of infiles is taken to be a file name relative to the
+	current working directory; the absolute path is used when writing the
+	value out to the stack file so that it can be written to a different
+	location. See 'ahelp stack' for more information on how relative
+	and absolute paths are handled by the stack library.
+      </PARA>
+      
+      <PARA>
+	This routine is somewhat experimental and may be removed.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>import paramio</LINE>
+	  <LINE>import stk</LINE>
+	  <LINE>means = paramio.pget("dmstat", "out_mean")</LINE>
+	  <LINE>means = stk.build(means)</LINE>
+	  <LINE>means = map(float, means)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example we get the out_mean parameter of dmstat, which can
+	    contain multiple values as a stack, and use the build routine from
+	    the stk module to
+	    convert it into an array of strings.
+	    The final line uses the Python map command to apply the float
+	    routine to each element of means, converting the string into
+	    a floating-point value.
+	  </PARA>
+	  <PARA>
+	    We could have instead used
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>import ciao_contrib.stacklib as stacklib</LINE>
+	      <LINE>means = stacklib.expand_stack(means)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    but this approach is deprecated, as of CIAO 4.5, in favor
+	    if stk.build().
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>import ciao_contrib.runtool as rt</LINE>
+	  <LINE>from ciao_contrib.stacklib import make_stackfile</LINE>
+	  <LINE>tmpfile = make_stackfile(images)</LINE>
+	  <LINE>nimages = len(images)</LINE>
+	  <LINE>opstr = '+'.join(["img{}".format(i) for i in range(nimages+1)])</LINE>
+	  <LINE>opstr = "imgout=" + opstr</LINE>
+	  <LINE>rt.dmimgcalc(infile='@' + tmpfile.name, outfile='out.img', operation=opstr)</LINE>
+	  <LINE>tmptile.close()</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example we assume that images is an array of names of
+	    images that we want to add up to create the file out.img.
+	    Since the dmimgcalc tool can accept a stack for its infile
+	    argument we use make_stackfile to create a temporary file containing
+	    all the file names, and pass it to dmimgcalc iwth a leading
+	    '@' character.
+	    Since we need to tell dmimgcalc how to combine the images we
+	    use Python list comprehension to create a string of the form
+	    <EQUATION>imgout=img1+...+imgn</EQUATION>
+	    where n is the number of images to combine.
+	  </PARA>
+	  <PARA title="Note">
+	    In this particular example, if we did not want to re-use the stack file
+	    after the dmimgcalc call, 
+	    we could have taken advantage of the stack support
+	    provided by the ciao_contrib.runtool module to say:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>rt.dmimgcalc(infile=images, outfile='out.img', operation=opstr)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    and so avoid the need for using make_stackfile.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Changes in the December 2012 release">
+      <PARA>
+	The expand_stack() routine is deprecated; please use
+	stk.build() instead.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bugs pages</HREF>
+	for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>November 2012</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

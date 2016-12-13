@@ -1,0 +1,250 @@
+#!/usr/bin/env python
+
+# 
+# Copyright (C) 2013,2016  Smithsonian Astrophysical Observatory
+# 
+# 
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+
+"""
+add repro4 related header keywords to file
+
+"""
+
+from __future__ import print_function
+
+toolname = "r4_header_update"
+version = "13 Sep 2016"
+
+
+import sys 
+import os  
+import cxcdm
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib._tools.obsinfo import ObsInfo
+from ciao_contrib.runtool import dmmerge, dmstat
+from collections import namedtuple
+from ciao_contrib.param_soaker import *
+
+
+# Set up the logging/verbose code
+lw.initialize_logger(toolname)
+
+# Use v<n> to display messages at the given verbose level.
+#
+v0 = lw.make_verbose_level(toolname, 0)
+v1 = lw.make_verbose_level(toolname, 1)
+
+
+KeyRecord = namedtuple("KeyRecord", "name value units description")
+def get_keys_from_file(fname):
+    """Return a dictionary of keyword values for the
+    'most-interesting-block' of the given file.
+
+    The keys are the keywords, and the values are
+    KeyRecord values.
+    """
+
+    # Throws an IOError if can not open fname
+    bl = cxcdm.dmBlockOpen(fname)
+    keys = {}
+    for dd in cxcdm.dmBlockGetKeyList(bl):
+        name = cxcdm.dmGetName(dd)
+        try:
+            val  = cxcdm.dmGetData(dd).decode("ascii")
+        except:
+            val  = cxcdm.dmGetData(dd)
+        unit = cxcdm.dmGetUnit(dd)
+        desc = cxcdm.dmGetDesc(dd)
+        keys[name] = KeyRecord(name, val, unit, desc)
+
+    cxcdm.dmDatasetClose( cxcdm.dmBlockGetDataset(bl)) 
+    return keys
+
+
+def is_none( val ):
+    """
+    Various ways to check none-ness
+    """    
+    if val is None:
+        return True
+    if len(val) == 0:
+        return True
+    if val.lower().strip() == "none":
+        return True
+    return False
+
+
+
+def _check_keys( newkeys, evtfile ):
+    """
+    Check for a list of keywords to identify those that are missing.
+    """
+    keys = get_keys_from_file(evtfile)
+
+    missing = []
+    for repro4 in newkeys:
+        if repro4 not in keys:
+            missing.append(repro4)
+    if len(missing) == 0:
+        return None,None,None
+    else:
+        return newkeys,missing,keys
+
+def _check_pbkkeys(evtfile):
+    newkeys = ['OCLKPAIR', 'ORC_MODE', 'SUM_2X2', 'FEP_CCD' ]
+    return _check_keys( newkeys, evtfile )
+
+
+def _check_dydzdth(evtfile):
+    newkeys = ['DY_AVG', 'DZ_AVG', 'DTH_AVG' ]
+    return _check_keys( newkeys, evtfile )
+    
+
+def encode_pbk(evtfile, pbk):
+    """
+    Repro 4 added a series of header keywords that are taken from
+    the data in the pbk file.  If the input evt files doesn't
+    have them, then we need to add them so that the response
+    tools can work cleanly.
+    
+    """
+    newkeys,missing,keys = _check_pbkkeys( evtfile)
+    if not missing:
+        return
+
+    if keys['INSTRUME'].value.startswith("HRC"):
+        return
+    
+    v0("Missing keywords '{}' from event file '{}' header.".format( ",".join(missing), evtfile ))
+    try:
+        pbkfile = ObsInfo( evtfile ).get_ancillary( "pbk" ) if is_none(pbk) else pbk
+        if not pbkfile:
+            raise ValueError("Cannot find parameter block file")
+    except:
+        v0( "WARNING: Cannot locate parameter block file.  Keywords cannot be updated.")
+        return
+
+    tab = cxcdm.dmTableOpen( pbkfile)
+    newkeys.remove('FEP_CCD')
+
+    evt = cxcdm.dmTableOpen( evtfile, update=True)
+                            
+    if keys["READMODE"].value == "CONTINUOUS":
+        newkeys.remove("SUM_2X2")
+        cxcdm.dmKeyWrite( evt, "SUM_2X2", 0, desc="On-chip summing. 0: None, 1: Sum 2x2")
+
+    for repro4 in newkeys:
+        #Get from pbk, write to evt
+        p,v = cxcdm.dmKeyRead( tab, repro4 )
+        d = cxcdm.dmGetDesc( p )
+        cxcdm.dmKeyWrite( evt, repro4, v, desc=d )
+
+    # Encode the FEP_CCD keyword
+    n = cxcdm.dmTableGetNoRows(tab)
+    f = cxcdm.dmGetData( cxcdm.dmTableOpenColumn( tab,"FEP_ID" ),1,n)
+    c = cxcdm.dmGetData( cxcdm.dmTableOpenColumn( tab,"CCD_ID" ),1,n)
+    mask = [ 'x'] * 6
+    if 1 == n:
+        f = [f]
+        c = [c]
+
+    for _f,_c in zip(f,c):
+        mask[_f] = str(_c)
+    fepccd = "".join(mask)
+    cxcdm.dmKeyWrite( evt, "FEP_CCD",fepccd, desc="CCD to FEPID mapping, fep0 is left most digit")
+    
+    cxcdm.dmTableClose( evt )
+    cxcdm.dmTableClose( tab )
+    
+    # Did they really get written? 
+    newkeys,missing,keys = _check_pbkkeys( evtfile)
+    if missing:
+        raise IOError("Keywords were not successfully written to output")
+
+    
+def mean_dy_dz_dtheta( evtfile, asol ):
+    """
+    The mean sim offsets are were added the event file headers in
+    repro 4.  
+    """
+
+    newkeys,missing,keys = _check_dydzdth( evtfile)
+    if not missing:
+        return
+
+    v0("Missing keywords '{}' from event file '{}' header.".format( ",".join(missing), evtfile ))
+
+    try:
+        asolfile = ObsInfo( evtfile ).get_asol() if is_none( asol ) else asol
+        if not asolfile:
+            raise ValueError("Cannot find parameter block file")
+    except:
+        v0( "WARNING: Cannot locate asol file(s).  Keywords cannot be updated")
+        return
+
+
+    from tempfile import NamedTemporaryFile
+    with NamedTemporaryFile( dir=os.environ["ASCDS_WORK_PATH"]) as merge_asol:
+        dmmerge.punlearn()
+        dmstat.punlearn()
+        dmmerge(infile=asolfile, outfile=merge_asol.name, clobber=True)
+        dmstat( infile=merge_asol.name+"[cols dy, dz, dtheta]")
+
+        if '0,0,0' == dmstat.out_good:
+            means = [0.0, 0.0, 0.0]
+        else:
+            means = [float(x) for x in dmstat.out_mean.split(",")]
+
+    evt = cxcdm.dmTableOpen( evtfile, update=True)
+    cxcdm.dmKeyWrite( evt, "DY_AVG", means[0], unit="mm", desc="Mean DY during observation")
+    cxcdm.dmKeyWrite( evt, "DZ_AVG", means[1], unit="mm", desc="Mean DZ during observation")
+    cxcdm.dmKeyWrite( evt, "DTH_AVG", means[2], unit="mm", desc="Mean DTHETA during observation")
+    cxcdm.dmTableClose( evt )
+    
+    # double check written
+    newkeys,missing,keys = _check_dydzdth( evtfile)
+    if missing:
+        raise IOError("Keywords were not successfully written to output")
+    
+
+
+#
+# Main Routine
+#
+@lw.handle_ciao_errors( toolname, version)
+def main():
+    """
+    """
+    # get parameters
+    pars = get_params(toolname, "rw", sys.argv, 
+      verbose={"set":lw.set_verbosity, "cmd":v1} )
+      
+    encode_pbk( pars["infile"], pars["pbkfile"] )
+    mean_dy_dz_dtheta( pars["infile"], pars["asolfile"])
+    
+    
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as E:
+        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+    
+    

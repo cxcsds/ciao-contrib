@@ -1,0 +1,630 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="search_csc"
+         context="tools" 
+         refkeywords="csc ftp wget download java catalog cone search ascii products retrieve radius psf rmf arf exposure region lightcurve lc level3 sensitivity limiting limsens"
+         seealsogroups="contrib.cda">
+
+    <SYNOPSIS>Perform a position search on the Chandra Source Catalog</SYNOPSIS>
+    <DESC>
+
+    <PARA>
+      'search_csc' uses the 
+      <HREF link="http://cxc.harvard.edu/csc/cli/">
+      
+      command line interface to the Chandra Source Catalog
+      (CSC) </HREF>
+      to retrieve source properties and associated data products for
+      a single position and radius.
+    </PARA>
+
+    <PARA>
+
+Users may enter either a comma-separated RA, Dec position or an 
+    object name, along with a search radius. The source properties
+    results are written, one line per source, to
+    a tab-separated-value (TSV) format output file, and when verbose is
+    one or higher a subset of the data for each source is printed to the screen.
+    The output file will contain a default set of <HREF link="http://cxc.harvard.edu/csc/columns/">
+    catalog columns</HREF>  
+    unless this is overridden with the 'columns' parameter. The data 
+    products associated with the sources may also be retrieved including 
+    the event files, response files (ARF, RMF, PSF, exposure map), and 
+    related histograms (spectra, lightcurves, images).
+    
+    </PARA>
+      
+    <PARA>
+    More complex queries including doing
+    cross matches must be done using the 
+    <HREF link="http://cda.cfa.harvard.edu/cscview/">CSCView application</HREF>.
+
+    
+    Users whose research makes use of the Chandra Source Catalog should
+    cite: Evans et al 2010, ApJS 189, 37.
+    </PARA>
+
+    </DESC>
+    
+    
+    <QEXAMPLELIST>
+        <QEXAMPLE>
+            <SYNTAX>
+              <LINE>unix% search_csc pos="83.831577 ,-5.3993566" radius="0.02" outfile="orion_src.tsv" root=. download=all</LINE>
+            </SYNTAX>
+            <DESC>
+              <PARA>
+                Perform at 0.02 arcmin radius search around the position
+                RA=83.831577 , Dec=-5.3993566.  A tab-separated table with 
+                various properties are output to the ASCII file "orion_src.tsv".
+                Since download=all, then all the requested data products
+                will be retrieved without prompting.
+              The above command will generate the following screen output
+              </PARA>
+<VERBATIM>
+search_csc
+             pos = 83.831577 ,-5.3993566
+          radius = 0.02
+         outfile = orion_src.tsv
+         radunit = arcmin
+         columns = INDEF
+     sensitivity = no
+        download = all
+            root = .
+           bands = broad,wide
+       filetypes = regevt,pha,arf,rmf,lc,psf,regexp
+         catalog = csc1
+         verbose = 1
+         clobber = no
+            mode = ql
+
+
+8 rows returned by query
+1 Different Master Source(s).
+8 Different Observation(s).
+
+name                    ra              dec             sepn    obsid
+CXO J053519.6-052357     83.83170        -5.39921       0.012'   3744
+CXO J053519.6-052357     83.83170        -5.39921       0.012'     26
+CXO J053519.6-052357     83.83170        -5.39921       0.012'   1522
+CXO J053519.6-052357     83.83170        -5.39921       0.012'   4395
+CXO J053519.6-052357     83.83170        -5.39921       0.012'   4396
+CXO J053519.6-052357     83.83170        -5.39921       0.012'   3498
+CXO J053519.6-052357     83.83170        -5.39921       0.012'   4373
+CXO J053519.6-052357     83.83170        -5.39921       0.012'   4374
+
+If you use this data, please cite Evans et al 2010, ApJS 189, 37
+
+Retrieving files for obsid_obi 03744_000
+Retrieved file ./CXOJ053519.6-052357/03744_000/r0252/acisf03744_000N001_r0252_pha3.fits
+Retrieved file ./CXOJ053519.6-052357/03744_000/r0252/acisf03744_000N001_r0252b_psf3.fits
+Retrieved file ./CXOJ053519.6-052357/03744_000/r0252/acisf03744_000N001_r0252_regevt3.fits
+Retrieved file ./CXOJ053519.6-052357/03744_000/r0252/acisf03744_000N001_r0252_rmf3.fits
+Retrieved file ./CXOJ053519.6-052357/03744_000/r0252/acisf03744_000N001_r0252b_regexp3.fits
+Retrieved file ./CXOJ053519.6-052357/03744_000/r0252/acisf03744_000N001_r0252_arf3.fits
+Retrieved file ./CXOJ053519.6-052357/03744_000/r0252/acisf03744_000N001_r0252b_lc3.fits
+Retrieving files for obsid_obi 00026_000
+pha is not available for HRC observation 00026_000
+Retrieved file ./CXOJ053519.6-052357/00026_000/r0072/hrcf00026_000N001_r0072w_psf3.fits
+Retrieved file ./CXOJ053519.6-052357/00026_000/r0072/hrcf00026_000N001_r0072_regevt3.fits
+rmf is not available for HRC observation 00026_000
+Retrieved file ./CXOJ053519.6-052357/00026_000/r0072/hrcf00026_000N001_r0072w_regexp3.fits
+...
+</VERBATIM>
+
+            </DESC>
+        </QEXAMPLE>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>unix% search_csc pos="16:26:24.162, -24:24:49.41" radius=0.6 outfile=rho_oph.tsv filetypes=evt,fov,pha,arf,rmf,reg verbose=2 mode=h download=all root=/arc</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+              Perform a 0.6' cone search around the given position.
+              Return a different subset of the products.
+            </PARA>
+<VERBATIM>
+             pos = 16:26:24.162, -24:24:49.41
+          radius = 0.6
+         outfile = rho_oph.tsv
+         radunit = arcmin
+         columns = INDEF
+     sensitivity = no
+        download = all
+            root = ./arc
+           bands = broad,wide
+       filetypes = evt,fov,pha,arf,rmf,reg
+         catalog = csc1
+         verbose = 2
+         clobber = no
+            mode = h
+
+
+11 rows returned by query
+3 Different Master Source(s).
+5 Different Observation(s).
+
+name                    ra              dec             sepn    obsid
+CXO J162623.5-242439    246.59829       -24.41099       0.21'     635
+CXO J162623.5-242439    246.59829       -24.41099       0.21'     618
+CXO J162623.5-242439    246.59829       -24.41099       0.21'     637
+CXO J162624.0-242448    246.60020       -24.41339       0.033'    617
+CXO J162624.0-242448    246.60020       -24.41339       0.033'    619
+CXO J162624.0-242448    246.60020       -24.41339       0.033'    635
+CXO J162624.0-242448    246.60020       -24.41339       0.033'    618
+CXO J162624.0-242448    246.60020       -24.41339       0.033'    637
+CXO J162625.3-242444    246.60540       -24.41247       0.27'     635
+CXO J162625.3-242444    246.60540       -24.41247       0.27'     618
+CXO J162625.3-242444    246.60540       -24.41247       0.27'     637
+
+If you use this data, please cite Evans et al 2010, ApJS 189, 37
+
+Retrieving files for obsid_obi 00635_000
+...
+Retrieved file ./arc/CXOJ162623.5-242439/00635_000/r0099/acisf00635_000N001_r0099_arf3.fits
+Retrieving files for obsid_obi 00618_000
+Found multiple files for ('fov', '  618', '  0', '', '', 'ACIS')
+
+Retrieved file ./arc/CXOJ162623.5-242439/00618_000/acisf00618_000N002_fov3.fits
+...
+</VERBATIM>
+<PARA>
+This search returns 3 sources that has data in 5 observations.  The same
+observation level products (eg event file) are queued multiple times
+for retrival but copies are made instead.  The multiple files information 
+is only printed with verbose=2 and higher.
+</PARA>
+
+          </DESC>
+        </QEXAMPLE>
+  <QEXAMPLE>
+    <SYNTAX>
+      <LINE>unix% search_csc "M81" radius=1 clob+ out="m81.tsv" download=none verb=2 mode=h columns="o.cnts_aper_b"</LINE>
+    </SYNTAX>
+<DESC>
+<PARA>
+Use the name resolver to search for sources with 1arcmin of M81.
+</PARA>
+<VERBATIM>
+search_csc
+             pos = M81
+          radius = 1
+         outfile = m81.tsv
+         radunit = arcmin
+         columns = o.cnts_aper_b
+     sensitivity = no
+        download = none
+            root = ./
+           bands = broad,wide
+       filetypes = regevt,pha,arf,rmf,lc,psf,regexp
+         catalog = csc1
+         verbose = 2
+         clobber = yes
+            mode = h
+
+Resolved M81 to ra=148.88822 dec=69.06529
+Required column a.match_type was added to columns
+Required column o.region_id was added to columns
+Required column o.obi was added to columns
+Required column o.obsid was added to columns
+Required column o.instrument was added to columns
+Required column m.dec was added to columns
+Required column m.ra was added to columns
+Required column m.name was added to columns
+
+299 rows returned by query
+35 Different Master Source(s).
+22 Different Observation(s).
+
+name                    ra              dec             sepn    obsid   cnts_aper_b
+CXO J095526.2+690437    148.85954        69.07696       0.93'     735            67
+CXO J095527.0+690415    148.86260        69.07089       0.64'     735            77
+CXO J095527.8+690400    148.86583        69.06683       0.49'    5948            19
+CXO J095527.8+690400    148.86583        69.06683       0.49'    5935            20
+CXO J095527.8+690400    148.86583        69.06683       0.49'    5936            17
+CXO J095527.8+690400    148.86583        69.06683       0.49'    5937            13
+CXO J095527.8+690400    148.86583        69.06683       0.49'    5938            22
+CXO J095527.8+690400    148.86583        69.06683       0.49'    5939            15
+...
+CXO J095532.0+690354    148.88363        69.06512       0.099'   5937            48
+CXO J095532.0+690354    148.88363        69.06512       0.099'   2706           NaN
+CXO J095532.0+690354    148.88363        69.06512       0.099'   9540         27916
+...
+</VERBATIM>
+<PARA>
+The requested column 'o.cnts_aper_b' (the broad band, 0.5-7.0kev, source counts) 
+is also printed.   Note: columns may contain NaN value.  In this example, the
+NaN belongs to obsid=2706, which is an HRC observation and thus does not
+have any broad band data.
+</PARA>
+
+
+</DESC>
+  
+  </QEXAMPLE>
+
+  <QEXAMPLE>
+    <SYNTAX>
+      <LINE>unix% search_csc pos='16:27:23.622, -24:35:07.21' radius=0.1 out=none sensitivity=yes</LINE>    
+    </SYNTAX>
+    <DESC>
+      <PARA>
+        Perform a cone search with an additional lookup of the limiting
+        sensitivity value at the requested location.  In this case we find
+      </PARA>
+
+<VERBATIM>
+search_csc
+             pos = 16:27:23.622, -24:35:07.21
+          radius = 0.1
+         outfile = none
+         radunit = arcmin
+         columns = INDEF
+     sensitivity = yes
+        download = none
+            root = ./
+           bands = broad,wide
+       filetypes = regevt,pha,arf,rmf,lc,psf,regexp
+         catalog = csc1
+         verbose = 1
+         clobber = no
+            mode = ql
+
+CSC Sensitivity for position: 16:27:23.622,-24:35:07.21
+  broad band : 4.3461e-7 [photons/cm^2/s]
+  wide band : NaN [photons/cm^2/s]
+
+0 rows returned by query
+0 Different Master Source(s).
+0 Different Observation(s).
+</VERBATIM>          
+    <PARA>
+      We find that there are no sources in the Chandra Source
+      Catalog within 0.1 arcmin of this location with a
+      broad band limiting sensitivity of 4.3 photon/cm^2/sec. The
+      NaN value for the wide band indicates that no HRC observations, if any,
+      that included this field were included in the catalog.
+    </PARA>
+    
+    </DESC>
+  
+  </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="pos" type="string" reqd="yes" units="J2000">
+        <SYNOPSIS>
+          Comma separated location of cone search.
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            The location of the cone seach.  It currently must be comma
+            separated, but may be specified in either degrees or in
+            sexagesimal format.
+            </PARA>
+
+            <PARA>
+            All coordinates are J2000.
+            </PARA>
+        </DESC>
+      </PARAM>
+    
+      <PARAM name="radius" type="float" min="0" max="60" reqd="yes" units="">
+        <SYNOPSIS>
+          Radius of the cone search. 
+          </SYNOPSIS>
+    <DESC>
+      <PARA>
+           Default units are arcmin but can 
+          be changed using the radunit parameter.
+      </PARA>
+    </DESC>
+    
+        
+      </PARAM>
+
+      <PARAM name="outfile" type="file" reqd="yes">
+        <SYNOPSIS>
+          Name of output table.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+            The output file name.  If left blank or set to "none", the
+            the table of source properties is not saved.          
+          </PARA>
+          <PARA>
+            The output is the same Tab Separated Value (tsv) format
+            as returned by CSCView.  To use the file with DM tools users
+            must explicitly specify the kernel:
+          </PARA>
+          <VERBATIM>
+unix% dmlist "mysrc.tsv[opt kernel=text/tsv]" cols
+--------------------------------------------------------------------------------
+Columns for Table Block mysrc.tsv
+--------------------------------------------------------------------------------
+ 
+ColNo  Name                 Unit        Type             Range
+   1   name                              String[20]                          Source name in the format 'CXO Jhhmmss.s +/- ddmmss'
+   2   ra                                String[12]                          Source position, ICRS right ascension
+   3   dec                               String[11]                          Source position, ICRS declination
+   4   err_ellipse_r0       arcsec       Real4          -Inf:+Inf            Major radius of the 95% confidence level error ellipse
+   5   conf_flag                         String[5]                           Source regions overlap (source is confused)
+   6   sat_src_flag                      String[5]                           Source is saturated; source properties are unreliable
+   7   significance                      Real4          -Inf:+Inf            Highest source flux significance across all observations
+   8   flux_aper_b          erg/s/cm^2   Real4          -Inf:+Inf            Aperture-corrected net energy flux inferred from the source region aper
+   ...
+   </VERBATIM>
+        </DESC>
+    </PARAM>
+      
+      <PARAM name="radunit" type="string" reqd="no" def="arcmin">
+        <SYNOPSIS>
+          Controls the units of the search radius
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+            Can be either "arcsec", "arcmin", or "deg" (without quotes).
+          </PARA>
+          <PARA>
+            The separation column, 'sepn' that is returned is 
+            converted to the same units when displayed to the screen.
+            The value saved in the .tsv file is kept in arcsec.
+          </PARA>
+        </DESC>
+            
+      </PARAM>
+      <PARAM name="columns" type="string" reqd="no" def="INDEF" stacks="yes">
+        <SYNOPSIS>
+          The list of catalog columns to return.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+             The list of catalog columns to return.  The default (INDEF)
+             returns the list of columns returned by the combination
+             of CSCView Master Summary and Obsid Summary defaults.          
+          </PARA>
+          <PARA>
+            Several columns will be added to the query if they
+            are not explicitly provided.  These inlcude:
+            m.name, m.ra, m.dec, o.instrument, o.obsid, o.obi,
+            o.region_id, and a.match_type.          
+          </PARA>
+        <PARA>
+        The prefix "m." or "o." should be used to specify the
+        if the property is a Master Source property (ie a 
+        value derived from all individual observations) or an Obi Source
+        property (computed from a single observation).
+
+          The list of columns can also be input via a stack, eg columns=@my_favorite_cols.lis          
+          </PARA>
+        <PARA>
+          The following special values may be used to return the 
+          standard set of columns defined by CSCView:
+        </PARA>
+<LIST>
+  <ITEM> "MSBS" , the set of Master Source Basic Summary columns</ITEM>
+  <ITEM> "MSS", the set of Master Source Summary columns</ITEM>
+  <ITEM> "MSP", the set of Master Source Photometry columns</ITEM>
+  <ITEM> "MSV", the set of Master Source Variability columns</ITEM>
+  <ITEM> "SOS", the set of Source Observation Summary columns</ITEM>
+  <ITEM> "SOP", the set of Source Observation Photometry columns</ITEM>
+  <ITEM> "SOV", the set of Source Observation Variability columns</ITEM>
+</LIST>
+  <PARA>
+  The values are case-sensitive, and can be used with other values such as
+  </PARA>
+<VERBATIM>
+unix% search_csc ... columns="SOS,a.match_type,o.livetime" ...
+</VERBATIM>
+        
+        </DESC>
+
+      
+      </PARAM>
+      
+      <PARAM name="sensitivity" type="boolean" def="no">
+        <SYNOPSIS>
+          Fetch the limiting sensitivity values?
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+              Because Chandra is not a survey mission, different
+              parts of the sky are exposed for varying lengths of
+              time with different instrument configurations and
+              thus different upper limits on source fluxes for
+              non-detected sources.            
+            </PARA>
+            <PARA>
+              The CSC limiting sensitivity service can retrieve the
+              upper photon flux limit, in units of photon/cm^2/sec.
+            </PARA>
+            <PARA>
+              Setting this parameter to yes will query the limiting
+              sensitivity service and will print the results for
+              each specified energy band.
+            </PARA>
+        
+        </DESC>
+      
+      </PARAM>
+
+      <PARAM name="download" type="string" def="none">
+        <SYNOPSIS>
+        Retrieve the associated data products?
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+              Determine if data products should be retrieved.
+              The valid options are
+          </PARA>
+        <LIST>
+        <ITEM>"none"  : no datasets are retrieved</ITEM>
+        <ITEM>"ask" : ask for each master source if products should be retrieved.</ITEM>
+        <ITEM>"all" : all products will be retrieved without asking</ITEM>
+        </LIST>
+       <PARA>
+        When asked, users have 4 choices
+       </PARA>
+       <LIST>
+         <ITEM>y : yes to the current source </ITEM>
+         <ITEM>n : no to the current source</ITEM>
+         <ITEM>a : yes to the current source and all remaining sources</ITEM>
+         <ITEM>q : no to the current source and all remaining sources</ITEM>
+       </LIST>
+
+
+        </DESC>
+
+      </PARAM>
+    
+      <PARAM name="root" type="file" def="">
+        <SYNOPSIS>
+        Output root directory for data products.
+        </SYNOPSIS>
+      
+      </PARAM>
+
+      <PARAM name="bands" def="broad,wide" type="string">
+        <SYNOPSIS>
+        A comma separated list of energy bands 
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+              Various data products are stored in different energy bands.
+            </PARA>
+        
+          <LIST>
+          <ITEM>broad - ACIS 0.5 - 7.0 keV</ITEM>
+          <ITEM>soft - ACIS 0.5 - 1.2 keV</ITEM>
+          <ITEM>medium - ACIS 1.2 - 2.0 keV</ITEM>
+          <ITEM>hard - ACIS 2.0 - 7.0</ITEM>
+          <ITEM>ultrasoft - ACIS 0.2 - 0.5</ITEM>
+          <ITEM>wide - HRC</ITEM>          
+          </LIST>
+        <PARA>
+        This parameter is the list of energy bands for those products.
+        </PARA>        
+        <PARA>
+          If bands is blank, all bands are retrieved.
+        </PARA>
+        
+        </DESC>
+        
+      </PARAM>
+
+      <PARAM name="filetype" type="string" def="regevt,pha,arf,rmf,lc,psf,regexp">
+        <SYNOPSIS>
+          Comma separated list of file types to retrieve.
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            List of files to retrieve.  The following list gives the 
+            valid options.
+            </PARA>
+        
+          <LIST>
+            <ITEM>evt - Level 3 event file for entire observation</ITEM>
+            <ITEM>exp - Full field exposure map (per energy band)</ITEM>
+            <ITEM>ahst - Aspect histogram file </ITEM>
+            <ITEM>bpix - Level 3 badpixel file</ITEM>
+            <ITEM>fov - Level 3 field of view file</ITEM>
+            <ITEM>bkgimg - Background image (per energy band)</ITEM>
+            <ITEM>sens - Sensitivity map (per energy band)</ITEM>
+            <ITEM>img - Exposure corrected, background subtracted full field image (per energy band)</ITEM>
+            <ITEM>reg - Source region defintion</ITEM>
+            <ITEM>arf - Auxillary Response File for spectral fitting</ITEM>
+            <ITEM>rmf - Response Matrix File for spectral fitting</ITEM>
+            <ITEM>pha - Spectrum</ITEM>
+            <ITEM>regevt - Event file for just area around current source</ITEM>
+            <ITEM>regexp - Region exposure map (per energy band)</ITEM>
+            <ITEM>regimg - Exposure corrected image of source (per energy band) </ITEM>
+            <ITEM>psf - Point Spread Function (per energy band)</ITEM>
+            <ITEM>lc - Light curve (per energy band)</ITEM>            
+          </LIST>
+
+            <PARA>
+                It is possible that the same file may be queued for
+                retrieve more than once.  The script will recognize this
+                and will instead make a copy of the file instead of re-retrieving
+                it from the archive.            
+            </PARA>
+            <PARA>
+                The script will check if the file it is about to retrieve
+                already exists.  If so it will skip the and inform the user.
+            </PARA>
+            <PARA>
+                Files are place in subdirectories of the current
+                directory.  They are organized by source name, "CXOJ...", 
+                observation id (obsid_obi), and then by region id.
+                This heiarchry ensures that the large per-obi files are
+                only retrieved/stored once per master src
+            </PARA>
+            <PARA>
+               If filetype is left blank, all avialble file types
+               are retrieved.
+            </PARA>
+            
+        </DESC>
+      
+      </PARAM>
+
+      <PARAM name="catalog" type="string" def="csc1">
+        <SYNOPSIS>Fixed at 'csc1'.  Added for future expansion.</SYNOPSIS>
+      </PARAM>
+      
+      
+
+
+      
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+        <SYNOPSIS>
+          Tool chatter level.
+        </SYNOPSIS>      
+      </PARAM>
+    
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>
+          Remove outfile if it already exists?  
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+            This only applies to outfile.  Products are
+            never overwritten.
+          </PARA>
+        </DESC>
+      
+      </PARAM>
+    
+    </PARAMLIST>
+
+
+    <ADESC title="Changes in the scripts 4.6.6 (September 2014) release">
+      <PARA>
+        Corrects the "MSBS" (master source basic summary) macro.  
+      </PARA>
+      <PARA>
+        Provide more information when CSC servers are down and the 
+        catalog is not available.
+      </PARA>
+    
+    </ADESC>
+
+
+
+
+    <BUGS>
+    <PARA>
+        See the
+       <HREF link="http://cxc.harvard.edu/ciao/bugs/search_csc.html">bugs page
+        for this tool</HREF> 
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+  <LASTMODIFIED>September 2014</LASTMODIFIED>
+
+  </ENTRY>
+
+</cxchelptopics>

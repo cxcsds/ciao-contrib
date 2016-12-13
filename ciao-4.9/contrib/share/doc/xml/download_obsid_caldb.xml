@@ -1,0 +1,388 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="download_obsid_caldb" context="tools"
+         refkeywords="caldb calibration database download acis hrc gain p2_resp cti
+         background ardlib geom pixlib ard ICD partial"
+         seealsogroups="contrib.cda"
+         displayseealsogroups="caltools calibration" 
+         >
+    <SYNOPSIS>
+    Download the CALDB files required to analyze an OBS_ID
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+        `download_obsid_caldb' will perform a partial download of
+        the Chandra Calibration Database (CALDB) required to analyze 
+        a specific dataset.  The file size of the Chandra CALDB has
+        become prohibitive for certain users on slow internet connections 
+        and those with limited free disk space.  This tool allows them to 
+        only download the files required for their specific analysis.
+        
+        </PARA>
+        <PARA>
+        
+        The tool retrieves the most recent version of the
+        CALDB index files from the Chandra archive FTP server, and then
+        uses the input event file to construct CALDB queries for all the
+        calibration files associated with that dataset.  Those files are
+        then retrieved and stored in the user's local CALDB directory.
+      </PARA>
+
+        <PARA>
+        The default is to store the CALDB files in the root of the 
+        CIAO installation: $ASCDS_INSTALL/CALDB.  Then as each dataset is 
+        analyzed, users can accumulate the CALDB files in a single location.
+        Alternatively, users may wish to use a local CALDB directory where 
+        they can maintain all their data files in a single location; 
+        this approach requires additional setup by the user as 
+        shown in the Examples.        
+        </PARA>
+
+      <PARA>
+      The default clobber=no means that existing files in the CALDB are not overwritten; they
+      are skipped.  Chandra observations closely spaced in time often share the same CALDB files.
+       This allows for only the unique files to be retrieved 
+       further saving bandwidth and disk space.      
+      </PARA>
+
+    </DESC>
+    
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+          <SYNTAX>
+            <LINE>unix% download_chandra_obsid 635</LINE>
+            <LINE>unix% download_obsid_caldb 635/primary/acisf00635N0000_evt2.fits.gz</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+                The basic example is to simply provide the tool the 
+                name of an events file.  The tool will prompt for the location
+                of output CALDB directory 
+            </PARA>          
+
+<VERBATIM>
+Output CALDB directory (${ASCDS_INSTALL}/CALDB -> /soft/ciao/CALDB):
+download_obsid_caldb
+          infile = 635/primary/acisf00635N0000_evt2.fits.gz
+          outdir = /soft/ciao/CALDB
+      background = no
+         missing = no
+         clobber = no
+         verbose = 1
+            mode = ql
+
+Retrieving files for CALDB_VER = 4.6.8
+Retrieving CALDB index files
+Processing infile=635/primary/acisf00635N0000_evt2.fits.gz
+Retrieving CALDB data files
+    Filename:                               0------------------1
+    telD1999-07-23aimptsN0002.fits          ####################
+    telD1999-07-23skyN0002.fits             ####################
+    telD1999-07-23geomN0006.fits            ####################
+    telD1999-07-23sgeomN0001.fits           ####################
+    telD1999-07-23tdetN0001.fits            ####################
+    hrmaD1996-12-20vignetN0003.fits         ####################
+    acisD1997-04-17qeN0006.fits             ####################
+    acisD1999-08-13contamN0009.fits         ####################
+    acisD2000-01-29qeuN0007.fits            ####################
+    acisD2000-01-29badpixN0003.fits         ####################
+    hrmaD1996-12-20axeffaN0008.fits         ####################
+    acisD1996-11-01gradeN0004.fits          ####################
+    acisD2000-01-29t_gainN0006.fits         ####################
+    acisD2000-01-29grdimgN0001.fits         ####################
+    acisD1999-07-22subpixN0001.fits         ####################
+    acisD1996-11-01evtspltN0002.fits        ####################
+    acisD2000-01-29gain_ctiN0006.fits       ####################
+    acisD2000-01-29ctiN0007.fits            ####################
+    acisD2000-01-29fef_pha_ctiN0004.fits    ####################
+    acisD1999-09-16dead_areaN0001.fits      ####################
+    hrmaD1996-12-20reefN0001.fits           ####################
+    acisD2000-01-29p2_respN0006.fits        ####################
+    hrmaD1996-11-01wpsfN0001.fits           ####################
+    acisD2000-01-29osip_ctiN0006.fits       ####################
+</VERBATIM>
+
+<PARA>
+If the output directory is different from the ${CALDB} environment variable
+(or if the CALDB environment variable is not set), the user will see the
+following message:
+</PARA>
+
+
+<VERBATIM>
+Be sure to setup the following environment variables to
+use these CALDB files.
+
+(t)csh:
+setenv CALDB /soft/ciao/CALDB
+setenv CALDBCONFIG /soft/ciao/CALDB/software/tools/caldb.config 
+
+bash:
+export CALDB=/tmp
+export CALDBCONFIG=/soft/ciao/CALDB/software/tools/caldb.config 
+</VERBATIM>
+
+<PARA>
+If the user has used the default output directory, then the next
+time they source the CIAO setup scripts these CALDB environment variables 
+will automatically be set.
+</PARA>
+
+          </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+            <SYNTAX>
+            <LINE>unix% download_obsid_caldb 635/</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+            Similar to above, except the directory is input.  The tool 
+            will search for files named "*evt*" in the input directory along with
+            the "repro", "primary", and "secondary" directories (if they exist).            
+            </PARA>
+         </DESC>
+        </QEXAMPLE>
+
+      <QEXAMPLE>
+          <SYNTAX>
+            <LINE>unix% download_obsid_caldb 635/ 635/CALDB</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+                Similar to above except now that CALDB files are
+                retrieved and stored locally with the observation's
+                data products.  This makes is easy to 
+                share or archive the analysis as a single tar file.
+                It also allows the user to isolate their analysis 
+                of this one observation from system wide/global CALDB 
+                updates; changes to CALDB version in the middle of
+                analysis may yield unpredictable results.
+            </PARA>
+
+<VERBATIM>
+download_obsid_caldb
+          infile = 635/
+          outdir = 635/CALDB
+      background = no
+         missing = no
+         clobber = no
+         verbose = 1
+            mode = ql
+
+Retrieving files for CALDB_VER = 4.6.8
+Retrieving CALDB index files
+Multiple event file found, using 635//repro/acisf00635_repro_evt2.fits
+Processing infile=635//repro/acisf00635_repro_evt2.fits
+Retrieving CALDB data files
+    Filename:                               0------------------1
+    telD1999-07-23aimptsN0002.fits          ####################
+    telD1999-07-23skyN0002.fits             ####################
+    ...
+    hrmaD1996-11-01wpsfN0001.fits           ####################
+    acisD2000-01-29osip_ctiN0006.fits       ####################
+
+Be sure to setup the following environment variables to
+use these CALDB files.
+
+(t)csh:
+setenv CALDB /tmp/635/CALDB
+setenv CALDBCONFIG /tmp/635/CALDB/software/tools/caldb.config
+
+bash:
+export CALDB=/tmp/635/CALDB
+export CALDBCONFIG=/tmp/635/CALDB/software/tools/caldb.config
+</VERBATIM>
+
+<PARA>
+Users must setup these environment variable each them they 
+start CIAO and/or when they change observation.
+Note:  The CALDB requires full, absolute path names be specified so 
+the relative path is expanded when setting the environment variables.
+Failure to change these environment variables may cause various
+CIAO tasks to fail badly.
+</PARA>
+         </DESC>
+        </QEXAMPLE>
+
+
+      <QEXAMPLE>
+          <SYNTAX>
+            <LINE>unix% download_obsid_caldb 635/ 635/CALDB background=yes</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+            By default the ACIS and HRC background files are not retrieved.
+            They can be requested by setting background=yes.
+            </PARA>
+<VERBATIM>
+download_obsid_caldb
+          infile = 635/
+          outdir = 635/CALDB
+      background = yes
+         missing = no
+         clobber = no
+         verbose = 1
+            mode = ql
+
+Retrieving files for CALDB_VER = 4.6.8
+Retrieving CALDB index files
+Multiple event file found, using 635//repro/acisf00635_repro_evt2.fits
+Processing infile=635//repro/acisf00635_repro_evt2.fits
+Retrieving CALDB data files
+    Filename:                               0------------------1
+    telD1999-07-23aimptsN0002.fits          .................... (skipped)
+    telD1999-07-23skyN0002.fits             .................... (skipped)
+    ...
+    acisD2000-01-29osip_ctiN0006.fits       .................... (skipped)
+    acis2iD2000-01-29bkgrnd_ctiN0005.fits   ####################
+    acis3iD2000-01-29bkgrnd_ctiN0005.fits   ####################
+    acis0iD2000-01-29bkgrnd_ctiN0005.fits   ####################
+    acis1iD2000-01-29bkgrnd_ctiN0005.fits   ####################
+    acis6iD2000-01-29bkgrnd_ctiN0005.fits   ####################
+</VERBATIM>
+
+<PARA>
+Since the other CALDB files have already been retrieved, and clobber=no,
+they are skipped and only the background files are actually retrieved.
+</PARA>
+  </DESC>
+  </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>Input event file or directory name</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The file name of an event file or the directory name
+            that contains an event file (tool looks for "*evt*").
+            The header of the event file is used to setup 
+            the CALDB query for the specific observation.   
+            The event file must have standard Chandra header and include
+            keywords such as INSTRUME, TELESCOP, 
+            DETNAM, DATE-OBS, DATE-END, GRATING just to list a few.
+            The exact keyword list depends on the calibration products.
+          </PARA>
+          <PARA>
+            If a directory name is specified, the tool looks for 
+            files named "*evt*" in that directory, and then looks in
+            subdirectories: "repro", "primary", and "secondary".  If more
+            than one event file is found, the first one is used.
+        </PARA>
+        </DESC>      
+      </PARAM>
+
+    <PARAM name="outdir" type="file" filetype="output" reqd="yes" def="${ASCDS_INSTALL}/CALDB">
+      <SYNOPSIS>The output CALDB directory name</SYNOPSIS>
+      <DESC>
+        <PARA>
+        The directory containing the CALDB files.  This should be the
+        top level of the CALDB directory that usually has 3 or 4 
+        sub-directories:  'data', 'docs', 'software', and possibly 'config'.
+        The standard, centralized CIAO installation location is 
+        $ASCDS_INSTALL/CALDB.  With the CALDB installed in this location
+        the CIAO setup scripts will automatically setup the correct
+        CALDB environment variables to use it.        
+        </PARA>      
+        <PARA>
+          If the outdir directory is different than the $CALDB environment variable
+          or if the CALDB environment variable is not set, the tool will provide
+          instructions for setting the environment variables needed to access
+          the CALDB files.
+        </PARA>
+      </DESC>
+    </PARAM>
+
+    <PARAM name="background" type="boolean" def="no" reqd="no">
+      <SYNOPSIS>Retrieve the ACIS|HRC background files?</SYNOPSIS>
+      <DESC>
+        <PARA>
+          Due to their size, the ACIS and HRC background files are not
+          retrieved by default.  Setting this parameter to 'yes' will
+          retrieve the files appropriate for the current observation.
+        </PARA>
+        <PARA>
+          Note: there may be some certain background file types that this
+          script cannot locate.  If that is the case, users will need to
+          retrieve the entire set of background files.
+        </PARA>
+      </DESC>
+    </PARAM>
+
+    <PARAM name="missing" type="boolean" def="no" reqd="no">
+      <SYNOPSIS>Only check for missing files?</SYNOPSIS>
+      <DESC>
+        <PARA>
+            When missing=yes, the tool will check the current 
+            version of the CALDB configuration and index files 
+            against the files in the outdir/ CALDB tree and 
+            provides feedback for any files that are missing.  
+            This can be used to check whether the current partial
+            CALDB has all the files needed for analysis.        
+        </PARA>
+
+        <PARA>
+            Note that this only checks the current version of the index
+            files.  If there is a newer version of the CALDB, then 
+            those index files will be retrieved, which may mean that 
+            there may be additional files that are required. 
+        </PARA>
+      </DESC>
+    
+    </PARAM>
+
+
+
+      <PARAM name="clobber" type="boolean" def="no">
+  	<SYNOPSIS>Overwrite existing files?</SYNOPSIS>
+    <DESC>
+      <PARA>
+        With missing=no (default), this script will always overwrite the CALDB index and
+        config files with the latest version.  The clobber parameter
+        controls whether the individual CALDB files are 
+        downloaded again.      
+      </PARA>
+    </DESC>
+
+      </PARAM>
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+	<SYNOPSIS>Amount of tool chatter</SYNOPSIS>
+      </PARAM>
+    
+    
+    </PARAMLIST>
+    
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+    
+    
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/download_obsid_caldb.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>August 2015</LASTMODIFIED>
+</ENTRY>
+</cxchelptopics>
+
+    

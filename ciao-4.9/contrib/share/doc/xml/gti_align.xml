@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="gti_align"
+         context="tools" 
+         refkeywords="GTI good time interval ccd ccd_id chip ACIS background flare subspace perchip per-chip filter syntax"
+         seealsogroups="cleantools timingtools">
+
+    <SYNOPSIS>Align GTI to ACIS exposure times</SYNOPSIS>
+   <DESC>
+     <PARA>
+        ACIS events are collected in a series of (normally, full frame) 
+        3.2 second exposures. This means that any event that is detected
+	within this frame on the CCD has to be assigned a time, since
+	there is no way to know when it occurred. The assigned time
+	is set to be the mid-exposure time.
+        Now, the different CCD_IDs are not read out simultaneously;
+	there is a small difference between each CCD, so the same 
+	frame number from different CCDs covers a slightly different time range.
+     </PARA>
+     <PARA>
+        When users apply a time filter to an ACIS event file,
+	the boundaries 
+        of the original exposures are not preserved.
+	This leads to 
+        a small error  in the total exposure, per good time interval (GTI).
+        Most data sets have few GTI intervals
+        so this partial-bin error is very small (fractions of a second
+        over the entire observation).  However, if there are 
+        many GTIs, as one may generate when doing phase binning or
+        if trying to remove short-duration background flares, this
+        error can accumulate. 
+     </PARA>
+    <PARA>
+        This script determines the individual exposure times and
+        aligns the user supplied GTIs to ensure that the total
+        exposure time is correct.
+    </PARA>
+    <PARA>
+        The information needed to align the GTI is contained in the
+        exposure statistics file, acis*_stat1.fits.  This file is located 
+        in the secondary/ directory and is copied to the repro directory
+        by chandra_repro.
+    </PARA>
+   
+   </DESC>  
+   <QEXAMPLELIST>
+     <QEXAMPLE>
+       <SYNTAX>
+         <LINE>% gti_align times=my.gti statfile=acis_stat1.fits outfile=aligned.gti</LINE>
+         <LINE>% dmcopy "acis_evt.fits[@aligned.gti]" acis_time_filter_evt.fits</LINE>
+       </SYNTAX>
+       <DESC>
+          <PARA>
+                The good time intervals are read from the times file and
+                using the information in the stat1.fits file, are 
+                aligned to the ACIS exposure time frame boundaries.
+                The dmcopy line shows how the GTI file is typically used
+                in CIAO.
+          </PARA>
+             <PARA>
+                If the input file has multiple GTIs, one per CCD_ID, then
+                each CCD's GTI will be corrected for each CCD's 
+                exposure times.
+                Note: ACIS CCDs are read-out asynchronously, so the 
+                same exposure number on different CCD_IDs will have different TIMEs.
+             </PARA>
+       </DESC>
+     </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+         <LINE>% dmgti infile=acis_mtl1.fits outfile=fptemp.gti userlimit="(fp_temp&lt;153.5)"</LINE>
+         <LINE>% gti_align times=fptemp.gti statfile=acis_stat1.fits outfile=align_fptemp.gti evtfile=acis_evt1.fits</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+                If the input file has a single GTI, one for all CCDs, then
+                those times will be used for all the CCD_IDs found in the
+                stat1.fits file.  This example uses dmgti to 
+                create a set of GTIs based on the focal plane
+                temperature (FP_TEMP).  The output is a single
+                GTI (with 62 intervals).
+          </PARA>
+<VERBATIM>
+% dmlist fptemp.gti blocks
+ 
+--------------------------------------------------------------------------------
+Dataset: fptemp.gti
+--------------------------------------------------------------------------------
+ 
+     Block Name                          Type         Dimensions
+--------------------------------------------------------------------------------
+Block    1: PRIMARY                        Null        
+Block    2: FILTER                         Table         1 cols x 0        rows
+Block    3: GTI                            Table         2 cols x 62       rows
+</VERBATIM>
+
+<PARA>
+gti_align creates separate per-chip GTIs for each CCD_ID found in the
+stat1 file.
+</PARA>
+
+
+<VERBATIM>
+% dmlist align_fptemp.gti blocks,subspace
+  
+--------------------------------------------------------------------------------
+Dataset: align_fptemp.gti
+--------------------------------------------------------------------------------
+ 
+     Block Name                          Type         Dimensions
+--------------------------------------------------------------------------------
+Block    1: PRIMARY                        Null        
+Block    2: FILTER                         Table         2 cols x 0        rows
+Block    3: GTI7                           Table         2 cols x 62       rows
+Block    4: GTI6                           Table         2 cols x 62       rows
+Block    5: GTI3                           Table         2 cols x 62       rows
+Block    6: GTI8                           Table         2 cols x 62       rows
+Block    7: GTI2                           Table         2 cols x 62       rows
+ 
+--------------------------------------------------------------------------------
+Data subspace for block FILTER: Components: 5 Descriptors: 2 
+--------------------------------------------------------------------------------
+ 
+ --- Component 1 --- 
+   1 TIME                 Real8               TABLE GTI7
+                                              
+                                              480918496.4215623140:480918505.8445032835
+                                              480931804.8610073328:480933328.2480297089
+                                              480933343.9530405998:480933570.1053527594
+   2 CCD_ID               Int2                7:7 
+ --- Component 2 --- 
+   1 TIME                 Real8               TABLE GTI6
+                                              
+                                              480918496.4626023173:480918505.8855880499
+                                              480918534.1546446085:480918590.6927877069
+ ... 
+</VERBATIM>
+
+<PARA>
+The GTIs are output in the same order as they are found in the input
+eventfile.   If no event file is supplied, then the GTIs will be
+created in numeric order.
+
+</PARA>
+
+
+        </DESC>
+      </QEXAMPLE>
+
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+            % gti_align times="303751671.36:303846063.26" statfile=acis_stat1.fits evtfile=acis_evt1.fits outfile=good.gti 
+            </LINE>
+          </SYNTAX>
+<DESC>
+
+<PARA>
+Users can also specify a set of comma separated time ranges (minimum value colon maximum value, ie min:max).
+When a single time range is used the DM filter will be printed to the terminal
+when the verbose parameter is &gt; 0.
+</PARA>
+
+        
+        
+<VERBATIM>
+gti_align
+           times = 303751671.36:303846063.26
+        statfile = acis_stat1.fits
+         outfile = good.gti
+         evtfile = acis_evt1.fits
+         clobber = no
+         verbose = 1
+            mode = ql
+
+Filter: (ccd_id=7,time=303751668.256:303846064.981)||(ccd_id=5,time=303751668.297:303846065.023)||(ccd_id=6,time=303751668.338:303846065.064)||(ccd_id=3,time=303751668.379:303846065.105)||(ccd_id=8,time=303751668.42:303846065.146)
+</VERBATIM>
+        
+</DESC>
+        
+        </QEXAMPLE>
+
+
+   
+   </QEXAMPLELIST>
+   
+   <PARAMLIST>
+     <PARAM name="times" type="string" reqd="yes">
+        <SYNOPSIS>
+        Input file with good time intervals (GTIs) or time ranges.
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            The GTI (aka "TIME subspace" in CXCDM terminology) is
+            retrieved from the times file.  If there are multiple
+            GTIs, they must be for different CCD_IDs.
+            </PARA>
+            <PARA>
+            If there are multiple GTIs, the order of the GTIs is
+            also stored so that the output file can be created 
+            using the same order.
+            </PARA>
+            <PARA>
+            The times parameter may also be a comma separate list of 
+            time ranges, for example "min1:max1,min2:max2".  
+            </PARA>
+
+        </DESC>
+     </PARAM>
+     <PARAM name="statfile" type="file" filetype="input" reqd="yes">
+       <SYNOPSIS>
+         ACIS Exposure statistics file
+       </SYNOPSIS>
+       <DESC>
+         <PARA>
+        The ACIS exposure statistics file (stat1.fits) contains the 
+        information needed to match ACIS exposure number to TIMEs,
+        for each CCD_ID in an observation.
+         </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+       <SYNOPSIS>Output file name</SYNOPSIS>
+       <DESC>
+          <PARA>
+            The output GTI whose start and stop times are 
+            aligned to match the ACIS exposure times.
+            The output GTI file will have separate GTI's for 
+            each CCD_ID in either the times input file or in the stat1 
+            file.  This depends on whether the times input has
+            multiple, per-chip GTIs or a single GTI block.
+          </PARA>
+       </DESC>
+     </PARAM>
+
+
+     <PARAM  name="evtfile" type="file" filetype="input" reqd="no">
+        <SYNOPSIS>
+        Event file name to determine correct GTI order
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+            CIAO does rely on the order of the per-chip GTIs.
+            Specifically, the 1st GTI is used to populate
+            the ONTIME, LIVETIME, and EXPOSURE keywords, in
+            addition to the per-chip ONTIMEn, LIVTIMn, and EXPOUSRn
+            variants.
+          </PARA>
+            <PARA>
+              This script can then take in an event file (or image)
+              and will use the order of the GTI blocks
+	      it finds to create the output file order.
+            </PARA>
+        </DESC>
+     </PARAM>
+
+
+      <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+        <SYNOPSIS>
+          Amount of tool chatter
+        </SYNOPSIS>
+        <DESC>
+           <PARA>
+             If there is only 1 good time interval and verbose is set
+             higher than 0, the DM filter syntax will be printed to the
+             terminal.
+           
+           </PARA>
+        
+        </DESC>
+
+
+      </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>
+          Overwrite the output file if it already exists?
+        </SYNOPSIS>
+      </PARAM>
+   
+   </PARAMLIST>
+   
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+   <BUGS><PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/gti_align.html">bugs page
+        for this tool</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA></BUGS>
+
+   <LASTMODIFIED>January 2015</LASTMODIFIED>
+
+
+</ENTRY>
+</cxchelptopics>

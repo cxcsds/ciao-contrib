@@ -1,0 +1,219 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="prof_fit" context="contrib" pkg="sherpa"
+	 refkeywords="profile circular elliptical radial ellipse plot plotting fit data model"
+	 seealsogroups="sh.plot sh.profile">
+
+    <SYNOPSIS>
+      Plot a radial or elliptical profile of the fit (data and model) to imaging data.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>prof_fit( [id], [model=None,
+      rstep=None, rmin=None, rmax=None, rlo=None, rhi=None,
+      xpos=None, ypos=None, ellip=None, theta=None,
+      group_counts=None, group_snr=None,
+      label=True, recalc=True, overplot=False] )</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The prof_fit command calculates the radial - or elliptical - profile of 
+	the imaging data and model and plots them.
+	It is a combination of the plot_data() and plot_model() commands.
+	The profile is defined by the existing model
+	compenents, although it is possible to over-ride these values.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.profiles import *
+</VERBATIM>
+
+      <PARA title="Argument options">
+        The argument options are the same as for the prof_data() command,
+        and are described in its ahelp page.
+      </PARA>
+
+      <PARA title="Changing the plot defaults">
+	The plot created by prof_fit() is controlled by the
+	data and model preferences - i.e. the values returned
+	by get_data_prof_prefs() and get_model_prof_prefs().
+	Changing these settings will therefore change the
+	appearance of any new plots created by prof_fit().
+	For example
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; get_data_prof_prefs()["xlog"] = True</LINE>
+	  <LINE>&pr; get_model_prof_prefs()["linecolor"] = "green"</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	will cause any new fit plots to use logarithmic scaling for the X axis
+	and draw the model using a green line.
+	See the ahelp files for
+	get_data_prof_prefs and get_model_prof_prefs
+	for the available preference settings.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prof_fit()</LINE>
+          <LINE>&pr; log_scale()</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; prefs = get_data_prof_prefs()</LINE>
+          <LINE>&pr; prefs["xlog"] = True</LINE>
+          <LINE>&pr; prefs["ylog"] = True</LINE>
+          <LINE>&pr; prof_fit()</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The preferences are set so that both the x and y axes should be drawn
+	    using log scaling. Setting the get_data_prof_prefs values only
+	    affects plots made after the change; to change an existing plot
+	    you need to use ChIPS commands such as log_scale() and linear_scale().
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prof_fit(group_snr=15)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The data is plotted after the bins have been grouped so that each
+	    bin has a signal to noise ratio of 15 or more.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+	   
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_fit(rmin=10, rmax=100, rstep=5)</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Calculate the profile in radial bins with low/high limits of
+	    10-15, 15-20, 20-25, ..., 90-95, 95-100.
+	    If the group_counts or group_snr option was also given - e.g.
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; prof_fit(rmin=10, rmax=100, rstep=5, group_counts=100)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    then the grouping would be applied to these bins.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_fit(rlo=[0,10,20,40,60,100,200])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Calculate the profile in radial bins with low/high limits of
+	    0-10, 10-20, 20-40, 40-60, 60-100, 100-200.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_fit(rstep=[1,10,2,20,5,50,10])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    The radii used for the radial bins depends on the radius as shown in
+	    the table below:
+	  </PARA>
+	  <TABLE>
+	    <ROW><DATA>radius</DATA><DATA>bin width</DATA></ROW>
+	    <ROW><DATA>0 to 10</DATA><DATA>1</DATA></ROW>
+	    <ROW><DATA>10 to 20</DATA><DATA>2</DATA></ROW>
+	    <ROW><DATA>20 to 50</DATA><DATA>5</DATA></ROW>
+	    <ROW><DATA>above 50</DATA><DATA>10</DATA></ROW>
+	  </TABLE>
+	  <PARA>
+	    The minimum and maximum radii used are taken from the data.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_fit("src1")</LINE>
+	  <LINE>&pr; prof_fit("src2", overplot=True)</LINE>
+	  <LINE>&pr; set_histogram(["line.color", "green"])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Plots the fit profiles (data and model) for the dataset called "src1" and then overplots the 
+	    results from dataset "src2".
+	    The model for the src2 dataset is changed to use a green line.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; load_image("img.fits")</LINE>
+          <LINE>&pr; set_source(beta2d.clus + gauss2d.qso + const2d.bgnd)</LINE>
+          <LINE>&pr; fit()</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; prof_fit(model=qso)</LINE>
+          <LINE>&pr; thaw(clus.ellip)</LINE>
+          <LINE>&pr; thaw(clus.theta)</LINE>
+          <LINE>&pr; fit()</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; prof_fit(model=clus)</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Since the model expression contains two components which have xpos,
+	    ypos, ellip, and theta parameters - namely clus and qso - the model
+	    argument is used to select the gauss2d (qso) values for the first plot
+	    and the
+	    beta2d (clus) values for the second plot.
+	  </PARA>
+	  <PARA>
+	    If the clus model has a
+	    non-zero ellipticity then the second plot will have used elliptical
+	    annuli to calculate the profile.
+	    To use circular annuli in this case we can manually override the
+	    model's ellipticity parameter by saying:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; prof_fit(model=clus, ellip=0)</LINE>
+	    </SYNTAX>
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>December 2009</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="tgmask2reg"
+         context="tools" 
+         refkeywords="reg2tgmask gratings spectroscopy histogram pha pha2 zeroth order extraction region letg hetg leg heg meg dispersion transmission spectrum cross plus minus"
+         seealsogroups="tgtools ">
+
+    <SYNOPSIS>Customize grating extaction region file for use with tgextract2</SYNOPSIS>
+    <SYNTAX>
+      <LINE>tgmask2reg infile outfile [clobber] [verbose]</LINE>
+      <LINE/>
+      <LINE>reg2tgmask infile srcfile outfile [clobber] [verbose]</LINE>
+    </SYNTAX>
+    <DESC>
+      <PARA>
+
+       The CALDB contains a default mask file for HRC with LETG, the
+       so called "bow-tie" extraction
+       region, that it is used by tgextract in Standard Data
+       Processing, and can be used with the 
+        <HREF link="http://cxc.harvard.edu/ciao/ahelp/tgextract2.html">tgextract2</HREF>       
+       tool. This file is sufficient for some observations, but if the field contains 
+       multiple sources or if the source is offset, both source and
+       background extraction regions may need to be customized. This is most easily done in ds9, however, the information 
+       about which region represents source and up and down background
+       needs to be preserved.
+
+      </PARA>
+      <PARA>
+       The tgmask2reg and reg2tgmask scripts allow the use of ds9 to
+       define custom extraction regions, and use the ds9 region "tagging"
+       feature to encode the grating information along with the
+       extraction region coordinates.
+      </PARA>
+
+
+      <PARA title="The tgmask2reg Script">
+       This script converts a FITS region file like the one stored in 
+       the CALDB, into a ds9 ASCII region file that retains the 
+       information about which polygon represents source, background 
+       and +/- 1st order. The default infile is "CALDB" which will trigger 
+       the tool to query the calibration database for the appropriate 
+       file. The output is a ds9 format region file. It should be used 
+       in ds9 when the data are binned in TG_R and TG_D coordinates.
+      </PARA>
+
+      <PARA title="The reg2tgmask Script">
+
+       This script takes a region file saved in Physical coordinates
+       in ds9 format and creates a FITS file that can be used by 
+       tgextract2. The ds9 region file must only contain polygons and 
+       each must have the ds9 tags present that identifies the type: source or 
+       background, order, and grating arm. The original FITS region file,
+       which can be automatically retrieved from the CALDB, is used as
+       a template for the region columns.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+       <QEXAMPLE>
+          <SYNTAX>
+            <LINE>unix% tgmask2reg infile=CALDB outfile=tg.reg</LINE>
+            <LINE>unix% ds9 evt.fits</LINE>
+            <LINE>unix% reg2tgmask infile=ds9.reg srcfile=CALDB out=tg_mask.fits</LINE>
+            <LINE>unix% tgextract2 ... region_file=tg_mask.fits ...</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+       tgmask2reg converts the CALDB tgmask file into ds9 format. The
+       additional (non-coordinate) columns in the CALDB files are added as "tags" so that later 
+       tools know each regions purpose.
+            </PARA>
+            <PARA>
+            The ds9 region looks like this:
+            </PARA>
+
+
+<VERBATIM>
+# Region file format: DS9 version 4.1
+# Filename:
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=0 include=1 source=1
+physical
+polygon(...) # tag={row_idx=1} tag={rowid=SOURCE} tag={tg_part=3} tag={tg_srcid=1} tag={tg_m=-1} tag={backscal=1.0}
+polygon(...) # tag={row_idx=2} tag={rowid=BACKGROUND_UP} tag={tg_part=3} tag={tg_srcid=1} tag={tg_m=-1} tag={backscal=5.0}
+</VERBATIM>
+
+            <PARA>
+       Next, the event file is loaded into ds9 and the binning
+       parameters are changed to the TG_R and TG_D coordinates. Once the
+       original region file "tg.reg" is loaded, it can be customized
+       interactivelty as needed
+       either by moving points or adding new ones both for the source
+       and the background areas. Note that polygon regions cannot be
+       deleted, nor can be addeded. They can only be modified. The
+       final customized set of regions should be saved in ds9 format in physical 
+       coordinates (as "ds9.reg" in this example)
+
+
+            </PARA>
+            <PARA>
+       The reg2tgmask script converts the modified region "ds9.reg"
+       back into a FITS format compatible with tgextract2 ("tg_mask.fits").            
+            </PARA>
+            <PARA>
+                Finally, the region is used with tgextract2 to extract
+                a customized spectrum.
+            </PARA>
+
+          </DESC>
+       </QEXAMPLE>    
+    </QEXAMPLELIST>
+
+<ADESC title="Caveats">
+<PARA title="HRC Only">
+Currently this script will only work with HRC + LETG regions.  
+</PARA>
+
+<PARA title="Cannot delete regions?">
+To ensure that the needed meta-data is preserved, regions cannot be deleted.
+</PARA>
+</ADESC>
+
+<ADESC title="Groups">
+<PARA>
+       In ds9, regions can be inspected to see the extra information associated with each region by going to Region -> Groups 
+       This will provide a list of the different tags in
+       use. Selecting one of the tags will show and select the region(s) in the main ds9 
+       window.
+
+</PARA>
+</ADESC>
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+
+   <BUGS><PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/tgmask2reg.html">bugs page
+        for this tool</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA></BUGS>
+   <LASTMODIFIED>March 2013</LASTMODIFIED>
+
+
+</ENTRY>
+</cxchelptopics>
+
+    

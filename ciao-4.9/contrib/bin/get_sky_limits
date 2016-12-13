@@ -1,0 +1,307 @@
+#!/usr/bin/env python
+
+#
+#  Copyright (C) 2007, 2008, 2010, 2011, 2012, 2015, 2016
+#            Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Usage
+=====
+
+get_sky_limits img.fits [precision] [dmfilter] [xygrid] [verbose]
+
+Aim
+===
+
+Returns the sky region occupied by the supplied image, and the
+number of pixels, in a form that can be used for binning
+into an image, using the DM syntax, or for the xygrid parameter
+of mkexpmap.
+
+The dmfilter and xygrid parameters are used to store the
+output expressions - ie it does not make sense to set them
+before running the script.
+
+If verbose is > 0, then messages will be printed to the
+screen - including the required binning specs.
+
+Notes
+=====
+
+This assumes that the nominal position is the same (ie you can
+match up the sky coordinates, but you also want the celestial
+coordinates to match, which this does NOT check for)
+"""
+
+toolname = "get_sky_limits"
+version = "07 October 2016"
+
+import os
+import sys
+
+from collections import namedtuple
+
+import paramio as pio
+
+import cxcdm as dm
+
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib.param_wrapper import open_param_file
+
+lw.initialize_logger(toolname)
+
+v1 = lw.make_verbose_level(toolname, 1)
+v2 = lw.make_verbose_level(toolname, 2)
+v3 = lw.make_verbose_level(toolname, 3)
+v4 = lw.make_verbose_level(toolname, 4)
+v5 = lw.make_verbose_level(toolname, 5)
+
+# simple struct-like wrapper to make conversion from
+# S-Lang to Python easier
+#
+# width is derivable from lo, hi, and size so could be a routine
+# rather than input/stored value
+#
+AxisInfo = namedtuple("AxisInfo", "name, size, lo, hi, width")
+
+
+def process_command_line(argv):
+    """Handle the parameter input for this script."""
+
+    if argv is None or argv == []:
+        raise ValueError("argv argument is None or empty")
+
+    pinfo = open_param_file(argv, toolname=toolname)
+
+    fp = pinfo["fp"]
+
+    infile = pio.pget(fp, "image")
+    if infile.strip() == "":
+        raise ValueError("image parameter is empty")
+
+    # TODO: should the mode setting be respected when setting dmfilter/xygrid?
+    # mode = pio.pget(fp, "mode")
+    prec = pio.pgeti(fp, "precision")
+    verbose = pio.pgeti(fp, "verbose")
+
+    # Ensure the output parameters are cleared
+    pio.pset(fp, "dmfilter", "")
+    pio.pset(fp, "xygrid", "")
+
+    pio.paramclose(fp)
+
+    # Set tool and module verbosity
+    lw.set_verbosity(verbose)
+
+    return {"progname": pinfo["progname"],
+            "parname": pinfo["parname"],
+            "infile": infile,
+            "precision": prec,
+            "verbose": verbose}
+
+
+def getAxesDescriptors(infile, dd):
+    """Returns descriptors for the X and Y axes of the
+    image referenced by the descriptor argument (dd,
+    e.g. the value returned by dmImageGetDataDescriptor).
+    The return is the tuple (dx,dy).
+
+    """
+
+    # Get Axis info. There are 2 cases (for 2D data):
+    #    1 axis group, which is 2D
+    #    2 axes groups, each 1D
+    # We do not check for "failures" - e.g. if we find 1 axis
+    # group then we assume it is 2D.
+    #
+    ngroups = dm.dmArrayGetNoAxisGroups(dd)
+    if ngroups == 1:
+        v3("Found 1 axis group")
+
+        ad = dm.dmArrayGetAxisGroup(dd, 1)
+        v4("  group = '{0}'".format(dm.dmGetName(ad)) +
+           " (ndims={0})".format(dm.dmGetElementDim(ad)))
+
+        adx = dm.dmGetCpt(ad, 1)
+        ady = dm.dmGetCpt(ad, 2)
+
+    elif ngroups == 2:
+        # Assume these are in X,Y order
+        #
+        v3("Found 2 axis groups")
+
+        adx = dm.dmArrayGetAxisGroup(dd, 1)
+        ady = dm.dmArrayGetAxisGroup(dd, 2)
+
+        v4("  group 1 = '{0}'".format(dm.dmGetName(adx)) +
+           " (ndims={0})".format(dm.dmGetElementDim(adx)))
+        v4("  group 2 = '{0}'".format(dm.dmGetName(ady)) +
+           " (ndims={0})".format(dm.dmGetElementDim(ady)))
+
+    else:
+        raise IOError("*internal error * found {0} ".format(ngroups) +
+                      "axis groups")
+
+    return (adx, ady)
+
+
+def getAxisInfo(num, ad):
+    """(name, lo, hi) = getAxisInfo (axisnum, descriptor)
+
+    Returns info about the given axis (the name, low, and high
+    value). axisnum is only used to output a debugging message
+    for high verbose values.
+    """
+
+    name = dm.dmGetName(ad)
+    (lo, hi) = dm.dmDescriptorGetRange(ad)
+    v3("Axis {0} ({1}) is {2} to {3}".format(num, name, lo, hi))
+    return (name, lo, hi)
+
+
+def getImageInfo(infile):
+    """Returns info about the image in a structure.
+    Exits on failure, such as the input file not being an image."""
+
+    # Used to use dmImageOpen then dmBlockClose but this can lead
+    # to a seg fault if given a table, so try the following.
+    #
+    v5("Opening block: {}".format(infile))
+    try:
+        block = dm.dmBlockOpen(infile)
+
+    except IOError as ie:
+        emsg = str(ie)
+        hdr = "dmBlockOpen() "
+        if emsg.startswith(hdr):
+            emsg = emsg[len(hdr):]
+        raise IOError("Unable to open '{}'.\n  {}".format(infile,
+                                                          emsg))
+
+    if dm.dmBlockGetType(block) != dm.dmIMAGE:
+        dm.dmBlockClose(block)
+        raise IOError("The file '{}' is not an image.".format(infile))
+
+    v5("Block is an image")
+
+    # Get image dimensions
+    #
+    # QUS: can dmImageGetDataDescriptor fail and, if so does it
+    # now throw an error?
+    #
+    try:
+        dd = dm.dmImageGetDataDescriptor(block)
+
+    except RuntimeError as re:
+        raise IOError("*internal error* unable to get data descriptor " +
+                      "for image.\n  {}".format(re))
+
+    ndims = dm.dmGetArrayDim(dd)
+    if ndims != 2:
+        raise ValueError("Image '{}' should be 2D,".format(infile) +
+                         " found {}D.".format(ndims))
+
+    # Note: dmGetArrayDimensions returns swapped values to CIAO 4.2
+    dims = dm.dmGetArrayDimensions(dd)
+    nx = dims[1]
+    ny = dims[0]
+
+    # Get descriptors for the 2 axes.
+    #
+    (adx, ady) = getAxesDescriptors(infile, dd)
+
+    # Get components of the axis column
+    #
+    (adx_name, adx_lo, adx_hi) = getAxisInfo(1, adx)
+    (ady_name, ady_lo, ady_hi) = getAxisInfo(2, ady)
+
+    v5("Closing block")
+    dm.dmBlockClose(block)
+
+    return (AxisInfo(adx_name, nx, adx_lo, adx_hi, (adx_hi - adx_lo) / nx),
+            AxisInfo(ady_name, ny, ady_lo, ady_hi, (ady_hi - ady_lo) / ny))
+
+
+def display_start_info(opts):
+
+    v1("Running: {}".format(opts["progname"]))
+    v1("  version: {}".format(version))
+
+    v2("with parameters:")
+    v2("  image={}".format(opts["infile"]))
+    v2("  precision={}".format(opts["precision"]))
+    v2("  verbose={}".format(opts["verbose"]))
+    v2("  and ASCDS_INSTALL is {}".format(os.getenv("ASCDS_INSTALL")))
+
+
+def gsl(opts):
+
+    infile  = opts["infile"]
+    # verbose = opts["verbose"]
+    prec    = opts["precision"]
+    pname   = opts["parname"]
+
+    fp = pio.paramopen(pname, "wL")
+    display_start_info(opts)
+
+    v1("Checking binning of image: {}".format(infile))
+
+    (xaxis, yaxis) = getImageInfo(infile)
+
+    v1("  Image has {0} x {1} pixels".format(xaxis.size, yaxis.size))
+    v1("  Pixel size is {0} by {1}".format(xaxis.width, yaxis.width))
+
+    fmt = "{{0:.{0}f}}".format(prec)
+    v5("Precision = {0} -> format of '{1}'".format(prec, fmt))
+    x0 = fmt.format(xaxis.lo)
+    y0 = fmt.format(yaxis.lo)
+    x1 = fmt.format(xaxis.hi)
+    y1 = fmt.format(yaxis.hi)
+
+    names = "{0},{1}".format(xaxis.name, yaxis.name)
+
+    v1("  Lower left (0.5,0.5) corner is {0}= {1}, {2}".format(names, x0, y0))
+    v1("  Upper right ({0}.5,{1}.5) corner is {2}= {3}, {4}".format(xaxis.size, yaxis.size, names, x1, y1))
+
+    spec_x = "{0}:{1}:#{2}".format(x0, x1, xaxis.size)
+    spec_y = "{0}:{1}:#{2}".format(y0, y1, yaxis.size)
+
+    dmfilt = "{0}={1},{2}={3}".format(xaxis.name, spec_x,
+                                      yaxis.name, spec_y)
+    mkexpmap = "{0},{1}".format(spec_x, spec_y)
+
+    pio.pset(fp, "dmfilter", dmfilt)
+    pio.pset(fp, "xygrid", mkexpmap)
+    pio.paramclose(fp)
+
+    v1("  DM filter is:")
+    v1("    {0}".format(dmfilt))
+    v1("  mkexpmap xygrid value is:")
+    v1("    {0}".format(mkexpmap))
+
+
+@lw.handle_ciao_errors(toolname, version)
+def get_sky_limits(args):
+    "Run the tool"
+    opts = process_command_line(args)
+    gsl(opts)
+
+
+if __name__ == "__main__":
+    get_sky_limits(sys.argv)

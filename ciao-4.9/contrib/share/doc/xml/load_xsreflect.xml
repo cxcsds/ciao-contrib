@@ -1,0 +1,178 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr "sherpa>">
+]>
+<cxchelptopics>
+  <ENTRY pkg="sherpa" key="load_xsreflect"
+	 refkeywords="xsreflect reflect load_reflect
+		      reflection magdziarz zdziarski
+		      pexrav bexrav neutral
+		      extend REFLECT_MAX_E REFLECT_PRECISION
+		      x-spec xspec convolution model experimental
+		      "
+	 seealsogroups="sh.models "
+	 displayseealsogroups="" context="models">
+
+    <SYNOPSIS>
+      reflection from neutral material.
+      XSpec convolution model 
+      *Experimental*.
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+	Convolution model for reflection from neutrial material
+	according to the method of 
+	<HREF link="http://adsabs.harvard.edu/abs/1995MNRAS.273..837M">Magdziarz 
+	&amp; Zdziarski (1995, MNRAS, 273, 837)</HREF>.
+	This is a generalization of the pexrav and bexrav models.
+	The reflection component alone can be obtained for
+	<EQUATION>|rel_refl| &lt; 0</EQUATION>
+	then the actual reflection normalization is 
+	|rel_refl|.
+	Note that you need to change then the limits of
+	|rel_refl| excluding zero (as then the direct component
+	appears). If
+	<EQUATION>E_c = 0</EQUATION>,
+	there is no cutoff in the power law. The metal and
+	iron abundance are variable with respect to those set by
+	the command set_xsabund.
+	The opacities are those set by the command set_xsxsect.
+	As expected in AGNs, H and He are assumed to be fully
+	ionized.
+      </PARA>
+      <PARA>
+	When using this model it is essential to extend the energy
+	range over which the model is calculated because photons at
+	higher energies are Compton down-scattered into the target
+	energy range. 
+	Please contact the
+	<HREF link="http://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	if you need to do this.
+	The upper limit on the energies should be set above that for which
+	the input spectrum has significant flux.
+	To speed up the model, calculation of the output spectrum
+	can be limited to energies below a given value
+	by using set-xset to define
+	REFLECT_MAX_E (in units of keV). For instance, suppose that the
+	original data extends up to 100 keV. To accurately determine
+	the reflection it may be necessary to extend the energy
+	range up to 500 keV. Now to avoid
+	calculating the output spectrum between 100 and 500 keV use the
+	command
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; set_xsxset('REFLECT_MAX_E', 100.0)</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	The core of this model is a Greens' function integration with
+	one numerical integral performed for each model energy.
+	The numerical integration is done using an adaptive method
+	which continues until a given estimated
+	fractional precision is reached. The precision can be changed
+	by setting
+	REFLECT_PRECSION. The default precision is 0.01 (i.e. 1%).
+      </PARA>
+
+      <TABLE>
+	<CAPTION>xsreflect Parameters</CAPTION>
+	<ROW> 
+	  <DATA>Number</DATA>
+	  <DATA>Name</DATA>
+	  <DATA>Description</DATA> 
+	</ROW>
+	<ROW> 
+	  <DATA>1</DATA> <DATA>rel_refl</DATA>
+	  <DATA>reflection scaling factor (1 for isotropic source above disk)</DATA>
+	</ROW>
+	<ROW> 
+	  <DATA>2</DATA> <DATA>Redshift</DATA>
+	  <DATA>redshift</DATA>
+	</ROW>
+	<ROW> 
+	  <DATA>3</DATA> <DATA>abund</DATA>
+	  <DATA>abundance of elements heavier than He relative to the solar
+	  abundances</DATA>
+	</ROW>
+	<ROW> 
+	  <DATA>4</DATA> <DATA>Fe_abund</DATA>
+	  <DATA>iron abundance relative to the above</DATA>
+	</ROW>
+	<ROW> 
+	  <DATA>5</DATA> <DATA>cosIncl</DATA>
+	  <DATA>cos i, the inclination angle</DATA>
+	</ROW>
+      </TABLE>
+
+      <PARA title="Loading the X-Spec convolution models">
+	Please see
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/xsconvolve.html">ahelp xsconvolve</HREF>
+	for information on how to load the model.
+      </PARA>
+
+      <LIST>
+	<CAPTION>Notes</CAPTION>
+	<ITEM>
+	  This is an experimental release of the convolution models;
+	  please take care when using this model.
+	</ITEM>
+	<ITEM>
+	  Sherpa does not have an equivalent of the extend command
+	  in X-Spec.
+	</ITEM>
+      </LIST>
+
+      <PARA title="XSpec version">
+	This information is taken from the
+	<HREF link="http://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/manual.html">XSpec
+	User's Guide</HREF>.
+	Version 12.8.0k of the XSpec
+	models is supplied with CIAO 4.6.
+      </PARA>
+
+    </DESC>
+
+<!-- I do not feel it's worth an example without showing how to extend
+     the grid
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; from sherpa_contrib.xspec.xsconvole import load_xsreflect</LINE>
+	  <LINE>&pr; load_xsreflect("lsm")</LINE>
+	  <LINE>&pr; set_source(lsm(xspowerlaw.pl))</LINE>
+	  <LINE>&pr; lsm.index = 1.5</LINE>
+	  <LINE>&pr; lsm.sigat6kev = 0.5</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The powerlaw is convolved by a lorentzian whose
+	    sigma varies as Energy^1.5 and is 0.5 keV at 6 keV.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+-->
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+	For a list of known bugs and issues with the XSPEC models, please visit
+	the <HREF link="http://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/bugs.html">XSPEC bugs page</HREF>.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>September 2014</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

@@ -1,0 +1,261 @@
+#!/usr/bin/env python
+#
+#  Copyright (C) 2007, 2008, 2010, 2011, 2013, 2015
+#            Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Usage:
+
+  acis_fef_lookup infile chipid chipx chipy [verbose]
+
+Aim:
+
+ If chipid != none and chipx/y are specified:
+   returns the name of the FEF file including the DM
+   filter to create the RMF for the specified location.
+   This is the "point source" case
+
+ If chipid = none then
+   returns the name of the FEF file (without any DM filter)
+   This is the "extended source" case (ie weighted responses)
+
+ See 'ahelp acis_fef_lookup' for further instructions.
+
+"""
+
+toolname = "acis_fef_lookup"
+version = "12 November 2015"
+
+import os
+import sys
+
+import paramio as pio
+import pycrates
+import caldb4
+
+import ciao_contrib.logger_wrapper as lw
+import ciao_contrib.cxcdm_wrapper as cdm
+from ciao_contrib.param_wrapper import open_param_file
+
+lw.initialize_logger(toolname)
+
+v1 = lw.make_verbose_level(toolname, 1)
+v2 = lw.make_verbose_level(toolname, 2)
+v3 = lw.make_verbose_level(toolname, 3)
+v5 = lw.make_verbose_level(toolname, 5)
+
+
+def get_fefname(infile, chipid):
+    """Returns (fefname, qualflag), which is the PHA fef file
+    appropriate for analysing the data stored in infile (infile need
+    not be a PHA spectrum, it can be the L1 or L2 event file).
+
+    qualflag is True if the file is okay or False if there is a problem
+    with this file (ie the user should really be using mkacisrmf
+    instead)
+
+    """
+
+    # do some sanity/safety checks on the file
+    #
+    cr = pycrates.read_file(infile)
+
+    def get_key(key, error=True):
+        r = cr.get_key_value(key)
+        if r is None and error:
+            raise ValueError("No {} keyword found in: {}".format(key, infile))
+        else:
+            return r
+
+    cti_app = get_key("CTI_APP")
+    qflag = True
+    if cti_app == "PPPPPBPBPP":
+        qflag = False
+        if chipid is None:
+            v1("\n# acis_fef_lookup: WARNING: For ccd_id=NONE and CTI_APP={0} keyword value, you should be using the mkacisrmf tool. The RMF created with mkrmf and this FEF file will be INCORRECT for your analysis.\n".format(cti_app))
+        elif chipid > 3:
+            v1("\n# acis_fef_lookup: WARNING: For ccd_id={0} and CTI_APP={1} keyword value, you should be using the mkacisrmf tool. The RMF created with mkrmf and this FEF file will be INCORRECT for your analysis.\n".format(chipid, cti_app))
+        else:
+            qflag = True
+
+    v5("Setting up CALDB query")
+    cdb = caldb4.Caldb(telescope='CHANDRA', instrume="ACIS",
+                       product="FEF_PHA", infile=infile)
+
+    v5("CALDB query:\n{}".format(cdb))
+    matches = cdb.search
+    v5("CALDB result:\n{}".format(matches))
+    nmatch = len(matches)
+    if nmatch == 0:
+        raise IOError("Unable to find any match in the CALDB!")
+
+    elif nmatch > 1:
+        # Try the .allneeded field to indicate missing fields; in CIAO 4.6 this
+        # field will now contain only those fields missing in infile since
+        # .search has been called.
+        missing = [i[0] for i in cdb.allneeded]
+        if missing == []:
+            emsg = "Multiple matches - need more information!:\n  " + \
+                   "{0}".format("\n  ".join(matches))
+        else:
+            emsg = "Multiple matches - missing " + \
+                   "keys={0}:\n  {1}".format(", ".join(missing),
+                                             "\n  ".join(matches))
+
+        raise IOError(emsg)
+
+    else:
+        m = cdm.convert_block_number(matches[0], system="name",
+                                     insystem="cfitsio")
+        return (m, qflag)
+
+
+def get_fefname_region(feffile, chipid, chipx, chipy):
+    """Return the name of the FEF file INCLUDING the DM filter to
+    restrict the location to a single region.
+
+    could just return the regnum filter, rather than
+    chipid,chipx/y filter, but I think returning the region
+    is better, since it tells the user how big the region
+    actually is as well as making it visually easier to
+    see what was used (and protects us from changes to the
+    region numbering scheme).
+    """
+
+    v2("Finding the correct region in the FEF file")
+    v3("  ccd_id={0} chipx={1} chipy={2}".format(chipid, chipx, chipy))
+
+    filtername = "{0}[ccd_id={1},chipx_lo<={2},chipx_hi>={3},chipy_lo<={4},chipy_hi>={5}][cols chipx,chipy]".format(feffile, chipid, chipx, chipx, chipy, chipy)
+    v5("  file={0}".format(filtername))
+
+    cr = pycrates.read_file(filtername)
+    if pycrates.get_number_rows(cr) == 0:
+        raise IOError("FEF file with filter\n  {0}\n".format(filtername) +
+                      "contains no data")
+
+    # Using a copy is probably excessive here
+    xlo = pycrates.copy_colvals(cr, "CHIPX_LO")
+    xhi = pycrates.copy_colvals(cr, "CHIPX_HI")
+    ylo = pycrates.copy_colvals(cr, "CHIPY_LO")
+    yhi = pycrates.copy_colvals(cr, "CHIPY_HI")
+    cr = None
+
+    # safety check; should not be needed
+    if not (all(xlo == xlo[0]) and all(xhi == xhi[0]) and
+            all(ylo == ylo[0]) and all(yhi == yhi[0])):
+        raise IOError("Unexpected contents of CHIPX/Y columns in:\n" +
+                      "{0}".format(filtername))
+
+    v3("Range of FEF region is chipx= " +
+       "{0} to {1} and chipy= {2} to {3}".format(xlo[0], xhi[0],
+                                                 ylo[0], yhi[0]))
+
+    return "{0}[ccd_id={1},chipx={2}:{3},chipy={4}:{5}]".format(
+        feffile, chipid, xlo[0], xhi[0], ylo[0], yhi[0])
+
+
+def display_info(progname, infile, chipid, chipx, chipy, verbose, mode):
+
+    v1("Running: {0}".format(progname))
+    v1("  version: {0}".format(version))
+
+    v2("with parameters:")
+    v2("  infile={0}".format(infile))
+    if chipid is None:
+        v2("  chipid=none")
+    else:
+        v2("  chipid={0}".format(chipid))
+        v2("  chipx={0}".format(chipx))
+        v2("  chipy={0}".format(chipy))
+
+    v2("  verbose={0}".format(verbose))
+    v2("  mode={0}".format(mode))
+    v2("  and CALDB is set to  {0}".format(os.getenv("CALDB")))
+    v2("  and ASCDS_INSTALL is {0}".format(os.getenv("ASCDS_INSTALL")))
+
+
+def find_fef_files(parinfo):
+    """given the parameter set up, find the requested FEF files."""
+
+    fp = parinfo["fp"]
+    infile = pio.pget(fp, "infile")
+    if infile.strip() == "":
+        raise ValueError("infile parameter is empty")
+
+    # We only ask for the chipx/y values if chipid is not NONE
+    #
+    chipid = pio.pget(fp, "chipid").lower()
+    if chipid == "none":
+        chipid = None
+        chipx  = None
+        chipy  = None
+
+    else:
+        chipid = int(chipid)
+        chipx  = pio.pgeti(fp, "chipx")
+        chipy  = pio.pgeti(fp, "chipy")
+
+    # do I need mode?
+    mode = pio.pget(fp, "mode")
+    verbose = pio.pgeti(fp, "verbose")
+
+    # Set tool and module verbosity
+    lw.set_verbosity(verbose)
+
+    v5("Clearing out outfile parameter and quality to no")
+    pio.pset(fp, "outfile", "")
+    pio.pset(fp, "quality", "no")
+
+    pio.paramclose(fp)
+    fp = None
+
+    display_info(parinfo["progname"],
+                 infile, chipid, chipx, chipy, verbose, mode)
+
+    (outfile, qualflag) = get_fefname(infile, chipid)
+
+    if chipid is not None:
+        outfile = get_fefname_region(outfile, chipid, chipx, chipy)
+
+    v5("Printing result to the screen")
+    print(outfile)
+
+    pname = parinfo["parname"]
+    v5("Saving result to the parameter file: {0}".format(pname))
+    fp = pio.paramopen(pname, "wL")
+    pio.pset(fp, "outfile", outfile)
+
+    v5("Setting quality parameter to {0}".format(qualflag))
+    if qualflag:
+        pio.pset(fp, "quality", "yes")
+    else:
+        pio.pset(fp, "quality", "no")
+
+    pio.paramclose(fp)
+
+
+@lw.handle_ciao_errors(toolname, version)
+def acis_fef_lookup(args):
+    "Run the tool"
+    parinfo = open_param_file(args, toolname=toolname)
+    find_fef_files(parinfo)
+
+
+if __name__ == "__main__":
+    acis_fef_lookup(sys.argv)

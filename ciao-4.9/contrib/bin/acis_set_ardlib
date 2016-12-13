@@ -1,0 +1,240 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2007-2010, 2011, 2014, 2015
+#   Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Usage:
+   acis_set_ardlib badpixfile [absolutepath] [ardlibfile] [verbose]
+
+Aim:
+  Set up the ardlib parameter file so that it uses the
+  supplied bad-pixel file in processing. This is
+  observation-specific, and so you need to be careful
+  when processing multiple datasets.
+
+  The absolutepath flag determines whether the full path is
+  used (yes) or the input value when storing the file names
+  in the ardlib parameter file.
+
+  If the ardlibpar parameter is given then this file is
+  taken to be the ardlib.par file to change, otherwise
+  the default file (i.e. `paccess ardlib`) will be used.
+
+"""
+
+toolname = "acis_set_ardlib"
+version = "12 November 2015"
+
+import sys
+import os
+
+import paramio as pio
+import pycrates
+
+from ciao_contrib.logger_wrapper import initialize_logger, \
+    make_verbose_level, set_verbosity, get_verbosity, handle_ciao_errors
+from ciao_contrib.param_wrapper import open_param_file
+
+initialize_logger(toolname)
+
+v1 = make_verbose_level(toolname, 1)
+v2 = make_verbose_level(toolname, 2)
+v3 = make_verbose_level(toolname, 3)
+v5 = make_verbose_level(toolname, 5)
+
+
+def get_block_names(filename):
+    """Returns the names of all the blocks in the
+    given file.
+
+    """
+
+    v5("Opening as dataset: {0}".format(filename))
+    ds = pycrates.CrateDataset(filename, mode='r')
+    nb = ds.get_ncrates()
+    out = []
+    for bnum in range(1, nb + 1):
+        v5("Moving to block # {0}".format(bnum))
+        out.append(ds.get_crate(bnum).name)
+        v5("  name is {0}".format(out[-1]))
+
+    v5("Found {0} blocks".format(len(out)))
+    return out
+
+
+# A bit excessive
+#
+def get_badpix_parname(ccdid):
+    "returns the parameter name for this ccdid"
+    return "AXAF_ACIS{0}_BADPIX_FILE".format(ccdid)
+
+
+def pset_ardlib_badpix(ardlib, bpix, ccdids):
+    """Set the parameters of the given ardlib file for the input badpixel
+    file (bpix) and array of ccdid values. All other ACIS chips are
+    set to CALDB (to make sure old values are cleared out); note that
+    non-acis badpix values are *not* changed by this routine.
+
+    """
+
+    v3("pset_ardlib_badpix() called with:\n  " +
+       "ardlib='{0}'\n  bad-pix file='{1}'\n  ccdids={2}".format(ardlib,
+                                                                 bpix,
+                                                                 ccdids))
+
+    try:
+        fp = pio.paramopen(ardlib, "wL")
+
+    except Exception as exc:
+        raise IOError("Unable to open the ardlibfile parameter file:\n" +
+                      "{0}\n{1}".format(ardlib, exc))
+
+    try:
+        for ccdid in range(0, 10):
+            parname = get_badpix_parname(ccdid)
+            if ccdid in ccdids:
+                parval = "{0}[BADPIX{1}]".format(bpix, ccdid)
+            else:
+                parval = "CALDB"
+
+            v5("  .. Setting {0}={1}".format(parname, parval))
+            try:
+                pio.pset(fp, parname, parval)
+            except:
+                raise IOError("Unable to set " +
+                              "{0} to {1}".format(parname, parval))
+
+    finally:
+        pio.paramclose(fp)
+
+
+def display_ardlib_badpix(ardlib):
+    "Display the new values if verbose is high enough"
+
+    if get_verbosity() == 0:
+        return
+
+    v3("display_ardlib_badpix() called with:\n  ardlib='{0}'".format(ardlib))
+
+    try:
+        fp = pio.paramopen(ardlib, "r")
+
+    except:
+        raise IOError("Unable to open the ardlibfile parameter " +
+                      "file:\n{0}".format(ardlib))
+
+    try:
+        v1("Updated ardlib parameter file: {0}".format(pio.paramgetpath(fp)))
+        for ccdid in range(10):
+            parname = get_badpix_parname(ccdid)
+            v5("Looking for {0}".format(parname))
+            try:
+                parval = pio.pget(fp, parname)
+            except:
+                raise IOError("Unable to read ardlibfile parameter " +
+                              "{0}".format(parname))
+
+            v1("  {0} -> {1}".format(parname, parval))
+
+    finally:
+        pio.paramclose(fp)
+
+
+def process_command_line(args):
+    "Get the parameters for the tool"
+
+    if args is None or args == []:
+        raise ValueError("args argument is None or empty")
+
+    pinfo = open_param_file(args, toolname=toolname)
+    fp = pinfo["fp"]
+
+    bpix = pio.pgetstr(fp, "badpixfile")
+    if bpix.strip() == "":
+        raise ValueError("badpixfile parameter is empty")
+
+    force = pio.pgetb(fp, "absolutepath") == 1
+    ardlib = pio.pgetstr(fp, "ardlibfile")
+    if ardlib.strip() == "":
+        raise ValueError("ardlibfile parameter is empty")
+
+    verbose = pio.pgeti(fp, "verbose")
+    pio.paramclose(fp)
+
+    set_verbosity(verbose)
+
+    return {"progname": pinfo["progname"],
+            "parname": pinfo["parname"],
+            "bpix": bpix,
+            "force": force,
+            "ardlib": ardlib,
+            "verbose": verbose}
+
+
+def display_start_info(opts):
+    "Display set-up information to the user."
+
+    v2("Tool={0}".format(opts["progname"]))
+    v2("  version={0}".format(version))
+    v2("  Parameters:")
+    v2("    badpixfile={0}".format(opts["bpix"]))
+    v2("    absolutepath={0}".format(opts["force"]))
+    v2("    ardlibfile={0}".format(opts["ardlib"]))
+    v2("    verbose={0}".format(opts["verbose"]))
+    v2("")
+
+
+def asa(opts):
+    "Do the hard work"
+
+    bpix = opts["bpix"]
+    if opts["force"]:
+        bpix = os.path.abspath(bpix)
+
+    if not os.path.exists(bpix):
+        raise IOError("Unable to find badpixfile={0}".format(bpix))
+
+    if not os.path.isfile(bpix):
+        raise IOError("badpixfile={0} exists but is not a file".format(bpix))
+
+    blocks = get_block_names(bpix)
+    ccdids = [int(b[-1]) for b in blocks if b.startswith("BADPIX") and
+              len(b) == 7 and b[-1] in "0123456789"]
+    if len(ccdids) == 0:
+        raise IOError("Unable to find any blocks called BADPIX<n> in" +
+                      "\n\t{0}".format(bpix))
+
+    pset_ardlib_badpix(opts["ardlib"], bpix, ccdids)
+    display_ardlib_badpix(opts["ardlib"])
+
+
+@handle_ciao_errors(toolname, version)
+def acis_set_ardlib(args):
+    "Run the tool"
+
+    opts = process_command_line(args)
+    display_start_info(opts)
+    asa(opts)
+
+
+if __name__ == "__main__":
+    acis_set_ardlib(sys.argv)

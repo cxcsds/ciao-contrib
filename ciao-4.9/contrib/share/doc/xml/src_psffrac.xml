@@ -1,0 +1,264 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY key="src_psffrac" context="tools"
+         refkeywords="source PSF fraction eef ecf point spread function energy band mono monochromatic energy CSC chandra source catalog"
+         seealsogroups="psftools"
+         displayseealsogroups="regiontools stattools" >
+    <SYNOPSIS>
+    Compute approximate PSF fraction in circular source region
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+          src_psffrac will compute an approximate value of 
+          the fraction of the PSF 
+          in circular regions
+          at the specified monochromatic energy.
+        </PARA>
+    
+        <PARA>
+        The tool takes the input region and will convert it to 
+        physical coordinates. It then converts the sky X,Y to
+        Chandra mirror spherical coordinates, theta and phi.  The
+        radius of the circular regions, also now in physical pixels, 
+        is converted to arcseconds.  These, together with the 
+        energy, are used to determine the PSF fraction.  Source and
+        background designations in the region file are ignored.
+        </PARA>
+    
+        <PARA>
+        The output is a table with the following columns:
+        'shape', 'x', 'y', 'r', 'component', 'ra', 'dec', 'theta', 'phi', 
+        'detx', 'dety', 'chip_id', 'chipx', 'chipy',
+        'psffrac',  and 'bg_psffrac'.
+        The bg_psffrac (background PSF fraction) is set to 0.0.  
+        </PARA>
+
+    </DESC>
+    
+    <QEXAMPLELIST>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>src_psffrac my_evt.fits "circle(4096,4096,10)" out.fits</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+                The script will use the header information in my_evt.fits to convert
+                (4096,4096) to an off-axis location and to convert the
+                10 pixel radius into arcsec.  The output wil then
+                contain a PSFFRAC column that represents the 
+                fraction of the PSF at 2.3 keV (default broad band 
+                energy) in a circle of that radius.
+            </PARA>
+<VERBATIM>
+% dmlist out.fits"[cols x,y,r,theta,phi,psffrac]" data,clean 
+#  X                    Y                    R                    THETA                PHI                  PSFFRAC
+               4096.0               4096.0                 10.0     0.00579832374861       303.2998378920     0.96479740607505
+</VERBATIM>
+          </DESC>
+        </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>src_psffrac my_evt.fits ciao.reg "out.dat[opt kernel=text/simple]" energy=1.0</LINE>
+        </SYNTAX>
+        <DESC>
+            <PARA>
+            Determine the PSF fraction at 1.0 keV for the circle defined in
+            the region file 'ciao.reg'.  The output file has been forced
+            to be an ASCII file rather than the default FITS format.
+            </PARA>
+<VERBATIM>
+% cat out.dat
+#TEXT/SIMPLE
+# SHAPE X Y R COMPONENT RA DEC THETA PHI DETX DETY CHIP_ID CHIPX CHIPY PSFFRAC BG_PSFFRAC
+circle 3800.0 4250.0 13.44000000000 1 246.8692985823 -24.55239375230 2.737798789146 230.9289380755 3886.062132065 3837.288881915 0 836.4909624943 863.8606465350 9.6849649464539e-01 0.0
+</VERBATIM>
+        </DESC>
+      
+      </QEXAMPLE>
+    
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+        <PARAM name="infile" type="file" reqd="yes">
+            <SYNOPSIS></SYNOPSIS>
+            <DESC>
+                <PARA>
+                  An input event file or image.  The file is used
+                  to get the world coordinates and detector information,
+                  including SIM information, necessary for the
+                  coordinate transforms.
+
+                </PARA>
+            </DESC>        
+        </PARAM>
+    
+        <PARAM name="region" type="string" reqd="yes">
+            <SYNOPSIS>region definition: must be circular regions</SYNOPSIS>
+            <DESC>
+                <PARA>
+                    The script only works for regions that contain
+                    a single circle shape.  Multiple regions can be
+                    input using the CIAO stack syntax.  Example of
+                    valid inputs include:
+                    
+                </PARA>
+<VERBATIM>
+circle(4096,4096,10)
+ciao.reg
+region(ds9.reg)
+@region.lis
+</VERBATIM>
+
+          <PARA>
+          The tool will error out if circle regions are not
+          supplied.
+          </PARA>
+
+            </DESC>        
+        </PARAM>
+    
+
+        <PARAM name="outfile" type="file" reqd="yes">
+            <SYNOPSIS>Output file name</SYNOPSIS>
+            <DESC>
+                <PARA>
+                    The output file will contain various coordinate
+                    transforms from the input X,Y as well as the
+                    final "psffrac" and "bg_psffrac" values. 
+                    "bg_psffrac" is always set to 0.
+                </PARA>
+                <PARA>
+                    The output will contain one row for each
+                    circle in the input region specification.
+                </PARA>
+            </DESC>        
+        </PARAM>
+
+
+      <PARAM name="energy" type="string" def="broad">
+        <SYNOPSIS>Single energy band</SYNOPSIS>
+      	<DESC>
+	  <PARA>
+	    A band can be given using a name (which will
+	    use the appropriate definitions from the Chandra Source
+	    Catalog) or by explicit limits.
+	  </PARA>
+	  
+	  <PARA title="Band names">
+	    The following names - based on the definitions from the
+	    <HREF link="http://cxc.harvard.edu/csc/columns/ebands.html">Chandra Source Catalog</HREF>
+	    - can be used; energies are given in keV and the effective
+	    energy is the monochromatic energy used to calculate the PSF fractions:
+	  </PARA>
+	  <TABLE>
+	    <ROW>
+	      <DATA>Band name</DATA><DATA>Minimum Energy</DATA><DATA>Maximum Energy</DATA><DATA>Effective Energy</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>broad</DATA><DATA>0.5</DATA><DATA>7.0</DATA><DATA>2.3</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>soft</DATA><DATA>0.5</DATA><DATA>1.2</DATA><DATA>0.92</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>medium</DATA><DATA>1.2</DATA><DATA>2.0</DATA><DATA>1.56</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>hard</DATA><DATA>2.0</DATA><DATA>7.0</DATA><DATA>3.8</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>ultrasoft</DATA><DATA>0.2</DATA><DATA>0.5</DATA><DATA>0.4</DATA>
+	    </ROW>
+		<ROW>
+		<DATA>wide</DATA><DATA>n/a</DATA><DATA>n/a</DATA><DATA>1.5</DATA>
+		</ROW>
+	  </TABLE>
+	  
+      <PARA title="wide">
+        The "wide" energy band can only be used with HRC.
+      </PARA>
+        
+	  <PARA title="Explicit value">
+        A single value, in units of keV, can also be specified.  For 
+        consistency with other tools, you can also used
+        the format lo:hi:eff - where lo, hi and eff
+	    give the minimum, maximum and effective energies to use
+	    for the band (values are in keV).
+	  </PARA>
+	  
+	</DESC>
+
+      </PARAM>
+
+        <PARAM name="psffile" type="file" def="CALDB" >
+            <SYNOPSIS>PSF Calibration file</SYNOPSIS>
+            <DESC>
+                <PARA>
+                    The name of the PSF calibration file.  The
+                    default "CALDB" will instruct the tool to locate
+                    the file appropriate for the dataset in the
+                    Calibration Database.
+                    
+                </PARA>
+            </DESC>        
+        </PARAM>
+
+        <PARAM name="verbose" type="integer" def="0" min="0" max="1">
+            <SYNOPSIS>Amount of tool chatter</SYNOPSIS>
+        </PARAM>
+    
+        <PARAM name="clobber" type="boolean" def="no">
+            <SYNOPSIS>Remove outfile if it already exists?</SYNOPSIS>
+        </PARAM>
+    </PARAMLIST>
+
+
+    <ADESC title="Changes in CIAO 4.7.2 (April 2015) release">
+      <PARA>
+        Standard HISTORY records have been added for this tool.  
+      </PARA>
+    </ADESC>
+
+
+    <ADESC title="Caveats">
+        <PARA title="REEF File Calibration Approximations">
+
+            The Chandra point spread function varies significantly
+            across the field of view and also as a function of energy.
+            It becomes highly elliptical and contains many sharp
+            features that makes providing an accurate 2D analytic model 
+            impossible.    The
+            The calibration file used, the REEF (radially enclosed energy
+            fraction) file, was created assuming a flat detector.  This is 
+            accurate for HRC and for ACIS-7, but the other ACIS CCDs are 
+            tilted and cause additional asymetries.
+                    
+        </PARA>
+    </ADESC>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+ 
+    <LASTMODIFIED>March 2015</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

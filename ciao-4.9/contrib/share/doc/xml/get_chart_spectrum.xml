@@ -1,0 +1,151 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+
+  <!ENTITY chart2 '<HREF link="http://cxc.harvard.edu/ciao/PSFs/chart2">ChaRT2</HREF>'>
+
+]>
+<cxchelptopics>
+  <ENTRY key="get_chart_spectrum" context="contrib" pkg="sherpa"
+	 refkeywords="get access read chart spectrum spectra file psf simulate simulation"
+	 seealsogroups="sh.get sh.chart">
+
+    <SYNOPSIS>
+      Return the model spectrum in the form required by ChaRT2
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>(xlo, xhi, y) = get_chart_spectrum(id=None, elow=None, ehigh=None, ewidth=None, norm=None)</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The get_chart_spectrum() command turns the current model
+	values into the form expected by &chart2;
+	(the Chandra Ray Tracer).
+	The x values are the low and high edges of each bin, and are in keV;
+	the y values are the model flux in units of photon/cm^2/s
+	(they give the integrated flux for each bin, rather than
+	the flux density as displayed by the plot_source command).
+      </PARA>
+      <PARA>
+	Please see the
+	<HREF link="http://cxc.harvard.edu/ciao/threads/prep_chart/">ChaRT preparation thread</HREF>
+	for further information on how to use this routine.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.chart import *
+</VERBATIM>
+
+      <TABLE>
+	<CAPTION>Arguments</CAPTION>
+	<ROW>
+	  <DATA>Name</DATA><DATA>Default value</DATA><DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>id</DATA>
+	  <DATA>None</DATA>
+	  <DATA>Which dataset to use: if None then the value returned
+	  by get_default_id() will be used.</DATA>
+	</ROW>
+
+	<ROW>
+	  <DATA>elow</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    The minimum energy at which to evaluate the model; this parameter
+	    controls the lower edge of the lowest-energy bin, and is in keV.
+	    A value of None means to use the lowest energy bin from the
+	    ARF grid. This value should not be smaller than 0.2 keV.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ehigh</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    The maximum energy at which to evaluate the model; this parameter
+	    controls the upper edge of the highest-energy bin, and is in keV.
+	    A value of None means to use the highest energy bin from the
+	    ARF grid. This valus should not be larger than 10 keV.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ewidth</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    The bin width to use, in keV.
+	    A value of None means to use the bin width from the
+	    ARF grid.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>norm</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    A scaling factor to allow you to easily change the overall flux
+	    of the model. A value of None is equivalent to a factor
+	    of 1; a value of 10 would create a ChaRT spectral model ten times
+	    brighter than the input model.
+	  </DATA>
+	</ROW>
+
+      </TABLE>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; (xlo, xhi, ,y) = get_chart_spectrum()</LINE>
+	</SYNTAX>
+	<DESC>
+
+          <PARA>
+	    Get the model values for the default dataset using the units
+	    expected by &chart2;.
+	  </PARA>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; (xlo, xhi, y) = get_chart_spectrum(elow=1, ehigh=8)</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    In this example the returned values are restricted to the range 1 to 8 keV, using the default
+	    binning given by the ARF grid. Note that this energy range need not overlap the
+	    range used to fit the data (or even the energy ranges of the ARF and RMF files).
+	    It should however remain within the range 0.2 to 10 keV.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Changes in the scripts 4.8.2 (January 2016) release">
+      <PARA>
+	The routine has been updated to work with
+	version 2 of ChART, so that the return value now
+	contains three values rather than two.
+      </PARA>
+    </ADESC>
+
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>January 2016</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

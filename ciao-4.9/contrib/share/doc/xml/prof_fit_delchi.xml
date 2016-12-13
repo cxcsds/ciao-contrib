@@ -1,0 +1,265 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="prof_fit_delchi" context="contrib" pkg="sherpa"
+	 refkeywords="profile circular elliptical radial ellipse plot plotting fit data model resid residual residuals error"
+	 seealsogroups="sh.plot sh.profile">
+
+    <SYNOPSIS>
+      Plot a radial or elliptical profile of the fit (data and model) and residuals (data-model)/error to imaging data.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>prof_fit_delchi( [id], [model=None,
+      rstep=None, rmin=None, rmax=None, rlo=None, rhi=None,
+      xpos=None, ypos=None, ellip=None, theta=None,
+      group_counts=None, group_snr=None,
+      label=True, recalc=True] )</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The prof_fit_delchi command calculates the radial - or elliptical - profile of 
+	the imaging data, model, and residual (data-model)/error, and plots them.
+	It is a combination of the plot_fit() and plot_delchi() commands,
+	where the residuals appear in a separate plot below the fit values.
+	The profile is defined by the existing model
+	compenents, although it is possible to over-ride these values.
+      </PARA>
+
+      <PARA>
+        The residual values are calculated as 
+        <EQUATION>(data - model) / error</EQUATION>
+        The prof_fit_resid() command can be used if you want to plot
+        <EQUATION>data - model</EQUATION>
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.profiles import *
+</VERBATIM>
+
+      <PARA title="Argument options">
+        The argument options are the same as for the prof_data() command,
+	except for the overplot command which is not supported,
+        and are described in the ahelp page for prof_data().
+      </PARA>
+
+      <PARA title="Changing the plot defaults">
+	The plot created by prof_fit_delchi() is controlled by the
+	data, model, and resid preferences - i.e. the values returned
+	by get_data_prof_prefs(), get_model_prof_prefs(), and
+	get_delchi_prof_prefs().
+	Changing these settings will therefore change the
+	appearance of any new plots created by prof_fit_delchi().
+	For example
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; get_data_prof_prefs()["xlog"] = True</LINE>
+	  <LINE>&pr; get_model_prof_prefs()["linecolor"] = "green"</LINE>
+	  <LINE>&pr; get_delchi_prof_prefs()["errstyle"] = "capped"</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	will cause any new fit plots to use logarithmic scaling for the X axis,
+	draw the model using a green line, and use the capped style for drawing the
+	error bars in the residual plot.
+	See the ahelp files for
+	get_data_prof_prefs, get_model_prof_prefs, and get_delchi_prof_prefs
+	for the available preference settings.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prof_fit_delchi()</LINE>
+          <LINE>&pr; log_scale(X_AXIS)</LINE>
+          <LINE>&pr; current_plot("plot1")</LINE>
+          <LINE>&pr; log_scale(Y_AXIS)</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; get_data_prof_prefs()["ylog"] = True</LINE>
+          <LINE>&pr; get_delchi_prof_prefs()["xlog"] = True</LINE>
+          <LINE>&pr; prof_fit_delchi()</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Since the command creates two plots, we first change the X-axis to use
+	    a log scale; since the two plots share a common X axis both get changed.
+	    Then we use the ChIPS command current_plot to change to the
+	    first plot and draw its Y axis using a log scale. The ChIPS info()
+	    and info_current() commands can be used to find out what plot objects
+	    have been created and which are current.
+	  </PARA>
+	  <PARA>
+	    We then change the preference settings so that future plots created
+	    by prof_fit_delchi() are drawn in the same manner. 
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prof_fit_delchi()</LINE>
+          <LINE>&pr; adjust_grid_yrelsize(1, 1.5)</LINE>
+          <LINE>&pr; adjust_grid_ygap(0.05)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    After creating the two plots we use ChIPS command to change the relative sizes
+	    (so that the first plot is 50 percent bigger than the second plot)
+	    and to add a small vertical gap between the plots.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prof_fit_delchi(group_snr=15)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The data is plotted after the bins have been grouped so that each
+	    bin has a signal to noise ratio of 15 or more.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+	   
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_fit_delchi(rmin=10, rmax=100, rstep=5)</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Calculate the profile in radial bins with low/high limits of
+	    10-15, 15-20, 20-25, ..., 90-95, 95-100.
+	    If the group_counts or group_snr option was also given - e.g.
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; prof_fit_delchi(rmin=10, rmax=100, rstep=5, group_counts=100)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    then the grouping would be applied to these bins.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_fit_delchi(rlo=[0,10,20,40,60,100,200])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Calculate the profile in radial bins with low/high limits of
+	    0-10, 10-20, 20-40, 40-60, 60-100, 100-200.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_fit_delchi(rstep=[1,10,2,20,5,50,10])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    The radii used for the radial bins depends on the radius as shown in
+	    the table below:
+	  </PARA>
+	  <TABLE>
+	    <ROW><DATA>radius</DATA><DATA>bin width</DATA></ROW>
+	    <ROW><DATA>0 to 10</DATA><DATA>1</DATA></ROW>
+	    <ROW><DATA>10 to 20</DATA><DATA>2</DATA></ROW>
+	    <ROW><DATA>20 to 50</DATA><DATA>5</DATA></ROW>
+	    <ROW><DATA>above 50</DATA><DATA>10</DATA></ROW>
+	  </TABLE>
+	  <PARA>
+	    The minimum and maximum radii used are taken from the data.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_fit_delchi("src1")</LINE>
+	  <LINE>&pr; current_plot("plot1")</LINE>
+	  <LINE>&pr; prof_model("src2", overplot=True)</LINE>
+	  <LINE>&pr; set_histogram(["line.color", "green"])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Plots the fit profiles (data and model) for the dataset called "src1" and then overplots the 
+	    model results from dataset "src2" using a green line. Note that the residual plot only
+	    shows the residuals from the first dataset; to add the residuals from the second
+	    dataset you would say
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; current_plot("plot2")</LINE>
+	      <LINE>&pr; prof_delchi("src2", overplot=True)</LINE>
+	      <LINE>&pr; set_histogram(["*.color", "green"])</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    which would overlay them as the green residuals in the bottom plot.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; load_image("img.fits")</LINE>
+          <LINE>&pr; set_source(beta2d.clus + gauss2d.qso + const2d.bgnd)</LINE>
+          <LINE>&pr; fit()</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; prof_fit_delchi(model=qso)</LINE>
+          <LINE>&pr; thaw(clus.ellip)</LINE>
+          <LINE>&pr; thaw(clus.theta)</LINE>
+          <LINE>&pr; fit()</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; prof_fit_delchi(model=clus)</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Since the model expression contains two components which have xpos,
+	    ypos, ellip, and theta parameters - namely clus and qso - the model
+	    argument is used to select the gauss2d (qso) values for the first plot
+	    and the
+	    beta2d (clus) values for the second plot.
+	  </PARA>
+	  <PARA>
+	    If the clus model has a
+	    non-zero ellipticity then the second plot will have used elliptical
+	    annuli to calculate the profile.
+	    To use circular annuli in this case we can manually override the
+	    model's ellipticity parameter by saying:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; prof_fit_delchi(model=clus, ellip=0)</LINE>
+	    </SYNTAX>
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>December 2009</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

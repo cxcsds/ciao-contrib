@@ -1,0 +1,216 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2014, 2016 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+from __future__ import print_function
+
+import sys
+import os
+
+
+def parse_infile( infile ):
+    """
+    Minimal parsing of ds9/funtools file names
+    """
+    tab=infile.replace("[EVENTS,","[EVENTS][")
+    return tab
+
+
+def parse_src( srcreg ):
+    """
+    
+    """    
+    from tempfile import NamedTemporaryFile
+        
+
+    if srcreg.startswith("@"):
+        raise RuntimeError("Arrr... too many src regions!")
+    
+    shapes = srcreg.split(";")
+
+    # separate into include and exclude
+    xcld = list(filter( lambda x: x.startswith("-"), shapes ))
+    incl = list(filter( lambda x: not x.startswith("-"), shapes ))
+
+    src = [ incl[0]+"".join(xcld) ]
+    for ii in range( 1,len(incl)):
+        # We remove any previous srcs from current src
+        src.append( "{}-{}".format(incl[ii], src[ii-1] ))
+
+    src = [ i+"\n" for i in src]
+
+    srcstk = NamedTemporaryFile( dir=os.environ["ASCDS_WORK_PATH"], mode="w", delete=False )
+    srcstk.writelines( src )
+    srcstk.close()
+    return srcstk.name
+    
+
+def parse_bkg( bkgreg ):
+    """
+    """
+    if bkgreg.startswith("@"):
+        raise RuntimeError("Arrr... too many background regions!")
+    
+    shapes = bkgreg.split(";")
+
+    # separate into include and exclude
+    xcld = list(filter( lambda x: x.startswith("-"), shapes ))
+    incl = list(filter( lambda x: not x.startswith("-"), shapes ))
+    
+    xcld = "".join(xcld)
+    bkg = [ "{}{}".format(i,xcld) for i in incl ]
+
+    # One background used for all sources
+    bkg = "+".join(bkg)
+    return bkg
+
+
+def pretty_print( infile, srcstk, bkg, _infile ):
+    """
+    Because sometime dmlist just won't do
+    """
+
+    def print_tab( cols, units, rows, bkg=False):
+        r2 = [ [ "{:<16g}".format(v) for v in r] for r in rows]
+        if bkg:
+            r2 = [r2[0]]
+
+        print ("#"+"".join( map( lambda x: "{:16s}".format(x), cols)))
+        print ("#"+"".join( map( lambda x: "{:16s}".format(x), units)))
+        for r in r2:
+            print (" "+"".join( map( lambda x: "{:16s}".format(x), r)))
+            
+
+    def get_units_and_rows(cols):
+        units = list(map( lambda x: getattr(tab.get_column(x), 'unit'), cols ))
+        vals=list(map(lambda x: getattr(tab.get_column(x), 'values'), cols ))
+        rows=list(zip(*vals))
+        return units,rows
+
+
+    from pycrates import read_file
+    tab = read_file(infile)
+    
+    _cols = [ "COMPONENT","NET_COUNTS", "NET_ERR", "NET_RATE", "NET_RATE_ERR", "CEL_AREA", "CEL_BRI", "CEL_BRI_ERR"]
+    cols = [x for x in _cols if tab.column_exists(x)]
+    units = list(map( lambda x: getattr(tab.get_column(x), 'unit'), cols ))
+    vals= list(map(lambda x: getattr(tab.get_column(x), 'values'), cols ))
+
+    if bkg:
+        sa = tab.get_column("area").values
+        ba = tab.get_column("bg_area").values
+        bc = tab.get_column("bg_counts").values
+        be = tab.get_column("bg_err").values        
+        bkg_cts = (sa/ba)*bc
+        bkg_err = (sa/ba)*be
+        bunits = tab.get_column("bg_counts").unit
+        
+        cols.extend( ["BGREG_COUNTS", "BGREG_ERR" ])
+        units.extend( [bunits, bunits])
+        vals.extend( [bkg_cts, bkg_err])
+
+    rows=list(zip(*vals))
+    
+    from datetime import datetime
+    
+    print ("#===== {} =====".format(str(datetime.now()).split(".")[0]))
+    print ("#File: {}\n".format(_infile))
+    
+    print ("#Background subtracted data\n")
+    print_tab( cols, units, rows )
+
+    # ----------
+    cols = [ "COMPONENT","COUNTS", "COUNT_RATE", "AREA"]
+    units, rows = get_units_and_rows( cols )
+    print ("\n\n#source region(s):")
+    with open( srcstk, "r") as fp:
+        for ll in fp.readlines():
+            print ("#"+ll[:-1])  # strip trailing \n
+    print ("")
+    print_tab( cols, units, rows)
+
+    # -------------
+    if bkg:
+        cols = [ "BG_COUNTS", "BG_RATE", "BG_AREA"]
+        units, rows = get_units_and_rows( cols )
+        print ("\n\n#background region(s):")
+        print ("#{}\n".format(bkg))
+        print_tab( cols, units, rows, bkg=True)
+
+    print ("")
+
+
+def run_dme( infile, srcstk, bkg ):
+    """
+    
+    """
+    
+    from ciao_contrib.runtool import make_tool
+    from tempfile import NamedTemporaryFile
+
+    tf = NamedTemporaryFile( dir=os.environ["ASCDS_WORK_PATH"] )
+    
+    dme = make_tool("dmextract")
+    dme.infile = "{}[bin sky=@-{}]".format(infile, srcstk)
+    dme.bkg = "{}[bin sky={}]".format(infile,bkg) if bkg else ""
+    dme.outfile = tf.name
+    dme.clobber=True
+    dme.opt="generic"
+
+    try:
+        dme()
+    except:
+        # If no 'sky' column, then we try 'pos'
+        dme.infile = "{}[bin pos=@-{}]".format(infile, srcstk)
+        dme.bkg = "{}[bin pos={}]".format(infile,bkg) if bkg else ""
+        dme()
+    
+    pretty_print( tf.name, srcstk, bkg, infile )
+
+
+def functs():
+    """
+    Main routine
+    """
+    
+    infile = sys.argv[1]
+    src = sys.argv[2]
+    bkg = sys.argv[3]
+    
+    infile = parse_infile(infile)
+    srcstk = parse_src( src )
+    bkg = parse_bkg( bkg)
+    
+    try:
+        outfile = run_dme( infile, srcstk, bkg )
+    finally:
+        if os.path.exists( srcstk ):
+            os.unlink( srcstk )
+
+if __name__ == "__main__":
+    try:
+        functs()
+    except Exception as E:
+        print("\n# ds9_functs: ERROR "+str(E)+"\n", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+    
+    
+
+

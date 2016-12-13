@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr 'unix&#37;'>
+]>
+<cxchelptopics>
+  <ENTRY key="monitor_photom" context="tools" 
+    refkeywords="ACA PCAD monitor monitoring optical magnitude
+		 photometric adat adat71 magnitude count rate image 
+		 lightcurve light curve timing aspect camera fid track
+		 window slot" seealsogroups="timingtools"> 
+
+    <SYNOPSIS>
+      Generate a photometric lightcurve from ACA monitor data.
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA> 
+	The Aspect Camera Assembly (ACA) on Chandra is part of the
+        Pointing Control and Aspect Determination (PCAD) System,
+        and is used to track the location of 
+        guide stars during an observation. The ACA can
+	monitor one star during an observation, rather
+        than use it to track the pointing of the spacecraft. For
+	observations
+	where this option was selected, the standard data products
+	(SDP) include the monitor data in the pcad*adat71.fits
+        files (the "7" indicates the ACA slot number, which is always
+        7 for the monitor data).
+	The monitor_photom script is used to convert this data into
+        a photometric lightcurve for further processing.
+      </PARA>
+
+      <PARA>        
+        This script is used in the <HREF 
+        link="http://cxc.harvard.edu/ciao/threads/monitor_photom/">Processing
+        ACA Monitor Window Data</HREF> thread.
+      </PARA>
+
+      <PARA title="Advanced Support">
+        If the monitor photometry data indicate scientifically
+	interesting results worthy of detailed study, users may wish
+	to contact the 
+        <HREF link="http://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF> for further advice on
+	possible techniques to reduce the systematic errors.  
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+
+      <SYNTAX>
+        <LINE>
+	  &pr; monitor_photom pcad_adat71.fits lc.fits verbose=1
+        </LINE>
+      </SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    The default parameter valued for monitor_photom (apart
+	    from the verbosity) are used to create a light curve
+	    lc.fits
+	    from the data in pcad_adat71.fits.
+            The following screen output is generated:
+	  </PARA>
+
+<VERBATIM>
+monitor_photom
+          infile = pcad_adat71.fits
+         outfile = lc.fits
+      dark_ratio = 0.005
+  min_dark_limit = 80
+   min_dark_meas = 10
+max_dither_motion = 10
+         verbose = 1
+         clobber = no
+            mode = ql
+
+Filtering image data (cosmic ray removal)...
+Stacking dark current data...
+Average counts  (e-) = 29882.9175202
+Warm dark limit (e-) = 149.414587601
+Warm pixel at CCD (row,col) = (-6,8)	 Dark current (e-) = 390.0
+Warm pixel at CCD (row,col) = (-13,9)	 Dark current (e-) = 320.0
+Warm pixel at CCD (row,col) = (-7,10)	 Dark current (e-) = 160.0
+Warm pixel at CCD (row,col) = (-11,11)	 Dark current (e-) = 215.0
+Warm pixel at CCD (row,col) = (-7,11)	 Dark current (e-) = 280.0
+Warm pixel at CCD (row,col) = (-5,13)	 Dark current (e-) = 345.0
+Warm pixel at CCD (row,col) = (-6,16)	 Dark current (e-) = 355.0
+Warm pixel at CCD (row,col) = (-9,17)	 Dark current (e-) = 185.0
+Warm pixel at CCD (row,col) = (-9,18)	 Dark current (e-) = 215.0
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>
+	  ACA image data file
+        </SYNOPSIS>
+
+        <DESC>
+          <PARA>
+	    The PCAD Level 1 ACA image data files (pcad...adat71.fits)
+	    are found in the secondary/ directory.  The "7" in "adat71"
+	    refers to image slot 7, which is the slot where monitor
+	    window data always appear.    
+          </PARA>
+
+	  <PARA>
+	    The monitor window data are available beginning with
+	    standard data processing (SDP) version DS 7.6.0.  
+	  </PARA>
+
+	  <PARA>
+	    Typically the image data are split over a number of
+	    files.  Use dmmerge to merge them into a single file for
+	    input to monitor_photom: 
+	  </PARA>
+
+          <PARA>
+	      <SYNTAX>
+		<LINE>&pr; ls -1 *adat71.fits > adat71.lis</LINE>
+		<LINE>&pr; dmmerge infile=@adat71.lis outfile=pcad_adat71.fits</LINE>
+	      </SYNTAX>
+	  </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="output" type="file" filetype="output" reqd="yes">
+        <SYNOPSIS>
+	  Output lightcurve
+        </SYNOPSIS>
+
+        <DESC>
+          <PARA>
+	    The lightcurve contains columns with the time, counts,
+	    count rate, magnitude, and background-subtracted
+	    image. The magnitude is defined as 
+	    <EQUATION>m_ACA = 10.32 - 2.5 * log10(cnt_rate / 5263.0)</EQUATION>
+	    An approximate formula relating B and V magnitude to m_ACA
+	    is given in the <HREF
+	    link="http://cxc.harvard.edu/proposer/POG/html/ASPECT.html">Aspect
+	    chapter of the Proposers' Observatory Guide</HREF>.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="dark_ratio" type="real" filetype="input" def="0.005">
+        <SYNOPSIS>
+	  Dark ratio
+        </SYNOPSIS>
+
+        <DESC>
+          <PARA>
+	    This parameter affects the way in which warm pixels are
+	    detected.  
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="min_dark_limit" type="real" filetype="input" def="80.0">
+        <SYNOPSIS>
+	  Minimum warm pixel dark current
+        </SYNOPSIS>
+
+        <DESC>
+          <PARA>
+	    This parameter affects the way in which warm pixels are
+	    detected. 
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="min_dark_meas" type="integer" filetype="input" def="10">
+        <SYNOPSIS>
+	  Minimum warm pixel measurements
+        </SYNOPSIS>
+
+        <DESC>
+          <PARA>
+	    This parameter affects the way in which warm pixels are
+	    detected. 
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="max_dither_motion" type="integer" filetype="input" def="10">
+        <SYNOPSIS>
+	  Maximum possible dither motion (pixels)
+        </SYNOPSIS>
+      </PARAM>
+
+      <PARAM name="verbose" type="integer" def="0" min="0" max="5">
+        <SYNOPSIS>Amount of tool chatter</SYNOPSIS>
+      
+      </PARAM>
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>Remove outfile if it already exists?</SYNOPSIS>
+      </PARAM>
+
+    </PARAMLIST>
+
+    <ADESC title="How is the light curve generated?">
+      <PARA> 
+        The basic idea of the detection algorithm is to sample pixels
+        from the outer edge of the readout window and look for values
+        higher than a threshold. At the edge, the contamination of the 
+        dark current measurement from the monitor star is minimized.
+        Since the readout window moves with respect to the CCD due to
+        dither, the edge pixels end up sampling much of the CCD region
+        used for imaging. In this way one can build up a map of warm
+        pixels. 
+      </PARA>
+
+      <PARA>
+        The main processing steps of the monitor_photom script are:
+      </PARA>
+
+      <LIST>
+        <ITEM>
+	  Read the image data file.
+	</ITEM>
+
+        <ITEM>
+	  Median filter image data in time on a pixel-by-pixel basis
+	  to remove cosmic rays. 
+	</ITEM>
+
+        <ITEM>
+	  Search for "warm" pixels that have a dark current well
+	  outside the normal distribution. These pixels can
+	  significantly affect photometry as they dither in and out of
+	  the 8x8 pixel image readout window. 
+	</ITEM>
+
+        <ITEM>
+	  Subtract the background from each image readout. For warm
+	  pixels the detected value for that pixel is used, while for
+	  all others the median background dark current reported by
+	  the ACA is used. 
+	</ITEM>
+
+        <ITEM>
+	  Produce lightcurves in counts, counts/sec, and mags.
+	</ITEM>
+      </LIST>
+
+      <PARA title="Limitations"> 
+        There are three limitations to the algorithm:
+      </PARA>
+
+      <LIST>
+        <ITEM>
+	  Background pixel sampling is not complete nor uniform.
+	</ITEM>
+
+        <ITEM>
+	  For brighter stars, even the edge pixels have significant
+	  contribution from the star light so it is not possible to
+	  get a true dark current measurement. The "dark_ratio"
+	  parameter specifies that the warm pixel threshold be no less
+	  than dark_ratio * avg_source_counts.  
+	</ITEM>
+
+        <ITEM>
+	  The current algorithm does not account for flickering pixels where
+      the dark current fluctuates between two or more values.
+      
+	</ITEM>
+      </LIST>
+
+    </ADESC>
+
+    <ADESC title="Changes in 4.8.4 (September 2016)">
+      <PARA>
+        Internal changes only to support future changes in NumPy array
+        indexing.        
+      </PARA>
+    </ADESC>
+
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/monitor_photom.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>September 2016</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
+

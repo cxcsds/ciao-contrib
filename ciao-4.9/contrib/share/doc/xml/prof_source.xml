@@ -1,0 +1,138 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="prof_source" context="contrib" pkg="sherpa"
+	 refkeywords="profile circular elliptical radial ellipse plot plotting model source"
+	 seealsogroups="sh.plot sh.profile">
+
+    <SYNOPSIS>
+      Plot a radial or elliptical profile of the source model for imaging data.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>prof_source( [id], [model=None,
+      rstep=None, rmin=None, rmax=None, rlo=None, rhi=None,
+      xpos=None, ypos=None, ellip=None, theta=None,
+      group_counts=None, group_snr=None,
+      label=True, recalc=True, overplot=False] )</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The prof_source command calculates the radial - or elliptical - profile of 
+	the source model to an imaging dataset and plots it.
+	The profile is defined by the existing model
+	compenents, although it is possible to over-ride these values.
+      </PARA>
+
+      <PARA>
+	The model values used to calculate the profile are those
+	intrinsic to the source, and so are not broadened by any PSF
+	model applied using the set_psf() command. Please use the
+	prof_model() command if you want to plot the PSF-convolved
+	model values.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.profiles import *
+</VERBATIM>
+
+      <PARA title="Argument options">
+	The argument options are the same as for the prof_data() command,
+	and are described in its ahelp page.
+      </PARA>
+
+      <PARA title="Errors">
+	Errors are not calculated for the model component.
+      </PARA>
+
+      <PARA title="Changing the plot defaults">
+	The get_source_prof_prefs() returns the current plot
+	preferences used by prof_source().
+	Changing these settings will therefore change the
+	appearance of any new plots created by prof_source().
+	For example
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; get_source_prof_prefs()["xlog"] = True</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	will cause any new plots to use logarithmic scaling for the X axis.
+        A full list of the preferences can be found by saying
+      </PARA>
+      <PARA>
+	<SYNTAX><LINE>unix% ahelp get_source_prof_prefs</LINE></SYNTAX>
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prof_source()</LINE>
+          <LINE>&pr; log_scale()</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; prefs = get_source_prof_prefs()</LINE>
+          <LINE>&pr; prefs["xlog"] = True</LINE>
+          <LINE>&pr; prefs["ylog"] = True</LINE>
+          <LINE>&pr; prof_source()</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The preferences are set so that both the x and y axes should be drawn
+	    using log scaling. Setting the get_source_prof_prefs values only
+	    affects plots made after the change; to change an existing plot
+	    you need to use ChIPS commands such as log_scale() and linear_scale().
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prof_source(group_snr=15)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The source data is plotted after the bins have been grouped so that each
+	    bin has a signal to noise ratio of 15 or more,
+	    where the calculation is done using the data and not the model values.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_data()</LINE>
+	  <LINE>&pr; prof_source(overplot=True)</LINE>
+	  <LINE>&pr; prof_model(overplot=True)</LINE>
+	  <LINE>&pr; set_histogram(["line.color","blue"])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Plots the profile for the data and then overplots the model profile,
+	    for the source and measured profiles (the later is changed to be
+	    drawn with a blue line).
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>December 2009</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

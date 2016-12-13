@@ -1,0 +1,112 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="coords_chandra" context="contrib"
+         refkeywords="coord coordinate coordinate coords
+                      convert
+                      position pos ra dec long longitude lat latitude
+                      coords.utils sky chip det theta phi off axis angle
+                      det detector msc mirror spherical focal plane fpc
+                      sim offset"
+         seealsogroups="contrib.coords">
+
+    <SYNOPSIS>
+      Utility routines for working with Chandra Coordinates
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>from coords.chandra import cel_to_chandra</LINE>
+      <LINE>from coords.chandra import sky_to_chandra</LINE>
+    </SYNTAX>
+
+  <DESC>
+    <PARA>
+      The coords.chandra module contains two routines to convert
+      either a list of SKY(X,Y) or a list of celestial (RA,Dec) values
+      to the most common Chandra coordinate systems:  detector (detx, dety)
+      mirror spherical (aka off-axis angles theta and phi)  and
+      chip coordinates.    
+    </PARA>
+    <PARA>
+      The input to each routine is a dictionary of header keywords that
+      can be retrieved from the input file something like:
+    </PARA>
+<VERBATIM>
+&gt;&gt;&gt; from pycrates import read_file
+&gt;&gt;&gt; myfile = read_file(infile)
+&gt;&gt;&gt; key_names = myfile.get_keynames()
+&gt;&gt;&gt; key_vals = [ myfile.get_key_value(x) for x in key_names ]
+&gt;&gt;&gt; keywords = dict(zip(key_names, key_vals ))
+</VERBATIM>
+  
+    <PARA>
+    
+    
+    </PARA>
+  
+  </DESC>
+
+  <QEXAMPLELIST>
+    <QEXAMPLE>
+      <SYNTAX>
+<LINE>&gt;&gt;&gt; from coords.chandra import sky_to_chandra</LINE>
+<LINE>&gt;&gt;&gt; print sky_to_chandra( keywords, 4096.5, 4096.5)</LINE>
+<LINE>{'dety': [4096.5], 'detx': [4096.5], 'phi': [0.0], 'ra': [246.82474880852999], 'chipy': [996.6745464316374], 'chip_id': [3], 'theta': [0.0], 'chipx': [975.2463325198958], 'dec': [-24.573378630717002], 'pixsize': 0.492}</LINE>
+      </SYNTAX>
+      <DESC>
+      <PARA>
+      In this example a single set of sky X,Y values is input and the
+      coordinate values are simply printed to the terminal.  Note: the order
+      of the values may be different.
+      </PARA>
+      </DESC>
+    </QEXAMPLE>
+  
+    <QEXAMPLE>
+      <SYNTAX>
+<LINE>&gt;&gt;&gt; from coords.chandra import cel_to_chandra</LINE>
+<LINE>&gt;&gt;&gt; from pycrates import read_file</LINE>
+<LINE>&gt;&gt;&gt; from pychips.hlui import *</LINE>
+<LINE>&gt;&gt;&gt; srclist = read_file("wavedetect.src")</LINE>
+<LINE>&gt;&gt;&gt; keywords = dict( [ (x,srclist.get_key_value(x)) for x in srclist.get_keynames()] )</LINE>
+<LINE>&gt;&gt;&gt; ra = srclist.get_column("RA").values</LINE>
+<LINE>&gt;&gt;&gt; dec = srclist.get_column("DEC").values</LINE>
+<LINE>&gt;&gt;&gt; coords = cel_to_chandra( keywords, ra, dec )</LINE>
+<LINE>&gt;&gt;&gt; add_curve( coords["x"], coords["y"], "line.style=none" )</LINE>
+<LINE>&gt;&gt;&gt; print coords.keys()</LINE>
+<LINE>['dety', 'detx', 'phi', 'chip_id', 'chipy', 'x', 'y', 'theta', 'chipx', 'pixsize']</LINE>
+
+      </SYNTAX>
+      <DESC>
+      <PARA>
+      In this longer example the RA and DEC values for each source
+      in a wavdetect source list is read in using pycrates.  The
+      Chandra coordinates are computed for all the source positions.
+      The sky X and Y values, returned as lists , are then
+      plotted with ChIPS.
+      </PARA>
+      <PARA>
+      The pixsize value is the only value not returned as a list.  It
+      is in units of arcsec/pixel.
+      </PARA>
+
+      </DESC>
+    </QEXAMPLE>
+  </QEXAMPLELIST>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This module is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+
+    <LASTMODIFIED>March 2015</LASTMODIFIED>
+
+
+</ENTRY>
+</cxchelptopics>
+

@@ -1,0 +1,446 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="mktgresp"
+         context="tools" 
+         refkeywords="garf arf grmf rmf ARF RMF tg gratings spectroscopy histogram pha pha2 zeroth order extraction region letg hetg leg heg meg dispersion transmission spectrum cross plus minus"
+         seealsogroups="tgtools ">
+
+    <SYNOPSIS>Create ARF and RMF files for each spectral order and grating arm in a TypeII PHA file</SYNOPSIS>
+    <DESC>
+        <PARA>
+        The 'mktgresp' tool will create the ARF and RMF
+        for each spectral order and grating arm in a Type II PHA file.
+        It runs the mkgrmf tool and the fullgarf script with the
+        appropriate inputs using the energy and channel grids.                
+        </PARA>
+        <PARA>
+        For ACIS data, the default PHA files will have 12 spectra for HETG: 
+        +/- 3 orders for each MEG and HEG, and 6 for LETG: +/- 3 orders.
+        Since HRC lacks energy resolution, the spectra cannot be order
+        separated so there are only 2 spectra: +/- 1 which represents
+        the contribution from all orders.
+        
+        </PARA>
+
+
+        <PARA>
+        The tool will automatically try to locate the auxiliary files 
+        needed to make the response products: aspect solution, bad-pixel
+        file, mask, dead time factors (HRC only), and parameter block 
+        (ACIS only).  If any of these cannot be found, it will 
+        produce an error and users will need to set the file name
+        via the parameter file.
+        </PARA>
+    </DESC>
+    
+    <QEXAMPLELIST>
+       <QEXAMPLE>
+          <SYNTAX>
+              <LINE>
+              unix% mktgresp acis_repro_pha2.fits acis_repro_evt2.fits acis_repro              
+</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+                The ARF and RMF for each spectral order and grating arm
+                in the input PHA file is created using the default
+                energy and channel grids.
+            </PARA>
+
+<VERBATIM>
+unix% /bin/ls acis_repro*.arf acis_repro*.rmf
+acis_repro_heg_m1.arf  acis_repro_heg_p2.arf  acis_repro_meg_m3.arf
+acis_repro_heg_m1.rmf  acis_repro_heg_p2.rmf  acis_repro_meg_m3.rmf
+acis_repro_heg_m2.arf  acis_repro_heg_p3.arf  acis_repro_meg_p1.arf
+acis_repro_heg_m2.rmf  acis_repro_heg_p3.rmf  acis_repro_meg_p1.rmf
+acis_repro_heg_m3.arf  acis_repro_meg_m1.arf  acis_repro_meg_p2.arf
+acis_repro_heg_m3.rmf  acis_repro_meg_m1.rmf  acis_repro_meg_p2.rmf
+acis_repro_heg_p1.arf  acis_repro_meg_m2.arf  acis_repro_meg_p3.arf
+acis_repro_heg_p1.rmf  acis_repro_meg_m2.rmf  acis_repro_meg_p3.rmf
+</VERBATIM>
+
+          </DESC>
+        </QEXAMPLE>
+
+       <QEXAMPLE>
+          <SYNTAX>
+              <LINE>
+              unix% mktgresp hrc_repro_pha2.fits hrc_repro_evt2.fits hrc_repro  orders=-3,-2,-1,1,2,3
+</LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+    Since HRC does not have sufficient energy resolution, 
+    the grating PHA file only contains the +1, and -1 
+    orders -- which are actually sum of all spectral orders.  However,
+    with sufficient counts, users may need to include the higher order
+    ARFs in their analysis.  These users can set the orders parameter
+    to the list of orders they required to fit the data.  Note: both
+    positive and negative orders must be specified.
+            </PARA>
+
+<VERBATIM>
+unix% /bin/ls hrc_repro*.arf hrc_repro*.rmf
+hrc_repro_leg_m1.arf  
+hrc_repro_leg_m1.rmf  
+hrc_repro_leg_m2.arf  
+hrc_repro_leg_m2.rmf  
+hrc_repro_leg_m3.arf  
+hrc_repro_leg_m3.rmf  
+hrc_repro_leg_p1.arf  
+hrc_repro_leg_p1.rmf  
+hrc_repro_leg_p2.arf
+hrc_repro_leg_p2.rmf
+hrc_repro_leg_p3.arf
+hrc_repro_leg_p3.rmf
+</VERBATIM>
+
+          </DESC>
+        </QEXAMPLE>
+
+
+    </QEXAMPLELIST>
+
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" reqd="yes">
+        <SYNOPSIS>
+            Input type II pha file
+        </SYNOPSIS>
+        <DESC>
+           <PARA>
+               The input type II PHA file produced by either
+               tgextract or tgextract2.
+            </PARA>
+        </DESC>
+      </PARAM>
+      
+      <PARAM name="evtfile" type="file" reqd="yes">
+        <SYNOPSIS>
+            Input event file
+        </SYNOPSIS>
+        <DESC>
+           <PARA>
+              The input event file with the extraction region
+              attached.  This file is also used to locate
+              the auxiliary files with the information stored
+              in the header.
+            </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="outroot" type="file" reqd="yes">
+        <SYNOPSIS>
+            Output path and root file name for the products
+        </SYNOPSIS>
+        <DESC>
+           <PARA>
+            The output file name will be 
+            </PARA>
+<VERBATIM>
+${root}_${arm}_${pm}${order}.${type}</VERBATIM>
+            <PARA>
+                where ${root} is this parameter.  ${arm} is the grating
+                arm: 'leg', 'meg', or 'heg'.  ${pm} is 'p' for positive/plus
+                orders and 'm' for minus/negative orders. ${order} is the 
+                integer order number: for ACIS the default PHA file will have 
+                orders '1', '2', and '3'.  For HRC, only '1'.  The ${type}
+                identifies the file as either 'arf' or 'rmf'.
+            </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="orders" type="string" reqd="no" def="INDEF">
+        <SYNOPSIS>
+        The list of orders to create grating responses.
+        </SYNOPSIS>
+        
+        <DESC>
+        <PARA>
+        By default, orders="INDEF", mktgresp will create response file
+        for each order (tg_m) value in the infile spectrum.  However,
+        for HRC/LETG observations, users may want to create higher 
+        order responses and/or ACIS users may want to only create
+        first order responses (especially for faint sources).  If this
+        parameter is set, the orders listed will be created for each
+        grating arm (tg_part) and source in the infile.        
+        </PARA>
+        </DESC>
+      
+      </PARAM>
+
+
+      <PARAM name="wvgrid_arf" type="string" reqd="no" def="compute" units="Angstrom">
+        <SYNOPSIS>
+            Wavelength grid of rmf and arf
+        </SYNOPSIS>
+<DESC>
+<PARA>
+
+Wavelength grid for the arf specification string.  This string may specify
+compute, a file, or an explicit energy grid.  For example, to use
+a grid for the MEG that ranges from 1 to 41.96 angstroms with 8192
+channels set. The units for this parameter is angstroms.
+
+</PARA>
+<VERBATIM>
+
+  wvgrid_arf="1.0:41.96:#8192"
+</VERBATIM>
+<PARA>
+
+This is the same grid that you would get with
+
+</PARA>
+<VERBATIM>
+
+  wvgrid_arf=compute
+</VERBATIM>
+<PARA>
+
+The default grids for the three grating types are
+
+</PARA>
+<TABLE>
+<ROW>
+<DATA>
+Grating type
+</DATA>
+<DATA>
+wvgrid_arf
+</DATA>
+
+</ROW>
+<ROW>
+<DATA>
+MEG
+</DATA>
+<DATA>
+1.0:41.96:#8192
+</DATA>
+
+</ROW>
+<ROW>
+<DATA>
+HEG
+</DATA>
+<DATA>
+1.0:21.48:#8192
+</DATA>
+
+</ROW>
+<ROW>
+<DATA>
+LEG
+</DATA>
+<DATA>
+1.0:205.8:#16384
+</DATA>
+
+</ROW>
+
+</TABLE>
+
+</DESC>      
+      </PARAM>
+      
+<PARAM def="compute" name="wvgrid_chan" reqd="no" type="string" units="Angstrom">
+<SYNOPSIS>
+
+  Enter channel-side wavelength grid [angstroms]
+ 
+</SYNOPSIS>
+<DESC>
+<PARA>
+
+Specification string for the channel side wavelength grid.  This string
+may specify compute, a file, or an explicit energy grid.  In general this
+is set to be the same as the arf grid. However, there is no compelling
+reason that the fitting engine needs the ARF and the RMF on the same grid
+so this has been left as a user adjustable parameter. The units for this
+parameter is angstroms. 
+</PARA>
+
+</DESC>
+
+</PARAM>
+      
+      
+
+      <PARAM name="asolfile" type="file" reqd="no" stacks="yes" >
+      <SYNOPSIS>
+      Names of aspect solution file(s).
+      </SYNOPSIS>      
+      <DESC>
+         <PARA>
+        If blank, the script will use the information in the header
+        of the event file to try to locate the correct file.  If it cannot then
+        the user must set the file name explicitly.      
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="bpixfile" type="file" reqd="no">
+      <SYNOPSIS>
+        Name of bad pixel file.
+      </SYNOPSIS>      
+      <DESC>
+         <PARA>
+        If blank, the script will use the information in the header
+        of the event file to try to locate the correct file.  If it cannot then
+        the user must set the file name explicitly.      
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="mskfile" type="file" reqd="no" >
+      <SYNOPSIS>
+      Names of instrument mask file.
+      </SYNOPSIS>      
+      <DESC>
+         <PARA>
+        If blank, the script will use the information in the header
+        of the event file to try to locate the correct file.  If it cannot then
+        the user must set the file name explicitly.      
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="dtffile" type="file" reqd="no">
+      <SYNOPSIS>
+      HRC Only.  Name of dead time factors, dtf, file.
+      </SYNOPSIS>      
+      <DESC>
+         <PARA>
+        If blank, the script will use the information in the header
+        of the event file to try to locate the correct file.  If it cannot then
+        the user must set the file name explicitly.      
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="pbkfile" type="file" reqd="no">
+      <SYNOPSIS>
+      ACIS only.  Names of parameter block, pbk, file.
+      </SYNOPSIS>      
+      <DESC>
+         <PARA>
+        If blank, the script will use the information in the header
+        of the event file to try to locate the correct file.  If it cannot then
+        the user must set the file name explicitly.      
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="dafile" type="file" reqd="no" def="CALDB">
+      <SYNOPSIS>
+      ACIS only.  Name of the dead area calibration file.
+      </SYNOPSIS>      
+      <DESC>
+         <PARA>
+            The default, CALDB, will retrieve the correct file from
+            the calibration database.  If blank, then the dead
+            area calibration will be omitted from the ARF.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="osipfile" type="file" reqd="no" def="CALDB">
+      <SYNOPSIS>
+      Order sorting calibration file
+      </SYNOPSIS>      
+      <DESC>
+         <PARA>
+            The order sorting calibration file contains information
+            needed to construct the ARF.  The default, CALDB, will
+            retrieve the correct file from the calibration database.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+
+      <PARAM name="parallel" type="boolean" def="yes" reqd="no">
+        <SYNOPSIS>Run code in parallel using multiple processors?</SYNOPSIS>
+        <DESC>
+          <PARA>
+            If multiple processors are available, then 
+            this parameter controls whether the tool should 
+            run various underlying tools in parallel.
+          </PARA>
+          <PARA>
+            If parallel=yes and verbose&gt;0 users will see that
+            arm+orders will be run in a random order.
+          </PARA>
+        </DESC>        
+      </PARAM>
+      
+      <PARAM name="nproc" type="integer" def="INDEF" min="1" reqd="no">
+        <SYNOPSIS>Number of processors to use</SYNOPSIS>
+        <DESC>
+          <PARA>
+            If parallel=yes, then this controls the number of
+            processes to run at once.  The default, INDEF,
+            will use all available processors.  The value
+            cannot be larger than the number of processors.
+          </PARA>
+          <PARA>
+            If parallel=yes and verbose&gt;0 users will see that
+            arms+orders will be run in a random order.
+          </PARA>
+        </DESC>        
+      </PARAM>
+    
+
+    <PARAM name="verbose" def="0" min="0" max="5" type="integer">
+     <SYNOPSIS>
+     Amount of information printed to the terminal
+     </SYNOPSIS>
+    
+    </PARAM>
+
+    <PARAM name="clobber" type="boolean" def="no">
+     <SYNOPSIS>
+        Should existing files be removed?
+     </SYNOPSIS>
+    
+    </PARAM>
+    </PARAMLIST>
+
+   <ADESC title="Change in scripts 4.8.4 (September 2016) release">
+     <PARA>
+       Updates to allow for ACIS-I + grating configurations.
+     </PARA>
+   </ADESC>
+
+
+    <ADESC title="Changes in scripts 4.7.2 (April 2015) release">
+      <PARA>
+        The new orders parameter has been added to specify which 
+        responses' orders to create.
+        The tool can also now create response files for the 
+        different grating orders and arms in parallel using the
+        new nproc and parallel parameters.
+      </PARA>
+    
+    </ADESC>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+   <BUGS><PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/mktgresp.html">bugs page
+        for this tool</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA></BUGS>
+   <LASTMODIFIED>July 2016</LASTMODIFIED>
+
+
+</ENTRY>
+</cxchelptopics>
+    

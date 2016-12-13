@@ -1,0 +1,173 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  '>>>'>
+]>
+<cxchelptopics>
+  <ENTRY key="ciao_proptools" context="contrib"
+	 refkeywords="ciao_contrib.proptools proptools proptool contrib contributed ciao script package module extra python py
+		      pydates pycolden pyprecess dates date colden column density columndensity nh hydrogrn dust gas cm
+		      precess coord coordinate convert conversion calendar system FK4 FK5 gregorian time MJD JD Julian"
+	 seealsogroups="">
+
+    <SYNOPSIS>
+      Experimental interface to the Chandra proposal tools (CIAO contributed package).
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>import ciao_contrib.proptools as proptools</LINE>
+      <LINE>help(proptools)</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The ciao_contrib.proptools module provides an experimental Python interface to the
+        following Chandra proposal tools: colden, precess, and dates.
+        Not all the functionality of the command-line or web-based version of
+        the tools is supported.
+        This module is provided as part of the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO contributed
+        scripts</HREF> package.
+      </PARA>
+
+      <PARA title="Loading the routines">
+        The module can be loaded into ChIPS or Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+import ciao_contrib.proptools import proptools
+</VERBATIM>
+
+      <PARA>
+        and help on the module, or one of the routines, can be
+        accessed using the Python help command, for example
+      </PARA>
+
+<VERBATIM>
+help(proptools)
+help(proptools.colden)
+</VERBATIM>
+
+      <PARA title="Contents">
+        The module currenly provides the following routines:
+      </PARA>
+
+      <TABLE>
+	<ROW>
+	  <DATA>Routine</DATA><DATA>Description</DATA>
+	</ROW>
+        <ROW>
+	  <DATA>colden()</DATA>
+	  <DATA>Find the Galactic neutral Hydrogen column density, in units of 10^20 cm^-2, for one or more 
+	  locations in equatorial coordinates (J2000).</DATA>
+	</ROW>
+        <ROW>
+	  <DATA>dates()</DATA>
+	  <DATA>Convert between Chandra times, MJD, JD, and the Gregorian calendar.</DATA>
+	</ROW>
+        <ROW>
+	  <DATA>precess()</DATA>
+	  <DATA>Convert between common coordinate systems.</DATA>
+	</ROW>
+      </TABLE>
+
+      <PARA>
+        Simple examples are provided below; please
+        use the Python help command on each routine to find out details of how to use
+        each one.
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+          <SYNTAX>
+            <LINE>&pr; proptools.colden(23, 40)</LINE>
+<LINE>6.56</LINE>
+            <LINE>&pr; proptools.colden(23, 40, dataset='bell')</LINE>
+<LINE>6.66</LINE>
+            <LINE>&pr; proptools.colden([2.1, 15.8, 356.2, 178.9], [43.5, -0.1, 83.4, -76], dataset='bell')</LINE>
+<LINE>[7.34, 3.35, 10.61, None]</LINE>
+	  </SYNTAX>
+        <DESC>
+          <PARA>
+            The colden routine takes in one or more positions - in equatorial coordinates
+            (J2000) using decimal degrees - 
+            and returns the neutral Hydrogen column density, in units of 10^20 cm^-2.
+            A value of None is returned for those locations which have no data.
+	  </PARA>
+          <PARA>
+            For more help use:
+	  </PARA>
+          <PARA><SYNTAX><LINE>&pr; help(proptools.colden)</LINE></SYNTAX></PARA>
+          <PARA>
+            The precess routine and the coords.format Python module 
+            - <HREF link="http://cxc.harvard.edu/ciao/ahelp/coords_format.html">ahelp coords_format</HREF> - 
+            can be used to
+            convert values to the coordinate system required by colden().
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+          <SYNTAX>
+            <LINE>&pr; proptools.dates(268499019.5)</LINE>
+<LINE>datetime.datetime(2006, 7, 5, 15, 3, 37, 500000)</LINE>
+            <LINE>&pr; str(proptools.dates(268499019.5))</LINE>
+<LINE>'2006-07-05 15:03:37.500000'</LINE>
+            <LINE>&pr; proptools.dates('2006-07-05T15:03:37.5', fromcal="GREG", tocal="CHANDRA")</LINE>
+<LINE>268499019.5</LINE>
+	  </SYNTAX>
+        <DESC>
+          <PARA>
+            The dates routine can convert between a 'Chandra' time - that is, the system
+            used in Chandra event files for the TIME column - and the Gregorian
+            calendar, Modified Julian Date, or Julian Date.
+            Unlike the colden and precess routines it can only convert one value
+            at a time.
+	  </PARA>
+          <PARA>
+            For more help use:
+	  </PARA>
+          <PARA><SYNTAX><LINE>&pr; help(proptools.dates)</LINE></SYNTAX></PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+          <SYNTAX>
+            <LINE>&pr; proptools.precess(12.138, -0.001)</LINE>
+<LINE>(12.778809, 0.270858)</LINE>
+            <LINE>&pr; proptools.precess([12.138, 341.2342], [-0.001, 87.342], fromsys="J", tofmt="HMS")</LINE>
+<LINE>(['00 48 33.12', '22 44 56.21'], ['-00 00 03.60', '+87 20 31.20'])</LINE>
+	  </SYNTAX>
+        <DESC>
+          <PARA>
+            The precess routine can convert one or more locations between a range
+            of coordinate systems (but not the full range supported by the command-line
+            tool).
+	  </PARA>
+          <PARA>
+            For more help use:
+	  </PARA>
+          <PARA><SYNTAX><LINE>&pr; help(proptools.precess)</LINE></SYNTAX></PARA>
+          <PARA>
+            The coords.format Python module 
+            - <HREF link="http://cxc.harvard.edu/ciao/ahelp/coords_format.html">ahelp coords_format</HREF> - 
+            provides conversion between sexagesimal and decimal formats.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bugs pages</HREF>
+	for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>February 2014</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

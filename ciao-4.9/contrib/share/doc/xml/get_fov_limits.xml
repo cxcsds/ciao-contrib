@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY upr "unix&#37;">
+]>
+<cxchelptopics>
+  <!--* seealsogroups is pretty random here *-->
+  <ENTRY key="get_fov_limits" context="tools" 
+	 refkeywords="limit limits sky region bound bounding box
+		      filter filtering dmfilter xygrid fov field view
+		      fieldofview"
+	 seealsogroups="bintools fovtools">
+    <SYNOPSIS>Find the region (bounding box) covered by a FOV file in sky coordinates</SYNOPSIS>
+    <DESC>
+      <PARA>
+	The get_fov_limits tool returns the region of sky covered
+	by a FOV file (the fov1 file found in the primary/ directory
+	of an observation or one created by the skyfov tool). The
+	range is returned in both the format used by the
+	xygrid of mkexpmap and for use as a DM filter (see 'ahelp
+	dmsyntax').
+	It is similar in purpose to the get_sky_limits tool.
+      </PARA>
+      <PARA>
+	The script produces screen output describing the 
+	xygrid and dmfilter values, as long as the verbose parameter is
+	not 0. The results can be read from the screen, but they
+	are also stored in the "dmfilter" and "xygrid" parameters of the
+	parameter file (whatever the verbose setting).
+	These can then be accessed using the pget
+	tool ("ahelp tools pget") or parameter library
+	functions ("ahelp paramio").
+      </PARA>
+
+      <PARA title="Which chips are used in the calculation?">
+	The tool will display the bounding box of all the regions
+	in the FOV file. A ccd_id filter should be used to filter
+	out unwanted chips, as shown in the examples.
+	The ccd_id filter is also used for HRC-S data (where it
+	has values of 0, 1 or 2) and for HRC-I data (but it
+	only has the value of 0 in this case).
+      </PARA>
+
+      <PARA title="How is the bounding-box calculated?">
+	The minimum and maximum SKY coordinates for each region -
+	i.e. each ccd_id value - are found, and then combined to
+	form the output bounding box. The edges are adjusted to
+	match the standard Chandra grid and to ensure that the
+	width and height are an integer number of sky pixels
+	(only relevant when the pixsize is greater than 1).
+	The region is therefore only as good as the FOV file;
+	several reasons for discrepancies are:
+      </PARA>
+      <LIST>
+	<ITEM>
+	  if the events file has been reprojected or the aspect solution
+	  has been adjusted then the FOV file should be re-created
+	  by running skyfov;
+	</ITEM>
+	<ITEM>
+	  the limits may appear slightly generous since they include
+	  the edges where the spacecraft dither means that the effective
+	  exposure time is less than at the aimpoint;
+	</ITEM>
+	<ITEM>
+	  HRC FOV files do not exclude some "bad" pixels, as discussed
+	  in the skyfov ahelp file.
+	</ITEM>
+      </LIST>
+
+      <PARA title="Thread">
+	See the 
+	<HREF link="http://cxc.harvard.edu/ciao/threads/match_binning/">Match 
+	  the Binning of an Image thread</HREF>
+	on the CIAO web site for more information.
+      </PARA>
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; get_fov_limits fov1.fits</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we run the tool on all the chips in the FOV file fov1.fits.
+	    With the default verbose level (of 1), the following output will
+	    be displayed to the screen (the values depend on the input file):
+	  </PARA>
+
+<VERBATIM>
+&upr; get_fov_limits fov1.fits
+Running: get_fov_limits
+  version: 15 April 2011
+  DM filter is:
+    x=917.5:3263.5:1,y=2858.5:6582.5:1
+  mkexpmap xygrid value is:
+    917.5:3263.5:#2346,2858.5:6582.5:#3724
+</VERBATIM>
+
+	  <PARA>
+	    The output information is contained in the last four
+	    lines, and is also stored in the parameter file
+	    in the "dmfilter" and "xygrid" parameters:
+	  </PARA>
+
+<VERBATIM>
+&upr; pget get_fov_limits dmfilter
+x=917.5:3263.5:1,y=2858.5:6582.5:1
+&upr; pget get_fov_limits xygrid
+917.5:3263.5:#2346,2858.5:6582.5:#3724
+</VERBATIM>
+
+	  <PARA>
+	    You can store these values in shell variables -
+	    e.g. for csh/tcsh users:
+	  </PARA>
+
+<VERBATIM>
+&upr; set dmf = `pget get_fov_limits dmfilter`
+&upr; dmcopy "evt2.fits[energy=500:2000][bin $dmf]" img.500-2000
+</VERBATIM>
+
+	  <PARA>
+	    - or by using the
+	    redirection capabilities of the parameter interface - 
+	  </PARA>
+
+<VERBATIM>
+&upr; mkexpmap xygrid=")get_fov_limits.xygrid" ...other parameters..
+</VERBATIM>
+
+	  <PARA>
+	    See "ahelp parameter" for more information on the capabilities of the parameter
+	    interface.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; get_fov_limits "fov1.fits[ccd_id=0:3]" pixsize=4 verbose=0</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we restrict the bounding box to cover
+	    the ACIS-I chips (ie ccd_id of 0, 1, 2 and 3)
+	    and increase the pixel size to 4 (~2 arcseconds).
+	    The screen output is suppressed so the only way to
+	    access the ranges is via the parameter interface,
+	    namely:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX><LINE>&upr; pget get_fov_limits xygrid</LINE></SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; get_fov_limits "fov1.fits[ccd_id=7]" pixsize=0.2</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    In this example we get the bounding box for ccd_id=7
+	    (ACIS-S3)
+	    and use a "sub-pixel" binning scheme.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+    <PARAMLIST>
+      <PARAM name="infile" type="string" filetype="input" reqd="yes">
+	<SYNOPSIS>
+	  The FOV file to use
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The name of the FOV file to use. Use a ccd_id filter to
+            exclude unwanted chips: e.g.
+	    <EQUATION>fov1.fits[ccd_id=0,3]</EQUATION>
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="dmfilter" type="string">
+	<SYNOPSIS>
+	  DM filter syntax to match FOV file
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    When the script has finished this parameter will contain
+	    the DM filter expression (see "ahelp dmsyntax") needed
+	    to filter an events file (or image) to match the
+	    input image.
+	  </PARA>
+
+	  <PARA>
+	    An example of its use would be (using csh/tcsh syntax):
+	  </PARA>
+
+<VERBATIM>
+&upr; get_fov_limits fov1.fits ver=0
+&upr; set filt = `pget get_fov_limits dmfilter`
+&upr; echo $filt
+X=3721.5:4953.5:#1232,Y=3037.5:4274.5:#1237
+&upr; dmcopy "evt2.fits[bin $filt]" match.img
+</VERBATIM>
+
+	  <PARA>
+	    Here we run the script to find out the limits,
+	    with verbose set to 0 to avoid any screen output, and then store
+	    the DM filter expression in the shell
+	    variable filt. This is then used in the dmcopy call to bin
+	    an event file, creating the file match.img.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="xygrid" type="string">
+	<SYNOPSIS>
+	  xygrid parameter for mkexpmap to match FOV file
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    Set the xygrid parameter of mkexpmap to this value
+	    so as to create an exposure map that
+	    covers the same area of sky as the input.
+	  </PARA>
+
+	  <PARA>
+	    An example of its use would be:
+	  </PARA>
+
+<VERBATIM>
+&upr; get_fov_limits "fov1.fits[ccd_id=7]" ver=0
+&upr; pset mkexpmap xygrid=")get_fov_limits.xygrid"
+</VERBATIM>
+
+	  <PARA>or</PARA>
+
+<VERBATIM>
+&upr; get_fov_limits "fov1.fits[ccd_id=7]" ver=0
+&upr; set xyg = `pget get_fov_limits xygrid`
+&upr; pset mkexpmap xygrid=$xyg
+</VERBATIM>
+
+	  <PARA>
+	    In the first example we use parameter indirection
+	    (see "ahelp parameter") to set the xygrid parameter
+	    of mkexpmap equal to that of get_fov_limits.
+	    This requires that mkexpmap is run before the get_fov_limits
+	    parameter file is changed; a safer alternative is shown
+	    in the second example (using csh/tcsh syntax).
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="pixsize" type="real" min="0" def="1">
+	<SYNOPSIS>
+	  Pixel size
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The pixel size to use for the grids. A value of 1 (the default)
+	    is the native pixel scale for the instrument and the value
+	    can be either larger or smaller than this.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+	<SYNOPSIS>
+	  Verbose level
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If set to a non-zero value then the tool will
+	    print information to the screen when it is run.
+	    The extra information produced when verbose is greater than 1
+	    is only likely to be useful when debugging the script.
+	  </PARA>
+          <PARA>
+            The script version is displayed when the verbose parameter is set
+            to 1 or higher.
+          </PARA>
+	</DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+	This script is not an official part of the CIAO release but is
+	made available as "contributed" software via the
+	<HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+	Please see this page for installation instructions - such as how to
+	ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+   <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/get_fov_limits.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

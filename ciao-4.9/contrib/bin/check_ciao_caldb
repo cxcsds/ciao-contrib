@@ -1,0 +1,226 @@
+#!/usr/bin/env python
+"""
+
+Copyright (C) 2009-2011, 2015
+          Smithsonian Astrophysical Observatory
+
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+Usage:
+
+  ./check_ciao_caldb
+  ./check_ciao_caldb --latest
+
+Aim:
+
+  A simple check that the Chandra Calibration Database (CALDB)
+  is installed correctly. It does not make extensive checks,
+  nor does it look for optional components, such as the ACIS
+  background files.
+
+  If the --latest flag is given then the tool will also check whether
+  there is a newer release of the CALDB available for use. This check
+  requires that the computer be on-line and able to access the CALDB
+  site at http://cxc.harvard.edu/caldb/.
+
+  CIAO must have been started before running this tool.
+
+  If there is an error the tool will exit with a non-zero status.
+
+"""
+
+toolname = "check_ciao_caldb"
+version = "12 November 2015"
+
+import os
+import time
+
+from optparse import OptionParser
+
+import pycrates
+import caldb4
+
+from ciao_contrib.logger_wrapper import handle_ciao_errors
+from ciao_contrib.cxcdm_wrapper import convert_block_number
+from ciao_contrib.caldb import get_caldb_dir, get_caldb_installed, \
+    check_caldb_version
+
+
+help_str = """
+Check that the Chandra CALDB is installed.
+
+The script reports the version and date of the installed version of
+the Chandra Calibration DataBase (CALDB) and runs a simple check to
+make sure it is installed correctly. If the --latest flag is given
+then it also checks to see if there is a newer version available for
+installation (this last step requires that the computer is on-line and
+so is not run by default).
+
+The script does not check any "ancillary" CALDB products that may
+be installed, such as the PSF libraries or the background files.
+
+"""
+
+
+copyright_str = """
+Copyright (C) 2009-2011, 2015  Smithsonian Astrophysical Observatory
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+"""
+
+
+def ensure_isa_table(filename):
+    """Ensure the given file represents a table and is not empty. No data
+    is returned by this routine.
+
+    It throws an IOError if the file is empty or can not be read.
+
+    We convert from the CFITSIO-style numbering returned by caldb4
+    to the CIAO Data Model style.
+    """
+
+    fname = convert_block_number(filename, system="cxcdm",
+                                 insystem="cfitsio")
+    cr = pycrates.TABLECrate(fname, mode="r")
+    if pycrates.get_number_rows(cr) == 0 or \
+       pycrates.get_number_cols(cr) == 0:
+        raise IOError("No data read in from {0}".format(filename))
+
+
+def display_caldb_location(dname):
+    """Display the CALDB directory (and any link) to STDOUT.
+    """
+
+    print("CALDB environment variable = {0}".format(dname))
+    if os.path.islink(dname):
+        lname = os.path.realpath(dname)
+        print("        which is a link to = {0}".format(lname))
+
+
+def check_caldb_query(caldb, caldbver):
+    """Run a simple CALDB query, exiting with an error
+    if it fails."""
+
+    # Hard-code a query
+    #
+    cdb = caldb4.Caldb("Chandra", "ACIS", "DET_GAIN")
+    cdb.GRATING = "NONE"
+    cdb.CTI_APP = "PPPPPBPBPP"
+    cdb.FP_TEMP = (153, "K")
+    cdb.OBS_MODE = "POINTING"
+
+    # cdb.GRATTYPE = ""
+
+    for (key, unit) in cdb.allneeded:
+        if key not in ["GRATTYPE", "start", "stop"]:
+            print("WARNING: the script needs updating to set the {0} parameter; please contact the CXC helpdesk!".format(key))
+
+    files = cdb.search
+    nf = len(files)
+    if nf == 0:
+        print("CalDB search failed:")
+        print(cdb)
+        print("")
+        raise IOError("Found no matching {0} file from the CALDB!".format(cdb.product))
+
+    elif nf > 1:
+        print("WARNING: {0} matches found for {1} query, expected only 1.".format(nf, cdb.product))
+        for f in files:
+            print(" match = {0}".format(f))
+            ensure_isa_table(f)
+
+        return
+
+    ensure_isa_table(files[0])
+    print("CALDB query completed successfully.")
+
+
+@handle_ciao_errors(toolname, version)
+def doit():
+    """Run the code."""
+
+    opts = OptionParser(usage="%prog",
+                        description=help_str)
+
+    opts.add_option("-l", "--latest", dest="latest", action="store_true",
+                    help="Check whether a newer CALDB exists (requires on-line access)? [default: %default]")
+    opts.add_option("-c", "--copyright", dest="list_copyright",
+                    action="store_true",
+                    help="List the copyright for the script and exit.")
+    opts.add_option("-v", "--version", dest="list_version",
+                    action="store_true",
+                    help="List the version of the script and exit.")
+    # opts.add_option("-d", "--debug", dest="debug", action="store_true",
+    #                 help="Display diagnostic output? [default: %default]")
+    opts.set_defaults(list_copyright=False, latest=False, list_version=False)
+
+    (options, args) = opts.parse_args()
+    nargs = len(args)
+
+    if nargs != 0:
+        opts.print_help()
+        return
+
+    elif options.list_copyright:
+        print(copyright_str)
+        return
+
+    elif options.list_version:
+        print(version)
+        return
+
+    caldb = get_caldb_dir()
+    display_caldb_location(caldb)
+
+    (cver, cdat) = get_caldb_installed(caldb)
+    cdatstr = time.strftime("%Y-%m-%dT%H:%M:%S", cdat)
+    print("             CALDB version = {0}".format(cver))
+    # print("             release date  = {0} UTC".format(time.asctime(cdat)))
+    print("             release date  = {0} UTC".format(cdatstr))
+
+    if cver[0] in "123":
+        raise IOError("CALDB version is out of date - you must use version 4.1.0 or higher!")
+
+    # Check version after checking that the installation is "okay" (as much as
+    # check_caldb_query checks anyway)
+    #
+    check_caldb_query(caldb, cver)
+    if options.latest:
+        rval = check_caldb_version(cver)
+        if rval is not None:
+            raise IOError("The latest available CALDB version is {0}".format(rval[1]))
+        else:
+            print("The CALDB installation is up to date.")
+
+    return
+
+
+if __name__ == "__main__":
+    doit()
+
+# End

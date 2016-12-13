@@ -1,0 +1,569 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+]>
+<cxchelptopics>
+  <ENTRY key="prof_data" context="contrib" pkg="sherpa"
+	 refkeywords="profile circular elliptical radial ellipse plot plotting data"
+	 seealsogroups="sh.plot sh.profile">
+
+    <SYNOPSIS>
+      Plot a radial or elliptical profile of imaging data.
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>prof_data( [id], [model=None,
+      rstep=None, rmin=None, rmax=None, rlo=None, rhi=None,
+      xpos=None, ypos=None, ellip=None, theta=None,
+      group_counts=None, group_snr=None,
+      label=True, recalc=True, overplot=False] )</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The prof_data command calculates the radial - or elliptical - profile of 
+	the imaging data and plots it. The profile is defined by the existing model
+	compenents, although it is possible to over-ride these values.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.profiles import *
+</VERBATIM>
+
+      <PARA title="What data should be used for the profile?"/>
+
+      <LIST>
+        <ITEM>
+          id - the id of the dataset to use; if not given uses the
+	  default sherpa id (see "ahelp get_default_id").
+	</ITEM>
+      </LIST>
+
+      <PARA title="What are the parameters of the radial profile?">
+	The following arguments control the location and
+	ellipticity of the radial profile. For simple cases -
+	where there is only one model component with xpos,
+	ypos, ellip, and theta parameters - then the routine will
+	be able to determine these values automatically.
+	The following options can be used for more
+	complex situations, for instance if you have multiple sources
+	or you want to force circular annuli when the model ellipticity
+	and position angle has been fit.
+      </PARA>
+
+      <LIST>
+        <ITEM>
+	  model - specifies the model component which shold be used to get the
+	  xpos, ypos, ellip, and theta values for the profile. If not given then
+	  the source model expression is searched to find a component with these
+	  parameters; this argument is therefore only needed when there are multiple
+	  components with these parameters in a source expression, or you want to use
+	  values from a separate model component. The possible values for the
+	  argument are the name (string), or the actual component object.
+	</ITEM>
+        <ITEM>
+	  xpos - use this value as the center of the profile along the X axis.
+	  If given this overrides the xpos value derived from the model argument.
+	  The possible values are a numeric value, the name of a parameter
+	  (string), or a parameter object.
+	</ITEM>
+        <ITEM>
+	  ypos - use this value as the center of the profile along the Y axis.
+	  If given this overrides the ypos value derived from the model argument.
+	  The possible values are a numeric value, the name of a parameter
+	  (string), or a parameter object.
+	</ITEM>
+        <ITEM>
+	  ellip - use this value as the ellipticity of the profile.
+	  If given this overrides the ellip value derived from the model argument.
+	  The possible values are a numeric value, the name of a parameter
+	  (string), or a parameter object.
+	</ITEM>
+        <ITEM>
+	  theta - use this value as the theta value for the profile.
+	  If given this overrides the theta value derived from the model argument.
+	  The possible values are a numeric value, the name of a parameter
+	  (string), or a parameter object.
+	  This value is only used if the ellipticity is not 0.
+	</ITEM>
+      </LIST>
+
+      <PARA>
+	The ellipticity and theta values are defined as they are for Sherpa
+	2D models (e.g. see "ahelp beta2d").
+      </PARA>
+
+      <PARA>
+	As an example,
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; prof_data(model=clus)</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	would use the xpos, ypos, ellip, and theta parameters from the clus component
+	for determining the profile, whereas
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; prof_data(model=clus, ellip=0)</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	would use a circular profile, centered on clus.xpos and clus.ypos
+	(i.e. the clus.ellip and clus.theta parameters would be ignored).
+	Further examples are included in the Examples section below.
+      </PARA>
+
+      <PARA title="What bins should be used for the profile?">
+	The following arguments can be used to determine what radial
+	bins should be used. There are three groups of options:
+      </PARA>
+
+      <LIST>
+	<ITEM>rlo and rhi are used when you want to bins that are not regularly spaced;</ITEM>
+	<ITEM>rstep, rmin, and rmax allow you to use a fixed bin size and specify
+	the range (the minimum and maximum values default to the full dataset if not
+	given);</ITEM>
+	<ITEM>once the data has been binned, it can be re-grouped to ensure either a
+	fixed signal-to-noise ratio or minimum number of counts per output bin (by setting the
+	group_snr or group_counts options).
+	</ITEM>
+      </LIST>
+
+      <PARA>
+	The following list is organized by priority, in that if rlo is given then it
+	will be used even if rstep is also given. For many cases using just the
+	rstep or either of the group_counts or group_snr options will be sufficient.
+      </PARA>
+
+      <LIST>
+        <ITEM>
+	  rlo - If given, this array determines the left edge of each bin. If rhi
+	  is not given then the bins are assumed to be contiguous and the value of the
+	  last bin is used as the maximum radius. So
+	  rlo=[1,2,4,8,20] will use bins with radii 1-2, 204, 4-8, and 8-20
+	  if rhi is not given.
+	</ITEM>
+        <ITEM>
+	  rhi - If given, this array determines the right edge of the bins. It is
+	  only used if rlo is given. So rlo=[1,3,5,9] and rhi=[3,5,7,10] will use
+	  bins with radii 1-3, 3-5, 5-7, and 9-10.
+	</ITEM>
+        <ITEM>
+	  rstep - When rlo is not given, the bin width is given by
+	  rstep. The default value (which is used when rstep and rlo
+	  are not given) is the pixel size of the data. As discussed
+	  below rstep can be given as an array to allow variable bin
+	  sizes.
+	</ITEM>
+        <ITEM>
+	  rmin - The minimum radius to use; only used when rlo is not given. If not
+	  specified defaults to the minimum value of the data (which may not be 0 if the
+	  profile center is not within the data or the pixels around the center
+	  have been excluded).
+	</ITEM>
+        <ITEM>
+	  rmax - The maximum radius to use; only used when rlo is not given. If not
+	  specified defaults to the maximum value of the data. The rmax value is
+	  only guaranteed to lie within the bounds of the last bin, depending on
+	  the rstep value (and that either group_counts or group_snr is not given).
+	</ITEM>
+        <ITEM>
+	  group_counts - if given, then the bins are grouped so that each bin
+	  contains at least group_counts counts in them (before normalisation by the
+	  area of the bin). This setting overrides the group_snr value.
+	</ITEM>
+        <ITEM>
+	  group_snr - if given, then the bins are grouped so that the signal-to-noise
+	  value for each bin is at least group_snr. It is not used if group_counts is
+	  also given.
+	</ITEM>
+      </LIST>
+
+      <PARA>
+	The units of rlo, rhi, rstep, rmin, and rmax are those of the coordinate system
+	for the dataset (see "ahelp get_coord").
+	A description of the values supported by the rstep parameter is given below,
+	after the examples, in the "RSTEP PARAMETER" section, which is also
+	accessibla via
+      </PARA>
+      <PARA>
+	<SYNTAX><LINE>unix% ahelp -b ADESC -t "RSTEP PARAMETER" prof_data</LINE></SYNTAX>
+      </PARA>
+
+      <PARA>
+	When either group_counts or group_snr is used then the last bin displayed is 
+	guaranteed to pass the grouping constraint, but it may well be less than the
+	maximum radius given by either rmax or rlo/rhi.
+	The grouping is applied after the initial binning is made; this means that
+	the original bins are calculated using either the rlo/hi or 
+	rstep values, then these bins are grouped. This means that using
+	<EQUATION>rstep=10, group_snr=10</EQUATION>
+	may produce different results than
+	<EQUATION>rstep=1, group_snr=10</EQUATION>
+     </PARA>
+
+      <PARA>
+	Two simple examples are:
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; prof_data(rstep=10)</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	which will use a width of 10 for the bins, and span the full radial range
+	of the data,
+	and
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; prof_data(rstep=5, rmax=100, group_counts=20)</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	which uses a bin width of 5 out to a radial distance of 100, and then
+	re-bins these values to ensure at least 20 counts per bin. One reason
+	for specifying rmax is that it avoids un-nescessary computation if the
+	range of interest of the profile is significantly smaller than that
+	covered by the data.
+      </PARA>
+
+      <PARA title="How to control the appearance and behavior of the plot">
+	The following options control either the appearance or behavior of the plot.
+      </PARA>
+
+      <LIST>
+	<ITEM>
+	  label - should the position and - if elliptical, the ellipticity and position
+	  angle - used to calculate the profile be added as labels to the plot?
+	  A value of True
+	  (default) means add the labels, and False
+	  means the labels should not be added.
+	</ITEM>
+
+        <ITEM>
+          recalc - should the cached arrays be used in the plot?
+	  A value of True
+	  (default) means do the calculation, and False
+	  means redisplay the existing values.
+        </ITEM>
+
+        <ITEM>
+          overplot  - should the new plot be overlaid in the plotting window?
+	  A value of False
+	  (default) means clear the window, and True
+	  means add the new data to any existing plots.
+	</ITEM>
+
+      </LIST>
+
+      <PARA>
+	If the recalc argument is set to True
+	then the plot will use the previously-calculated values to create the
+	plot. This speeds up the routine, 
+	but it does mean that any changes you have made to the plot -
+	be it changing the value of one of the routine's arguments such as
+	group_snr and rstep, or to the model itself such as changing the
+	parameters of a model component - will not be reflected in the
+	plot output.
+      </PARA>
+
+      <PARA title="Errors">
+	Errors are calculated using the Gehrel's approximation:
+	<EQUATION>error = 1 + sqrt(N+0.75)</EQUATION>
+	where N is the number of counts in a bin.
+	The signal to noise ratio of a radial
+	bin - used when group_snr is given - is therefore calculated as
+	<EQUATION>N / (1 + sqrt(N+0.75))</EQUATION>
+	(there is no support for including a background level).
+      </PARA>
+
+      <PARA title="Modifying existing plots">
+        The plot is displayed in a ChIPS plotting window. If there is
+        no plotting window open, one is created.  If a plotting window
+        exists, the overplot parameter value determines whether the
+        new plot is overlaid on any existing plots in the window or if
+        the window is cleared before the plot is drawn.  
+      </PARA>
+
+      <PARA>
+        ChIPS commands may be used within Sherpa to modify plot
+        characteristics and create hardcopies; refer to the
+	<HREF link="http://cxc.harvard.edu/chips/">ChIPS website</HREF> for
+        information. 
+      </PARA>
+
+      <PARA title="Changing the plot defaults">
+	The get_data_prof_prefs() returns the current plot
+	preferences used by prof_data().
+	Changing these settings will therefore change the
+	appearance of any new plots created by prof_data().
+	For example
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; get_data_prof_prefs()["xlog"] = True</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	will cause any new plots to use logarithmic scaling for the X axis.
+	A full list of the preferences can be found by saying
+      </PARA>
+      <PARA>
+	<SYNTAX><LINE>unix% ahelp get_data_prof_prefs</LINE></SYNTAX>
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; load_image("evt2.fits[sky=circle(4203,4304,50)][bin sky=2]")</LINE>
+	  <LINE>&pr; set_coord("physical")</LINE>
+          <LINE>&pr; set_source(beta2d.src + const2d.bgnd)</LINE>
+          <LINE>&pr; prof_data()</LINE>
+          <LINE>&pr; log_scale()</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Load in an image, using the CIAO data model to filter and bin an event file,
+	    set the coordinate system to physical (so each image pixel has a width
+	    and height of 2 units due to the use of 'bin sky=2'), set a source
+	    model consisting of a beta2d component (src) and a constant (bgnd).
+	    The use the prof_data call creates a plot a profile of the data.
+	    The X and Y axes of the plot are then changed to use logarithmic
+	    scaling.
+	  </PARA>
+	  <PARA>
+	    Since no arguments were given to prof_data, the profile covers
+	    the full data range, is in units of the physical pixel size,
+	    and uses a bin size of 2 (since this is the pixel size). The
+	    center, ellipticity, and position angle (theta) of the profile
+	    are taken from the src component, since the bgnd component does
+	    not contain xpos, ypos, ellip, or theta parameters.
+	    Labels indicating the values of these parameters are added to
+	    the top-right of the plot.
+	  </PARA>
+	  <PARA>
+	    As the source model has not yet been fit to the data the profile is
+	    probably not going to provide a useful view of the data.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prefs = get_data_prof_prefs()</LINE>
+          <LINE>&pr; prefs["xlog"] = True</LINE>
+          <LINE>&pr; prefs["ylog"] = True</LINE>
+          <LINE>&pr; prof_data()</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The preferences are set so that both the x and y axes should be drawn
+	    using log scaling. Setting the get_data_prof_prefs values only
+	    affects plots made after the change; to change an existing plot
+	    you need to use ChIPS commands such as log_scale() and linear_scale().
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; prof_data(group_snr=15)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The data is plotted after the bins have been grouped so that each
+	    bin has a signal to noise ratio of 15 or more.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+	   
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_data(rmin=10, rmax=100, rstep=5)</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Calculate the profile in radial bins with low/high limits of
+	    10-15, 15-20, 20-25, ..., 90-95, 95-100.
+	    If the group_counts or group_snr option was also given - e.g.
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; prof_data(rmin=10, rmax=100, rstep=5, group_counts=100)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    then the grouping would be applied to these bins.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_data(rlo=[0,10,20,40,60,100,200])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Calculate the profile in radial bins with low/high limits of
+	    0-10, 10-20, 20-40, 40-60, 60-100, 100-200.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_data(rstep=[1,10,2,20,5,50,10])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    The radii used for the radial bins depends on the radius as shown in
+	    the table below:
+	  </PARA>
+	  <TABLE>
+	    <ROW><DATA>radius</DATA><DATA>bin width</DATA></ROW>
+	    <ROW><DATA>0 to 10</DATA><DATA>1</DATA></ROW>
+	    <ROW><DATA>10 to 20</DATA><DATA>2</DATA></ROW>
+	    <ROW><DATA>20 to 50</DATA><DATA>5</DATA></ROW>
+	    <ROW><DATA>above 50</DATA><DATA>10</DATA></ROW>
+	  </TABLE>
+	  <PARA>
+	    The minimum and maximum radii used are taken from the data.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+	  <LINE>&pr; prof_data("src1")</LINE>
+	  <LINE>&pr; prof_data("src2", overplot=True)</LINE>
+	  <LINE>&pr; set_histogram(["symbol.color", "red"])</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Plots the profile for the dataset called "src1" and then overplots the 
+	    profile from the dataset "src2" (the second data set is changed to use a
+	    red symbol).
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; load_image("img.fits")</LINE>
+          <LINE>&pr; set_source(beta2d.clus + gauss2d.qso + const2d.bgnd)</LINE>
+          <LINE>&pr; fit()</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; prof_data(model=qso)</LINE>
+          <LINE>&pr; thaw(clus.ellip)</LINE>
+          <LINE>&pr; thaw(clus.theta)</LINE>
+          <LINE>&pr; fit()</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; prof_data(model=clus)</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    Since the model expression contains two components which have xpos,
+	    ypos, ellip, and theta parameters - namely clus and qso - the model
+	    argument is used to select the gauss2d (qso) values for the first plot
+	    and the
+	    beta2d (clus) values for the second plot.
+	  </PARA>
+	  <PARA>
+	    If the clus model has a
+	    non-zero ellipticity then the second plot will have used elliptical
+	    annuli to calculate the profile.
+	    To use circular annuli in this case we can manually override the
+	    model's ellipticity parameter by saying:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; prof_data(model=clus, ellip=0)</LINE>
+	    </SYNTAX>
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="RSTEP PARAMETER">
+      <PARA>
+	The rstep parameter can be given a scalar value - which means
+	to use a single bin width for all bins - or an array of values
+	which allow you to set different bin widths for different
+	radii. The array must contain an odd number of values and
+	is interpreted as
+	<EQUATION>[d1, r1, d2, r2, .., dm, rm, dn]</EQUATION>
+	which means to use the folowing bin widths:
+      </PARA>
+
+      <TABLE>
+	<ROW><DATA>radius</DATA><DATA>bin width</DATA></ROW>
+	<ROW><DATA>up to r1</DATA><DATA>d1</DATA></ROW>
+	<ROW><DATA>r1 to r2</DATA><DATA>d2</DATA></ROW>
+	<ROW><DATA>...</DATA><DATA>..</DATA></ROW>
+	<ROW><DATA>r(m-1) to rm</DATA><DATA>dm</DATA></ROW>
+	<ROW><DATA>above rm</DATA><DATA>dn</DATA></ROW>
+      </TABLE>
+
+      <PARA>
+	So
+	<EQUATION>rstep = [1, 10, 2, 20, 5]</EQUATION>
+	would use a bin size of 1 for radii up to 10, 2 for
+	radii between 10 and 20, and 5 for larger radii.
+	If the bin edges do not match up with the ri values
+	then the switch to the next bin size happens at the first
+	opportunity after ri. This means that
+	<EQUATION>rstep = [0.2, 1, 0.5, 3, 1]</EQUATION>
+	with
+	<EQUATION>rmin = 0.7, rmax=2.4</EQUATION>
+	would use bins
+	0.7-0.9, 0.9-1.1, 1.1-1.6, 1.6-2.1, and 2.1-2.6.
+      </PARA>
+
+      <PARA>
+	For more complicated binning patterns it may be easier to use
+	rlo (and possibly rhi) to set the bin edges explicitly.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="CHANGES IN THE DECEMBER 2010 RELEASE">
+      <PARA title="Support for set_full_model">
+	The routines in the module have been updated to support source
+	expressions created using the set_full_model() command introduced
+	in Sherpa 4.2 release 2.
+      </PARA>
+      <PARA title="Improved behavior when used with un-filtered data">
+	The code has been updated so as not to require a rmin value
+	when used with data with no spatial filters applied.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>December 2010</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

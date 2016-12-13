@@ -1,0 +1,320 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="cda_data" context="contrib"
+         refkeywords="download chandra obsid obsids
+		      download_chandra_obsids ftp 
+		      cda chandra data archive public
+		      python"
+         displayseealsogroups="contrib.coords"
+	 seealsogroups="contrib.cda">
+
+    <SYNOPSIS>
+      Download public data by ObsId from the Chandra archive (Python interface).
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>from ciao_contrib.cda.data import download_chandra_obsids</LINE>
+      <LINE>rval = download_chandra_obsids(obsids, filetypes=None, mirror=None, username=None, userpass=None)</LINE>
+      <LINE/>
+      <LINE>obsids is a list of ObsId values (can be strings or integers). If filetypes
+            is not None then it should be an array of strings, each a member of
+            ciao_contrib.cda.data.known_file_types.</LINE>
+      <LINE/>
+      <LINE>The return is an array of True or False values, indicating whether the
+            observation was found in the archive.</LINE>
+      <LINE/>
+      <LINE>The Python help command - help(download_chandra_obsids) - can be used</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The download_chandra_obsids routine downloads publically available
+        ObsIds from the Chandra Data Archive.
+        It is used by the download_chandra_obsid script but can be
+        used from a Python script or session.
+      </PARA>
+
+      <PARA title="Loading the routine">
+	The routine can be loaded into a Python session or script by saying:
+      </PARA>
+
+<VERBATIM>
+from ciao_contrib.cda.data import download_chandra_obsids
+</VERBATIM>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; from ciao_contrib.cda.data import download_chandra_obsids</LINE>
+	  <LINE>&pr; download_chandra_obsids([1843])</LINE>
+          <LINE>[True]</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            Download the data for ObsId 1843 into the current working directory; the
+            data will be placed into the directory 1843/. Since
+            the filetypes argument was not set all data is downloaded.
+            Any existing data (i.e. from a previous download attempt) will not be
+            over-written, although if the file size in the archive is larger than
+            the local version it is assumed that the previous download had been
+            interrupted and it will be restarted.
+	  </PARA>
+	  <PARA>
+            The [True] return argument indicates that ObsId 1843 was found in the
+            archive, but it does not indicate whether any data was actually downloaded.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; download_chandra_obsids([1842,1843], filetypes=['fov', 'asol'])</LINE>
+          <LINE>[True, True]</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            Here we download just the FOV (field-of-view) and ASOL (aspect solution) files
+            for the two ObsIds.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; import ciao_contrib.logger_wrapper as lw</LINE>
+          <LINE>&pr; lw.initialize_logger("download", verbose=1)</LINE>
+	  <LINE>&pr; download_chandra_obsids([1842,1843], filetypes=['fov', 'asol'])</LINE>
+          <LINE>Downloading files for ObsId 1842, total size is 2 Mb.</LINE>
+          <LINE>...</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            The default behavior is to create no screen output. This can be
+            changed by using the ciao_contrib.logger_wrapper module, as shown
+            in this example (the verbose values are integers from 0 to 5,
+            with the same meaning as the verbose parameter for CIAO tools).
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; mirror = 'ftp://cdaftp.cda.harvard.edu/pub'</LINE>
+	  <LINE>&pr; res = download_chandra_obsids(obsids, mirror=mirror)</LINE>
+          <LINE>&pr; if not all(res): print("Some ObsIds were not found")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            Here we download the observations given in the obsids array from a
+            mirror site, using the mirror argument. The res variable can be
+            inspected to find out if all the data was found in the archive; one example is shown
+            above.
+	  </PARA>
+          <PARA>
+            Note that for the mirror argument here we used the location of the
+            Chandra Data Archive, so this particular run is equivalent to
+            not setting the mirror argument.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="File formats">
+      <PARA>
+        When the filetypes argument is left at its default value of None,
+        all the data files for an ObsId are downloaded. To restrict the
+        files downloaded, supply an array of strings, where each element
+        is one of the following (see the
+        <HREF link="http://cxc.harvard.edu/ciao/data_products_guide/">Chandra
+        data products guide</HREF> for more information):
+      </PARA>
+
+      <TABLE>
+        <CAPTION>Supported file formats</CAPTION>
+        <ROW><DATA>File format</DATA><DATA>Description</DATA></ROW>
+        <ROW>
+          <DATA>aoff</DATA>
+          <DATA>Aspect offset files</DATA>
+        </ROW>
+        <ROW>
+          <DATA>aqual</DATA>
+          <DATA>Aspect quality files</DATA>
+        </ROW>
+        <ROW>
+          <DATA>asol</DATA>
+          <DATA>Aspect solution files</DATA>
+        </ROW>
+        <ROW>
+          <DATA>bias</DATA>
+          <DATA>Bias maps.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>bpix</DATA>
+          <DATA>Bad-pixel file.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>cntr_img</DATA>
+          <DATA>High-resolution image (JPEG and FITS) of the center of the field of view.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>dtf</DATA>
+          <DATA>Dead-Time Factor file.</DATA>
+        </ROW>
+<!--
+        <ROW>
+          <DATA>eph0</DATA>
+          <DATA>Ephemeris files</DATA>
+        </ROW>
+-->
+        <ROW>
+          <DATA>eph1</DATA>
+          <DATA>Ephemeris files (Orbit, Solar, Lunar, and Viewing Angles)</DATA>
+        </ROW>
+        <ROW>
+          <DATA>evt1</DATA>
+          <DATA>Level 1 event file.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>evt2</DATA>
+          <DATA>Level 2 event file.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>flt</DATA>
+          <DATA>Good-Time Intervals for the observation.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>fov</DATA>
+          <DATA>Field-of-view file for the observation.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>full_img</DATA>
+          <DATA>Low-resolution image (JPEG and FITS) of the field of view.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>msk</DATA>
+          <DATA>The detector mask file.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>mtl</DATA>
+          <DATA>The mission timeline.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>oif</DATA>
+          <DATA>The Observation Index File.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>osol</DATA>
+          <DATA>The on-board-computer (OBC) aspect solution files.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>pbk</DATA>
+          <DATA>The parameter block file.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>pha2</DATA>
+          <DATA>Grating spectra.</DATA>
+        </ROW>
+<!--
+        <ROW>
+          <DATA>plt</DATA>
+          <DATA></DATA>
+        </ROW>
+-->
+<!--
+        <ROW>
+          <DATA>readme</DATA>
+          <DATA>The README file.</DATA>
+        </ROW>
+-->
+        <ROW>
+          <DATA>soff</DATA>
+          <DATA>Alignment offset files (these are no longer produced, as of DS 8.4).</DATA>
+        </ROW>
+        <ROW>
+          <DATA>src2</DATA>
+          <DATA>Imaging source list (these are no longer produced, as of DS 8.4).</DATA>
+        </ROW>
+<!--
+        <ROW>
+          <DATA>src_img</DATA>
+          <DATA></DATA>
+        </ROW>
+-->
+        <ROW>
+          <DATA>stat</DATA>
+          <DATA>The exposure statistics file.</DATA>
+        </ROW>
+<!--
+        <ROW>
+          <DATA>sum</DATA>
+          <DATA></DATA>
+        </ROW>
+-->
+        <ROW>
+          <DATA>vv</DATA>
+          <DATA>The Verification and Validation files for the observation.</DATA>
+        </ROW>
+      </TABLE>
+
+    </ADESC>
+
+    <ADESC title="Mirror sites of the Chandra Data Archive">
+      <PARA>
+	If you have set up, or have access to, a mirror of the
+	Chandra Data Archive (it can be only a partial archive),
+	then you can use the mirror argument to set the location
+        of the mirror.
+      </PARA>
+      <PARA>
+	If an ObsId can not be found on the mirror site then it is
+	skipped; i.e. the routine will not also check the CDA site
+	for the data.
+      </PARA>
+      <PARA>
+        The mirror location should include the URL of the FTP site
+        (the leading ftp:// is required) and the path up to, but not including,
+        the byobsid/ directory. So, for the Chandra Data Archive itself
+        you would use
+        <EQUATION>ftp://cdaftp.cfa.harvard.edu/pub</EQUATION>
+        (although obviously in this case you do not need to use the mirror
+        option).
+        Please see the documentation for the mirror site to find out
+        the correct path to use.
+      </PARA>
+      <PARA>
+        If needed, you can include a username and password in the mirror
+        setting, following 
+        <HREF link="http://tools.ietf.org/html/rfc3986">RFC3986</HREF>,
+        for instance
+        <EQUATION>ftp://anonymous:foo@bar.com@cdaftp.cfa.harvard.edu/pub</EQUATION>
+        or with the username and userpass arguments.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.4 (August 2013) release">
+      <PARA title="Support for CDA mirror sites">
+	The mirror, username, and userpass arguments have been
+        added to download_chandra_obsids in this release.
+	Documentation for the ciao_contrib.cda.data module is new in this release.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This module is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+
+    <LASTMODIFIED>August 2013</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

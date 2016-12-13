@@ -1,0 +1,464 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="obsid_search_csc"
+         context="tools" 
+         refkeywords="csc ftp wget download java catalog obsid obi obs_id observation  ascii products retrieve radius psf rmf arf exposure region lightcurve lc level3"
+         seealsogroups="contrib.cda">
+
+    <SYNOPSIS>Search the Chandra Source Catalog by OBS_ID</SYNOPSIS>
+    <DESC>
+          <PARA>
+      'obsid_search_csc' uses the 
+      <HREF link="http://cxc.harvard.edu/csc/cli/">
+      command line interface to the Chandra Source Catalog
+      (CSC) </HREF>
+      to retrieve source properties and associated data products by
+      Observation ID (obsid).
+    </PARA>
+
+    <PARA>
+    Users enter one or more OBS_ID values and the tool will
+    query the CSC.    The source properties
+    results are written, one line per source, to
+    a tab-separated-value (TSV) format output file, and when verbose is
+    one or higher a subset of the data for each source is printed to the screen.
+    The output file will contain a default set of <HREF link="http://cxc.harvard.edu/csc/columns/">
+    catalog columns</HREF>  
+    unless this is overridden with the 'columns' parameter. The data 
+    products associated with the sources may also be retrieved including 
+    the event files, response files (ARF, RMF, PSF, exposure map), and 
+    related histograms (spectra, lightcurves, images).
+        </PARA>
+      
+    <PARA>
+    More complex queries including doing
+    cross matches must be done using the 
+    <HREF link="http://cda.cfa.harvard.edu/cscview/">CSCView application</HREF>.
+    
+    Users whose research makes use of the Chandra Source Catalog should
+    cite: Evans et al 2010, ApJS 189, 37.        
+        </PARA>
+
+
+      
+    </DESC>
+    
+    <QEXAMPLELIST>
+        <QEXAMPLE>
+            <SYNTAX>
+<LINE> unix% obsid_search_csc obsid=635 outfile=635.tsv download=none mode=h</LINE>
+            </SYNTAX>
+<DESC>
+<PARA>
+Search for all sources that were detected in OBS_ID 635.
+</PARA>
+
+<VERBATIM>
+obsid_search_csc
+           obsid = 635
+         outfile = 635.tsv
+         columns = INDEF
+        download = none
+            root = ./
+           bands = broad,wide
+       filetypes = regevt,pha,arf,rmf,lc,psf,regexp
+         catalog = csc1
+         verbose = 1
+         clobber = no
+            mode = h
+
+
+94 rows returned by query
+94 Different Master Source(s).
+1 Different Observation(s).
+
+name                    ra              dec             obsid
+CXO J162602.2-242348    246.50924       -24.39670         635
+CXO J162603.1-242336    246.51290       -24.39352         635
+CXO J162604.3-242252    246.51817       -24.38122         635
+CXO J162605.8-242756    246.52432       -24.46570         635
+...
+</VERBATIM>
+<PARA>
+    Returns a TSV format file with source list. The default set of columns
+    returned are not printed to the screen but are saved in the TSV file.
+</PARA>
+<VERBATIM>
+% dmlist "635.tsv[opt kernel=text/tsv]" cols
+ 
+--------------------------------------------------------------------------------
+Columns for Table Block 635.tsv
+--------------------------------------------------------------------------------
+ 
+ColNo  Name                 Unit        Type             Range
+   1   name                              String[20]                          Source name in the format 'CXO Jhhmmss.s +/- ddmmss'
+   2   ra                   deg          Real4          -Inf:+Inf            Source position, ICRS right ascension
+   3   dec                  deg          Real4          -Inf:+Inf            Source position, ICRS declination
+   4   err_ellipse_r0       arcsec       Real4          -Inf:+Inf            Major radius of the 95% confidence level error ellipse
+   5   conf_flag                         String[5]                           Source regions overlap (source is confused)
+   6   sat_src_flag                      String[5]                           Source is saturated in all observations; source properties are unreliable
+   7   significance                      Real4          -Inf:+Inf            Highest source flux significance across all observations
+...
+</VERBATIM>
+</DESC>
+        </QEXAMPLE>
+<QEXAMPLE>
+  <SYNTAX>
+     <LINE>
+     unix% obsid_search_csc 635,637 outfile=none download=ask filetype=evt columns=o.cnts_aper_b
+     </LINE>
+  </SYNTAX>
+  <DESC>
+      <PARA>
+      Search for two observations obsid=635 and 637.  We have asked that
+      the full field evt file be return but will be prompted (download=ask).
+      Additionally we require the broad-band source counts for
+      each observation.
+      </PARA>
+      
+      
+<VERBATIM>
+obsid_search_csc
+           obsid = 635,637
+         outfile = none
+         columns = o.cnts_aper_b
+        download = ask
+            root = ./
+           bands = broad,wide
+       filetypes = evt
+         catalog = csc1
+         verbose = 1
+         clobber = no
+            mode = ql
+
+
+175 rows returned by query
+152 Different Master Source(s).
+2 Different Observation(s).
+
+name                    ra              dec             obsid   cnts_aper_b
+CXO J162538.1-242235    246.40889       -24.37654         637          3569
+CXO J162541.3-242138    246.42232       -24.35970         637           265
+CXO J162552.5-241710    246.46882       -24.28632         637           149
+...
+CXO J162752.0-244049    246.96687       -24.68049         635          3849
+CXO J162754.5-243717    246.97730       -24.62162         635            97
+CXO J162755.2-242839    246.98017       -24.47765         635            91
+
+If you use this data, please cite Evans et al 2010, ApJS 189, 37
+
+Download data for CXO J162538.1-242235 in 00637_001 [y,n,a,q]: y
+Retrieving files for obsid_obi 00637_001
+Retrieved file .//637/acisf00637_001N002_evt3.fits
+Download data for CXO J162541.3-242138 in 00637_001 [y,n,a,q]: a
+...
+</VERBATIM>
+  
+  <PARA>
+  When prompted for downloads: 'y' will retrieve the file and continue 
+  onto the next.  'n' will skip the current file and continue.  'a' will
+  retrieve the remaining files with further prompting, and 'q' will skip
+  the current file and will not retrieve nor prompt for any remaining files.  
+  
+  </PARA>
+  
+  
+  </DESC>
+</QEXAMPLE>
+
+<QEXAMPLE>
+  <SYNTAX>
+    <LINE>unix% obsid_search_csc @bootes.lis</LINE>
+  </SYNTAX>
+  <DESC>
+    <PARA>
+      The list of observations can also be supplied using standard
+      CIAO stacks.
+    </PARA>
+  
+  </DESC>
+
+</QEXAMPLE>
+
+
+
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="obsid" type="string" reqd="yes" stacks="yes">
+        <SYNOPSIS>
+Observation Identification
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+        The OBS_ID number.  Multiple obsid's may be input 
+        via a comma separated list or any other stack.
+            </PARA>
+
+        </DESC>
+      </PARAM>
+    
+      <PARAM name="outfile" type="file" reqd="yes">
+        <SYNOPSIS>
+          Name of output table.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+            The output file name.  If left blank or set to "none", the
+            the table of source properties is not saved.          
+          </PARA>
+          <PARA>
+            The output is the same Tab Separated Value (tsv) format
+            as returned by CSCView.  To use the file with DM tools users
+            must explicitly specify the kernel:
+          </PARA>
+          <VERBATIM>
+unix% dmlist "mysrc.tsv[opt kernel=text/tsv]" cols
+--------------------------------------------------------------------------------
+Columns for Table Block mysrc.tsv
+--------------------------------------------------------------------------------
+ 
+ColNo  Name                 Unit        Type             Range
+   1   name                              String[20]                          Source name in the format 'CXO Jhhmmss.s +/- ddmmss'
+   2   ra                                String[12]                          Source position, ICRS right ascension
+   3   dec                               String[11]                          Source position, ICRS declination
+   4   err_ellipse_r0       arcsec       Real4          -Inf:+Inf            Major radius of the 95% confidence level error ellipse
+   5   conf_flag                         String[5]                           Source regions overlap (source is confused)
+   6   sat_src_flag                      String[5]                           Source is saturated; source properties are unreliable
+   7   significance                      Real4          -Inf:+Inf            Highest source flux significance across all observations
+   8   flux_aper_b          erg/s/cm^2   Real4          -Inf:+Inf            Aperture-corrected net energy flux inferred from the source region aper
+   ...
+   </VERBATIM>       
+    </DESC>
+      
+      </PARAM>
+      <PARAM name="columns" type="string" reqd="no" def="INDEF" stacks="yes">
+        <SYNOPSIS>
+          The list of catalog columns to return.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+             The list of catalog columns to return.  The default (INDEF)
+             returns the list of columns returned by the combination
+             of CSCView Master Summary and Obsid Summary defaults.          
+          </PARA>
+          <PARA>
+            Several columns will be added to the query if they
+            are not explicitly provided.  These inlcude:
+            m.name, m.ra, m.dec, o.instrument, o.obsid, o.obi,
+            o.region_id, and a.match_type.          
+          </PARA>
+        <PARA>
+        The prefix "m." or "o." should be used to specify the
+        if the property is a Master Source property (ie a 
+        value derived from all individual observations) or an Obi Source
+        property (computed from a single observation).
+
+          The list of columns can also be input via a stack, eg columns=@my_favorite_cols.lis          
+          </PARA>
+        <PARA>
+          The following special values may be used to return the 
+          standard set of columns defined by CSCView:
+        </PARA>
+<LIST>
+  <ITEM> "MSBS" , the set of Master Source Basic Summary columns</ITEM>
+  <ITEM> "MSS", the set of Master Source Summary columns</ITEM>
+  <ITEM> "MSP", the set of Master Source Photometry columns</ITEM>
+  <ITEM> "MSV", the set of Master Source Variability columns</ITEM>
+  <ITEM> "SOS", the set of Source Observation Summary columns</ITEM>
+  <ITEM> "SOP", the set of Source Observation Photometry columns</ITEM>
+  <ITEM> "SOV", the set of Source Observation Variability columns</ITEM>
+</LIST>
+  <PARA>
+  The values are case-sensitive, and can be used with other values such as
+  </PARA>
+<VERBATIM>
+unix% search_csc ... columns="SOS,a.match_type,o.livetime" ...
+</VERBATIM>
+        
+        </DESC>
+
+      
+      </PARAM>
+
+
+      <PARAM name="download" type="string" def="none">
+        <SYNOPSIS>
+        Retrieve the associated data products?
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+              Determine if data products should be retrieved.
+              The valid options are
+          </PARA>
+        <LIST>
+        <ITEM>"none"  : no datasets are retrieved</ITEM>
+        <ITEM>"ask" : ask for each master source if products should be retrieved.</ITEM>
+        <ITEM>"all" : all products will be retrieved without asking</ITEM>
+        </LIST>
+       <PARA>
+        When asked, users have 4 choices
+       </PARA>
+       <LIST>
+         <ITEM>y : yes to the current source </ITEM>
+         <ITEM>n : no to the current source</ITEM>
+         <ITEM>a : yes to the current source and all remaining sources</ITEM>
+         <ITEM>q : no to the current source and all remaining sources</ITEM>
+       </LIST>
+
+
+        </DESC>
+
+      </PARAM>
+
+      <PARAM name="root" type="file" def="">
+        <SYNOPSIS>
+        Output root directory for data products.
+        </SYNOPSIS>
+      
+      </PARAM>
+
+    
+      <PARAM name="bands" def="broad,wide" type="string">
+        <SYNOPSIS>
+        A comma separated list of energy bands 
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+              Various data products are stored in different energy bands.
+            </PARA>
+        
+          <LIST>
+          <ITEM>broad - ACIS 0.5 - 7.0 keV</ITEM>
+          <ITEM>soft - ACIS 0.5 - 1.2 keV</ITEM>
+          <ITEM>medium - ACIS 1.2 - 2.0 keV</ITEM>
+          <ITEM>hard - ACIS 2.0 - 7.0</ITEM>
+          <ITEM>ultrasoft - ACIS 0.2 - 0.5</ITEM>
+          <ITEM>wide - HRC</ITEM>          
+          </LIST>
+        <PARA>
+        This parameter is the list of energy bands for those products.
+        </PARA>        
+        <PARA>
+          If bands is blank, all bands are retrieved.
+        </PARA>
+        
+        </DESC>
+        
+      </PARAM>
+
+      <PARAM name="filetype" type="string" def="regevt,pha,arf,rmf,lc,psf,regexp">
+        <SYNOPSIS>
+          Comma separated list of file types to retrieve.
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            List of files to retrieve.  The following list gives the 
+            valid options.
+            </PARA>
+        
+          <LIST>
+            <ITEM>evt - Level 3 event file for entire observation</ITEM>
+            <ITEM>exp - Full field exposure map (per energy band)</ITEM>
+            <ITEM>ahst - Aspect histogram file </ITEM>
+            <ITEM>bpix - Level 3 badpixel file</ITEM>
+            <ITEM>fov - Level 3 field of view file</ITEM>
+            <ITEM>bkgimg - Background image (per energy band)</ITEM>
+            <ITEM>sens - Sensitivity map (per energy band)</ITEM>
+            <ITEM>img - Exposure corrected, background subtracted full field image (per energy band)</ITEM>
+            <ITEM>reg - Source region defintion</ITEM>
+            <ITEM>arf - Auxillary Response File for spectral fitting</ITEM>
+            <ITEM>rmf - Response Matrix File for spectral fitting</ITEM>
+            <ITEM>pha - Spectrum</ITEM>
+            <ITEM>regevt - Event file for just area around current source</ITEM>
+            <ITEM>regexp - Region exposure map (per energy band)</ITEM>
+            <ITEM>regimg - Exposure corrected image of source (per energy band) </ITEM>
+            <ITEM>psf - Point Spread Function (per energy band)</ITEM>
+            <ITEM>lc - Light curve (per energy band)</ITEM>            
+          </LIST>
+
+            <PARA>
+                It is possible that the same file may be queued for
+                retrieve more than once.  The script will recognize this
+                and will instead make a copy of the file instead of re-retrieving
+                it from the archive.            
+            </PARA>
+            <PARA>
+                The script will check if the file it is about to retrieve
+                already exists.  If so it will skip the and inform the user.
+            </PARA>
+            <PARA>
+                Files are place in subdirectories of the current
+                directory.  They are organized by OBS_ID, source name "CXOJ...", 
+                and then by region id.
+                This heiarchry ensures that the large per-obi files are
+                only retrieved/stored once per master source. 
+                
+            </PARA>
+            <PARA>
+               If filetype is left blank, all avialble file types
+               are retrieved.
+            </PARA>
+            
+        </DESC>
+      
+      </PARAM>
+      <PARAM name="catalog" type="string" def="csc1">
+        <SYNOPSIS>Fixed at 'csc1'.  Added for future expansion.</SYNOPSIS>
+      </PARAM>
+
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+        <SYNOPSIS>
+          Tool chatter level.
+        </SYNOPSIS>      
+      </PARAM>
+    
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>
+          Remove outfile if it already exists?  
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+            This only applies to outfile.  Products are
+            never overwritten.
+          </PARA>
+        </DESC>
+      
+      </PARAM>
+    
+
+    
+    </PARAMLIST>
+
+
+    <ADESC title="Changes in the scripts 4.6.6 (September 2014) release">
+      <PARA>
+        Corrects the "MSBS" (master source basic summary) macro.  
+      </PARA>
+      <PARA>
+        Provide more information when CSC servers are down and the 
+        catalog is not available.
+      </PARA>
+    
+    </ADESC>
+
+
+
+
+    <BUGS>
+    <PARA>
+        See the
+       <HREF link="http://cxc.harvard.edu/ciao/bugs/obsid_search_csc.html">bugs page
+        for this tool</HREF> 
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+<LASTMODIFIED>September 2014</LASTMODIFIED>
+
+
+
+
+  </ENTRY>
+
+</cxchelptopics>

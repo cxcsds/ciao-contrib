@@ -1,0 +1,345 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr 'unix&#37;'>
+]>
+<cxchelptopics>
+  <ENTRY key="acis_fef_lookup" context="tools" 
+	 refkeywords="mkrmf fef extract spectrum spectra imaging_spectroscopy pha pi arf rmf imaging spectroscopy" 
+	 seealsogroups="resptools">
+    <SYNOPSIS>Find the FITS Embedded Function file for use by mkrmf</SYNOPSIS>
+    <DESC>
+      <PARA>
+	This tool returns the location of the FITS Embedded Function (FEF) file
+	needed by mkrmf to make either a PI or a PHA RMF for a point source
+	observed by ACIS.
+	It is not needed if you are creating a weighted response (ie 
+	for an extended source) using
+	mkwarf and mkrmf, since the CALDB can be automatically queried 
+	in this case.
+      </PARA>
+      <PARA title="When to use mkacisrmf">
+	The script will warn you - if verbose is set to a non-zero value - if
+	the data has been processed in such a way that you should be using
+	mkacisrmf rather than mkrmf to create the response file.
+	This condition is also indicated by setting the 
+	quality parameter to "no" on output.
+	See the <HREF
+	link="http://cxc.harvard.edu/ciao/threads/mkacisrmf/">Creating
+	ACIS RMFs with mkacisrmf</HREF> thread for more information.
+      </PARA>
+      <PARA title="Output">
+	When run, the tool prints the location of the FEF file (including any
+	necessary spatial filter) to the screen and to its outfile parameter.
+	This makes it easy to use from the shell, or script, since pget can be used to
+	access the file name:
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; set feffile = `pget acis_fef_lookup outfile`</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	or the parameter redirection syntax (see 
+	"ahelp parameter") can be used:
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; pset mkrmf infile=")acis_fef_lookup.outfile"</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA title="Using acis_fef_lookup">
+	The script can be used in two modes:
+      </PARA>
+      <LIST>
+	<ITEM>Point source</ITEM>
+	<ITEM>Extended source</ITEM>
+      </LIST>
+
+      <PARA title="FEF for a point source">
+	You must supply the location of the source in CHIP coordinates - ie
+	the value of the ccd_id, chipx, and chipy columns from the event file.
+	The returned file name includes a DM spatial filter which specifies the
+	part of the FEF file to use.
+      </PARA>
+      <PARA>
+	Since the dither pattern of Chandra means that even a point source
+	moves over a non-negligible number of pixels, and likely over multiple
+	FEF tiles, the decision of
+	what location to use is not a simple one, and depends on your science goals
+	and the location of the source (eg is it near a chip gap or does it
+	fall on more than one node). 
+      </PARA>
+      <PARA title="FEF for an extended source">
+	If you wish to use mkrmf with a weight map, created by mkwarf, then you
+	need the location of the FEF file without the spatial filter used in the
+	point source case. This is achieved by setting chipid to "none" (the
+	values of the chipx and chipy parameters are ignored in this case).
+	However, this step is not needed since mkwarf and mkrmf
+	can accept a CALDB query (e.g. feffile=CALDB) 
+	for the FEF file when using weights files.
+      </PARA>
+      <PARA>
+	The 
+	<HREF link="http://cxc.harvard.edu/ciao/threads/">CIAO thread pages</HREF>
+	discuss in greater detail the steps necessary to calculate the ARF and
+	RMF for a source.
+      </PARA>
+
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; acis_fef_lookup evt2.fits 5 512 512</LINE>
+	  <LINE>
+.../acisD2000-01-29fef_pha_ctiN0004.fits[FUNCTION][ccd_id=5,chipx=449:512,chipy=449:512]
+	  </LINE>
+	  <LINE>(the full path has been excluded for brevity)</LINE>
+	  <LINE>&pr; pget acis_fef_lookup quality</LINE>
+	  <LINE>yes</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    This gives the file name of the FEF file applicable for
+	    the observation and position on the detector. As the quality parameter
+	    is "yes", rather than "no", then it is okay to use mkrmf to calculate
+	    the response for your data.
+	  </PARA>
+	  <PARA>
+	    In this example the input events file is for an obervation at a focal plane
+	    temperature of -120 degrees C and which has had the CTI correction
+	    algorithm (see acis_process_events) applied to it.
+	  </PARA>
+	  <PARA>
+	    One can then run mkrmf by either explicitly setting its infile parameter
+	    to the output of this tool, for instance by using pget
+	    (using tcsh shell syntax and again ignoring the full path) - 
+	  </PARA>
+
+<VERBATIM>
+&pr; set feffile = `pget acis_fef_lookup outfile`
+&pr; echo $feffile
+.../acisD2000-01-29fef_pha_ctiN0004.fits[FUNCTION][ccd_id=5,chipx=449:512,chipy=449:512]
+</VERBATIM>
+
+	  <PARA>
+	  - or by using the
+	    redirection capabilities of the parameter interface - 
+	  </PARA>
+
+<VERBATIM>
+&pr; mkrmf infile=")acis_fef_lookup.outfile" ...other parameters..
+</VERBATIM>
+
+	  <PARA>
+	    See "ahelp parameter" for more on the parameter
+	    interface.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; acis_fef_lookup evt2.fits none</LINE>
+	  <LINE>.../acisD2000-01-29fef_pha_ctiN0004.fits[FUNCTION]</LINE>
+	  <LINE>(the full path has been excluded for brevity)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Find the name of the FEF file but without any spatial filter.
+	    This is useful when creating weighted responses for
+	    extended sources.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; acis_fef_lookup spectrum_cti.pi none</LINE>
+	  <LINE>.../acisD2000-01-29fef_pha_ctiN0004.fits[FUNCTION]</LINE>
+	  <LINE>(the full path has been excluded for brevity)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we repeat the previous example but using a spectrum
+	    (PHA format; the column that was binned on - ie PHA or PI - is unimportant) 
+	    which was extracted using dmextract from an events file that had
+	    been CTI corrected.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+    <PARAMLIST>
+      <PARAM name="infile" type="string" filetype="input" reqd="yes">
+	<SYNOPSIS>
+	  Source file (event or spectrum)
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The infile parameter can accept any file that contains enough
+	    information in its header for the calquiz tool to work;
+	    event files (L1 and L2) and PHA-format files produced by dmextract are
+	    both suitable.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="chipid" type="string" reqd="yes" def="none">
+	<SYNOPSIS>
+	  ACIS chip number
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter is used to define which ACIS chip you want the
+	    FEF for. The allowed parameters are 0-9 (for the 10 chips ACIS-0 
+	    to ACIS-9) or the string "none". This last option makes the tool
+	    ignore the values of the chipx and chipy parameters and
+	    just report the FEF file (with block number).
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="chipx" type="integer" reqd="yes" min="1" max="1024" def="1">
+	<SYNOPSIS>
+	  ACIS chip x coordinate
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The spectral response of the ACIS chips depend on location
+	    within the chip (ie in which FEF tile the source falls). The chipid,
+	    chipx and chipy parameters specify this position, where chipx/y
+	    are in chip coordinates (ie 1 to 1024).
+	    If chipid=none then this value is neither prompted for nor used.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="chipy" type="string" reqd="yes" min="1" max="1024" def="1">
+	<SYNOPSIS>
+	  ACIS chip y coordinate
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    The spectral response of the ACIS chips depend on location
+	    within the chip (ie in which FEF tile the source falls). The chipid,
+	    chipx and chipy parameters specify this position, where chipx/y
+	    are in chip coordinates (ie 1 to 1024).
+	    If chipid=none then this value is neither prompted for nor used.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="outfile" type="string" filetype="output" reqd="no">
+	<SYNOPSIS>
+	  FEF file to use
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter is filled by the tool when it has run, and
+	    contains the name of the FEF file to use, including any
+	    spatial filter (if chipid was not set to none).
+	    See also the quality parameter, which indicates whether
+	    this file is valid.
+	  </PARA>
+	  <PARA>
+	    The value can be accessed using pget/plist/pdump; for instance:
+	  </PARA>
+<VERBATIM>
+&pr; set feffile = `pget acis_fef_lookup outfile`
+&pr; echo $feffile
+.../acisD2000-01-29fef_pha_ctiN0004.fits[FUNCTION][ccd_id=5,chipx=449:512,chipy=449:512]
+</VERBATIM>
+	</DESC>
+      </PARAM>
+      <PARAM name="quality" type="boolean" def="no" reqd="no">
+	<SYNOPSIS>
+	  Should you use the FEF file (if no use mkacisrmf)?
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    There are a number of datasets for which responses should be
+	    calculated using mkacisrmf rather than mkrmf (i.e. for which
+	    this tool need not be run since mkacisrmf can use an infile
+	    of CALDB rather than a specific file, unlike mkrmf). If this
+	    is the case then the quality parameter will be set to no
+	    on output, and a warning message will be displayed to the
+	    screen if the verbose parameter is set to 1 or higher.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      <PARAM name="verbose" type="integer" reqd="no" min="0" max="5" def="0">
+	<SYNOPSIS>
+	  Verbose level
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    If set to a non-zero value then the tool will output extra
+	    information (other than the name of the FEF file) when
+	    run. This information is only likely to be useful when
+	    debugging the tool.
+	  </PARA>
+	  <PARA>
+	    One exception to this is that if verbose is set to 1, or
+	    higher, then
+	    warnings will be displayed when the tool is being used
+	    on data that should be analyzed with responses calculated
+	    using mkacisrmf rather than mkrmf. The quality parameter
+	    will be set to "no" in this case.
+	  </PARA>
+	</DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="How is the FEF Chosen?">
+      <PARA>
+	There are separate FEF files for each focal plane temperature
+	since the spectral response varies with chip temperature.
+	As the CTI correction algorithm recovers much of the resolution
+	lost due due to the radiation damage there are also separate
+	FEF files for use with data that has and has not been CTI corrected.
+      </PARA>
+      <PARA>
+	Each ACIS chip is split up into a number of tiles and the response is
+	assumed to be constant within each tile. The size of these
+	tiles depends on the type of chip (whether it is front or
+	back illuminated) and the focal-plane tempertature.
+	The minimum size for a tile is 32 by 32 pixels and the largest
+	size is 256 by 32 pixels (note that no tile crosses a node
+	boundary).
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
+      <PARA>
+        The code has been updated to avoid warning messages from
+        NumPy version 1.9. There is no difference to how the
+        script behaves.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the CIAO 4.6.1 (December 2013) Release">
+      <PARA>
+	The script has been updated to run in CIAO 4.6.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+    <BUGS>
+      <PARA>
+        See the
+        <HREF
+	    link="http://cxc.harvard.edu/ciao/bugs/acis_fef_lookup.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+	listing of known bugs.
+      </PARA>
+    </BUGS>
+    <LASTMODIFIED>November 2015</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

@@ -1,0 +1,227 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+]>
+<cxchelptopics>
+  <ENTRY key="cda_search" context="contrib"
+         refkeywords="find search chandra obsid obsids
+                      search_chandra_archive get_chandra_obs
+                      footprint server fov overlap near point position pos
+		      cda chandra data archive public
+                      SIA simple image access endpoint 
+		      python"
+         displayseealsogroups="contrib.coords"
+	 seealsogroups="contrib.cda">
+
+    <SYNOPSIS>
+      Find publicly-available Chandra ObsIds from the Chandra archive (Python interface).
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>from ciao_contrib.cda.search import search_chandra_archive, get_chandra_obs</LINE>
+      <LINE>sr = search_chandra_archive(ra, dec, size=0.1, instrument=None, grating=None)</LINE>
+      <LINE>co = get_chandra_obs(sr, ra=None, dec=None, fmt=None)</LINE>
+      <LINE/>
+      <LINE>ra and dec are in decimal degrees (ICRS). The size argument is a radius, in
+            degrees. The instrument argument can be one of "acis", "acis-i", "acis-s",
+            "hrc", "hrc-i", or "hrc-s". The grating argument can be "none", "letg", 
+            or "hetg".</LINE>
+      <LINE/>
+      <LINE>The fmt argument can be " " or ":" .</LINE>
+      <LINE/>
+      <LINE>The Python help command - help(search_chandra_archive) - can be used</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+        The search_chandra_archive routine will find all publically-available observations
+        that overlap the given position (or circle, if radius is not 0), by querying
+        the <HREF link="http://cxc.harvard.edu/cda/footprint/cdaview.html">Chandra Footprint Service</HREF>.
+        The instrument and grating arguments can be used to filter the search.
+        It returns a NumPy structured array if there was a match, otherwise None.
+      </PARA>
+
+      <PARA>
+        The get_chandra_obs routine converts the return value of search_chandra_archive
+        into an OrderedDict. If the ra and dec arguments are given then an
+        extra field is included, giving the separation of each observation from the position.
+        If the fmt argument is given then extra fields are added containing the RA and Dec
+        values converted to strings.
+      </PARA>
+
+      <PARA>
+        These routines are used by the find_chandra_obsid script but they can be
+        used from a Python script or session.
+      </PARA>
+
+      <PARA title="Loading the routines">
+	The routines can be loaded into a Python session or script by saying:
+      </PARA>
+
+<VERBATIM>
+from ciao_contrib.cda.search import *
+</VERBATIM>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; from ciao_contrib.cda.search import *</LINE>
+	  <LINE>&pr; sr = search_chandra_archive(8.815, -43.566, size=0.3)</LINE>
+          <LINE>&pr; print(sr == None)</LINE>
+          <LINE>False</LINE>
+          <LINE>&pr; print(sr.size)</LINE>
+          <LINE>52</LINE>
+          <LINE>&pr; print(sr.dtype.names[0:5])</LINE>
+          <LINE>('ObsId', 'target_name', 'obs_date', 'RA', 'Dec')</LINE>
+          <LINE>&pr; print(sr['ObsId'][0:10])</LINE>
+          <LINE>[7016 7016 7016 7016 7016 7016 7016 7016 7017 7017]</LINE>
+          <LINE>&pr; print(sr[0])</LINE>
+          <LINE>(7016, 'ELAIS-S1 A', '2005-09-26T22:17:00', 8.80125, -43.3555555555556, 7900290, ...</LINE>
+          <LINE>print(sr[0]['target_name'])</LINE>
+          <LINE>ELAIS-S1 A</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            Here we search the Chandra Archive for public observations within 0.3 degrees
+            of RA=8.815 and Dec=-43.566. As the return is not None, there were matches (
+            at the time of writing there were 52 matches, but as we show below, this does not
+            mean 52 different ObsIds). Since the return value is a
+            <HREF link="http://docs.scipy.org/doc/numpy-1.7.0/user/basics.rec.html">NumPy
+            structured array</HREF>, we can query it by colummn (e.g. 'ObsId')
+            or by row (e.g. '[0]').
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; obs = get_chandra_obs(sr)</LINE>
+          <LINE>&pr; print(obs.keys())</LINE>
+          <LINE>['obsid', 'instrument', 'grating', 'exposure', 'ra', 'dec', 'target', 'obsdate', 'piname']</LINE>
+          <LINE>&pr; print(obs['obsid'])</LINE>
+          <LINE>[7016, 7017, 7018, 7019, 7020, 7328]</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            The get_chandra_obs() routine takes the return value from 
+            search_chandra_obsid and converts it to a dictionary (actually
+            <HREF link="http://docs.python.org/2/library/collections.html#collections.OrderedDict">a
+            collections.OrderedDict object</HREF>), ensures there's only
+            one entry per ObsId, and returns only a subset of the columns
+            (after renaming them).
+	  </PARA>
+          <PARA>
+           The ciao_contrib.cda.download_chandra_obsids routine
+           (<HREF link="http://cxc.harvard.edu/ciao/ahelp/cda_data.html">ahelp cda_data</HREF>)
+           can be used to download the data.
+          </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; obs2 = get_chandra_obs(sr, ra=8.815, dec=-43.566)</LINE>
+          <LINE>&pr; s1 = set(obs.keys())</LINE>
+          <LINE>&pr; s2 = set(obs2.keys())</LINE>
+          <LINE>&pr; print(s2.difference(s1))</LINE>
+          <LINE>set(['separation'])</LINE>
+          <LINE>&pr; print(obs2['separation'])</LINE>
+          <LINE>[12.640858276726794, 20.931687543092089, ..., 7.2534106580554472]</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            By adding in ra and dec arguments to the get_chandra_obs call, an
+            extra column - called "separation" - is added, which gives the separation
+            of the observation from the position in arcminutes. Here we calculate the
+            separation of the observations from the search position.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Values returned by get_chandra_obs">
+      <PARA>
+        The keys of the dictionary returned by get_chandra_obs
+        are listed in the table below:
+      </PARA>
+
+      <TABLE>
+        <CAPTION>get_chandra_obs keys</CAPTION>
+        <ROW><DATA>Key name</DATA><DATA>Description</DATA></ROW>
+        <ROW>
+          <DATA>obsid</DATA>
+          <DATA>ObsId of the observation</DATA>
+        </ROW>
+        <ROW>
+          <DATA>instrument</DATA>
+          <DATA>One of 'ACIS-I', 'ACIS-S', 'HRC-I', or 'HRC-S'.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>grating</DATA>
+          <DATA>One of 'NONE', 'LETG', or 'HETG'.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>exposure</DATA>
+          <DATA>The exposure time in kiloseconds.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>ra</DATA>
+          <DATA>The aim-point Right Ascension in decimal degrees (ICRS).</DATA>
+        </ROW>
+        <ROW>
+          <DATA>dec</DATA>
+          <DATA>The aim-point Declination in decimal degrees (ICRS).</DATA>
+        </ROW>
+        <ROW>
+          <DATA>target</DATA>
+          <DATA>The target name (from the observation proposal).</DATA>
+        </ROW>
+        <ROW>
+          <DATA>obsdate</DATA>
+          <DATA>The start of the observation, in YYYY-MM-DDTHH:MM:SS format.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>piname</DATA>
+          <DATA>The PI's last name.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>separation</DATA>
+          <DATA>Only created if ra and dec arguments are not None, this is the separation between the
+                aim point of the observation and the given RA and Dec, in arc minutes.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>rastr</DATA>
+          <DATA>If fmt is not None then this is the ra column converted to a string version
+                using the coords.format.deg2ra routine.</DATA>
+        </ROW>
+        <ROW>
+          <DATA>decstr</DATA>
+          <DATA>If fmt is not None then this is the dec column converted to a string version
+                using the coords.format.deg2dec routine.</DATA>
+        </ROW>
+      </TABLE>
+
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.4 (August 2013) release">
+      <PARA>
+	Documentation for the ciao_contrib.cda.search module is new in this release.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This module is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+
+    <LASTMODIFIED>August 2013</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>

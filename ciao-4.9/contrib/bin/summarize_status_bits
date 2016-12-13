@@ -1,0 +1,238 @@
+#! /usr/bin/env python
+
+# 
+# Copyright (C) 2013, 2016  Smithsonian Astrophysical Observatory
+# 
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+
+
+
+import sys
+
+import ciao_contrib.logger_wrapper as lw
+import numpy as np
+
+toolname = "summarize_status_bits"
+version = "15 Sep 2016"
+
+lw.initialize_logger(toolname, verbose=1)
+#v1 = lw.make_verbose_level(toolname, 1)
+
+from collections import namedtuple
+Desc = namedtuple( 'Desc', ['key', 'bit', 'comment'] )
+
+
+acis_bitdef = [ # Taken from GEA memo 
+      [
+        Desc( "BIT31", "31", "Unused"),
+        Desc( "BIT30", "30", "Unused"),
+        Desc( "BIT29", "29", "Unused"),
+        Desc( "BIT28", "28", "Unused"),
+        Desc( "BIT27", "27", "Unused"),
+        Desc( "BIT26", "26", "Unused"),
+        Desc( "BIT25", "25", "Unused"),
+        Desc( "BIT24", "24", "Unused")
+      ],[    
+        Desc( "BADVF", "23", "Identified as a cosmic ray charge bloom (VFAINT mode)"),
+        Desc( "RDSTKBKG", "22","Identified as a background event in vertical readout streak"),
+        Desc("RDSTK", "21","Identified as a source event in vertical readout streak"),
+        Desc("CTIERR", "20","CTI algorithm did not converge"),
+        Desc("GLOW3", "19","Length of afterglow (obsolete)"),
+        Desc("GLOW2", "18","Length of afterglow (obsolete)"),
+        Desc("GLOW1", "17","Length of afterglow (obsolete)"),
+        Desc("GLOW", "16","Event is part of a cosmic ray afterglow")
+      ],[
+        Desc("DESTREAK", "15","Horizontal streak identified by destreak tool"),
+        Desc("BADCM4", "14","All corner PHA values are bad (GRADED mode)"),
+        Desc("BADCM3", "13","Two bad corner PHA values (GRADED mode, obsolete)"),
+        Desc("BADCM2", "12","One or three bad corner PHA value (GRADED mode, obsolete)"),
+        Desc("BADCM", "11","Corner mean below -4095 (GRADED mode)"),
+        Desc("BADOCLK", "10","Bad overclock value"),
+        Desc("NOOCLK", " 9","Missing overclock value for this exposure"),
+        Desc("BIASPAR", " 8","Bias parity error detected during observation")
+      ],[        
+        Desc("UNKBIAS", " 7","Unknown bias value (4096)"),
+        Desc("BADBIAS", " 6","Bad bias value (4095)"),
+        Desc("BADPIXE", " 5","Surrounding event island falls on bad pixel"),
+        Desc("BADPIX", " 4","Center of event island falls on bad pixel"),
+        Desc("BADSUM", " 3","Total PHA value greater than 32767"),
+        Desc("BADPHAS", " 2","PHAS value greater than 4095"),
+        Desc("BADLM", " 1","Center pixel PHA not local maximum"),              
+        Desc("BADPOS", " 0","Invalid chip coordinate")
+      ]]
+
+hrc_bitdef = [  # taken from Juda memo (reverse bit order)
+      [
+        Desc("RINGV", "31","V axis corrected for tap ringing effect"),
+        Desc("RINGU", "30","U axis corrected for tap ringing effect"),
+        Desc("BIT29", "29","Unused"),
+        Desc("BIT28", "28","Unused"),
+        Desc("TCORR", "27","Event time has been corrected for hardware problem"),
+        Desc("NILMODE", "26","Event was telemetered in Next In Line mode. Times are unreliable"),
+        Desc("BADCRSV2", "25","V position outside of coarse position logic, position unknown"),
+        Desc("BADCRSU2", "24","U position outside of coarse position logic, position unknown"),
+      ],[    
+        Desc("BADCRSV", "23","V position outside the specified coarse position limits"),
+        Desc("BADCRSU", "22","U position outside the specified coarse position limits"),
+        Desc("TRIGV", "21","Number of V-axis taps with signal exceeding trigger above commanded level"),
+        Desc("TRIGU", "20","Number of U-axis taps with signal exceeding trigger above commanded level"),
+        Desc("COINC", "19","Event occurred coincident with signal from anti-coincidence shield"),
+        Desc("BIT18", "18","Reserved (hardware)"),
+        Desc("SIGHI", "17","Signal above upper level discriminator, may be particle"),
+        Desc("SIGLOW", "16","Signal below lower level discriminator, position may be wrong")
+      ],[
+        Desc("BADPIX", "15","Event in bad region/pixel"),
+        Desc("SIGAXIS2", "14","Total on V or U axis is 0 (same as 8)"),
+        Desc("BADCTRV", "13","V center tap is not local maximum"),
+        Desc("BADCTRU", "12","U center tap is not local maximum"),
+        Desc("BADRATIO", "11","PHA ratio test failed, likely a particle event"),
+        Desc("SIGZERO", "10","Sum of all 6 tap is 0, event position is unknown"),
+        Desc("SIGSUM", " 9","Sum of signal on U and V axis are discrepant, position may be inaccurate "),
+        Desc("SIGAXIS", " 8","Total signal on V or U axis is 0")
+      ],[        
+        Desc("BADPI", " 7","PI value out of range"),
+        Desc("EVTOOT", " 6","Event out of time sequence"),
+        Desc("AMPFLATV", " 5","AMP flatness test failed on V axis"),
+        Desc("AMPFLATU", " 4","AMP flatness test failed on U axis"),
+        Desc("AMPSATV", " 3","AMP saturation test failed on V axis"),
+        Desc("AMPSATU", " 2","AMP saturation test failed on U axis"),
+        Desc("BADHYPV", " 1","Hyperbolic test failed on V axis"),
+        Desc("BADHYPU", " 0","Hyperbolic test failed on U axis")
+      ]]
+
+
+
+def get_status_column( infile ):
+    """
+    Load event file and get status column values
+    
+    """
+    import cxcdm as dm
+    
+    try:
+        tab = dm.dmTableOpen( infile+"[cols status]" )    
+        if not tab:
+            raise Exception("")
+    except:
+        raise IOError("Could not open infile '{}'".format(infile))
+    
+    try:
+        col = dm.dmTableOpenColumn( tab, "status" )
+        if not col:
+            raise Exception("")
+    except:
+        raise IOError("Could not open STATUS column in file '{}'".format(infile))
+    
+    k,v = dm.dmKeyRead( tab, "INSTRUME" )
+    v = v.decode("ascii")
+    if "ACIS" == v:
+        bitdef = acis_bitdef
+    elif "HRC" == v:
+        bitdef = hrc_bitdef
+    else:
+        raise IOError("Unsupported instrument = '{}' in file '{}'".format( v, infile ))
+
+    if not dm.dmBlockGetName( tab).startswith("EVENT"):
+        raise IOError("File does not appear to be an event file")
+    
+    
+    status = dm.dmGetData(col, 1, dm.dmTableGetNoRows(tab) )        
+
+    dm.dmTableClose(tab)    
+    return status, bitdef
+
+    
+
+def check_bits( status):
+    """
+    Check the bit values.    
+
+    Note: same event can have many bits set.
+    """
+    counts = np.zeros( [4,8], dtype='i4' )
+
+    for byte in range( 4):
+        check = [0,0,0,0]
+        for bit in range( 8 ):            
+            check[byte] = 2**(7-bit)            
+        
+            # We use numpy to do a bitwise and () of the unit8 values.
+            # then sum the values and divide by the value we are looking for.
+            # So if we are looking at bit 3, that is 2^3 = 8.  
+            # Numpy bitwise and will return 8 for those events whose bit is set, 0 otherwise.
+            # sum them and then divide by 8 and we get the number of events with
+            # that bit set.
+            counts[byte][bit] = np.bitwise_and( status, check ).sum() / check[byte] 
+        #print "{:2d}% done".format( int(100*(byte+1)/4.0 ))
+    
+    return counts
+
+
+def print_results( counts, total, bitdef ):
+    """
+    
+    """    
+
+    ff = "{:10s} {:>3} {:>7} {:>6}  {}"
+
+    def print_banner():
+        print ("")
+        print (ff.format( "BitName","Bit","NumEvt","%Evt", "BitDesc"))
+        print (ff.format( "-------","---","------","----", "-------"))
+    
+    banner = 0
+
+    tp = [ ]
+    for bytes in zip( counts, bitdef ):
+        for cc,bb in zip(*bytes):
+            if cc > 0:
+                if 0==banner:
+                    print_banner()
+                    banner=1
+                pp = "{:5.1f}".format((cc*100.0)/total)
+                tp.append(ff.format( bb.key, bb.bit, cc, pp, bb.comment ))
+    if 0 == banner:
+        print ("\nAll status bits are 0\n")
+    else:
+        tp.reverse()
+        for p in tp: print(p)
+
+
+
+@lw.handle_ciao_errors(toolname, version)
+def summarize_bits():
+    """
+    Routine to summarize the event status bits
+    """
+
+    if len(sys.argv) != 2:
+        raise IOError("Usage: {} filename".format( sys.argv[0]))
+
+    infile = sys.argv[1]
+    status, bitdef = get_status_column( infile )
+    counts = check_bits( status )
+    print_results( counts, len(status), bitdef )
+
+
+if __name__ == "__main__":
+    summarize_bits()
+    sys.exit(0)
+
+
+
+
+

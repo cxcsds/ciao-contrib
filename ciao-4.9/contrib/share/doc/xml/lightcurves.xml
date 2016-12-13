@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY pr "chips>">
+]>
+<cxchelptopics>
+  <ENTRY key="lightcurves" context="contrib"
+	 refkeywords="lightcurve histogram timing time times background
+		      variability vary gti clean filter sigma clip remove high low rate rates count counts count-rate countrate lightcurves.py"
+	 seealsogroups="contrib timingtools cleantools"> 
+
+    <SYNOPSIS>
+      lightcurves - routines to remove periods of anomalously high (or low) count rates in a lightcurve
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>
+	from lightcurves import *
+      </LINE>
+      <LINE/>
+      <LINE>The module provides the lc_clean() and lc_sigma_clip()
+      routines.</LINE>
+      <LINE>Please see the deflare tool ("ahelp deflare") if you want to run
+      these routines from the command line.</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The lightcurves module provides two Python routines that can be used to
+	remove periods of high (or low) count rates in a lightcurve.
+	The first - lc_clean() - is designed for use with the ACIS
+	background files and is based on the lc_clean program created by
+	Maxim Markevitch. The second - lc_sigma_clip() - is a simple
+	sigma-clipping routine. See
+	"ahelp lc_clean" and "ahelp lc_sigma_clip" for more information
+	about the individual routines.
+      </PARA>
+
+      <PARA>
+	The routines are usable from the command line using the
+	deflare tool, as described by "ahelp deflare".
+      </PARA>
+
+      <PARA title="Loading the module">
+        The module can be loaded into a Python
+	interpreter - such as chips, sherpa, or ipython
+	- by saying:
+      </PARA>
+
+<VERBATIM>
+from lightcurves import *
+</VERBATIM>
+
+      <PARA>
+	This only needs to be done once per session (when using
+	an interactive shell such as chips or sherpa). Loading
+	the module will make available the lc_clean and lc_sigma_clip
+	routines.
+      </PARA>
+
+      <PARA>
+	The two routines use different algorithms to detect flares
+	in a light curve. Both are intended to be used with data that
+	has relatively high count rates (i.e. ones in which bins are not
+	expected to have no counts in them). The default mode is to
+	create a plot showing the selected periods of the light curve,
+	and to display the filter on screen. They can also be used to
+	create a GTI file which encodes this information and 
+	can be used to filter the event file to remove these periods.
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+
+      <QEXAMPLE>
+
+	<SYNTAX>
+	  <LINE>&pr; lc_clean("bg.lc")</LINE>
+	  <LINE>&pr; add_window()</LINE>
+	  <LINE>&pr; lc_sigma_clip("bg.lc")</LINE>
+	</SYNTAX>
+
+	<DESC>
+	  <PARA>
+	    Display the results of the two algorithms in two windows to
+	    aid comparison of the results.
+	  </PARA>
+	</DESC>
+
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; lc_clean("bg.lc", outfile="clean.gti")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Filter the light curve in the file bg.lc using the lc_clean algorithm
+	    and create a GTI file (clean.gti). This file can then be used to filter
+	    the event file (here assumed to be called evt2.fits) using dmcopy:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>unix% dmcopy "evt2.fits[@clean.gti]" evt2.cleaned.fits</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; lc_sigma_clip("bg.lc", outfile="clip.gti")</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Filter the light curve in the file bg.lc using the lc_sigma_clip algorithm
+	    and create a GTI file (clip.gti). This file can then be used to filter
+	    the event file (here assumed to be called evt2.fits) using dmcopy:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>unix% dmcopy "evt2.fits[@clip.gti]" evt2.cleaned.fits</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <ADESC title="Format of Lightcurves">
+      <PARA>
+	The routines are designed to work with light curves that were
+	created using the CIAO dmextract tool, run with the opt parameter set
+	to ltc1. They should however also work with any file which has the 
+	following columns:
+      </PARA>
+      <LIST>
+	<ITEM>TIME</ITEM>
+	<ITEM>TIME_MIN and TIME_MAX (optional)</ITEM>
+	<ITEM>COUNT_RATE or, if not present, RATE</ITEM>
+	<ITEM>EXPOSURE (optional for lc_sigma_clip, required for lc_clean)</ITEM>
+      </LIST>
+      <PARA>
+	If the file contains OBJECT and OBS_ID keywords then these will be
+	used to label the plot.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the December 2011 release">
+      <PARA>
+	The routines have been updated to work with CIAO 4.4.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+          instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/lightcurves.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>October 2011</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>
