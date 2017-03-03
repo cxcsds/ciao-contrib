@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-__version__ = "CIAO 4.8.1"
+__version__ = "CIAO 4.9"
 toolname = "blanksky"
-__revision__  = "05 October 2016"
+__revision__  = "14 February 2017"
 
 import os, sys, paramio, tempfile, shutil, stat
 import pycrates as pcr
@@ -265,6 +265,7 @@ def get_par(argv):
     # pars["band"] = params["band"] = paramio.pgetstr(pfile,"band")
     pars["bkgparams"] = params["bkgparams"] = paramio.pgetstr(pfile,"bkgparams")
     pars["weight_method"] = params["weight"] = paramio.pgetstr(pfile,"weight_method")        
+    pars["random"] = params["randomseed"] = paramio.pgeti(pfile,"random")
     pars["tmpdir"] = params["tmpdir"] = paramio.pgetstr(pfile,"tmpdir")
     pars["verbose"] = params["verbose"] = paramio.pgeti(pfile,"verbose")
     pars["clobber"] = params["clobber"] = paramio.pgetstr(pfile, "clobber")
@@ -546,24 +547,28 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
 
             bkg_repro = bkg_calib # delete if apply_gain is implemented, uncomment above block
 
-            # add the PNT header keywords from the evt file
+            # add the PNT and AVG header keywords from the evt file
             # modify bkg file header
-            for key in ["RA_PNT","DEC_PNT","ROLL_PNT"]:
+            for key in ["RA_PNT","DEC_PNT","ROLL_PNT","DY_AVG","DZ_AVG","DTH_AVG"]:
                 dmkeypar.punlearn()
                 dmhedit.punlearn()
 
-                dmkeypar.infile = infile
-                dmkeypar.keyword = key
+                try:
+                    dmkeypar.infile = infile
+                    dmkeypar.keyword = key
+                    dmkeypar()
 
-                dmkeypar()
+                except IOError:
+                    raise IOError("{0} missing the {1} header keyword.".format(infile,key)
 
-                dmhedit.infile = bkg_repro.name+"[EVENTS]"
-                dmhedit.filelist = ""
-                dmhedit.operation = "add"
-                dmhedit.key = key
-                dmhedit.value = dmkeypar.value
-                                
-                dmhedit()
+                finally:
+                    dmhedit.infile = bkg_repro.name+"[EVENTS]"
+                    dmhedit.filelist = ""
+                    dmhedit.operation = "add"
+                    dmhedit.key = key
+                    dmhedit.value = dmkeypar.value
+
+                    dmhedit()
                 
             bkg = tempfile.NamedTemporaryFile(suffix=".bkg",dir=tmpdir)
 
@@ -598,6 +603,7 @@ def doit():
 #    enband = params["enband"]
     bkgparams = params["bkgparams"]
     method = params["weight"].lower()
+    seed = params["randomseed"]
     tmpdir = params["tmpdir"]
     clobber = params["clobber"]
     verbose = params["verbose"]
@@ -663,7 +669,7 @@ def doit():
     reproject_events.outfile = outdir+outfile
     reproject_events.aspect = asol
     reproject_events.match = evtfile
-    reproject_events.random = "0"
+    reproject_events.random = seed
     reproject_events.verbose = verbose
     reproject_events.clobber = clobber
 
