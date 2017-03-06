@@ -20,8 +20,9 @@
 from __future__ import print_function
 
 toolname = "tgsplit"
-__revision__ = "13 Sep 2016"
+__revision__ = "06 March 2017"
 
+from ciao_contrib.runtool import make_tool
 from pycrates import read_file, write_file
 import numpy as np
 import stk
@@ -47,7 +48,7 @@ def get_unique_id( infile ):
     # err, tg_srcid isn't correct in response files so can't use it.
     keys = [ 'obs_id', 'obi_num', 'cycle', 'tg_m', 'tg_part']
 
-    tab = read_file( infile )
+    tab = read_file( infile, "r" )
 
     retval = [ tab.get_key_value(k) for k in keys ]
 
@@ -96,7 +97,7 @@ def update_ontime( pha ):
     valid_vals = [x for x in ontimes if x ] # filter( lambda x: x, ontimes)  # filter out the None's
 
     if len(valid_vals) == 0:
-        tab.write()
+        tab.get_dataset().write()
         return
 
     avg_ontime = np.average(valid_vals)
@@ -105,14 +106,14 @@ def update_ontime( pha ):
     tab.get_key("livetime").value = avg_ontime * dtcor
     tab.get_key("exposure").value = avg_ontime * dtcor    
 
-    tab.write()
+    tab.get_dataset().write()
     
     return
 
 def copy_infile( infile, tgm, tgp, root, clobber ):
     """
     """
-    from ciao_contrib.runtool import dmcopy
+    dmcopy = make_tool("dmcopy")
     sgn = 'p' if tgm > 0 else 'm'
     arm = tgpart[tgp].lower()    
     dmcopy.infile=infile
@@ -131,7 +132,7 @@ def split_pha2( tgm, tgp, infile, root, clobber ):
     """
     Run dmtype2split on the pha file to create the src spectrum.
     """
-    from ciao_contrib.runtool import dmtype2split
+    dmtype2split=make_tool("dmtype2split")
 
     sgn = 'p' if tgm > 0 else 'm'
     arm = tgpart[tgp].lower()    
@@ -141,8 +142,13 @@ def split_pha2( tgm, tgp, infile, root, clobber ):
     v = dmtype2split()    
     if v : verb2(v)
 
+    retval = dmtype2split.outfile.replace("[SPECTRUM]","")
+    dmappend = make_tool("dmappend")
+    v = dmappend( infile+"[REGION][subspace -time]", retval )
+    if v: verb0(v)
+
     verb1("Created source spectrum: {}".format(dmtype2split.outfile))
-    return dmtype2split.outfile.replace("[SPECTRUM]","")
+    return retval
     
 
 def split_bkg_tge( infile, clobber ):
@@ -155,7 +161,7 @@ def split_bkg_tge( infile, clobber ):
     
     update_ontime(infile)
     
-    tab = read_file(infile)
+    tab = read_file(infile, "r")
 
     # sum counts, sum backscale values
     bgcts = tab.get_column("background_up").values + tab.get_column("background_down").values
@@ -180,12 +186,14 @@ def split_bkg_tge( infile, clobber ):
     verb1( "Created background spectrum: {}".format(outfile))
 
     # Hack to delete the background columns from the source file.
-    tab = read_file(infile)
+    tab = read_file(infile, "r")
     tab.delete_column( "background_up")
     tab.delete_column( "background_down")
     tab.delete_key("backscup")
     tab.delete_key("backscdn")    
-    write_file( tab, infile+".tmp", clobber=True)
+    #write_file( tab, infile+".tmp", clobber=True)
+    tab.get_dataset().write( infile+".tmp", clobber=True)
+    
     os.rename( infile+".tmp", infile )
     return outfile
     
@@ -200,7 +208,7 @@ def split_bkg_tge2( infile, clobber ):
     """
     update_ontime( infile )
 
-    tab = read_file(infile)
+    tab = read_file(infile,"r")
 
     # sum counts,  sum backscale values
     bgcts = tab.get_column("bg_counts").values
@@ -223,11 +231,12 @@ def split_bkg_tge2( infile, clobber ):
     verb1( "Created background spectrum: {}".format(outfile))
 
     # Hack to delete columns from the source spectrum.
-    tab = read_file(infile)
+    tab = read_file(infile,"r")
     tab.delete_column( "bg_counts")
     tab.delete_column( "bg_area")
     tab.delete_column( "bg_err")
-    write_file( tab, infile+".tmp", clobber=True)
+    #write_file( tab, infile+".tmp", clobber=True)
+    tab.get_dataset().write(infile+".tmp", clobber=True)
     os.rename( infile+".tmp", infile )
 
     return outfile
@@ -249,7 +258,7 @@ def get_respfile_from_arf( infile ):
 
     Assume to be in same dir as the ARF.
     """
-    tab = read_file(infile)
+    tab = read_file(infile,"r")
     grid = tab.get_key_value("respfile")
     isgrid = grid.split("(")
     if 2 != len(isgrid) or isgrid[0].lower() != 'grid':
@@ -281,7 +290,7 @@ def update_src_headers( src, bkg, arf, rmf ):
     update_if_not_blank( "respfile", withpath(rmf))
 
     
-    tab.write()
+    tab.get_dataset().write()
 
 
 
@@ -314,7 +323,7 @@ def split_pha2_and_background( infile, root, clobber ):
     """
 
     # Get the list of order & part to iterate over
-    tab = read_file( infile )
+    tab = read_file( infile, "r" )
     ftype = check_infile( tab, infile )
 
     if "TYPE:II" == ftype:
