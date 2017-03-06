@@ -20,7 +20,7 @@ from __future__ import print_function
 
 
 toolname = "combine_spectra"
-__revision__ = "13 Sep 2016"
+__revision__ = "06 March 2017"
 
 import sys
 
@@ -635,7 +635,7 @@ def write_spectrum( outfile, phas, chans, out_cts, out_exp, out_bsc, outrmf, out
     
     """
 
-    cols2rm = "[cols -"+",-".join(['grouping', 'quality', 'grp_num', 'chans_per_grp', 'grp_data', 'grp_stat_err'])+"]"
+    cols2rm = "[cols -"+",-".join(['stat_err', 'grouping', 'quality', 'grp_num', 'chans_per_grp', 'grp_data', 'grp_stat_err'])+"]"
     
     from ciao_contrib.runtool import dmmerge
     inf = [phas[0]+"[subspace -time,-expno,-sky,-pos]"+cols2rm  ]
@@ -654,6 +654,13 @@ def write_spectrum( outfile, phas, chans, out_cts, out_exp, out_bsc, outrmf, out
         tab.get_key("EXPOSURE").value = out_exp
     if tab.key_exists("LIVETIME"):
         tab.get_key("LIVETIME").value = out_exp
+    if tab.key_exists("POISSERR"):
+        tab.get_key("POISSERR").value = True
+    else:
+        k = CrateKey()
+        k.name="POISSERR"
+        k.value=True
+        tab.add_key(k)
 
     if 'count_rate' in [x.lower() for x in tab.get_colnames()]:
         tab.get_column("count_rate").values = out_cts / out_exp
