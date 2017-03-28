@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 #
-# Copyright (C) 2013-2016 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2017 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "download_obsid_caldb"
-__revision__ = "18 Nov 2016"
+__revision__ = "28 March 2017"
 
 import os
 import sys
@@ -388,8 +388,12 @@ def retrieve_caldb_file( ftp, rootdir, looking_for, outdir, clobber, missing ):
     uniq = set([x.split('[')[0] for x in looking_for])
 
     for products in uniq:
+        # This is used to graft the CALDB directory path onto the
+        # outdir path. The os.path.join() is used to get the
+        # outdir path w/ the trailing "/" (but only if it's not
+        # already there).
         hasdir = os.path.dirname( products )
-        zz = hasdir.replace( outdir+"/", "", 1 )
+        zz = hasdir.replace( os.path.join(outdir,""), "", 1 )
         hasnam = os.path.basename(products)
 
         outfile = "{}/{}".format(hasdir,hasnam)
