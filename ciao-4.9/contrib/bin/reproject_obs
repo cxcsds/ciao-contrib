@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -37,7 +37,7 @@ can be broken down into
 """
 
 toolname = 'reproject_obs'
-__revision__  = '27 October 2016'
+__revision__  = '31 March 2017'
 
 import os
 import sys
@@ -45,6 +45,7 @@ import shutil
 import tempfile
 
 import six
+import six.moves
 
 import paramio
 
@@ -368,7 +369,8 @@ def link_ancillary_files(taskrunner,
 
             else:
                 newnames = []
-                for (idx, afile) in zip(xrange(0, nfiles), afiles):
+                zs = zip(six.moves.xrange(0, nfiles), afiles)
+                for (idx, afile) in zs:
                     idval = chr(97 + idx)
                     newname = "{}{}{}.asol".format(outroot, label, idval)
                     newnames.append(os.path.basename(newname))
