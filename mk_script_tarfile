@@ -17,10 +17,13 @@ in which case two versions will be created.
 Whilst we could automate the choice of number, it seems safer
 to make the user specify it manually.
 
-Note that there is currently no change made to the mercurial
-repository when a release is built (i.e. a number is used). This
-is a change to the old behavior and may be reverted real-soon-now.
-Apparently not.
+The VERSION file (ciao-<>/contrib/VERSION.CIAO_scripts) is not
+tracked by git.
+
+Files or directories called tests are not included in the tar
+file. This may be changed in the future (it may be useful to
+be able to run tests from an installed version), but the tests
+are currently very ad-hoc so it's not worth it.
 
 The copy argument has been removed.
 
@@ -114,15 +117,6 @@ if __name__ == "__main__":
         fh.write(datestr)
         fh.write("\n")
 
-    # If there is no change then hg exits with a status value of 1,
-    # so we can not use check_call here.
-    # Would like to create tags here, but slightly worried about multiple values.
-    #
-    #if ver != "DEV":
-    #    sbp.call(["hg", "commit", "-m",
-    #              "Updating timestamp (%s)" % verstr,
-    #              "--quiet", verfile])
-
     print("Building {}".format(tarfile))
 
     # This does not keep soft links, which means that the python2.7/3.5
@@ -131,8 +125,10 @@ if __name__ == "__main__":
     #
     # sbp.check_call(["tar", "chf", tarfile, "./" + cver["root"]])
 
-    args = ["tar", "cf", tarfile, "./" + cver["root"],
-            "--exclude=.gitignore"]
+    args = ["tar", "cf", tarfile, "./" + cver["root"]]
+    for ename in [".gitignore", "tests"]:
+        args.append("--exclude={}".format(ename))
+
     sbp.check_call(args)
     sbp.check_call(["gzip", "-f", tarfile])
 
