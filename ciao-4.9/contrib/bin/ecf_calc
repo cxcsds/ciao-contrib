@@ -20,7 +20,7 @@ Usage:
 
 __version__ = "CIAO 4.9"
 toolname = "ecf_calc"
-__revision__ = "3 April 2017"
+__revision__ = "03 April 2017"
 
 import numpy, tempfile, sys, os, paramio, cxcdm
 import pycrates as pcr
@@ -66,12 +66,12 @@ class HistoryCrate():
         Use CXCDM to get history records
         """
         self.history = []
-        tab = cxcdm.dmBlockOpen(filename)
+        tab = cxcdm.dmBlockOpen( filename )
         for ii in range(1, cxcdm.dmBlockGetNoKeys(tab)+1):
             cxcdm.dmBlockMoveToKey(tab,ii)
             while True:
                 hist = cxcdm.dmBlockReadComment(tab)
-                if None == hist:
+                if hist is None:
                     break
                 elif 2 != len(hist):
                     break
@@ -82,13 +82,13 @@ class HistoryCrate():
         cxcdm.dmBlockClose(tab)
             
 
-    def put_history(self, infile ):
+    def put_history(self, infile):
         """
         """
         tab = cxcdm.dmBlockOpen(infile, update=True)
-        cxcdm.dmBlockMoveToKey( tab, cxcdm.dmBlockGetNoKeys(tab))
+        cxcdm.dmBlockMoveToKey(tab, cxcdm.dmBlockGetNoKeys(tab))
         for t,v in self.history:
-            cxcdm.dmBlockWriteComment( tab, t, v )
+            cxcdm.dmBlockWriteComment(tab, t, v)
             
         cxcdm.dmBlockClose(tab)
 
@@ -96,17 +96,17 @@ class HistoryCrate():
 class HistoryIMAGECrate(pcr.IMAGECrate, HistoryCrate):
     def __init__(self, filename, mode="r"):        
         pcr.IMAGECrate.__init__(self,filename, mode=mode)
-        self.get_history( filename)
+        self.get_history(filename)
 
-    def write( self, outfile, *args, **kwargs ):
+    def write(self, outfile, *args, **kwargs):
         """
         Overide crates write to include history
         """
-        pcr.IMAGECrate.write( self, outfile, *args, **kwargs )
-        self.put_history( outfile )
+        pcr.IMAGECrate.write(self, outfile, *args, **kwargs)
+        self.put_history(outfile)
 
 
-class HistoryTABLECrate( pcr.TABLECrate, HistoryCrate):
+class HistoryTABLECrate(pcr.TABLECrate, HistoryCrate):
     def __init__(self, filename, mode="r"):        
         pcr.TABLECrate.__init__(self,filename, mode=mode)
         self.get_history( filename)
@@ -116,7 +116,7 @@ class HistoryTABLECrate( pcr.TABLECrate, HistoryCrate):
         Overide crates write to include history
         """
         pcr.TABLECrate.write(self, outfile, *args, **kwargs)
-        self.put_history(outfile)
+        self.put_history( outfile )
 
 
 ################################################
@@ -396,27 +396,27 @@ def plot_ecf(rad_file):
 
 @handle_ciao_errors(toolname, __revision__)   # decorate top-level routine    
 def doit():
-    params = get_par(sys.argv)
+     params = get_par(sys.argv)
 
-    infile = params["infile"]
-    outfile = params["outfile"]
-    radius = params["radius"]
-    x = params["xpos"]
-    y = params["ypos"]
-    bin = params["binsize"]
-    fraction = params["fraction"]
-    plot = params["plot"]
-    clobber = params["clobber"]
-    
-    filter = reg(radius,x,y,bin,infile)
-    get_ecf(infile,filter,outfile,x,y,radius,bin,fraction,clobber)
+     infile = params["infile"]
+     outfile = params["outfile"]
+     radius = params["radius"]
+     x = params["xpos"]
+     y = params["ypos"]
+     bin = params["binsize"]
+     fraction = params["fraction"]
+     plot = params["plot"]
+     clobber = params["clobber"]
 
-    add_tool_history(outfile,toolname,params)
+     filter = reg(radius,x,y,bin,infile)
+     get_ecf(infile,filter,outfile,x,y,radius,bin,fraction,clobber)
 
-    if plot:
-        plot_ecf(outfile)
-        pause()
+     add_tool_history(outfile,toolname,params)
+
+     if plot:
+         plot_ecf(outfile)
+         pause()
      
 
 if __name__ == "__main__":
-     doit()
+    doit()
