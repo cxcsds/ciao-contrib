@@ -18,9 +18,9 @@ Usage:
 
 """
 
-__version__ = "CIAO 4.8"
+__version__ = "CIAO 4.9"
 toolname = "ecf_calc"
-__revision__ = "09 November 2015"
+__revision__ = "03 April 2017"
 
 import numpy, tempfile, sys, os, paramio, cxcdm
 import pycrates as pcr
@@ -67,7 +67,7 @@ class HistoryCrate():
         """
         self.history = []
         tab = cxcdm.dmBlockOpen( filename )
-        for ii in xrange( 1, cxcdm.dmBlockGetNoKeys(tab)+1 ):
+        for ii in range(1, cxcdm.dmBlockGetNoKeys(tab)+1):
             cxcdm.dmBlockMoveToKey(tab,ii)
             while True:
                 hist = cxcdm.dmBlockReadComment(tab)
@@ -82,40 +82,40 @@ class HistoryCrate():
         cxcdm.dmBlockClose(tab)
             
 
-    def put_history(self, infile ):
+    def put_history(self, infile):
         """
         """
-        tab = cxcdm.dmBlockOpen( infile, update=True)
-        cxcdm.dmBlockMoveToKey( tab, cxcdm.dmBlockGetNoKeys(tab))
+        tab = cxcdm.dmBlockOpen(infile, update=True)
+        cxcdm.dmBlockMoveToKey(tab, cxcdm.dmBlockGetNoKeys(tab))
         for t,v in self.history:
-            cxcdm.dmBlockWriteComment( tab, t, v )
+            cxcdm.dmBlockWriteComment(tab, t, v)
             
         cxcdm.dmBlockClose(tab)
 
 
-class HistoryIMAGECrate( pcr.IMAGECrate, HistoryCrate):
-    def __init__( self, filename, mode="r" ):        
+class HistoryIMAGECrate(pcr.IMAGECrate, HistoryCrate):
+    def __init__(self, filename, mode="r"):        
         pcr.IMAGECrate.__init__(self,filename, mode=mode)
-        self.get_history( filename)
+        self.get_history(filename)
 
-    def write( self, outfile, *args, **kwargs ):
+    def write(self, outfile, *args, **kwargs):
         """
         Overide crates write to include history
         """
-        pcr.IMAGECrate.write( self, outfile, *args, **kwargs )
-        self.put_history( outfile )
+        pcr.IMAGECrate.write(self, outfile, *args, **kwargs)
+        self.put_history(outfile)
 
 
-class HistoryTABLECrate( pcr.TABLECrate, HistoryCrate):
-    def __init__( self, filename, mode="r" ):        
+class HistoryTABLECrate(pcr.TABLECrate, HistoryCrate):
+    def __init__(self, filename, mode="r"):        
         pcr.TABLECrate.__init__(self,filename, mode=mode)
         self.get_history( filename)
 
-    def write( self, outfile, *args, **kwargs ):
+    def write(self, outfile, *args, **kwargs):
         """
         Overide crates write to include history
         """
-        pcr.TABLECrate.write( self, outfile, *args, **kwargs )
+        pcr.TABLECrate.write(self, outfile, *args, **kwargs)
         self.put_history( outfile )
 
 
@@ -144,11 +144,11 @@ def get_par(argv):
 
     pars["infile"] = paramio.pgetstr(pfile,"infile")
     if pars["infile"] == "":
-         raise ValueError("The infile parameter is empty.")
+        raise ValueError("The infile parameter is empty.")
 
     pars["outfile"] = paramio.pgetstr(pfile,"outfile")
     if pars["outfile"] == "":
-         raise ValueError("The outfile parameter is empty.")
+        raise ValueError("The outfile parameter is empty.")
 
     pars["radius"] = paramio.pgetd(pfile,"radius")
 
@@ -167,12 +167,12 @@ def get_par(argv):
     pars["clobber"] = paramio.pgetb(pfile, "clobber") ==1
 
     if pars["clobber"] == 0:
-         pars["clobber"] == False
+        pars["clobber"] == False
     else:
-         pars["clobber"] == True
+        pars["clobber"] == True
 
     if pars["clobber"] == False and os.path.isfile(pars["outfile"]) == True:
-         raise IOError("clobber=no and outfile already exists.")
+        raise IOError("clobber=no and outfile already exists.")
     
     paramio.paramclose(pfile)
     return pars
@@ -413,10 +413,10 @@ def doit():
 
      add_tool_history(outfile,toolname,params)
 
-     if plot == True:
-     	plot_ecf(outfile)
-        pause()
+     if plot:
+         plot_ecf(outfile)
+         pause()
      
 
 if __name__ == "__main__":
-     doit()
+    doit()
