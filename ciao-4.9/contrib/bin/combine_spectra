@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # 
-# Copyright (C) 2013,2014,2016 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013,2014,2016-2017 Smithsonian Astrophysical Observatory
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@ from __future__ import print_function
 
 
 toolname = "combine_spectra"
-__revision__ = "13 Sep 2016"
+__revision__ = "06 March 2017"
 
 import sys
 
@@ -160,7 +160,7 @@ class Spectrum():
             verb2("Grouping information in file {} will be ignored".format( infile ))
 
         if tab.column_exists("stat_err"):
-            verb2("Statistical errors in file {} will be ignored".format(infile))
+            verb2("Statistical errors in file {} will be recomputed using Gehrel's approximation.".format(infile))
 
         if tab.key_exists("grating") and tab.get_key_value("grating") in ['HETG','LETG']:
             self.is_grating = True
@@ -650,6 +650,13 @@ def write_spectrum( outfile, phas, chans, out_cts, out_exp, out_bsc, outrmf, out
     tab = pc.read_file( dmmerge.outfile)
     tab.get_column("channel").values = chans
     tab.get_column("counts").values = out_cts
+
+    if tab.column_exists("stat_err"):
+        stat_err = 1.0+np.sqrt( out_cts +0.75)
+        etype = tab.get_column("stat_err").values.dtype
+        tab.get_column("stat_err").values = stat_err.astype(etype)
+        verb1("Using Gehrel's approximation for STAT_ERR values.")
+
     if tab.key_exists("EXPOSURE"):
         tab.get_key("EXPOSURE").value = out_exp
     if tab.key_exists("LIVETIME"):
