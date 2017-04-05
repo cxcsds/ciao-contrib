@@ -20,7 +20,7 @@
 from __future__ import print_function
 
 toolname = "mktgresp"
-__revision__ = "19 Sep 2016"
+__revision__ = "06 March 2017"
 
 
 import os
@@ -142,11 +142,18 @@ def get_order_and_arm( phafile, orderlist ):
     
     myf = pyc.read_file(phafile)
 
-    parts = myf.get_column("tg_part").values.copy()
-    orders = myf.get_column("tg_m").values.copy()
-    ids = myf.get_column("tg_srcid").values.copy()
-    xx = myf.get_column("x").values.copy()
-    yy = myf.get_column("y").values.copy()
+    try:
+        parts = myf.get_column("tg_part").values.copy()
+        orders = myf.get_column("tg_m").values.copy()
+        ids = myf.get_column("tg_srcid").values.copy()
+        xx = myf.get_column("x").values.copy()
+        yy = myf.get_column("y").values.copy()
+    except:
+        parts = [myf.get_key_value("tg_part")]
+        orders = [myf.get_key_value("tg_m")]
+        ids = [myf.get_key_value("tg_srcid")]
+        xx = [myf.get_key_value("x")]
+        yy = [myf.get_key_value("y")]
 
     zz = parse_orderlist( orderlist, parts, ids, xx, yy )
 

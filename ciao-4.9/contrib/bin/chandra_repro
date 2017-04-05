@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "19 Sep 2016"
+version = "06 March 2017"
 
 # import standard python modules as required
 #
@@ -2040,51 +2040,30 @@ def add_history(params):
     evt2    = params["evt2_file"]
     pha2    = params["pha2_file"]
     outdir  = params["outdir"]
-     
-    pfile = pio.paccess("chandra_repro")
-    shu.copyfile(pfile, os.path.join(outdir, "chandra_repro.par"))
 
-    # add the outdir to PFILES
-    opfiles = os.environ["PFILES"]
-    set_pfiles(outdir)
+    from ciao_contrib.runtool import add_tool_history
+    phist = { x : params[x] for x in [ 'indir', 'outdir', 'root', 'verbose' ] }
+    
+    for x in ['badpixel', 'process_events', 'set_ardlib', 'check_vf_pha', 'recreate_tg_mask', 'cleanup', 'clobber' ]:
+        phist[x] = "yes" if params[x] else "no"
 
-    parnames = ['indir', 'outdir', 'root', 'badpixel', 'process_events', 'set_ardlib', 'check_vf_pha', 'cleanup', 'clobber', 'verbose']
-    for par in parnames:
-        if par == "verbose":
-            pio.pset("chandra_repro", "verbose", str(params[par]))
-        elif params[par] == 0:
-            pio.pset("chandra_repro", par, "no")
-        elif params[par] == 1:
-            pio.pset("chandra_repro", par, "yes")
-        else:
-            pio.pset("chandra_repro", par, params[par])
+    phist["destreak"] = "yes" if params["run_destreak"] else "no"
 
-    # check as 'run_destreak' to avoid confusion with the executable name
-    if params["run_destreak"] == 0:
-        pio.pset("chandra_repro", "destreak", "no")
-    elif  params["run_destreak"] == 1:
-        pio.pset("chandra_repro", "destreak", "yes")
-
-    # pix_adj string parameter value 
-    # if set to 'default', change to explicit value for the history
     if params["instrume"] == 'ACIS' and params["pix_adj_value"] == 'default':
         default_val = "edser" if params["readmode"] == "TIMED" else "none"
-        pio.pset("chandra_repro", "pix_adj", default_val)
+        phist["pix_adj"] = default_val
     elif params["instrume"] == 'HRC' and params["pix_adj_value"] == 'default':
-        pio.pset("chandra_repro", "pix_adj", "none")        
+        phist["pix_adj"] = "none"
     else:
-        pio.pset("chandra_repro", "pix_adj", params["pix_adj_str"])
-
+        phist["pix_adj"] = params["pix_adj_str"]
 
     v2('\nAdding HISTORY record to event file header')
-    dmhistory(evt1, "chandra_repro", action="put")
-    dmhistory(evt2, "chandra_repro", action="put")
+    add_tool_history( evt1, toolname, phist, toolversion=version)    
+    add_tool_history( evt2, toolname, phist, toolversion=version)
     if not pha2 == '':
         v2('\nAdding HISTORY record to pha2 file header')
-        dmhistory(pha2, "chandra_repro", action="put")
+        add_tool_history( pha2, toolname, phist, toolversion=version)
 
-    # reinstate pfiles
-    os.environ["PFILES"] = opfiles
 
     # add a comment with the CALDB version
     caldb = get_caldb_dir()
@@ -2100,9 +2079,6 @@ def add_history(params):
     dmhedit.infile=evt2
     dmhedit()
 
-    #!### Success ###
-    params["cleanup_files"].append(os.path.join(outdir,"chandra_repro.par"))
-    params["cleanup_files"].append(os.path.join(outdir,"dmhistory.par"))
 
 
 def set_ardlib(params):
@@ -2184,7 +2160,7 @@ def main_body( pars):
 
     #!### Issue warning if the badpixel step is turned off ###
     if not pars["badpixel"]:
-        v1('WARNING: badpixel=no, so archived bpix1.fits file will be used.\n')
+        v1('WARNING: badpixel=no, so archived bpix1.fits file will not be used.\n')
     
     #!### Gather and verify our inputs ###
     pars = get_inputs(pars)

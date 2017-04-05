@@ -28,7 +28,7 @@ import sys
 import subprocess
 
 toolname = "simulate_psf"
-__revision__ = "13 Sep 2016"
+__revision__ = "06 March 2017"
 
 
 from cxcdm import *
@@ -798,10 +798,28 @@ def run_marx_reproject_events( pars ):
         
         If events have been reprojects then need to corrected
     """    
-    reproject_events = make_tool("reproject_events")
 
+    def get_xy_limits(infile):
+        """
+        The marx files may have events WAY! outside the tlmin/tlmax of the
+        column.  We need to filter those out here or it messes up
+        the limits and then when you display the ray file the data is
+        centered in a bad place (eg far from 4096,4096 [acis]).
+        """
+        from pycrates import read_file
+        tab = read_file(infile)
+        xl=tab.get_column("x").get_tlmin()
+        xh=tab.get_column("x").get_tlmax()
+        yl=tab.get_column("y").get_tlmin()
+        yh=tab.get_column("y").get_tlmax()
+        retval="[x={}:{},y={}:{}]".format(xl,xh,yl,yh)
+        return retval
+
+    limits = get_xy_limits( pars["_outroot_"]+ "_marx.fits"  )
+
+    reproject_events = make_tool("reproject_events")
     reproject_events.punlearn()
-    reproject_events.infile  = pars["_outroot_"]+ "_marx.fits" 
+    reproject_events.infile  = pars["_outroot_"]+ "_marx.fits"+limits
     reproject_events.outfile = pars["_outroot_"]+ "_projrays.fits" 
     reproject_events.random  = "-1"       # make sure no randomization
     reproject_events.match   = pars["infile"]
