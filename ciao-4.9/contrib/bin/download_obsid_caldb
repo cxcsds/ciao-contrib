@@ -133,14 +133,15 @@ def parse_url():
 
     def get_id():
         """
+        DEPRECATED ---
         get a real user name if there is one.  
         """
-        from socket import getfqdn
         u = "anonymous"
         for o in ["USER", "USERNAME"]:
             if o in os.environ:
                 u=os.environ[o]
 
+        from socket import getfqdn
         mybox = getfqdn()
         if not mybox:
             mybox = toolname
@@ -162,7 +163,7 @@ def parse_url():
     host = url.hostname
     path = url.path
     user = "anonymous" if not url.username else url.username
-    pswd = get_id() if not url.password else url.password
+    pswd = "anonymous@ciao_contrib."+toolname if not url.password else url.password
 
     verb2("Using FTP host='{}' dir='{}' user='{}' password='{}'".format( host, path, user, pswd))
     return host, path, user, pswd
