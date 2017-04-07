@@ -32,7 +32,7 @@ This script is an enhanced Python translation of the original CIAO tool specextr
 __version__ = "CIAO 4.9"
 
 toolname = "specextract"
-__revision__ = "30 January 2017"
+__revision__ = "14 March 2017"
 
 
 ##########################################################################
@@ -2011,7 +2011,7 @@ def specextract(args):
              raise IOError("Cannot use M.M. ACIS blanksky background files as infile, since responses cannot be produced.\n")
 
      # check defined response energy range for weighted warm observations
-     if weight == "yes":
+     if [weight == "yes", headerkeys["INSTRUME"] == "ACIS"] == [True,True]:
 
         # check focal plane temperature, if >-110C, then check FEF energy range
         # ObsID 114 (observed 2000-01-30 10:40:42) is first observation made at <-119C.
@@ -2283,17 +2283,17 @@ def specextract(args):
 
  # cast as stacks
  if asp == "" and len(ancil["asol"]) != 0:
-         temp_asol_stk = make_stackfile(ancil["asol"],suffix="asol",delete=True)
+     temp_asol_stk = make_stackfile(ancil["asol"],suffix="asol",delete=True)
 
  if bpixfile == "" and len(ancil["bpix"]) != 0:
-         temp_bpix_stk =  make_stackfile(ancil["bpix"],suffix="bpix",delete=True)
+     temp_bpix_stk =  make_stackfile(ancil["bpix"],suffix="bpix",delete=True)
 
  if dtffile == "" and len(ancil["dtf"]) != 0:
-         if "" not in ancil["dtf"]:
-             temp_dtf_stk = make_stackfile(ancil["dtf"],suffix="dtf",delete=True)
+     if "" not in ancil["dtf"]:
+         temp_dtf_stk = make_stackfile(ancil["dtf"],suffix="dtf",delete=True)
          
  if mask == "" and len(ancil["msk"]) != 0:
-         temp_msk_stk = make_stackfile(ancil["msk"],suffix="msk",delete=True)
+     temp_msk_stk = make_stackfile(ancil["msk"],suffix="msk",delete=True)
 
  # assign stacks to variables
  if False not in [asp.lower() != "none", asp == ""]:
