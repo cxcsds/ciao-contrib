@@ -2,6 +2,9 @@
 <!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
   <!ENTITY pr  'chips>'>
   <!ENTITY ciaover '4.9'>
+
+  <!ENTITY scripts "axbary, dmgti, evalpos, fullgarf, mean_energy_map, pileup_map, tgdetect, and wavdetect">
+
 ]>
 <cxchelptopics>
   <ENTRY key="ciao_runtool" context="contrib"
@@ -708,14 +711,14 @@ Parameters for lut:
       </PARA>
       <PARA>
 	Any routine that is an instance of the CIAOToolParFile class
-	- which, as of CIAO 4.6, is all tools except for 
-	fullgarf and dmgti - 
+	- which, as of CIAO 4.9, is all tools except for 
+	&scripts; -
 	will not change the on-disk parameter file.
       </PARA>
 
       <PARA title="Routines that do change the on-disk parameter file">
-	Running the dmgti or fullgarf routines - i.e. instances of the
-	CIAOToolDirect class - will change the on-disk parameter file.
+	Running instances of the CIAOToolDirect class - so
+	&scripts; - will change the on-disk parameter file.
       </PARA>
 
       <PARA title="How to check whether a parameter file will be changed?">
@@ -731,7 +734,7 @@ Parameters for lut:
 &pr; type(dmstat)
        &lt;class 'ciao_contrib.runtool.CIAOToolParFile'>
 &pr; type(wavdetect)
-       &lt;class 'ciao_contrib.runtool.CIAOToolParFile'>
+       &lt;class 'ciao_contrib.runtool.CIAOToolDirect'>
 </VERBATIM>
       <PARA>
 	These class names are rather confusing and may be changed in a
@@ -891,6 +894,19 @@ def getemap(ccd, gridstr):
 	"_"; this is only required for several parameters in ardlib.
 	Purely numeric parameter names are ignored; this only
 	occurs for the "helper" parameters of dmtabfilt.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.9.4 (TBD 2017) release">
+      <PARA title="Running ">
+	The following tools have been changed to use the
+	CIAOToolDirect class, which means that care should be taken
+	if multiple copies of these tools are run in parallel:
+	axbary, evalpos, mean_energy_map, pileup_map, tgdetect,
+	and wavdetect. It is suggested that the new_pfiles_environment
+	context manager is used to run these tools, as it automates
+	the creation and deletion of a temporary parameter directory
+	for use by the tools.
       </PARA>
     </ADESC>
 
@@ -1116,6 +1132,6 @@ def getemap(ccd, gridstr):
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>April 2017</LASTMODIFIED>
+    <LASTMODIFIED>June 2017</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
