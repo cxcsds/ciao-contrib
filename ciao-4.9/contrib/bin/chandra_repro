@@ -544,6 +544,17 @@ def event1_inputs(params):
             params["date-obs"] = keys["DATE-OBS"].value
             params["grating"]  = keys["GRATING"].value
 
+            # Only standard datasets taken in KALMAN lock are supported.
+            # Other modes such as OBC use the on-board-computer 
+            # aspect solution and don't have *_asol1.fits files. They
+            # only have the *_osol1.fits files.  We can't handle that
+            # right now.
+            
+            if 'KALMAN' != keys["ASPTYPE"].value:
+                msg = "ASPTYPE='{}' mode data is not currently supported."
+                raise NotImplementedError(msg.format(keys["ASPTYPE"].value))
+                 
+
             if params["instrume"] == 'ACIS':  
                 params["readmode"] = keys["READMODE"].value
             if params["instrume"] == 'HRC':  
