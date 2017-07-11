@@ -554,6 +554,8 @@ def event1_inputs(params):
                 #msg = "ASPTYPE='{}' mode data is not currently supported."
                 #raise NotImplementedError(msg.format(keys["ASPTYPE"].value))
                 params["__obc_mode__"] = True
+                v0("\nThis observation did not use any guide-stars; the on-board-computer determined aspect solution will be used\n")
+
             else:
                 params["__obc_mode__"] = False
 
@@ -1776,8 +1778,21 @@ def get_asol_times( params ):
     
     outroot = os.path.join( params["outdir"], params["root"])
 
-    dmtcalc( params["flt1_file"], outroot+"_addcol_flt1.fits", "time=0", clobber=params["clobber"])    
-    dmcopy( dmtcalc.outfile+"[time={}:{}]".format(min_a,max_a), outroot+"_repro_flt1.fits", clobber=params["clobber"] )
+
+    if params["__obc_mode__"] is True:
+        new_limits = outroot+"_obc_lim1.fits"
+        new_gti = outroot+"_repro_flt1.fits"
+
+        filter_obc_gti_limit( params["mtl1_file"], new_limits, clobber=params["clobber"])
+        make_new_obc_gti( params["mtl1_file"], new_limits, new_gti, clobber=params["clobber"])
+        params["cleanup_files"].append(new_limits)
+
+    else:
+        dmtcalc( params["flt1_file"], outroot+"_addcol_flt1.fits", "time=0", clobber=params["clobber"])    
+        dmcopy( dmtcalc.outfile+"[time={}:{}]".format(min_a,max_a), outroot+"_repro_flt1.fits", clobber=params["clobber"] )
+
+
+
 
     # CC times cannot be fixed with the gti_align script since times are
     # affected by _TARG coordinates.
@@ -1790,9 +1805,125 @@ def get_asol_times( params ):
     params["cleanup_files"].append( outroot+"_addcol_flt1.fits" )
     params["cleanup_files"].append( outroot+"_repro_flt1.fits" )
 
+
+
     
     return outroot+"_repro_flt2.fits"
     
+
+
+
+def filter_obc_gti_limit( mtlfile, outlimfile, clobber=True ):
+    """Filters the LIMITS block of the mission time line file
+    to remove the limits associated with OBC (on-board-computer)
+    mode.
+    
+    The LIMITS extension is just a single string column in the mtl1.fits
+    file.  Each row is a separate limit.  The 'limit_status' column
+    in the MTL_S extension of the mtl1.fits file maps to the LIMITS block.
+    Each bit in the limit_status maps to a row.  Here we count
+    bits left-to-right starting at 1. [Ugh!]
+    
+    So if we have
+    
+    % dmlist "acisf02469_001N004_mtl1.fits[mtl_s][cols limit_status][#row=1]" data,clean
+    #  limit_status[3]
+                                                     01000000000000000010000
+
+    we see that bits #2 and bits #19 are set.  Looking at the LIMITS blocks we see
+
+    % dmlist "acisf02469_001N004_mtl1.fits[limits][#row=2,19]" data,clean
+    #  gti_limits
+    (fabs(Point_MoonLimbAng:1)>=6.0)
+    (ASPTYPE:1!="OBC") 
+
+    We want to remove these limits -- but we can't rely on the row numbers.
+    We need to check (regex) the contents of each line to look for the lines
+    to remove.    
+    """
+
+    from re import search
+    from pycrates import read_file
+
+    def is_point_limbang( limit ):
+        """Remove the Earth, Sun, Moon limb angle pointing limits.
+        We could try to be clever here and pick the right one, 
+        but its just as easy to remove them all"""
+        if search('point_.*limbang', limit) is None:
+            return False
+        return True
+
+
+    def is_asptype( limit ):
+        """Remove the check on ASPTYPE"""
+        if search( 'asptype.*=.*obc.*', limit) is None:
+            return False
+        return True
+
+
+    def obc_limits( limit ):
+        """Combine the two limit checks above"""
+        ul = limit.lower()
+        return (is_point_limbang(ul) or is_asptype(ul))
+
+
+    limits = read_file(mtlfile+"[limits]").get_column("gti_limits").values
+    mod_limits = [ l for l in limits if obc_limits(l) is False]
+
+    write_new_limits( mod_limits, outlimfile, clobber)
+
+    
+
+def write_new_limits( mod_limits, outlimfile, clobber=True ):
+    """Write the output limits file.  We don't need all the
+    header meta data, just the single column with the 
+    subset of the filter strings"""
+
+    from crates_contrib.utils import write_columns
+    write_columns( outlimfile, mod_limits, format="fits", clobber=clobber, colnames=["gti_limits"])
+
+
+def make_new_obc_gti( mtlfile, outlimfile, outgtifile, clobber=True):
+    """Compute the new GTI; write out new filter 
+    """
+    from ciao_contrib.runtool import make_tool
+    dmgti = make_tool("dmgti")
+    dmgti.infile=mtlfile
+    dmgti.outfile=outgtifile
+    dmgti.mtlfile=""
+    dmgti.userlimit=""  # The limits are input via the lkupfile parameter
+    dmgti.lkupfile=outlimfile
+    vv = dmgti( clobber=clobber)
+    if (vv): v3(vv)
+
+    summarize_results( outgtifile)
+
+
+    
+def summarize_results(outgtifile):
+    """Show a summary of the GTI information"""
+    from pycrates import read_file
+    gti=read_file(outgtifile)
+    ontime = gti.get_key_value("ONTIME")
+    dss = gti.get_subspace_data(1, "TIME")
+    num_gti = len( dss.range_max)
+    msg="Total recovered OBC ONTIME={:.2f}ks in {} time interval(s)"
+    v1(msg.format( ontime/1000.0, num_gti))
+    
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def l2_acis_events(params):
@@ -2185,10 +2316,7 @@ def remake_fov1_file( pars ):
     skyfov.punlearn()
     skyfov.infile= pars["evt2_file"]
     skyfov.outfile = os.path.join(pars["outdir"], pars["root"] + '_repro_fov1.fits')
-    if pars["__obc_mode__"] is False:
-        skyfov.aspect = "@{}[@{}]".format(pars["asol1_file"], pars["evt2_file"])
-    else:
-        skyfov.aspect = "@"+pars["asol1_file"]
+    skyfov.aspect = "@{}[@{}]".format(pars["asol1_file"], pars["evt2_file"])
     skyfov.mskfile = pars["msk1_file"]
     skyfov.clobber = pars["clobber"]
     skyfov.verbose = pars["verbose"]
