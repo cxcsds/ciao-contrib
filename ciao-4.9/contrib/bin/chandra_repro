@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # 
-# Copyright (C) 2010-2016  Smithsonian Astrophysical Observatory
+# Copyright (C) 2010-2017  Smithsonian Astrophysical Observatory
 # 
 # 
 # 
@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "06 March 2017"
+version = "07 July 2017"
 
 # import standard python modules as required
 #
@@ -544,6 +544,17 @@ def event1_inputs(params):
             params["date-obs"] = keys["DATE-OBS"].value
             params["grating"]  = keys["GRATING"].value
 
+            # Only standard datasets taken in KALMAN lock are supported.
+            # Other modes such as OBC use the on-board-computer 
+            # aspect solution and don't have *_asol1.fits files. They
+            # only have the *_osol1.fits files.  We can't handle that
+            # right now.
+            
+            if 'KALMAN' != keys["ASPTYPE"].value:
+                msg = "ASPTYPE='{}' mode data is not currently supported."
+                raise NotImplementedError(msg.format(keys["ASPTYPE"].value))
+                 
+
             if params["instrume"] == 'ACIS':  
                 params["readmode"] = keys["READMODE"].value
             if params["instrume"] == 'HRC':  
@@ -860,7 +871,7 @@ def get_inputs(params):
                 newbias = gunzip(params["secondarydir"] + ff)
 
                 path=os.path.join(params["outdir"], os.path.basename(newbias))
-                link_or_copy(newasol, path)
+                link_or_copy(newbias, path)
   
                 uff=ff.split(".gz")[0]
                 params["cleanup_files"].append(os.path.join(params["outdir"], uff))

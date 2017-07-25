@@ -1,8 +1,5 @@
-
-# Python35Support (initial version, more checking needed)
-
 #
-# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016
+# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -127,7 +124,7 @@ Values
 ------
 
 Plesae see the NOTE below for information on how this information is
-slightly different for the dmgti and fullgarf tools.
+slightly different for those tools written as shell scripts.
 
 When the module is imported, each tool is set up so that its
 parameters are set to the CIAO default values. Once the tool has run,
@@ -200,14 +197,19 @@ After the above, the dmstat.infile parameter will be set to the string
 
   "file1.img,file2.img"
 
-NOTE: special case for dmgti and fullgarf
------------------------------------------
+NOTE: special case for shell scripts
+------------------------------------
 
-There are only two known tools - dmgti and fullgarf -
-that do not support the <@@name.par> syntax (see 'ahelp parameter' for more
-information on this functionality). Care should be taken to avoid running
-multiple copies of these tools at the same time; if this is likely to happen
-use the set_pfiles() routine to set up individual user parameter directories.
+There are several tools which are written as shell scripts that do not
+support the <@@name.par> syntax for calling a CIAO tool (see the
+'ahelp parameter' page for more information on this functionality). Care
+should be taken to avoid running multiple copies of these tools at the
+same time; if this is likely to happen use the new_pfiles_environment
+context handler or the set_pfiles() routine to set up seprate user
+parameter directories.
+
+The tools for which this is true are: axbary, dmgti, evalpos, fullgarf,
+mean_energy_map, pileup_map, tgdetect, and wavdetect.
 
 Displaying the current setting
 ------------------------------
@@ -315,14 +317,14 @@ successfully and produce output on the STDERR channel).
 To avoid problems with running multiple copies of a tool at the same
 time, the tool is run using its own parameter file, supplied using the
 "@@<filename>" form of the tool. This should be invisible to users of
-this module.
+this module. The location used for the temporary parameter file is
+controlled by the ASCDS_WORK_PATH environment variable.
 
-As noted above in the 'special case for dmgti and fullgarf' section,
-this method is not used for these two tools. You may need to use
-set_pfiles() to set up a unique PFILES environment if you are run
-either of these tools multiple times simultaneously; an alternative
-is to use the new_pfiles_environment() context manager to automate the
-creation of a new PFILES environment and directory for each run.
+As noted above in the 'special case for shell scripts' section,
+this method is not used for several tools. You may need to use
+the new_pfiles_environment() context manager to automate the
+creation of a new PFILES environment and directory for each run,
+or the set_pfiles() routine to handle this case manually.
 
 Detecting errors
 ================
@@ -366,8 +368,9 @@ the current settings.
 If you are using any instrument-specific tools it is suggested that
 you call set_pfiles() with a unique directory name, rather than with
 no argument. The new_pfiles_environment() context manager can be used
-to create a temporary directory which is used to store the parameter
-files and is then deleted on exit. An example of its use is
+to automate this, as it creates a temporary directory which is used to
+store the parameter files which is then deleted on exit from the block.
+An example of its use is
 
   with new_pfiles_environment():
       # The following tools are run with a PFILES directory
@@ -1117,7 +1120,7 @@ class CIAOParameter(object):
         v5("_create_parfile_copy called for {0} with parfile={1}".format(toolname, parfile))
 
         if parfile is None:
-            tmpfile = True
+            # tmpfile = True
             try:
                 tmpdir = os.environ["ASCDS_WORK_PATH"]
             except KeyError:
@@ -1132,7 +1135,7 @@ class CIAOParameter(object):
             parfile = pfh.name[:]
 
         else:
-            tmpfile = False
+            # tmpfile = False
             pfh = open(parfile, "w")
 
         try:
@@ -1742,7 +1745,7 @@ class CIAOTool(CIAOParameter):
 
 
 class CIAOToolParFile(CIAOTool):
-    """Run a CIAO tool using a separate parameter file.
+    """Run a CIAO tool using a separate parameter file (@@ syntax).
 
     See the help for CIAOTool for information on this
     class.
@@ -1844,6 +1847,11 @@ class CIAOToolParFile(CIAOTool):
         return retval
 
 
+# TODO: look at wrapping calls to these tools in a
+# new_pfiles_envionment context. The issue is whether we want to
+# allow the user to over-ride this (e.g. because she has already
+# done it)?
+#
 class CIAOToolDirect(CIAOTool):
     """Run a CIAO tool directly. This is for those tools
     that do not support the @@foo.par syntax for accessing
@@ -2370,6 +2378,7 @@ def add_tool_history(infiles, toolname, params,
     if isinstance(infiles, six.string_types):
         infiles = [infiles]
 
+    tool = make_tool('dmhistory')
     with new_pfiles_environment(ardlib=False, copyuser=False, tmpdir=tmpdir):
         # would like to just say
         # pio.pset(toolname, params)
@@ -2403,7 +2412,7 @@ def add_tool_history(infiles, toolname, params,
             if comments is not None:
                 add_comment_lines(infile, comments)
 
-            dmhistory(infile=infile, tool=toolname, action="put")
+            tool(infile=infile, tool=toolname, action="put")
 
 
 parinfo = {}
@@ -2437,8 +2446,11 @@ def list_tools(tools=True, params=True):
 
 
 # Those tools which can not be run using <toolname> @@foo.par.
-# As of CIAO 4.6 this is now a small list!
-_no_par_file = ["dmgti", "fullgarf"]
+# This is believed to be correct as of June 2017 (CIAO 4.9).
+#
+_no_par_file = ["axbary", "dmgti", "evalpos", "fullgarf",
+                "mean_energy_map", "pileup_map", "tgdetect",
+                "wavdetect"]
 
 
 def make_tool(toolname):

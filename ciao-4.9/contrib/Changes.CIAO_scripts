@@ -1,19 +1,68 @@
 
-## 4.9.4 - TBD ##
+## 4.9.4 - July 2017 ##
 
   Updated scripts
 
     apply_fov_limits, fluximage, flux_obs, get_fov_limits, merge_obs
 
-      Fixed an error message when given a FOV file with a region that
-      can not be handled by skyfov (e.g. when processing the output
-      of a MARX simulation when the roll value is constant).
-    
+        Fixed an error message when given a FOV file with a region that
+      	can not be handled by skyfov (e.g. when processing the output
+      	of a MARX simulation when the roll value is constant).
+
     flux_obs, merge_obs, reproject_obs
 
-      Fixed an error message when no input event files could not be
-      processed. This only changes the error message, and not how
-      the tools run.
+        Fixed an error message when no input event files could not be
+      	processed. This only changes the error message, and not how
+      	the tools run.
+
+    srcflux
+
+        Added an internal optimization for the case where a large number of 
+      	positions are used, especially when using psfmethod=psffile. 
+      	There is no change to the output.
+
+    chandra_repro
+
+        Fixed internal problem when the observation being processed
+      	does not have a standard aspect solution (restricted to Earth 
+      	and Moon observations).  chandra_repro still cannot be used 
+      	with these observations but now the error message is 
+      	more informative.
+
+    dax
+
+        The CIAO -> Statistics -> Photometry (srcflux) task now allows 
+	users to select the method used to estimate the PSF fraction 
+	for their analysis.
+
+	    arfcorr : (default) uses a circularly symmetrical 
+	    	      approximation of the PSF
+            ideal : assumes 100% of the PSF is in the source region.
+            quick : looks up the PSF fraction in circular source 
+	    	    regions
+            marx : runs simulate_psf to generate a MARX simulated PSF 
+	    	   to measure the PSF fractions.  Requires MARX be 
+		   installed.
+
+	See the psfmethod parameter in 'ahelp srcflux'.
+
+    mktgresp
+
+        Updated so that temporary aspect histogram files are cleaned 
+	up in Python 3.5.
+
+
+  Updated Python modules
+
+    ciao_contrib.runtool
+
+        Support for running the tools axbary, evalpos, mean_energy_map,
+        pileup_map, and wavdetect has been moved to the CIAOToolDirect
+        class. Care should be taken when running these tools to avoid
+       	multiple copies trying to edit the same parameter file; it is
+       	strongly suggested that the new_pfiles_environment context
+       	manager is used when running these tools.
+
 
 ## 4.9.3 - May 2017 ##
 
