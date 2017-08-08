@@ -1,8 +1,30 @@
 #!/usr/bin/env python
 
+#
+# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2017
+#           Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 USA.
+#
+
 __version__ = "CIAO 4.9"
 toolname = "blanksky_image"
-__revision__  = "30 September 2016"
+__revision__  = "8 August 2017"
 
 
 import os, sys, paramio, tempfile, numpy
@@ -159,9 +181,14 @@ def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
         subspace_arg = "pi"
 
     for i in range(len(chips)):
-        component_info.append([i+1,cr.get_subspace_data(i+1,dettype).range_min[0],cr.get_subspace_data(i+1,subspace_arg).range_min[0],cr.get_subspace_data(i+1,subspace_arg).range_max[0]])
+        try:
+            component_info.append([i+1,cr.get_subspace_data(i+1,dettype).range_min,cr.get_subspace_data(i+1,subspace_arg).range_min[0],cr.get_subspace_data(i+1,subspace_arg).range_max[0]])
 
-    #component_info = zip(*component_info) # the * in the zip takes the transpose # P2
+        except IndexError:
+            break
+
+    # restructure list to remove lists; necessary for subspace components with more than one chip listed 
+    component_info = [[n[0],chip,n[2],n[3]] for n in component_info for chip in n[1]] 
 
     ### P3
     try:
