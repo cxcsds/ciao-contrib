@@ -24,7 +24,7 @@
 
 __version__ = "CIAO 4.9"
 toolname = "blanksky_sample"
-__revision__  = "10 March 2017"
+__revision__  = "8 August 2017"
 
 import os, sys, paramio, tempfile
 import pycrates as pcr
@@ -240,37 +240,63 @@ def get_nevt(fn):
 def cols2int4(fn,tmpdir):
     """Convert the PI and PHA columns in the blanksky file from Int2 to Int4 data types"""
 
-    v2("Converting PI and PHA column integer type for compatibility...")
-
-    tmp1 = tempfile.NamedTemporaryFile(dir=tmpdir)
-    tmp2 = tempfile.NamedTemporaryFile(dir=tmpdir)
-
-    dmtcalc.punlearn()
-    dmtcalc.infile = fn 
-    dmtcalc.outfile = tmp1.name
-    dmtcalc.expression = "tmppha=(long)pha,tmppi=(long)pi"
-    dmtcalc.verbose = "0"
-    dmtcalc.clobber= "yes"
-    dmtcalc()
-
-    dmtcalc.punlearn()
-    dmtcalc.infile = "{}[cols -pha,-pi]".format(tmp1.name)
-    dmtcalc.outfile = tmp2.name
-    dmtcalc.expression = "pha=tmppha,pi=tmppi"
-    dmtcalc.verbose = "0"
-    dmtcalc.clobber= "yes"
-    dmtcalc()
-
-    tmp1.close()
-
-    dmcopy.punlearn()
-    dmcopy.infile = "{}[cols -tmppha,-tmppi]".format(tmp2.name)
-    dmcopy.outfile = fn
-    dmcopy.verbose = "0"
-    dmcopy.clobber = "yes"
-    dmcopy()   
+    # check that column datatype
+    cr = pcr.read_file("{}[cols pi,pha][#row=1]".format(fn))
     
-    tmp2.close()
+    pi_type = cr.pi.values.dtype.name
+    pha_type = cr.pha.values.dtype.name
+
+    cr.__del__()
+
+    if False in [pi_type=="int64",pha_type=="int64"]:
+        v2("Converting PI and PHA column integer type for compatibility...")
+
+        tmp1 = tempfile.NamedTemporaryFile(dir=tmpdir)
+        tmp2 = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+        if [True,True] == [pi_type!="int64",pha_type!="int64"]:
+            convert_col = "tmppha=(long)pha,tmppi=(long)pi"
+            tmpcol = "pha=tmppha,pi=tmppi"
+            col_replace = "[cols -pha,-pi]"
+            tmpcol_del = "[cols -tmppha,-tmppi]"
+        else:
+            if pi_type != "int64":
+                convert_col = "tmppi=(long)pi"
+                tmpcol = "pi=tmppi"
+                col_replace = "[cols -pi]"
+                tmpcol_del = "[cols -tmppi]"
+            elif pha_type != "int64":
+                convert_col = "tmppha=(long)pha"
+                tmpcol = "pha=tmppha"
+                col_replace = "[cols -pha]"
+                tmpcol_del = "[cols -tmppha]"
+
+        dmtcalc.punlearn()
+        dmtcalc.infile = fn 
+        dmtcalc.outfile = tmp1.name
+        dmtcalc.expression = convert_col
+        dmtcalc.verbose = "0"
+        dmtcalc.clobber= "yes"
+        dmtcalc()
+
+        dmtcalc.punlearn()
+        dmtcalc.infile = "{0}{1}".format(tmp1.name,col_replace)
+        dmtcalc.outfile = tmp2.name
+        dmtcalc.expression = tmpcol
+        dmtcalc.verbose = "0"
+        dmtcalc.clobber= "yes"
+        dmtcalc()
+
+        tmp1.close()
+
+        dmcopy.punlearn()
+        dmcopy.infile = "{0}{1}".format(tmp2.name,tmpcol_del)
+        dmcopy.outfile = fn
+        dmcopy.verbose = "0"
+        dmcopy.clobber = "yes"
+        dmcopy()   
+
+        tmp2.close()
 
 
 def convert_ppr_cols(infile,outfile,instrument,tmpdir):
@@ -664,6 +690,13 @@ def doit():
     kw_bkg = fileio.get_keys_from_file(bkgfile)
 
     instrument = kw_bkg["INSTRUME"]
+
+    # check for background CALDB version; any ACIS background before 4.7.5.1 
+    # will need to convert the PHA and PI datatype 
+    try:
+        calver_bkg = kw_bkg["CALDBVER"]
+    except KeyError:
+        calver_bkg = None
 
     etype = evt_type(infile)
 
