@@ -274,11 +274,26 @@ def resolve_parameter_dependencies( pars ):
             pars["ra"]=f0.get_key_value("SRC_RA")
             pars["dec"]=f0.get_key_value("SRC_DEC")
 
-
-
     if int(pars["random_seed"]) <= 0:
         import random as random
         pars["random_seed"] = str( random.getrandbits(29) )
+
+
+def check_rayfiles( raystk ):
+    from pycrates import read_file
+    
+    keys_to_check = [ "SRC_RA", "SRC_DEC", "CONFFILE", "ASOLFILE" ]
+
+    if 1 == len(raystk):
+        return
+
+    for k in keys_to_check:
+        k0 = read_file(raystk[0]).get_key_value(k)
+
+        for r in raystk[1:]:
+            kn = read_file(r).get_key_value(k)
+            if k0 != kn:
+                raise RuntimeError("Mismatch in ray file keyword {} in {}".format(k, r))
 
 
 @verboseCall(2)
