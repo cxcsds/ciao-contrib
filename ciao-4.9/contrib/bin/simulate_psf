@@ -268,6 +268,14 @@ def resolve_parameter_dependencies( pars ):
             verb1("{} rayfiles provided; ignoring numiter={} parameter".format(len(raystk), pars["numiter"] )) 
         pars["numiter"] = str(len(raystk))
 
+        if ("INDEF" == pars["ra"]) and ("INDEF" == pars["dec"]):
+            from pycrates import read_file
+            f0=read_file(raystk[0])
+            pars["ra"]=f0.get_key_value("SRC_RA")
+            pars["dec"]=f0.get_key_value("SRC_DEC")
+
+
+
     if int(pars["random_seed"]) <= 0:
         import random as random
         pars["random_seed"] = str( random.getrandbits(29) )
