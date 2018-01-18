@@ -24,7 +24,7 @@
 
 __version__ = "CIAO 4.9"
 toolname = "blanksky_sample"
-__revision__  = "8 August 2017"
+__revision__  = "18 January 2018"
 
 import os, sys, paramio, tempfile
 import pycrates as pcr
@@ -225,7 +225,7 @@ def get_par(argv):
     return params,pars
 
 
-def get_nevt(fn):
+def _get_nevt(fn):
     """get number of events"""
     
     cr = pcr.read_file(fn)
@@ -237,14 +237,14 @@ def get_nevt(fn):
     return nevt
 
 
-def cols2int4(fn,tmpdir):
+def _cols2int4(fn,tmpdir):
     """Convert the PI and PHA columns in the blanksky file from Int2 to Int4 data types"""
 
     # check that column datatype
     cr = pcr.read_file("{}[cols pi,pha][#row=1]".format(fn))
-    
-    pi_type = cr.pi.values.dtype.name
-    pha_type = cr.pha.values.dtype.name
+
+    pi_type = cr.get_column("pi").values.dtype.name
+    pha_type = cr.get_column("pha").values.dtype.name
 
     cr.__del__()
 
@@ -299,7 +299,7 @@ def cols2int4(fn,tmpdir):
         tmp2.close()
 
 
-def convert_ppr_cols(infile,outfile,instrument,tmpdir):
+def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
     tmp1 = tempfile.NamedTemporaryFile(dir=tmpdir)
     tmp2 = tempfile.NamedTemporaryFile(dir=tmpdir)
 
@@ -369,7 +369,7 @@ def convert_ppr_cols(infile,outfile,instrument,tmpdir):
     dmhedit()
 
     for key in ["X","Y","DETX","DETY"]:
-        keynum = structural_kw(tmp2.name,key,tmpdir)
+        keynum = _structural_kw(tmp2.name,key,tmpdir)
 
         if keynum != None:
             dmhedit.punlearn()
@@ -419,7 +419,7 @@ def convert_ppr_cols(infile,outfile,instrument,tmpdir):
     tmp2.close()
 
 
-def structural_kw(fn,keyval,tmpdir):
+def _structural_kw(fn,keyval,tmpdir):
     # import shutil
 
     # tmp_dmlist = tempfile.NamedTemporaryFile(dir=tmpdir)
@@ -487,7 +487,7 @@ def structural_kw(fn,keyval,tmpdir):
         return None
 
 
-def evt_type(fn):
+def _evt_type(fn):
     """
     ID infile input type. 
     # MARX: HDUNAME=EVENTS, DATACLAS=SIMULATED
@@ -515,7 +515,7 @@ def evt_type(fn):
 
 
 #def num_pick((bkg,outfile,bkgscale,tmpdir,verbose)):
-def num_pick(args): # P3
+def _num_pick(args): # P3
     """Pick number of photons to add to the simulation"""
 
     (bkg,outfile,bkgscale,randomseed,tmpdir,verbose) = args # P3
@@ -525,11 +525,11 @@ def num_pick(args): # P3
         ## get total number of events; the NAXIS2/__NROWS keyword aren't updated if 
         ## evt file is filtered
         # n = kw["__NROWS"]
-        # n = get_nevt(bkg)
+        # n = _get_nevt(bkg)
         # cts = rate*exptime # sample the scaled down background
 
         if randomseed > 0:
-            randseed = "#rand {}".format(randomseed)
+            randseed = "#rand({})".format(randomseed)
         else:
             randseed = "#trand"
 
@@ -537,7 +537,7 @@ def num_pick(args): # P3
 
         dmtcalc.punlearn()
         dmtcalc.infile = bkg
-        dmtcalc.outfile =def_rand.name
+        dmtcalc.outfile = def_rand.name
         #dmtcalc.expression = "randnum={0}/{1}*#trand".format(n,cts) 
         dmtcalc.expression = "randnum={0}/{1}".format(randseed,bkgscale)
         dmtcalc.verbose = verbose
@@ -564,7 +564,7 @@ def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
     time_rand = tempfile.NamedTemporaryFile(dir=tmpdir)
 
     if randomseed > 0:
-        randseed = "#rand {}".format(randomseed)
+        randseed = "#rand({})".format(randomseed)
     else:
         randseed = "#trand"
 
@@ -624,7 +624,7 @@ def sample_chip(bkg,outfile,kw,randomseed,tmpdir,verbose):
     if instrument == "HRC":
         bkgscale = kw["BKGSCALE"]
 
-        num_pick((bkg,outfile,bkgscale,randomseed,tmpdir,verbose))
+        _num_pick((bkg,outfile,bkgscale,randomseed,tmpdir,verbose))
 
     else:
         chips = fileio.get_ccds(bkg)
@@ -641,11 +641,10 @@ def sample_chip(bkg,outfile,kw,randomseed,tmpdir,verbose):
                 bkg_sample.append((bkgchipstr,bkgtmp.name,bkgscale,randomseed,tmpdir,verbose))
                 bkg_tmp.append(bkgtmp)
 
-            #parallel_map(num_pick,bkg_sample)
-            parallel_pool(num_pick,bkg_sample)
+            #parallel_map(_num_pick,bkg_sample)
+            parallel_pool(_num_pick,bkg_sample)
 
         finally:
-
             dmmerge.punlearn()
 
             dmmerge.infile = [bg.name for bg in bkg_tmp]
@@ -691,23 +690,66 @@ def doit():
 
     instrument = kw_bkg["INSTRUME"]
 
+    etype = _evt_type(infile)
+
+    # filter CCDs if input is a PSF to what's available in the BKG, since PPR contains
+    # all CCD_IDs and MARX is strictly defined between ACIS-I and ACIS-S
+    if etype != "obs":
+        if instrument == "ACIS":
+
+            tmpin = tempfile.NamedTemporaryFile(dir=tmpdir)
+            tmpbkg = tempfile.NamedTemporaryFile(dir=tmpdir)
+            
+            ccd_psf = fileio.get_ccds(infile)
+            ccd_bkg = fileio.get_ccds(bkgfile)
+
+            ccd = set(ccd_psf) & set(ccd_bkg)
+            ccd = ",".join([str(i) for i in sorted(ccd)])
+
+            dmcopy.punlearn()
+            dmcopy.infile = "{0}[ccd_id={1}]".format(infile,ccd)
+            dmcopy.outfile = tmpin.name
+            dmcopy.verbose = "0"
+            dmcopy.clobber = "yes"
+            dmcopy()
+
+            dmcopy.punlearn()
+            dmcopy.infile = "{0}[ccd_id={1}]".format(bkgfile,ccd)
+            dmcopy.outfile = tmpbkg.name
+            dmcopy.verbose = "0"
+            dmcopy.clobber = "yes"
+            dmcopy()
+
+            infile = tmpin.name
+            bkgfile = tmpbkg.name
+            
     # check for background CALDB version; any ACIS background before 4.7.5.1 
-    # will need to convert the PHA and PI datatype 
-    try:
-        calver_bkg = kw_bkg["CALDBVER"]
-    except KeyError:
-        calver_bkg = None
+    # will need to convert the PHA and PI datatype which were short integers 
+    # (Int16/Int2) and match the event files with long integers (Int64/Int4)
+    cr_bkg = pcr.read_file("{}[#row=1]".format(bkgfile))
 
-    etype = evt_type(infile)
+    if True in [cr_bkg.pi.values.dtype != "int64",cr_bkg.pha.values.dtype != "int64"]:
+        bkg_old = True
+    else:
+        bkg_old = False
 
+    cr_bkg.__del__()
+
+    # sample background file and assign times to each event
     sample_chip(bkgfile,get_rand.name,kw_bkg,seed,tmpdir,verbose)
     assign_time(get_rand.name,time_sorted.name,kw_psf,seed,tmpdir,verbose)
 
     get_rand.close()
 
-    if etype == "obs":
+    try:
+        tmpbkg.close()
+    except NameError:
+        pass
+
+    if etype != "ppr":
         if instrument == "ACIS":
-            cols2int4(time_sorted.name,tmpdir) # convert PHA and PI columns to Int4 to match observed evt
+            if bkg_old:
+                _cols2int4(time_sorted.name,tmpdir) # convert PHA and PI columns to Int4 to match observed evt
 
     if reproject == "yes":
         # Reproject the blank sky fields to the same position on the sky as the marx simulation.
@@ -719,7 +761,7 @@ def doit():
             reproject_events.infile = "{}[cols chip_id,chip,det,sky,pha,pi,status,time]".format(time_sorted.name)
 
         reproject_events.outfile = bkgoutdir+bkgout
-        reproject_events.aspect = asolfile
+        reproject_events.aspect = asol
         reproject_events.match = infile
         reproject_events.random = seed
         reproject_events.clobber = "yes"
@@ -751,13 +793,17 @@ def doit():
 
         dmmerge.punlearn()
 
-        if etype == "marx":
-            dmmerge.infile = "{0},{1}".format(infile,bkgoutdir+bkgout)
+        tmppsf = tempfile.NamedTemporaryFile(dir=tmpdir)
 
-        else:
-            tmppsf = tempfile.NamedTemporaryFile(dir=tmpdir)
+        if etype == "ppr":
+            _convert_ppr_cols(infile,tmppsf.name,instrument,tmpdir)
+            dmmerge.infile = "{0},{1}".format(tmppsf.name,bkgoutdir+bkgout)
 
-            if etype == "obs":
+        elif etype in ["obs","marx"]:
+            if (True,True) == (etype=="obs",instrument=="ACIS"):
+                dmmerge.infile = "{0},{1}".format(infile,bkgoutdir+bkgout)
+
+            else:
                 # first need to convert data type for PI and PHA columns
                 dmcopy.punlearn()
                 dmcopy.infile = infile
@@ -766,16 +812,11 @@ def doit():
                 dmcopy.clobber = "yes"
                 dmcopy()
 
-                if instrument == "ACIS":
-                    cols2int4(tmppsf.name,tmpdir)
+                _cols2int4(tmppsf.name,tmpdir)
+                dmmerge.infile = "{0},{1}".format(tmppsf.name,bkgoutdir+bkgout)
 
-            elif etype == "ppr":
-                convert_ppr_cols(infile,tmppsf.name,instrument,tmpdir)
-
-            else:
-                v3("'infile' has unrecognized creator")
-
-            dmmerge.infile = "{0},{1}".format(tmppsf.name,bkgoutdir+bkgout)
+        else:
+            v3("'infile' has unrecognized creator")
 
 
         if etype == "ppr":
@@ -812,7 +853,7 @@ def doit():
             if psf_bkg_out == "":
                 tmppsf = tempfile.NamedTemporaryFile(dir=tmpdir)
 
-                convert_ppr_cols(infile,tmppsf.name,instrument,tmpdir)
+                _convert_ppr_cols(infile,tmppsf.name,instrument,tmpdir)
 
                 dmmerge.infile = "{0}[exclude sky=region({2})],{1}[sky=region({2})]".format(tmppsf.name+params["infile_filter"],bkgoutdir+bkgout+params["infile_filter"],regionfile)
 
@@ -843,6 +884,11 @@ def doit():
 
     try:
         tmppsf.close()
+    except NameError:
+        pass
+
+    try:
+        tmpin.close()
     except NameError:
         pass
 
