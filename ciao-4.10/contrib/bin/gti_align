@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 #
-# Copyright (C) 2015-2016 Smithsonian Astrophysical Observatory
+# Copyright (C) 2015-2016, 2018 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@ from __future__ import print_function
 
 
 toolname = "gti_align"
-__revision__ = "13 Sep 2016"
+__revision__ = "06 March 2018"
 
 import os
 import sys
@@ -31,15 +31,18 @@ import sys
 try:
     if not __file__.startswith(os.environ['ASCDS_INSTALL']):
         _thisdir = os.path.dirname(__file__)
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib/python2.7/site-packages'))
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
         if os.path.isdir(_pathdir):
             os.sys.path.insert(1, _pathdir)
         else:
             print("*** WARNING: no {}".format(_pathdir))
 
+        del _libname
         del _pathdir
         del _thisdir
-        
+
 except KeyError:
     raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
 
@@ -61,9 +64,9 @@ class ExposureStatsFile():
 
     tlo = {}
     thi = {}
-    
+
     per_chip_output = {}
-    
+
     def __init__(self, infile):
         self.infile= infile
 
@@ -74,35 +77,35 @@ class ExposureStatsFile():
         self._times = tab.get_column("time").values*1.0
         self._expno = tab.get_column("expno").values*1
         self._ccds = tab.get_column("ccd_id").values*1
-        
+
         self.ccds = list(set(self._ccds))
         self.ccds.sort()
-        
-        # We know TIMEPIXR = 0.5 , ie times are middle of TIMEDEL 
-        # length time bin 
+
+        # We know TIMEPIXR = 0.5 , ie times are middle of TIMEDEL
+        # length time bin
         self.timedel = tab.get_key_value("timedel")
         self.timedel_d2 = self.timedel/2.0
 
         self.flushtime = tab.get_key_value("flshtime")
 
-        
+
     def get_per_chip_exposure_time_boundaries( self, ccd_id ):
         """
         The stat1 file has the mid-time for each exposure number that is sent.
         For dropped exposures there is a gap.
-        
+
         We create start/stop times for each exposure.
         At the start of a gap we use time-timedel/2.  At the end
         of a gap we use time+timedel/2.
-        
-        The exposure are not identically timedel seconds apart so 
+
+        The exposure are not identically timedel seconds apart so
         when we have 2 consecutive exposures we use the average/middle
         time between them.
         """
 
         tt = [ x[1] for x in zip( self._ccds, self._times) if x[0] == ccd_id ]
         ee = [ x[1] for x in zip( self._ccds, self._expno) if x[0] == ccd_id ]
-        
+
         # read file, use DM filter to select just this ccd_id
 
         if len(ee) ==  0:
@@ -123,12 +126,12 @@ class ExposureStatsFile():
                 self.thi[ccd_id][xx-1] = (tt[xx]+tt[xx-1])/2.0
                 self.tlo[ccd_id][xx] = self.thi[ccd_id][xx-1]
             else: # Dropped exposure
-                self.thi[ccd_id][xx-1] = tt[xx-1]+self.timedel_d2 
+                self.thi[ccd_id][xx-1] = tt[xx-1]+self.timedel_d2
                 self.tlo[ccd_id][xx]   = tt[xx]-self.timedel_d2 - self.flushtime
 
         for xx in range(len(tt)):
             verb5( "{}\t{}\t{}\t{}".format(ee[xx], self.tlo[ccd_id][xx], tt[xx], self.thi[ccd_id][xx]))
-        
+
 
     def get_exposure_time_boundaries( self ):
         """
@@ -136,24 +139,24 @@ class ExposureStatsFile():
         """
         for ccd_id in self.ccds:
             self.get_per_chip_exposure_time_boundaries(ccd_id)
-    
+
 
     def _align_boundary( self, ss, tt, ccd_id ):
         """
         Find the exposure times that bound the start (ss) and stop (tt)
         times.
-        
+
         If values are outside of range, then start is set to 1st record
         and stop is set to the last record.
-        """        
+        """
 
-        # Due to round offs and other approx's, a time right at the 
+        # Due to round offs and other approx's, a time right at the
         # boundary between two exposures may get shifted into the wrong
         # bin.  We artificially shrink the input GTI record so that if
         # will end up in the correct frame even if the FPE noise
-        # would otherwise shift into the wrong one.        
+        # would otherwise shift into the wrong one.
         delta = 0.001
-        
+
         ll = [ x for x in range(len(self.thi[ccd_id])) if ss+delta <= self.thi[ccd_id][x] ]
         hh = [ x for x in range(len(self.thi[ccd_id])) if tt-delta >= self.tlo[ccd_id][x] ]
         #ll = filter( lambda x: ss+delta <= self.thi[ccd_id][x], range(len(self.thi[ccd_id] )))
@@ -169,7 +172,7 @@ class ExposureStatsFile():
 
     def align_boundary( self, gti ):
         """
-        Loop over ccd_id's found in the stat1 file and match to 
+        Loop over ccd_id's found in the stat1 file and match to
         gti subspace componts.  If no ccd_id subspace, use same
         for all ccd_id's.
         """
@@ -183,7 +186,7 @@ class ExposureStatsFile():
             else:
                 verb0("WARNING: ccd_id {} in stat1 file is not in gti file".format(ccd_id))
                 continue
-        
+
             #new_limits = map( self._align_boundary, starts, stops, [ccd_id]*len(starts) )
             new_limits = []
             for ii in range( len(starts )):
@@ -193,18 +196,18 @@ class ExposureStatsFile():
             nt = np.array([x[1] for x in new_limits if x[1]])
             self.per_chip_output[ccd_id] = ( ns, nt )
 
-        
+
         # Preserve the order of GTIs in infile (if any)
         if gti.ccd_order:
             self.ccds = [ x for x in gti.ccd_order if x in self.ccds ]
-        
+
 
     def write_output( self, outfile ):
         """Write the output file using cxcdm routines"""
 
         from cxcdm import dmTableCreate, dmColumnCreate, dmSubspaceColOpen
         from cxcdm import dmSubspaceColSet, dmTableClose, dmBlockCreateSubspaceCpt, dmSubspaceColSetTableName
-        
+
         # clobber checking already done
         if os.path.exists( outfile ):
             os.unlink( outfile )
@@ -224,7 +227,7 @@ class ExposureStatsFile():
             dmSubspaceColSet( tdss, self.per_chip_output[ccd_id][0], self.per_chip_output[ccd_id][1] )
             dmSubspaceColSet( cdss, np.array([ccd_id]), np.array([ccd_id]) )
             dmSubspaceColSetTableName( tdss, "GTI{}".format(ccd_id))
-            
+
             if (1 == len(self.per_chip_output[ccd_id][0])):
                 if verbstr:  verbstr += "(ccd_id={},time={}:{})".format(ccd_id,self.per_chip_output[ccd_id][0][0], self.per_chip_output[ccd_id][1][0])
             else:
@@ -241,12 +244,12 @@ class ExposureStatsFile():
 
 class GTI():
     """
-    
+
     """
     sentinal = "no_ccd_dss"  # if input gti has no ccd_id subspace
     def __init__(self):
         pass
-        
+
 
 
 class GTIString(GTI):
@@ -255,35 +258,35 @@ class GTIString(GTI):
     def __init__( self, instr ):
         self.cpts = {}
         self.ccd_order = []
-        
+
         pairs = instr.split(",")
         lo_vals = []
         hi_vals = []
         for p in pairs:
             lo_hi = p.split(":")
-            
+
             if len(lo_hi) != 2:
                 raise ValueError("Invalid time filter string '{}'".format(instr))
             lo = lo_hi[0]
             hi = lo_hi[1]
-            
+
             if len(lo) == 0:
                 lo_vals.append(0) # time had best not be negative!
             else:
                 lo_vals.append(float(lo))
-            
+
             if len(hi) == 0:
-                hi_vals.append( 1.0e308 )  # chandra roars into the 3rd millennium 
+                hi_vals.append( 1.0e308 )  # chandra roars into the 3rd millennium
             else:
                 hi_vals.append(float(hi))
 
-        # could add checks that 
-        # hi[i] > lo[i] 
+        # could add checks that
+        # hi[i] > lo[i]
         # lo[i+1] > lo[i]
         # hi[i+1] > hi[i]
 
         self.cpts[self.sentinal] = ( lo_vals, hi_vals )
-        
+
 
 
 class GTIFile(GTI):
@@ -297,9 +300,9 @@ class GTIFile(GTI):
         self.cpts = {}
         self.ccd_order = []
         self.sentinal = "no_ccd_dss"  # if input gti has no ccd_id subspace
-        
+
         tab = read_file(infile)
-        
+
         for cno in range(1,100):
             try:
                 time_ss = tab.get_subspace_data( cno, "time")
@@ -307,10 +310,10 @@ class GTIFile(GTI):
                 # No interface to know number of subspace components :(
                 # keep going until we run out
                 break
-            
+
             start = time_ss.range_min*1.0
             stop = time_ss.range_max*1.0
-            
+
             try:
                 ccd_id = tab.get_subspace_data( cno, "ccd_id")
                 for ccd_range in zip( ccd_id.range_min, ccd_id.range_max):
@@ -320,18 +323,18 @@ class GTIFile(GTI):
 
             except:
                 self.cpts[self.sentinal] = ( start, stop )
-    
+
 
 def load_gti( infile ):
     """
     wrapper around object creation
     """
-    
+
     try:
         gti = GTIFile( infile )
     except:
         gti = GTIString( infile )
-    
+
     return gti
 
 
@@ -346,7 +349,7 @@ def main():
     from ciao_contrib.runtool import add_tool_history
     from ciao_contrib._tools.fileio import outfile_clobber_checks
 
-    pars = get_params(toolname, "rw", sys.argv, 
+    pars = get_params(toolname, "rw", sys.argv,
          verbose={"set":lw.set_verbosity, "cmd":verb1} )
 
     infile   = pars["times"]
@@ -386,6 +389,3 @@ if __name__ == "__main__":
         print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
-  
-
-        

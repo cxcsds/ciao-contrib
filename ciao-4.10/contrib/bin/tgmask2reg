@@ -1,38 +1,44 @@
 #!/usr/bin/env python
-# 
-# Copyright (C) 2013,2016 Smithsonian Astrophysical Observatory
-# 
+#
+# Copyright (C) 2013,2016, 2018 Smithsonian Astrophysical Observatory
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-# 
+#
 from __future__ import print_function
 
 toolname = "tgmask2reg"
-__revision__ = "02 Nov 2016"
+__revision__ = "06 March 2018"
 
 # This is only needed for development.
 import os
+import sys
+
 try:
     if not __file__.startswith(os.environ['ASCDS_INSTALL']):
         _thisdir = os.path.dirname(__file__)
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib/python2.7/site-packages'))
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
         if os.path.isdir(_pathdir):
             os.sys.path.insert(1, _pathdir)
         else:
             print("*** WARNING: no {}".format(_pathdir))
+
+        del _libname
         del _pathdir
-        del _thisdir        
+        del _thisdir
 except KeyError:
     raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
 
@@ -54,13 +60,13 @@ def locate_caldb_file():
     Locate the TGMASK2 file in the CALDB
     """
     import caldb4 as cal
-    
+
     mycal = cal.Caldb("chandra", "hrc", product="TGMASK2")
     myfiles = mycal.search
     if len(myfiles) != 1:
         raise IOError("Unexpected number of CALDB files found")
     myfile = myfiles[0].split("[")
-    
+
     return myfile[0]
 
 
@@ -78,11 +84,11 @@ def check_region_cols( tab, xcol="x", ycol="y" ):
     other columns
 
     Grating files use tg_r,tg_d instead of x,y so we make those f() parameters
-    
+
     """
 
     incols = get_incols( tab )
-    
+
     region_cols = [ "shape", xcol, ycol, "r", "rotang", "component" ]
     optcols = [x for x in incols if not x in region_cols ]
     regcols = [x for x in incols if x in region_cols ]
@@ -138,7 +144,7 @@ def write_tagged_region( rows, optcols, outfile, xcol="x", ycol="y" ):
     def make_xy_string( row ):
         """
         Turn xy pairs into a comma separated string
-        """        
+        """
         xypairs = zip(row[xcol],row[ycol])
         xy=",".join(["{},{}".format(m[0],m[1]) for m in xypairs ])
         return xy
@@ -148,12 +154,12 @@ def write_tagged_region( rows, optcols, outfile, xcol="x", ycol="y" ):
     reg_str += '# Filename:\n'
     reg_str += 'global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=0 include=1 source=1\n'
     reg_str += 'physical\n'
-    
+
     with open( outfile, "w") as fp:
         # write header line
         fp.write( reg_str )
         for row in rows:
-            # For the tg case we only support polygons 
+            # For the tg case we only support polygons
             if row["shape"] != "polygon":
                 continue
             xy=make_xy_string( row )
@@ -169,7 +175,7 @@ def main():
     from ciao_contrib._tools.fileio import outfile_clobber_checks
     import os as os
 
-    pars = ps.get_params( toolname, "rw", sys.argv, 
+    pars = ps.get_params( toolname, "rw", sys.argv,
         verbose={"set":lw.set_verbosity, "cmd":verb1} )
 
     infile = pars["infile"]
@@ -198,6 +204,3 @@ if __name__ == "__main__":
         print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
-    
-
-

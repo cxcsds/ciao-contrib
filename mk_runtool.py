@@ -10,7 +10,7 @@ Usage:
   to create (i.e. what tools to support).
 
   Output is to
-  ciao-<version>/contrib/lib/python2.7/site-packages/ciao_contrib/runtool.py
+  ciao-<version>/contrib/lib/python3.5/site-packages/ciao_contrib/runtool.py
 
   Note that this file is *not* checked into the repository to
   allow you to check for changes (this could be added once the
@@ -76,7 +76,7 @@ for filename in [module_header, module_footer]:
 
 # TODO: how best to handle the Python version here?
 #
-contrib_path = "contrib/lib/python2.7/site-packages/ciao_contrib/"
+contrib_path = "contrib/lib/python3.5/site-packages/ciao_contrib/"
 odir = os.path.join(ciao_head, contrib_path)
 if not os.path.isdir(odir):
     raise IOError("Unable to find output directory:\n{}".format(odir))
