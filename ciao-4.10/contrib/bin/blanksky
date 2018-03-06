@@ -1,8 +1,26 @@
 #!/usr/bin/env python
+#
+#  Copyright (C) 2018
+#            Smithsonian Astrophysical Observatory
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
 
-__version__ = "CIAO 4.9"
+__version__ = "CIAO 4.10"
 toolname = "blanksky"
-__revision__  = "14 February 2017"
+__revision__  = "06 March 2018"
 
 import os, sys, paramio, tempfile, shutil, stat
 import pycrates as pcr
@@ -10,13 +28,15 @@ import pycrates as pcr
 # This is only needed for development.
 try:
     if not __file__.startswith(os.environ['ASCDS_INSTALL']):
-        _thisdir = os.path.dirname(__file__)
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib/python2.7/site-packages'))
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
         if os.path.isdir(_pathdir):
             os.sys.path.insert(1, _pathdir)
         else:
             print("*** WARNING: no {}".format(_pathdir))
 
+        del _libname
         del _pathdir
         del _thisdir
 
@@ -59,19 +79,19 @@ class ScriptError(RuntimeError):
 
 #########################################################################################
 #
-# suppress warnings printed to screen from fluximage.blanksky_hrci when probing for 
+# suppress warnings printed to screen from fluximage.blanksky_hrci when probing for
 # HRC-I background files
 # http://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
 #
 #########################################################################################
 class suppress_stdout_stderr(object):
     '''
-    A context manager for doing a "deep suppression" of stdout and stderr in 
-    Python, i.e. will suppress all print, even if the print originates in a 
+    A context manager for doing a "deep suppression" of stdout and stderr in
+    Python, i.e. will suppress all print, even if the print originates in a
     compiled C/Fortran sub-function.
        This will not suppress raised exceptions, since exceptions are printed
     to stderr just before a script exits, and after the context manager has
-    exited (at least, I think that is why it lets exceptions through).      
+    exited (at least, I think that is why it lets exceptions through).
 
     '''
     def __init__(self):
@@ -102,7 +122,7 @@ def error_out(msg):
 def caldb_blanksky(detector):
     """Check if CALDB blank-sky maps are installed"""
     caldb = os.environ["CALDB"]
-    
+
     if os.path.isdir("{}/data/chandra".format(caldb)):
         if detector == "HRC":
             bkg_path = "{}/data/chandra/hrc/bkgrnd".format(caldb)
@@ -173,7 +193,7 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
     # identify gainfiles
     gainfile = kw["GAINFILE"]
     bkg_gain = fileio.get_keys_from_file(infile)["GAINFILE"]
-            
+
     if gainfile != bkg_gain:
         # grab eventdef and remove time def
         # change status bits to match infile
@@ -193,7 +213,7 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
 
         for edef in eventdef:
             if edef.startswith("eventdef"):
-                eventdef = edef.lstrip("eventdef=").replace("\"","") 
+                eventdef = edef.lstrip("eventdef=").replace("\"","")
 
         eventdef = eventdef[1:-1].split(",")
 
@@ -203,10 +223,10 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
 
         eventdef = "{"+",".join(eventdef)+"}"
 
-        # add a time and expno column to the blanksky file, so acis_process_events 
+        # add a time and expno column to the blanksky file, so acis_process_events
         # can run on it (change introduced in 4.8)
         bkg_col = tempfile.NamedTemporaryFile(dir=tmpdir)
-        
+
         dmtcalc.punlearn()
 
         dmtcalc.infile = infile
@@ -219,12 +239,12 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
 
         ## CTI and TGAIN Calibration Files
         #
-        # The calibration files used to apply the CTI and time-dependent 
-        # gain corrections should also match in the event and background data. 
-        # In practice, though, it is not currently possible to apply newer CTI 
-        # and TGAIN correction the background files in the CALDB; they lack 
-        # some columns required by acis_process_events.  The error introduced 
-        # by this mismatched calibration should not be very significant for 
+        # The calibration files used to apply the CTI and time-dependent
+        # gain corrections should also match in the event and background data.
+        # In practice, though, it is not currently possible to apply newer CTI
+        # and TGAIN correction the background files in the CALDB; they lack
+        # some columns required by acis_process_events.  The error introduced
+        # by this mismatched calibration should not be very significant for
         # the faint, extended objects for which people use these backgrounds.
         acis_process_events.punlearn()
 
@@ -248,7 +268,7 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
 
     else:
         shutil.copyfile(infile,outfile)
-        
+
 
 def get_par(argv):
     """ Get data_products parameters from parameter file """
@@ -264,7 +284,7 @@ def get_par(argv):
     pars["asolfile"] = params["asol"] = paramio.pgetstr(pfile,"asolfile")
     # pars["band"] = params["band"] = paramio.pgetstr(pfile,"band")
     pars["bkgparams"] = params["bkgparams"] = paramio.pgetstr(pfile,"bkgparams")
-    pars["weight_method"] = params["weight"] = paramio.pgetstr(pfile,"weight_method")        
+    pars["weight_method"] = params["weight"] = paramio.pgetstr(pfile,"weight_method")
     pars["random"] = params["randomseed"] = paramio.pgeti(pfile,"random")
     pars["tmpdir"] = params["tmpdir"] = paramio.pgetstr(pfile,"tmpdir")
     pars["verbose"] = params["verbose"] = paramio.pgeti(pfile,"verbose")
@@ -284,16 +304,16 @@ def get_par(argv):
     elif params["evtfile"].startswith("@"):
         error_out("Input event stacks not supported.")
     else:
-        #params["evtfile"] = expand_stack(params["evtfile"])        
+        #params["evtfile"] = expand_stack(params["evtfile"])
         params["infile_filter"] = fileio.get_filter(params["evtfile"])
         params["evtfile"] = fileio.get_file(params["evtfile"])
-    
+
     # output file name
     if params["outfile"] == "":
         error_out("Please specify an output file name.")
     else:
         params["outdir"],outfile = utils.split_outroot(params["outfile"])
-        
+
         if params["outfile"].endswith("_"):
             params["outfile"] = outfile
         else:
@@ -301,8 +321,8 @@ def get_par(argv):
 
         # check if output directory is writable
         fileio.validate_outdir(params["outdir"])
-        
-    # aspect solution files, listed in quotes.    
+
+    # aspect solution files, listed in quotes.
     if params["asol"] != "":
         if params["asol"].lower() == "none":
             error_out("Aspect solutions are required to run {}.".format(toolname))
@@ -329,7 +349,7 @@ def get_par(argv):
 
         if utils.equal_elements(asol_status):
             v1("Aspect solution file{} {} found.\n".format(suffix, asolstr))
-            
+
         params["asol"] = asols
 
     # # energy bands and PI filter
@@ -371,7 +391,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
     """This routine will copy and tailor blank-sky maps to observations, but will leave
     reprojection to the observation as a separate step to avoid memory bandwidth limitations
     when trying to copy files in parallel.  Presume that infile has already been cleaned of flares"""
-    
+
     obsid = keywords["OBS_ID"]
     detector = keywords["INSTRUME"]
 
@@ -379,7 +399,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
     # obtain background for HRC-I observations.
     if detector == "HRC" and keywords["DETNAM"] == "HRC-S":
         error_out("There are no HRC-S blank-sky maps available in CalDB to tailor into a background map.")
-        
+
     elif detector == "HRC" and keywords["DETNAM"] == "HRC-I":
         from ciao_contrib.proptools import dates
 
@@ -395,7 +415,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
             error_out("Blank-sky maps not available.  Please make sure that the CalDB blank-sky maps are installed.")
         elif keywords["TSTART"] < hrc_earliest:
             error_out("ObsID {}: 2000-01-01 is the earliest observation date with valid HRC-I background files.".format(obsid))
-        else:            
+        else:
             # determine background file to use
             hrci_bkg = fluximage._find_blanksky_hrci_caldb(infile, verbose=verbose, tmpdir=tmpdir)
 
@@ -406,11 +426,11 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
             else:
                 with suppress_stdout_stderr():
                     return fluximage.blanksky_hrci(hrci_bkg, infile, tmpdir, obsid, verbose), [0]
-                
+
     else:
         ## produce ACIS blank-sky background map
 
-        # grab unique CCDs for each observation, after filtering, if applied.  Otherwise, infile has been 
+        # grab unique CCDs for each observation, after filtering, if applied.  Otherwise, infile has been
         # stripped of filters earlier to prevent breaking due to tool syntax
         if filters == "":
             ccds = fileio.get_ccds(infile).tolist()
@@ -423,11 +443,11 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
             dmcopy.clobber = "yes"
             dmcopy.verbose = "0"
             dmcopy()
-            
+
             ccds = fileio.get_ccds(infile_filt.name).tolist()
             infile_filt.close()
 
-        # check for CTI_APP keyword before running acis_bkgrnd_lookup 
+        # check for CTI_APP keyword before running acis_bkgrnd_lookup
         if "CTI_APP" not in keywords.keys():
             error_out("CTI_APP header keyword missing from {}. Please reprocess data with chandra_repro.".format(infile))
             ## check for write permission
@@ -436,7 +456,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
             #
             ## add CTI_APP keyword
             #    sbp.call(["check_ctiapp.sh",infile])
-        
+
         ## do some case filtering to prevent complete breaking of script
         # There are no background files for:
         # *      non-CTI-corrected data on ACIS-1
@@ -457,7 +477,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
 
         #if 0 in ccds and (4 or 5 or 6 or 7 or 8 or 9) in ccds:
         if 0 in ccds and not set([4,5,6,7,8,9]).isdisjoint(set(ccds)):
-            # check location of aimpoint with dmcoords using the nominal (optical-axis) coordinates 
+            # check location of aimpoint with dmcoords using the nominal (optical-axis) coordinates
             ra_nom = keywords["RA_NOM"]
             dec_nom = keywords["DEC_NOM"]
 
@@ -466,11 +486,11 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
             dmcoords.infile = infile
             dmcoords.asol = asols
             dmcoords.ra = ra_nom
-            dmcoords.dec = dec_nom 
+            dmcoords.dec = dec_nom
             dmcoords.opt = "cel"
             dmcoords.celfmt = "deg"
             dmcoords.verbose = "0"
-            
+
             dmcoords()
 
             # chip aimpoint falls on
@@ -481,7 +501,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
                 v1("Ignoring ACIS-I0, as no blank-sky map is available for this chips when aimpoint is on ACIS-{}, due to exceeding of SIM-Z limit.\n".format(str(aimpoint)))
                 ccds.remove(0)
 
-        # set CCD_ID filter 
+        # set CCD_ID filter
         ccd_filter = "[ccd_id={}]".format(",".join([str(i) for i in ccds]))
 
         # run acis_bkgrnd_lookup
@@ -490,12 +510,12 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
         acis_bkgrnd_lookup.infile = infile+ccd_filter
 
         acis_bkgrnd_lookup()
- 
+
         acis_bkg = acis_bkgrnd_lookup.outfile
 
         if acis_bkg == "":
             error_out("There is no available blank-sky map for {}.".format(infile))
-   
+
         else:
             # and hunt down duplicate identifications, since
             # there are also a few cases that result in identical lookup results:
@@ -520,7 +540,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
                 suffix = ''
             else:
                 suffix = 's'
-            
+
             v1("ACIS background file{0} {1} found.\n".format(suffix, ",".join(acis_bkg)))
 
             # make copy of background file to tailor
@@ -569,7 +589,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
                     dmhedit.value = dmkeypar.value
 
                     dmhedit()
-                
+
             bkg = tempfile.NamedTemporaryFile(suffix=".bkg",dir=tmpdir)
 
             # if datamode is VFAINT, set status to 0
@@ -611,7 +631,7 @@ def doit():
     kw = fileio.get_keys_from_file(evtfile)
     instrument = kw["INSTRUME"]
 
-    # # validate enband, but also modify the energy range if specified, since the validate_bands 
+    # # validate enband, but also modify the energy range if specified, since the validate_bands
     # # function requires a format of "elo:ehi:eff", even though effective energy is irrelevant
     # if enband.lower() == "none":
     #     enband = "::1"
@@ -626,7 +646,7 @@ def doit():
 
     dmcopy.punlearn()
     dmcopy.infile = evtfile+filters
-    dmcopy.outfile = check_evt.name 
+    dmcopy.outfile = check_evt.name
     dmcopy.clobber = "yes"
     dmcopy.verbose = "0"
     dmcopy()
@@ -646,12 +666,12 @@ def doit():
         dmlist.punlearn()
         dmlist.infile = check_evt.name+e_particle
         dmlist.opt = "counts"
-        
+
         check_counts = int(dmlist())
 
         if check_counts == 0:
             raise IOError("The input event file has zero high-energy counts defined by the 'bkgparams' parameter to scale the particle background.")
-     
+
     # check that blanksky files are in CalDB
     if not caldb_blanksky(instrument):
         if instrument == "ACIS":
@@ -688,7 +708,7 @@ def doit():
         dmhedit.value = e_particle
         dmhedit.datatype = "string"
         dmhedit()
-    
+
     dmhedit.key = "BKGMETH"
     dmhedit.value = method
     dmhedit.datatype = "string"
@@ -706,7 +726,7 @@ def doit():
             dmhedit.key = "BKGSCALE"
         else:
             dmhedit.key = "BKGSCAL{}".format(str(ccd))
-  
+
         dmhedit.value = str(scalefactor)
         dmhedit.datatype = "float"
         dmhedit()
@@ -723,7 +743,7 @@ def doit():
             v1("Calculated scale factor for 'weight_method={0}':".format(method))
         else:
             v1("Calculated scale factors for 'weight_method={0}':".format(method))
-    
+
         for n in scale:
             v1("    ACIS-{0}: {1} written to the 'BKGSCAL{0}' header keyword.".format(str(n[0]),str(n[1])))
 

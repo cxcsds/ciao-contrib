@@ -1,24 +1,24 @@
 #!/usr/bin/env python
 
-# 
-# Copyright (C) 2010-2017  Smithsonian Astrophysical Observatory
-# 
-# 
-# 
+#
+# Copyright (C) 2010-2017, 2018  Smithsonian Astrophysical Observatory
+#
+#
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-# 
+#
 
 """
 Usage:
@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "07 July 2017"
+version = "06 March 2018"
 
 # import standard python modules as required
 #
@@ -58,15 +58,18 @@ from collections import namedtuple # used in accessing header keyword values
 try:
     if not __file__.startswith(os.environ['ASCDS_INSTALL']):
         _thisdir = os.path.dirname(__file__)
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib/python2.7/site-packages'))
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
         if os.path.isdir(_pathdir):
             os.sys.path.insert(1, _pathdir)
         else:
             print("*** WARNING: no {}".format(_pathdir))
 
+        del _libname
         del _pathdir
         del _thisdir
-        
+
 except KeyError:
     raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
 
@@ -75,7 +78,7 @@ except KeyError:
 # Import the CIAO contributed modules.
 #
 import ciao_contrib.logger_wrapper as lw
-import ciao_contrib.cxcdm_wrapper as cdw 
+import ciao_contrib.cxcdm_wrapper as cdw
 
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
 from ciao_contrib.param_wrapper import open_param_file
@@ -112,17 +115,17 @@ def gunzip(file):
     """
     Gunzip the given file and then remove the .gz file
     returns unzipped filename
-    
+
     cloned and edited from:
     http://www.researchut.com/blog/archive/2006/10/17/Python_gzipgunzip_utility
-    
+
     Verify .gz extension, if not .gz just return same filename
     """
     if not re.search(".*[.]gz$",file):
       if os.path.isfile( file+".gz" ):
         v1("\nWARNING: A compressed version of file '{0}' also exists.  Will try to use uncompressed file.\n".format(file))
       return file
-    
+
     r_file = gzip.GzipFile(file, 'rb')
     gunzip_file = file.rstrip('.gz')
     w_file = open(gunzip_file, 'wb')
@@ -137,14 +140,14 @@ def link_or_copy(infile, outfile):
     """
     Choice was made to always copy instead of link since the
     links include full paths and do no tar up well.
-    
+
     We leave this routine here in case this changes back
     in the future it can be changed in one place
     """
     if os.path.islink(outfile) or os.path.exists(outfile):
         os.unlink(outfile)
     shu.copyfile( infile, outfile)
-        
+
 
 
 def error_out(params,msg,val):
@@ -197,10 +200,10 @@ def _verify_have_list(myfile,mylist,mydir,params):
             asol_files.append(line)
             v5("Added asol1 file: " + line)
         asollist.close()
-        
+
         # sort files
         asol_files.sort()
- 
+
         # write out sorted list
         try:
             asollist = open(outlist, 'w')
@@ -234,7 +237,7 @@ def get_keys_from_file(fname):
         desc = kk.desc
         keys[name] = KeyRecord(name, val, unit, desc)
 
-    #cxcdm.dmDatasetClose( cxcdm.dmBlockGetDataset(bl)) 
+    #cxcdm.dmDatasetClose( cxcdm.dmBlockGetDataset(bl))
 
 
     return keys
@@ -308,7 +311,7 @@ def setup_dirs_and_root( indir, outdir, root, cycle="" ):
 
     if ' ' in os.path.abspath(indir):
         raise IOError("The absolute path for the input directory, '{}', cannot contain any spaces".format(os.path.abspath(indir)))
-    
+
     if ' ' in os.path.abspath(outdir):
         raise IOError("The absolute path for the input directory, '{}', cannot contain any spaces".format(os.path.abspath(outdir)))
 
@@ -316,33 +319,33 @@ def setup_dirs_and_root( indir, outdir, root, cycle="" ):
     #!### Also default the standard input subdirs to indir ###
     primarydir   = indir
     secondarydir = indir
-    
+
     #!### Check if user has a primary and or secondary subdir, use them if found ###
     if os.path.isdir(indir + os.sep + "primary"):
         primarydir   = os.path.join(indir, "primary")
     if os.path.isdir(indir + os.sep + "secondary"):
         secondarydir = os.path.join(indir, "secondary")
-    
-    
+
+
     #!### Initialize outdir, default to current directory + /repro ###
     if outdir == '':
         outdir = os.path.join(indir, "repro")
 
-        
+
     #!### Verify we have nice paths ###
-    outdir       = os.path.abspath(outdir)     
-    indir        = os.path.abspath(indir)      
+    outdir       = os.path.abspath(outdir)
+    indir        = os.path.abspath(indir)
     primarydir   = os.path.abspath(primarydir)   + os.sep
     secondarydir = os.path.abspath(secondarydir) + os.sep
-        
+
     #!### Make sure there are some files ###
     evt1check=[]
     for dir in [indir, secondarydir]:
-        products=os.listdir(dir)        
+        products=os.listdir(dir)
         for ff in products:
-            if re.search(".*"+cycle+"evt1.fits*",ff):                
+            if re.search(".*"+cycle+"evt1.fits*",ff):
                 evt1check.append(ff)
-    
+
     if len(evt1check) == 0:
         if os.path.samefile(secondarydir,indir):
             raise NoEventFile("Unable to locate level=1 event file in %s.  Skipping it\n" % indir)
@@ -350,7 +353,7 @@ def setup_dirs_and_root( indir, outdir, root, cycle="" ):
             raise NoEventFile("Unable to locate level=1 event file in %s or %s.  Skipping it\n" % (indir,secondarydir))
     if len(evt1check) > 2:
         raise IOError("Multiple evt1 files found in directory %s.  Skipping it. If this is a multi-obi OBS_ID, try running the splitobs script first.\n" % indir )
-    
+
     if len(evt1check) == 2: # check for interleaved
         #
         # Check file name, if same except e[12] then most likely to be
@@ -372,7 +375,7 @@ def setup_dirs_and_root( indir, outdir, root, cycle="" ):
             raise ValueError("Output root not specified and unable to set it from the input event file")
 
     root += cycle.strip("_")
-    
+
     #!### Verify we have a root filename ###
     if not root:
         raise ValueError("Output root not specified and unable to set it from the input event file")
@@ -385,18 +388,18 @@ def setup_dirs_and_root( indir, outdir, root, cycle="" ):
 
 def match_indir_and_outdir_stacks( indir_stk, outdir_stk ):
     """
-    
+
     """
     if "" == indir_stk:
         indirs = [""]
     else:
         indirs = stk.build( indir_stk )
-    
+
     if "" == outdir_stk:
         outdirs = [""]
     else:
         outdirs = stk.build( outdir_stk )
-    
+
     if len( indirs ) == len( outdirs ):
         return( list(zip( indirs, outdirs ) ))
     if len( outdirs ) == 1:
@@ -405,7 +408,7 @@ def match_indir_and_outdir_stacks( indir_stk, outdir_stk ):
     else:
         raise ValueError("indir and outdir stack sizes are incompatible")
 
-    
+
 
 def process_command_line(argv):
     'Handle the parameter input for this script'
@@ -421,7 +424,7 @@ def process_command_line(argv):
     indir = pio.pgetstr(fp, "indir").strip()
     if indir == '':
         raise IOError("Input directory (indir parameter) cannot be empty.'\n")
-    
+
     outdir          = pio.pgetstr(fp, "outdir").strip()
     root            = pio.pgetstr(fp, "root").strip()
     badpixel        = pio.pgetb(fp, "badpixel")
@@ -429,16 +432,16 @@ def process_command_line(argv):
     process_events  = pio.pgetb(fp, "process_events")
     set_ardlib      = pio.pgetb(fp, "set_ardlib")
     check_vf_pha    = pio.pgetb(fp, "check_vf_pha")
-    pix_adj_value   = pio.pgetstr(fp, "pix_adj")    
+    pix_adj_value   = pio.pgetstr(fp, "pix_adj")
     pix_adj_str     = pio.pgetstr(fp, "pix_adj")
     recreate_tg_mask  = pio.pgetstr( fp, "recreate_tg_mask") == "yes"  # make True / False
     cleanup         = pio.pgetb(fp, "cleanup")
     verbose         = pio.pgeti(fp, "verbose")
     clobber         = pio.pgetstr(fp, "clobber")
-    
+
     #!### We are done with the parameter setup ###
     pio.paramclose(fp)
-    
+
     # Set tool and module verbosity
     set_verbosity(verbose)
 
@@ -447,11 +450,11 @@ def process_command_line(argv):
         set_ardlib = False
         v1('WARNING: "set_ardlib=yes" cannot be used with multiple input directories.  Changing to "no"\n')
 
-        
+
     #!### Loop over for each input/output dirs
     all_pars = []
     for i_o in iodirs:
-        
+
         #
         # These are same for all indirs
         #
@@ -469,16 +472,16 @@ def process_command_line(argv):
         pp["cleanup"] =         cleanup
         pp["clobber"] =         clobber
         pp["verbose"] =         verbose
-        
+
         #!### Success
-        
+
         try:
             indir, outdir, myroot, primarydir, secondarydir = setup_dirs_and_root( i_o[0], i_o[1], root )
             pp["indir"] =           indir
             pp["outdir"] =          outdir
             pp["root"] =            myroot
             pp["primarydir"] =      primarydir
-            pp["secondarydir"] =    secondarydir            
+            pp["secondarydir"] =    secondarydir
             pp["cycle"] =           ""
             all_pars.append(pp)
         except InterleaveMode:
@@ -489,7 +492,7 @@ def process_command_line(argv):
             pp["outdir"] =          outdir
             pp["root"] =            myroot
             pp["primarydir"] =      primarydir
-            pp["secondarydir"] =    secondarydir            
+            pp["secondarydir"] =    secondarydir
             pp["cycle"] =           "e1_"
             all_pars.append(pp)
             indir, outdir, myroot, primarydir, secondarydir = setup_dirs_and_root( i_o[0], i_o[1], root, cycle="e2_" )
@@ -497,16 +500,16 @@ def process_command_line(argv):
             p2["outdir"] =          outdir
             p2["root"] =            myroot
             p2["primarydir"] =      primarydir
-            p2["secondarydir"] =    secondarydir            
+            p2["secondarydir"] =    secondarydir
             p2["cycle"] =           "e2_"
             all_pars.append(p2)
-        
+
         except NoEventFile as E:
             v1( str(E) )
 
-    
+
     return all_pars
-    
+
 
 def print_version(params):
     "Print the name and version of the script"
@@ -517,7 +520,7 @@ def event1_inputs(params):
     "Find the input L1 event file and get header info"
 
     v2("Gathering chandra_repro input files and parameter information.")
-    
+
     try:
         secondary_products=os.listdir(params["secondarydir"])
         secondary_products.sort()
@@ -526,7 +529,7 @@ def event1_inputs(params):
 
     for ff in secondary_products:
         if re.search(".*"+params["cycle"]+"evt1.fits*",ff):
-            
+
             if params["evt1_file"]:
                 error_out(params,"Multiple input evt1 files found, please select one and restart.  If this is a multi-obi OBS_ID, try running the splitobs script first.",'input error')
 
@@ -538,26 +541,26 @@ def event1_inputs(params):
 
             #!### Take note of some observation parameters ###
             params["instrume"] = keys["INSTRUME"].value
-            params["detnam"]   = keys["DETNAM"].value 
+            params["detnam"]   = keys["DETNAM"].value
             params["ascdsver"] = keys["ASCDSVER"].value
             params["datamode"] = keys["DATAMODE"].value
             params["date-obs"] = keys["DATE-OBS"].value
             params["grating"]  = keys["GRATING"].value
 
             # Only standard datasets taken in KALMAN lock are supported.
-            # Other modes such as OBC use the on-board-computer 
+            # Other modes such as OBC use the on-board-computer
             # aspect solution and don't have *_asol1.fits files. They
             # only have the *_osol1.fits files.  We can't handle that
             # right now.
-            
+
             if 'KALMAN' != keys["ASPTYPE"].value:
                 msg = "ASPTYPE='{}' mode data is not currently supported."
                 raise NotImplementedError(msg.format(keys["ASPTYPE"].value))
-                 
 
-            if params["instrume"] == 'ACIS':  
+
+            if params["instrume"] == 'ACIS':
                 params["readmode"] = keys["READMODE"].value
-            if params["instrume"] == 'HRC':  
+            if params["instrume"] == 'HRC':
                 try:
                     params["rangelev"] = keys["RANGELEV"].value
                 except:
@@ -565,7 +568,7 @@ def event1_inputs(params):
 
             #!### Interpret pix_adj parameter to acis_process_events parameter ###
             pix_adj_value = params["pix_adj_value"]
-            if params["instrume"] == 'ACIS':  
+            if params["instrume"] == 'ACIS':
                 if pix_adj_value == 'randomize':
                     params["pix_adj_value"] = 'RANDOMIZE'
                 elif pix_adj_value == 'none':
@@ -576,8 +579,8 @@ def event1_inputs(params):
                     params["pix_adj_value"] = 'EDSER'
                 elif pix_adj_value != 'default':
                     raise ValueError("invalid pix_adj parameter, expected 'default', 'centroid', 'edser', 'randomize', or 'none'")
-           
-            if params["instrume"] == 'HRC':  
+
+            if params["instrume"] == 'HRC':
                 if pix_adj_value == 'randomize':
                     params["pix_adj_value"] = '0.5'
                 elif pix_adj_value == 'none':
@@ -604,7 +607,7 @@ def get_inputs(params):
     "Gather chandra_repro inputs"
 
     #!##############################################
-    #!### Check for primary data products to use ###        
+    #!### Check for primary data products to use ###
     try:
         primary_products=os.listdir(params["primarydir"])
     except:
@@ -626,10 +629,10 @@ def get_inputs(params):
             return
         if not ondisk:
             return
-        
+
         dd = os.path.basename(ondisk).split(".gz")[0]
         hh = [ os.path.basename(x).split(".gz")[0] for x in hdrname.split(",") ]
-        
+
         if dd not in hh:
             v0("Warning: Original level 1 event file was created with {} file named '{}', however, the file found on disk is named '{}'.".format( flavor, hh, dd) )
 
@@ -638,7 +641,7 @@ def get_inputs(params):
 
         ### find ACIS bpix files ###
         if params["instrume"] == 'ACIS' and re.search(".*"+cycle+"bpix1.fits.*",ff):
-         
+
             if params["bpix1_file"]:
                 error_out(params,"Multiple input bpix1 files found, please select one and restart. If this is a multi-obi OBS_ID, try running the splitobs script first.", 'input error')
 
@@ -667,11 +670,11 @@ def get_inputs(params):
 
                     path=os.path.join(params["outdir"], os.path.basename(uff))
                     link_or_copy(params["primarydir"] + uff, path)
-                params["evt2_file"] = ff.split(".gz")[0]            
-            
-            if params["grating"] != "NONE":                
+                params["evt2_file"] = ff.split(".gz")[0]
+
+            if params["grating"] != "NONE":
                 params["tgmsk_file"] = os.path.join(params["primarydir"],params["evt2_file"])+"[REGION]"
-                
+
 
 
         ### find HRC dtf files ###
@@ -699,8 +702,8 @@ def get_inputs(params):
             if indir_is_outdir:
                 gunzip(ff)
             else:
-                gunzip(params["primarydir"] + ff)                
-                uff=ff.split(".gz")[0]               
+                gunzip(params["primarydir"] + ff)
+                uff=ff.split(".gz")[0]
 
                 path=os.path.join(params["outdir"], os.path.basename(uff))
                 link_or_copy(params["primarydir"] + uff, path)
@@ -721,7 +724,7 @@ def get_inputs(params):
 
                 path=os.path.join(params["outdir"], os.path.basename(newasol))
                 link_or_copy(newasol, path)
-                
+
             #!### always make sorted asol list ###
             if os.path.isfile(params["asol1_file"]):
                 #!### Just append to existing list ###
@@ -735,13 +738,13 @@ def get_inputs(params):
                     asollist = open(params["asol1_file"], 'w')
                 except:
                     error_out(params,"Could not create list file '%s'" % params["asol1_file"], 'write error')
-                        
+
             #!### In both cases above we write current file to list ###
             asollist.write(newasol + '\n')
-            asollist.close() 
+            asollist.close()
 
             check_name_in_hdr( "asol1", newasol, params["hdr_asolfile"] )
-            
+
 
     #!####################################################
     #!### Now check for secondary data products to use ###
@@ -872,12 +875,12 @@ def get_inputs(params):
 
                 path=os.path.join(params["outdir"], os.path.basename(newbias))
                 link_or_copy(newbias, path)
-  
+
                 uff=ff.split(".gz")[0]
                 params["cleanup_files"].append(os.path.join(params["outdir"], uff))
-                
+
             #!### Always make list, either create or append ###
-            if os.path.isfile(params["bias0_file"]):                
+            if os.path.isfile(params["bias0_file"]):
                 #!### Just append to existing list ###
                 try:
                     biaslist = open(params["bias0_file"],'a')
@@ -931,7 +934,7 @@ def get_inputs(params):
         params["badpixel"] = False
 
         v1("\nWARNING: Before reprocessing CC-mode data, users should check\n         the accuracy of the source coordinates (RA_TARG,DEC_TARG)\n         in the file header:\n         http://cxc.harvard.edu/ciao/why/ccmode.html#coord")
-    
+
 
     #!### User info if desired ###
     v3("Input directory set to : "  + params["indir"])
@@ -961,7 +964,7 @@ def cleanup(list_of_files,pars):
         return
 
     outdir = pars['outdir']
-    
+
     #!### For safety against deleting users files outdir cannot ###
     #        match any of our input directories                 ###
     if outdir == pars['indir'] or outdir == pars['primarydir'] or outdir == pars['secondarydir']:
@@ -1000,16 +1003,16 @@ def reset_acis_status(params):
     if not os.path.isfile(evt1):
         error_out(params,"Required evt1 input not found for resetting afterglow events: "+evt1,'input error')
 
-    # status bits are updated in place, so make a copy first   
+    # status bits are updated in place, so make a copy first
     reset_file = os.path.join(outdir, root + '_reset_evt1.fits')
-    shu.copyfile(evt1,os.path.join(params["outdir"], reset_file)) 
+    shu.copyfile(evt1,os.path.join(params["outdir"], reset_file))
     v5("Filename for reset event file: " + reset_file)
-                 
+
     v1("Resetting afterglow status bits in evt1.fits file...")
-    cdw.clear_acis_status_bits(reset_file, "chandra_repro") 
-    
+    cdw.clear_acis_status_bits(reset_file, "chandra_repro")
+
     v2('Created intermediate evt1 with afterglow status reset:\n'+reset_file)
-                 
+
     #!### Update path to evt1 file to our new file ###
     params["evt1_file"] = reset_file
     params["cleanup_files"].append(reset_file)
@@ -1043,7 +1046,7 @@ def destreak_acis(params):
         dskevt1 = os.path.join(outdir, root + '_dsk_evt1.fits')
         v5("Renaming input evt1 prior to running destreak tool: "+dskevt1)
         os.rename(params["evt1_file"],dskevt1)
-    
+
         v1("\nRunning the destreak tool on the evt1.fits file...")
 
         destreak.punlearn()
@@ -1056,7 +1059,7 @@ def destreak_acis(params):
         destreak.filter=False
 
         # consider all events when looking for streaks
-        destreak.mask='None' 
+        destreak.mask='None'
 
         out=destreak()
         v5("destreak returned")
@@ -1101,10 +1104,10 @@ def create_acis_badpix(params):
         error_out(params,"Required evt1 input not found for ACIS bad pixel tools: "+evt1,'input error')
 
     #!### acis_find_afterglow should be run for all ACIS observations
-    #!### taken in TIMED mode data (cc-mode is not supported in the tools) 
+    #!### taken in TIMED mode data (cc-mode is not supported in the tools)
 
     if readmode == 'TIMED':
-        
+
         # Note:  pbk0 was not in old distrib,
         #        if you don't have pbk you need this thread (which needs pbk0)
         #        if you have pbk in default distrib you don't need thread
@@ -1127,11 +1130,11 @@ def create_acis_badpix(params):
         out = dmmakepar(evt1,obspar)
         v5("dmmakepar returned")
         v5(out)
-        
+
 
         v3("\nRunning acis_build_badpix to find observation-specific bad pixel files...")
         acis_build_badpix.punlearn()
-        acis_build_badpix.clobber=clobber        
+        acis_build_badpix.clobber=clobber
         acis_build_badpix.outfile=abbpix
         acis_build_badpix.pbkfile=pbk0
         acis_build_badpix.berrfile='none'
@@ -1223,7 +1226,7 @@ def create_hrc_badpix(params):
     v1("\nRunning hrc_build_badpix to create new bad pixel file...")
 
     newbpix = os.path.join(outdir, root + '_repro_bpix1.fits')
-    
+
     hrc_build_badpix.punlearn()
     hrc_build_badpix.infile='CALDB'
     hrc_build_badpix.outfile=newbpix
@@ -1234,7 +1237,7 @@ def create_hrc_badpix(params):
     out = hrc_build_badpix()
     v5("hrc_build_badpix returned")
     v5(out)
-    
+
     #!### Success ###
     v2('\nCreated new bad pixel file:\n'+newbpix)
     params["cleanup_files"].append(obspar)
@@ -1250,15 +1253,15 @@ def r4_header_update(params):
     the data in the pbk file.  If the input evt files doesn't
     have them, then we need to add them so that the response
     tools can work cleanly.
-    
+
     """
 
     from ciao_contrib.runtool import r4_header_update
-    
+
     r4_header_update.punlearn()
     r4_header_update.infile=params["evt1_file"]
     out=r4_header_update()
-    
+
     if out:
         v2(out)
 
@@ -1282,7 +1285,7 @@ def process_acis_events(params, eventdef=None):
     datamode     = params["datamode"]
     detnam       = params["detnam"]
     grating      = params["grating"]
-    clobber      = params["clobber"] 
+    clobber      = params["clobber"]
     pix_adj_value = params["pix_adj_value"]
     check_vf_pha = params["check_vf_pha"]
 
@@ -1345,14 +1348,14 @@ def process_acis_events(params, eventdef=None):
     if datamode == 'VFAINT' and check_vf_pha:
         # vfaint background cleaning parameters
         acis_process_events.check_vf_pha=True
-        acis_process_events.trail=0.027 
+        acis_process_events.trail=0.027
 
     if datamode in ["CC33_GRADED", "GRADED"] and pix_adj_value == "centroid":
         v1("\nWARNING: pix_adj=CENTROID is not supported for GRADED mode data;\n    setting pix_adj=NONE.")
         acis_process_events.pix_adj="NONE"
 
 
-    #!### Execute acis_process_events command we built above ###    
+    #!### Execute acis_process_events command we built above ###
     out=acis_process_events()
 
     v5("acis_process_events returned")
@@ -1364,7 +1367,7 @@ def process_acis_events(params, eventdef=None):
     if out != None:
         v0("Output from acis_process_events:")
         v0(out)
-    
+
     v2("The new evt1 file is: "+newevt1+'\n')
 
     #!### Update evt1 filename ###
@@ -1395,7 +1398,7 @@ def process_hrc_events(params):
     dateobs      = params["date-obs"]
     rangelev     = params["rangelev"]
     grating      = params["grating"]
-    clobber      = params["clobber"] 
+    clobber      = params["clobber"]
 
     #!### Verify required inputs ###
     if not os.path.isfile(evt1):
@@ -1407,7 +1410,7 @@ def process_hrc_events(params):
     if not os.path.isfile(flt1):
         error_out(params,"Required flt1 input not found for hrc_process_events: "+flt1,'input error')
 
-    #!### add RANGELEV value to header, if missing ###        
+    #!### add RANGELEV value to header, if missing ###
     if rangelev:
         v3('RANGELEV value is %s' % rangelev)
     else:
@@ -1437,7 +1440,7 @@ def process_hrc_events(params):
             error_out(params,"Can't determine the correct RANGELEV value for: "+currdate,'read error')
 
         params["rangelev"] = rangelev
-                
+
         v3("\nRunning dmhedit to update the file header...")
         dmhedit.punlearn()
         dmhedit.infile=rangelev_file
@@ -1447,7 +1450,7 @@ def process_hrc_events(params):
         out = dmhedit()
         v5("dmhedit returned")
         v5(out)
-        
+
         #!### Update path to evt1 file to our new file ###
         params["evt1_file"] = rangelev_file
         params["cleanup_files"].append(rangelev_file)
@@ -1457,7 +1460,7 @@ def process_hrc_events(params):
 
     v1("\nRunning hrc_process_events to reprocess the evt1.fits file...")
     hrc_process_events.punlearn()
-    hrc_process_events.infile=evt1        
+    hrc_process_events.infile=evt1
     hrc_process_events.outfile=newevt1
     hrc_process_events.badpixfile=bpix1
     hrc_process_events.acaofffile='@'+asol1
@@ -1469,7 +1472,7 @@ def process_hrc_events(params):
     if pix_adj_value != 'default':
         hrc_process_events.rand_pix_size=pix_adj_value
 
-    #!### Execute hrc_process_events command we built above ###    
+    #!### Execute hrc_process_events command we built above ###
     out=hrc_process_events()
     v5("hrc_process_events returned")
 
@@ -1482,7 +1485,7 @@ def process_hrc_events(params):
         v0(out)
 
     v2("The new evt1 file is: "+newevt1+'\n')
- 
+
     #!### Update evt1 filename ###
     params["evt1_file"] = newevt1
 
@@ -1495,12 +1498,12 @@ def process_hrc_events(params):
 def run_tgdetect2_and_create_mask(params):
     """
     CIAO 4.6, new tgdetect2 will run either tgdetect or tg_findzo
-    
+
     """
     outdir       = params["outdir"]
     root         = params["root"]
     evt1         = params["evt1_file"]
-    
+
     src1a = os.path.join(outdir, root + '_src1a.fits')
     params["cleanup_files"].append(src1a)
 
@@ -1523,7 +1526,7 @@ def run_tgdetect2_and_create_mask(params):
     tg_create_mask.infile=evt1
     tg_create_mask.outfile=tgmask
     tg_create_mask.input_pos_tab=src1a
-    tg_create_mask.clobber=params["clobber"] 
+    tg_create_mask.clobber=params["clobber"]
     out=tg_create_mask()
     v5("tg_create_mask returned")
     v5(out)
@@ -1536,7 +1539,7 @@ def run_tgdetect_and_create_mask( params ):
     asol1        = params["asol1_file"]
     flt1         = params["flt1_file"]
     detnam       = params["detnam"]
-    clobber      = params["clobber"] 
+    clobber      = params["clobber"]
     verbose      = params["verbose"]
 
 
@@ -1553,8 +1556,8 @@ def run_tgdetect_and_create_mask( params ):
     #    v5("tgdetect returned")
     #    v5(out)
     subprocess.call(["punlearn","tgdetect"])
-    proc = subprocess.Popen(["tgdetect", 
-                             "infile="+evt1, 
+    proc = subprocess.Popen(["tgdetect",
+                             "infile="+evt1,
                              "outfile="+src1a,
                              "clobber="+clobber,
                              "mode=h"],stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -1581,8 +1584,8 @@ def run_tgdetect_and_create_mask( params ):
     #    v5(out)
 
     subprocess.call(["punlearn","tg_create_mask"])
-    subprocess.call(["tg_create_mask", 
-                     "infile="+evt1, 
+    subprocess.call(["tg_create_mask",
+                     "infile="+evt1,
                      "outfile="+tgmask,
                      "input_pos_tab="+src1a,
                      "clobber="+clobber,
@@ -1590,16 +1593,16 @@ def run_tgdetect_and_create_mask( params ):
     if verbose > 2:
         print (">>> tg_create_mask" )
         subprocess.call(["pline","tg_create_mask"])
-        
+
 
 def copy_tgmask_from_evt2( params ):
     """
-    
+
     """
     outdir       = params["outdir"]
     root         = params["root"]
     tgmask = os.path.join(outdir, root + '_tgmask.fits')
-    
+
     v1("Copy existing [REGION] block from evt2 file to use with tg_resolve_events")
     dmcopy( params["tgmsk_file"], tgmask, clobber=params["clobber"])
 
@@ -1619,7 +1622,7 @@ def process_tg_events(params):
     asol1        = params["asol1_file"]
     flt1         = params["flt1_file"]
     detnam       = params["detnam"]
-    clobber      = params["clobber"] 
+    clobber      = params["clobber"]
     verbose      = params["verbose"]
     tgmask = os.path.join(outdir, root + '_tgmask.fits')
 
@@ -1676,16 +1679,16 @@ def process_tg_events(params):
         params["evt1_file"] = tg_resolve_events.outfile
 
         params = process_acis_events( params, eventdef=tg_resolve_events.eventdef )
-        evt1a = os.path.join(outdir, root + '_evt1a.fits')        
-        
+        evt1a = os.path.join(outdir, root + '_evt1a.fits')
+
         tg_resolve_events.infile = params["evt1_file"]
-        tg_resolve_events.outfile = evt1a        
+        tg_resolve_events.outfile = evt1a
         tg_resolve_events.osipfile="CALDB"  # Same DPH email as above
 
         out = tg_resolve_events()
         if out:
             v0(out)
-            
+
 
 
 
@@ -1704,37 +1707,37 @@ def get_asol_times( params ):
 
     Additionally we now sync GTI times for ACIS data to the exposure
     time boundaries using the gti_align script.
-    
+
     Thread to create new L2 products
        Executes: dmcopy, dmstat, dmtcalc, gti_align
        Inputs  : asol1.lis,flt1.fits,stat1.fits
-       Returns : flt2 file name, updates cleanup_files    
+       Returns : flt2 file name, updates cleanup_files
     """
-    
+
     from ciao_contrib.runtool import dmstat
     from ciao_contrib.runtool import dmtcalc
     from ciao_contrib.runtool import dmcopy
     from ciao_contrib.runtool import gti_align
-    
+
     min_a = 1.e308
     max_a = 0.0
-    
+
     for asp in stk.build( "@"+params["asol1_file"] ):
-        dmstat( asp+"[cols time]") 
-        min_c = float(dmstat.out_min) 
+        dmstat( asp+"[cols time]")
+        min_c = float(dmstat.out_min)
         max_c = float(dmstat.out_max)
-        
+
         if min_c < min_a:  min_a = min_c
         if max_c > max_a:  max_a = max_c
-    
+
     outroot = os.path.join( params["outdir"], params["root"])
 
-    dmtcalc( params["flt1_file"], outroot+"_addcol_flt1.fits", "time=0", clobber=params["clobber"])    
+    dmtcalc( params["flt1_file"], outroot+"_addcol_flt1.fits", "time=0", clobber=params["clobber"])
     dmcopy( dmtcalc.outfile+"[time={}:{}]".format(min_a,max_a), outroot+"_repro_flt1.fits", clobber=params["clobber"] )
 
     # CC times cannot be fixed with the gti_align script since times are
     # affected by _TARG coordinates.
-    
+
     if params["detnam"].startswith("ACIS") and params["readmode"] != 'CONTINUOUS':
         gti_align( outroot+"_repro_flt1.fits", params["stat1_file"]+"[time={}:{}]".format(min_a,max_a), outroot+"_repro_flt2.fits", clobber=params["clobber"] )
     else:
@@ -1743,9 +1746,9 @@ def get_asol_times( params ):
     params["cleanup_files"].append( outroot+"_addcol_flt1.fits" )
     params["cleanup_files"].append( outroot+"_repro_flt1.fits" )
 
-    
+
     return outroot+"_repro_flt2.fits"
-    
+
 
 
 def l2_acis_events(params):
@@ -1761,7 +1764,7 @@ def l2_acis_events(params):
     flt1         = params["flt1_file"]
     detnam       = params["detnam"]
     grating      = params["grating"]
-    clobber      = params["clobber"] 
+    clobber      = params["clobber"]
 
     v3("\nExecuting thread to create new evt2 using dmcopy")
 
@@ -1782,14 +1785,14 @@ def l2_acis_events(params):
        dmcopy.infile=evt1+"[EVENTS][grade=0,2,3,4,6,status=0,x=:,y=:]"
     else:
        dmcopy.infile=evt1a+"[EVENTS][grade=0,2,3,4,6,status=0,x=:,y=:]"
-        
+
     out=dmcopy()
     v5("dmcopy returned")
     v5(out)
     v2('Created intermediate filtered evt1: ' + os.path.basename(filtered_evt1) + '\n')
 
-    status_str = "0"*32  
-    out=dmhedit( dmcopy.outfile, filelist="", operation="add", value=status_str, 
+    status_str = "0"*32
+    out=dmhedit( dmcopy.outfile, filelist="", operation="add", value=status_str,
         key="STATFILT", datatype="string", unit="", comment="Status bit filter applied")
     v5(out)
 
@@ -1834,16 +1837,16 @@ def l2_hrc_events(params):
     flt1         = params["flt1_file"]
     detnam       = params["detnam"]
     grating      = params["grating"]
-    clobber      = params["clobber"] 
+    clobber      = params["clobber"]
 
     v3("\nExecuting thread to create new evt2 using dmcopy")
 
-    # HRC-S/LETG gets background filtering 
+    # HRC-S/LETG gets background filtering
     bg_filtered_evt1a = os.path.join(outdir, root + '_repro_bgfilt_evt1a.fits')
     params["cleanup_files"].append(bg_filtered_evt1a)
-    if detnam == 'HRC-S' and grating =="LETG":        
+    if detnam == 'HRC-S' and grating =="LETG":
         v1("Applying the HRC-S/LETG background filter...")
-        filtname = os.path.expandvars("$CALDB/data/chandra/hrc/tgpimask2/letgD1999-07-22pireg_tgmap_N0001.fits")         
+        filtname = os.path.expandvars("$CALDB/data/chandra/hrc/tgpimask2/letgD1999-07-22pireg_tgmap_N0001.fits")
         dmcopy.punlearn()
         dmcopy.infile=evt1a+"[EVENTS][(tg_mlam,pi)=region("+filtname+")]"
         dmcopy.outfile=bg_filtered_evt1a
@@ -1869,7 +1872,7 @@ def l2_hrc_events(params):
     dmcopy.clobber=clobber
 
     status_str = ""
-    if detnam == 'HRC-S':        
+    if detnam == 'HRC-S':
         status_str = "xxxxxx00xxxx0xxx0000x000x00000xx"
         if grating == 'NONE':
             dmcopy.infile=evt1+"[EVENTS][status={}]".format(status_str)  # 6/26/13: pi=0:300 left to user to decide
@@ -1883,14 +1886,14 @@ def l2_hrc_events(params):
             dmcopy.infile=evt1a+"[EVENTS][status={}]".format(status_str)
 
     dmcopy.infile = dmcopy.infile+'[x=:,y=:]'
-    
+
 
     out=dmcopy()
     v5("dmcopy returned")
     v5(out)
     v2('Created intermediate filtered evt1: ' + os.path.basename(filtered_evt1) + '\n')
 
-    out=dmhedit( dmcopy.outfile, filelist="", operation="add", value=status_str, 
+    out=dmhedit( dmcopy.outfile, filelist="", operation="add", value=status_str,
         key="STATFILT", datatype="string", unit="", comment="Status bit filter applied")
     v5(out)
 
@@ -1920,7 +1923,7 @@ def l2_hrc_events(params):
 
     v3("\nExecuting the thread to compute average HRC dead time corrections")
     v1("\nRunning hrc_dtfstats to recompute the average dead time corrections...")
- 
+
     dtf1    = params["dtf1_file"]
     evt2    = params["evt2_file"]
     dtfstats = os.path.join(outdir, root + '_repro_dtfstats.fits')
@@ -1934,8 +1937,8 @@ def l2_hrc_events(params):
     out=hrc_dtfstats()
     v5("hrc_dtfstats returned")
     v5(out)
-    
-    #!### Success ###        
+
+    #!### Success ###
     v2('\nCreated new dead time statistics file:\n'+dtfstats)
 
     v3("\nRunning dmhedit to update the file header...")
@@ -1948,7 +1951,7 @@ def l2_hrc_events(params):
     dtcor = dmkeypar.value
 
     evt2file=get_keys_from_file(evt2)
-    ontime = evt2file["ONTIME"].value    
+    ontime = evt2file["ONTIME"].value
 
     # LIVETIME and EXPOSURE = ONTIME*DTCOR
     newval=(float(dtcor) * ontime)
@@ -1957,19 +1960,19 @@ def l2_hrc_events(params):
     dmhedit.punlearn()
     dmhedit.infile=evt2
     dmhedit.operation='add'
-        
+
     dmhedit.key='LIVETIME'
     dmhedit.value=newval
     out = dmhedit()
     v5("dmhedit returned")
     v5(out)
-            
+
     dmhedit.key='EXPOSURE'
     dmhedit.value=newval
     out = dmhedit()
     v5("dmhedit returned")
     v5(out)
-    
+
     dmhedit.key='DTCOR'
     dmhedit.value=dtcor
     out = dmhedit()
@@ -1984,23 +1987,23 @@ def l2_hrc_events(params):
 
 def mktg_arfrmf(params):
     """
-    
+
     """
     from ciao_contrib.runtool import mktgresp
-    
+
     outdir = os.path.join(params["outdir"], "tg" )
     make_dir( outdir )
-    
+
     mktgresp.infile= params["pha2_file"]
     mktgresp.evtfile=params["evt2_file"]
     mktgresp.outroot=os.path.join(outdir, params["root"]+"_repro")
     mktgresp.clobber= params["clobber"]
     mktgresp.orders="-1,1"
     out = mktgresp()
-        
+
     v5(out)
     return params
-    
+
 
 
 
@@ -2014,7 +2017,7 @@ def l2_tg_pha(params):
     root         = params["root"]
     instrume     = params["instrume"]
     evt2         = params["evt2_file"]
-    clobber      = params["clobber"] 
+    clobber      = params["clobber"]
 
     v3("\nExecuting thread to create new pha2 using tgextract")
 
@@ -2026,7 +2029,7 @@ def l2_tg_pha(params):
     tgextract.outfile=pha2
     tgextract.clobber=clobber
     if instrume == 'HRC':
-        tgextract.inregion_file='CALDB'    
+        tgextract.inregion_file='CALDB'
     out=tgextract()
     v5("tgextract returned")
     v5(out)
@@ -2054,7 +2057,7 @@ def add_history(params):
 
     from ciao_contrib.runtool import add_tool_history
     phist = { x : params[x] for x in [ 'indir', 'outdir', 'root', 'verbose' ] }
-    
+
     for x in ['badpixel', 'process_events', 'set_ardlib', 'check_vf_pha', 'recreate_tg_mask', 'cleanup', 'clobber' ]:
         phist[x] = "yes" if params[x] else "no"
 
@@ -2069,7 +2072,7 @@ def add_history(params):
         phist["pix_adj"] = params["pix_adj_str"]
 
     v2('\nAdding HISTORY record to event file header')
-    add_tool_history( evt1, toolname, phist, toolversion=version)    
+    add_tool_history( evt1, toolname, phist, toolversion=version)
     add_tool_history( evt2, toolname, phist, toolversion=version)
     if not pha2 == '':
         v2('\nAdding HISTORY record to pha2 file header')
@@ -2084,7 +2087,7 @@ def add_history(params):
     dmhedit.operation='add'
     dmhedit.key='COMMENT'
     dmhedit.value='chandra_repro was run with CALDB '+cver
-        
+
     dmhedit.infile=evt1
     dmhedit()
     dmhedit.infile=evt2
@@ -2111,7 +2114,7 @@ def set_ardlib(params):
 
     v2("Reset the local ardlib.par with punlearn.")
     acis_set_ardlib.punlearn()
-    v1("Setting observation-specific bad pixel file in local ardlib.par.")    
+    v1("Setting observation-specific bad pixel file in local ardlib.par.")
 
     if instrume == 'ACIS':
         out = acis_set_ardlib(bpix1)
@@ -2123,7 +2126,7 @@ def set_ardlib(params):
         pio.pset("ardlib","AXAF_HRC-I_BADPIX_FILE",bpix1)
     else:
         error_out(params,"Unable to set bad pixel file in ardlib.par.",'input error')
-            
+
     v2("Observation-specific bad pixel file is set in ardlib.par.")
 
 
@@ -2132,7 +2135,7 @@ def remake_fov1_file( pars ):
     Since the event file may have extra time filters and/or may
     have a different tan point or fine astrometric correction to the
     asol file, we will go ahead and create a new _repro_fov1.fits file.
-    
+
     """
     v1("Creating FOV file...")
     skyfov.punlearn()
@@ -2143,11 +2146,11 @@ def remake_fov1_file( pars ):
     skyfov.clobber = pars["clobber"]
     skyfov.verbose = pars["verbose"]
     out = skyfov()
-    
+
     v5("skyfov returned")
     v5(out)
-    
-    
+
+
     pass
 
 
@@ -2163,7 +2166,7 @@ def main_body( pars):
     v1("\nProcessing input directory '{0}'\n".format( pars["indir"]))
     #!### Get header info from input L1 file ###
     pars = event1_inputs(pars)
-    
+
     #!### Issue warning if the processing step is turned off ###
     if not pars["process_events"]:
         v1('WARNING: process_events=no, so event data will not be reprocessed.\n         Copying the archived evt2.fits file to the output directory.\n')
@@ -2172,13 +2175,13 @@ def main_body( pars):
     #!### Issue warning if the badpixel step is turned off ###
     if not pars["badpixel"]:
         v1('WARNING: badpixel=no, so archived bpix1.fits file will not be used.\n')
-    
+
     #!### Gather and verify our inputs ###
     pars = get_inputs(pars)
-    
+
     if pars["instrume"] == 'ACIS':
         pars = reset_acis_status(pars)
-    
+
     if pars["run_destreak"] and pars["instrume"] == 'ACIS':
         pars = destreak_acis(pars)
 
@@ -2195,20 +2198,20 @@ def main_body( pars):
                 pars = l2_acis_events(pars)
             else:
                 pars = process_tg_events(pars)
-                pars = l2_acis_events(pars)                
-                pars = l2_tg_pha(pars)                
+                pars = l2_acis_events(pars)
+                pars = l2_tg_pha(pars)
         if pars["instrume"] == 'HRC':
-            pars = process_hrc_events(pars)    
+            pars = process_hrc_events(pars)
             if pars["grating"] == 'NONE':
                 pars = l2_hrc_events(pars)
             else:
                 pars = process_tg_events(pars)
-                pars = l2_hrc_events(pars)                
-                pars = l2_tg_pha(pars)                
+                pars = l2_hrc_events(pars)
+                pars = l2_tg_pha(pars)
         add_history(pars)
 
         remake_fov1_file(pars)
-        
+
 
     if pars["set_ardlib"]:
         set_ardlib(pars)
@@ -2229,7 +2232,7 @@ def chandra_repro(args):
     #!### Load our parameter file and process command line ###
     print_version(None)
     all_pars = process_command_line(args)
-    
+
     # Loop over all parameter sets
     for p in all_pars:
         main_body(p)

@@ -1,26 +1,27 @@
 #!/usr/bin/env python
-# 
-# Copyright (C) 2013,2014,2016-2017 Smithsonian Astrophysical Observatory
-# 
+#
+# Copyright (C) 2013,2014,2016-2017, 2018
+#       Smithsonian Astrophysical Observatory
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-# 
+#
 from __future__ import print_function
 
 
 toolname = "combine_spectra"
-__revision__ = "06 March 2017"
+__revision__ = "06 March 2018"
 
 import sys
 
@@ -30,21 +31,22 @@ import os
 try:
     if not __file__.startswith(os.environ['ASCDS_INSTALL']):
         _thisdir = os.path.dirname(__file__)
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib/python2.7/site-packages/'))
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
         if os.path.isdir(_pathdir):
             os.sys.path.insert(0, _pathdir)
         else:
             print("*** WARNING: no {}".format(_pathdir))
 
+        del _libname
         del _pathdir
-        del _thisdir        
+        del _thisdir
 except KeyError:
     raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
 
 
 
-
-import os
 
 import ciao_contrib.logger_wrapper as lw
 lw.initialize_logger(toolname)
@@ -78,7 +80,7 @@ def is_none( infile ):
 class Spectrum():
     """
     Gather all things related to a spectrum
-    
+
     """
     def __init__( self, infile, arffile, rmffile, exppref="pha" ):
 
@@ -91,24 +93,24 @@ class Spectrum():
         self.counts = None
         self.backscal = None
         self.exposure = None
-        self.is_grating = False        
+        self.is_grating = False
         self._load_spectrum( infile, exppref )
 
 
     def _load_spectrum( self, infile, exppref ):
-        
+
         try:
             tab = pc.read_pha( str(infile ))
             tab.__del__()
         except:
             verb1("File {} does not appear to be a fully compliant PHA file, will try to use anyway".format(infile) )
-        
+
         tab = pc.read_file( str(infile) )
         self.channels = tab.get_column("channel").values.copy()
-        
+
         if len( self.channels.shape ) != 1:
             raise IOError("File {} may be a Type:II pha file.  These need to be split into Type:I with dmtype2split before they can be combined".format(infile))
-        
+
         if tab.column_exists( "counts" ):
             self.counts = tab.get_column("counts").values.copy()
         elif tab.column_exists( "rate" ):
@@ -118,7 +120,7 @@ class Spectrum():
             raise IOError("Could not find counts nor rate column in file {}".format(infile))
 
         self.backscal = self._get_from_key_or_column(tab,"backscal")
-        
+
         if "NONE" == self.arffile:
             self.arffile = None
         elif is_none(self.arffile):
@@ -141,7 +143,7 @@ class Spectrum():
 
 
         if "NONE" == self.rmffile:
-            self.rmffile = None        
+            self.rmffile = None
         elif is_none(self.rmffile):
             self.rmffile = self._get_filename_if_not_none( infile, tab,"respfile", pc.read_rmf)
         else:
@@ -154,8 +156,8 @@ class Spectrum():
             self.backfile = self._get_filename_if_not_none(infile, tab, "backfile", pc.read_file )
         else:
             pc.read_file( self.backfile) # check readable
-            
-            
+
+
         if tab.column_exists("grouping"):
             verb2("Grouping information in file {} will be ignored".format( infile ))
 
@@ -164,7 +166,7 @@ class Spectrum():
 
         if tab.key_exists("grating") and tab.get_key_value("grating") in ['HETG','LETG']:
             self.is_grating = True
-            
+
         tab.__del__()
 
 
@@ -172,17 +174,17 @@ class Spectrum():
         """
         Lookup the keyword.  If key exists and is not blank or none,
         then try to open the file with the specified 'loader' function.
-        
+
         If that fails, then get path from infile, and see if the file
         can be found in the same dir as the infile.  Otherwise error out.
         """
         if not tab.key_exists( key ):
             return None
-            
+
         keyval = tab.get_key_value( key )
         if is_none(keyval):
             return None
-            
+
         try:
             t2 = loader( str(keyval) )
             return keyval
@@ -191,9 +193,9 @@ class Spectrum():
                 # Take path from infile and try that
                 infiledir = os.path.dirname( infile )
                 respfile = os.path.basename( keyval )
-                if infiledir:                    
+                if infiledir:
                     t2 = loader( infiledir+os.sep+respfile )
-                    return infiledir+os.sep+respfile 
+                    return infiledir+os.sep+respfile
                 else:
                     t2 = loader( respfile )
                     return respfile
@@ -214,26 +216,26 @@ class Spectrum():
             verb1("Warning: could not find {} value in file {}; will use 1.0".format(keycol,infile))
             return np.array( [1.0]*tab.get_nrows() )
 
-        
+
     def get_backfile(self):
         """
         accessor
         """
         return self.backfile
 
-        
-                
+
+
 class Source():
 
     def __init__( self, src, bkg, exppref ):
         """
-        Load src and background files from nameTuple 
+        Load src and background files from nameTuple
 
-        """                
+        """
         self.source = Spectrum( src.infile, src.arffile, src.rmffile, exppref )
 
         # Special case for L3 files where bkg is extra extension
-        bb = self.source.get_backfile()        
+        bb = self.source.get_backfile()
         bbb = os.path.basename(bb if bb else "")
         ifb = os.path.basename(src.infile)
         if (bbb == ifb) or (bbb == ifb+".gz") or (bbb+".gz" == ifb):
@@ -247,23 +249,23 @@ class Source():
             self.background = Spectrum( bkg.infile, bkg.arffile, bkg.rmffile, exppref )
         elif not is_none( bb ):
             if bkg:
-                self.background = Spectrum( bb, bkg.arffile, bkg.rmffile, exppref )                
+                self.background = Spectrum( bb, bkg.arffile, bkg.rmffile, exppref )
             else:
-                self.background = Spectrum( bb, None, None, exppref ) 
+                self.background = Spectrum( bb, None, None, exppref )
         else:
             self.background = None
-        
+
 
 
 def match_stacks( pars ):
     """
     Make sure we have all  the inputs needed to match up the src w/ its
     response files with the background and their response files.
-        
+
     """
 
     import stk as stk
-    
+
     s_pha = stk.build( pars["src_spectra"] )
 
     def build_or_none( parname ):
@@ -276,18 +278,18 @@ def match_stacks( pars ):
 
         if is_none( pars[parname] ):
             return [None]*len(s_pha)
-        
+
         ss = stk.build( pars[parname] )
         if len(ss) != len(s_pha):
             raise ValueError("ERROR: Number of {} ({}) does not match the number of source files ({})".format(parname, len(ss), len(s_pha)))
         return ss
-    
+
     s_arf = build_or_none( "src_arfs")
     s_rmf = build_or_none( "src_rmfs")
     b_pha = build_or_none( "bkg_spectra")
     b_arf = build_or_none( "bkg_arfs")
     b_rmf = build_or_none( "bkg_rmfs")
-    
+
     srcs = [ FileSet( *v ) for v in zip( s_pha, s_arf, s_rmf )]
     bkgs = [ FileSet( *v ) for v in zip( b_pha, b_arf, b_rmf )]
 
@@ -305,46 +307,46 @@ def check_consistency( srcs ):
     if len(srcs) < 1:
         raise ValueError("No valid spectra files found")
 
-    chk = [ s.source.arffile for s in srcs ]    
+    chk = [ s.source.arffile for s in srcs ]
     if any(chk) and not all(chk):
         verb0("Not all source spectra have ARFs, they will not be combined")
         for s in srcs: s.source.arffile = None
         for s in srcs: s.source.rmffile = None
-    
-    chk = [ s.source.rmffile for s in srcs ]    
+
+    chk = [ s.source.rmffile for s in srcs ]
     if any(chk) and not all(chk):
         verb0("Not all source spectra have RMFs, they will not be combined")
         for s in srcs: s.source.arffile = None
         for s in srcs: s.source.rmffile = None
-    
+
     chans = srcs[0].source.channels # better be 1 source
 
     chk = [ len(s.source.channels) == len(chans) for s in srcs ]
     if not all(chk):
         raise ValueError("Channels values do not match in all source files")
-    
+
     chk = [ (c[1] == chans[c[0]]) for s in srcs for c in enumerate(s.source.channels)]
     if not all(chk):
         raise ValueError("Channels values do not match in all source files")
 
     for s in srcs:
-        if s.background: 
-            chk = [ s.background.arffile for s in srcs ]    
+        if s.background:
+            chk = [ s.background.arffile for s in srcs ]
             if any(chk) and not all(chk):
                 verb0("Not all background spectra have ARFs, they will not be combined")
                 for s in srcs: s.background.arffile = None
                 for s in srcs: s.background.rmffile = None
-        
-            chk = [ s.background.rmffile for s in srcs ]    
+
+            chk = [ s.background.rmffile for s in srcs ]
             if any(chk) and not all(chk):
                 verb0("Not all background spectra have RMFs, they will not be combined")
                 for s in srcs: s.background.arffile = None
                 for s in srcs: s.background.rmffile = None
 
-            chk = [ s.source.backfile for s in srcs ]    
+            chk = [ s.source.backfile for s in srcs ]
             if any(chk) and not all(chk):
                 raise ValueError("Not all source spectra have background")
-        
+
             chk = [ (len(s.background.channels) == len(chans)) for s in srcs ]
             if not all(chk):
                 raise ValueError("Channel values do not match in all background files")
@@ -352,9 +354,9 @@ def check_consistency( srcs ):
             chk = [ (c[1] == chans[c[0]]) for s in srcs for c in enumerate(s.background.channels)]
             if not all(chk):
                 raise ValueError("Channel values do not match in all background files")
-            
+
     verb1( "Prepared to combine {} spectra\n".format(len(srcs)))
-    
+
     for s in srcs:
         verb1( "source PHA: {}".format(s.source.infile) )
         verb1( "       ARF: {}".format(s.source.arffile) )
@@ -362,26 +364,26 @@ def check_consistency( srcs ):
         if s.background:
             verb1( "    background PHA: {}".format(s.background.infile))
             verb1( "               ARF: {}".format(s.background.arffile))
-            verb1( "               RMF: {}".format(s.background.rmffile))    
+            verb1( "               RMF: {}".format(s.background.rmffile))
 
 
 def fix_arf_exposure( arfs, outarf, method ):
     """
     The DM wants to recompute the ONTIME/etc when no GTIs are present.
-    
+
     Need to rest them here
     """
     from pycrates import read_file
     if not outarf or not all(arfs):
         return
-    
+
     keys_to_fix = ["ONTIME"]
     keys_to_fix.extend( ["ONTIME{}".format(x) for x in range(0,10)] )
     keys_to_fix.extend( ["LIVETIME"] )
     keys_to_fix.extend( ["LIVTIME{}".format(x) for x in range(0,10)] )
     keys_to_fix.extend( ["EXPOSURE"] )
     keys_to_fix.extend( ["EXPOSUR{}".format(x) for x in range(0,10)] )
-    
+
     # create empty arrays to store the values from input files
     keys = { k : [] for k in keys_to_fix } # map( lambda x: [], keys_to_fix)
 
@@ -392,8 +394,8 @@ def fix_arf_exposure( arfs, outarf, method ):
             if tab.key_exists( kk ):
                 keys[kk].append( tab.get_key_value( kk ) )
 
-    
-    tab = read_file(outarf, mode="rw") 
+
+    tab = read_file(outarf, mode="rw")
     # Update the output file
     for kk in keys:
         if not tab.key_exists(kk):
@@ -406,9 +408,9 @@ def fix_arf_exposure( arfs, outarf, method ):
             val = np.average( keys[kk] )
         else:
             raise RuntimeError("Unknown option method value '{}'".format(method))
-        
+
         tab.get_key(kk).value = val
-    
+
     tab.write()
 
 
@@ -416,7 +418,7 @@ def fix_arf_exposure( arfs, outarf, method ):
 def run_addresp( arfs, rmfs, phas, root, method ):
     """
     run addresp to combine ARF and RMF files.
-    """    
+    """
     from ciao_contrib.runtool import addresp
 
     aa = [is_none(a) for a in arfs ]
@@ -436,21 +438,21 @@ def run_addresp( arfs, rmfs, phas, root, method ):
 
     # Either arfs or rmfs may not actually be produced based on inputs.
     # easiest way to check is if files exist then use them.
-    
-    outrmf = addresp.outfile if os.path.exists( addresp.outfile ) else ""    
+
+    outrmf = addresp.outfile if os.path.exists( addresp.outfile ) else ""
     outarf = addresp.outarf if os.path.exists( addresp.outarf ) else ""
-    
+
     fix_arf_exposure( arfs, outarf, method)
-    
+
     return outrmf,outarf
-    
+
 
 def full_path_or_none( val ):
     """
     Return the full path to a file name.  This is needed since
     the runtool expect file name to be full names when passed in
     as a list (the stack file it creates in /tmp needs full paths
-    to find the files)    
+    to find the files)
     """
     if not val:
         return None
@@ -458,24 +460,24 @@ def full_path_or_none( val ):
         return os.path.abspath( val )
     except:
         return None
-    
+
 
 def sum_bkg_counts( srcs, pars ):
     """
     Sum the background counts and compute the combined
     exposure time and BSCALE value.
-    
+
     The origianl 'asca' method produces COUNTS that
-    are no longer integer values.  This doesn't seem to 
+    are no longer integer values.  This doesn't seem to
     upset sherpa (nor crates) but does deviate from the OGIP
     standard.
-    
+
     The 'time' method produces essentially the same but keeps
     everything as integers.
-    
-    The 'arf' method produces results according to the 
+
+    The 'arf' method produces results according to the
     Nowak/Huenemoerder memo
-        
+
     """
 
     if not srcs[0].background:  # must be one to get this far
@@ -483,11 +485,11 @@ def sum_bkg_counts( srcs, pars ):
 
     def vec_mul( exp, bscl ):
         rv = [ e*b for e,b in zip(exp,bscl)]
-        return rv # map( lambda e,b: e*b, exp, bscl ) 
+        return rv # map( lambda e,b: e*b, exp, bscl )
 
     cts = np.array([ s.background.counts for s in srcs ])
     out_cts = sum(cts)
-    
+
     e_s = np.array([ s.source.exposure for s in srcs])
     e_b = np.array([ s.background.exposure for s in srcs])
     b_s = np.array([ s.source.backscal for s in srcs])
@@ -507,19 +509,19 @@ def sum_bkg_counts( srcs, pars ):
     coefs = sum(e_b)/sum(vec_mul( e_s, bratio))*c2
     #coefs = sum(e_b)/sum(e_s*(b_s/b_b))*((e_s/e_b)*(b_s/b_b))
 
-    
+
     out_cts = sum([ cts[i]*coefs[i] for i in range(len(cts))] )
 
     #XXX### maybe be x/0 which is a divide error or 0/0 which is an invalid warning
     #XXX##div_err = np.geterr()['divide']
-    #XXX##ign_err = np.geterr()['invalid']    
-    #XXX##np.seterr(divide= 'ignore') 
+    #XXX##ign_err = np.geterr()['invalid']
+    #XXX##np.seterr(divide= 'ignore')
     #XXX##np.seterr(invalid = 'ignore')
     #XXX##
     #XXX##out_cfa_bsc = out_bsc * ( out_cts / out_cfa_cts )
     #XXX##out_cfa_bsc[ np.isnan( out_cfa_bsc ) ] = 1.0
-    #XXX##np.seterr(divide= div_err) 
-    #XXX##np.seterr(invalid=ign_err)    
+    #XXX##np.seterr(divide= div_err)
+    #XXX##np.seterr(invalid=ign_err)
 
     # BGD_COUNTS = bkg_counts1 + bkg_counts2 + ... bkg_countsN
     #
@@ -529,7 +531,7 @@ def sum_bkg_counts( srcs, pars ):
     #
     # or since we're free to define however, we want,
     # SOURCE_BACKSCAL = 1.0
-    # and 
+    # and
     # BGD_BACKSCAL = ratio of above
     #
 
@@ -548,9 +550,9 @@ def sum_bkg_counts( srcs, pars ):
     zeros, = np.where(out_mit_bsc == 0 )
     out_mit_bsc[zeros] = 1.0
 
-    phas = [full_path_or_none(s.background.infile) for s in srcs]    
-    arfs = [full_path_or_none(s.background.arffile) for s in srcs]    
-    rmfs = [full_path_or_none(s.background.rmffile) for s in srcs]    
+    phas = [full_path_or_none(s.background.infile) for s in srcs]
+    arfs = [full_path_or_none(s.background.arffile) for s in srcs]
+    rmfs = [full_path_or_none(s.background.rmffile) for s in srcs]
 
     outrmf,outarf = run_addresp( arfs, rmfs, phas, pars["outroot"]+"_bkg", pars["method"] )
 
@@ -560,15 +562,15 @@ def sum_bkg_counts( srcs, pars ):
         outfile = pars["outroot"]+"_bkg.pi"
 
     if pars["bscale_method"] == "time":
-        write_spectrum( outfile, phas, srcs[0].source.channels, out_cfa_cts, 
+        write_spectrum( outfile, phas, srcs[0].source.channels, out_cfa_cts,
             out_exp, out_cfa_bsc2, outrmf, outarf, None )
     elif pars["bscale_method"] == "counts":
-        write_spectrum( outfile, phas, srcs[0].source.channels, out_mit_cts, 
+        write_spectrum( outfile, phas, srcs[0].source.channels, out_mit_cts,
             out_exp, out_mit_bsc, outrmf, outarf, None )
     else:
-        write_spectrum( outfile, phas, srcs[0].source.channels, out_cts, 
+        write_spectrum( outfile, phas, srcs[0].source.channels, out_cts,
             out_exp, out_bsc, outrmf, outarf, None )
-    
+
     return outfile
 
 
@@ -576,7 +578,7 @@ def sum_bkg_counts( srcs, pars ):
 def sum_src_counts( srcs, pars):
     """
     Sum the source counts.
-    
+
     The backscale is set = 1.0 and the appropriate ratio is take care of in
     the background bscale (above) except for the MIT method
 
@@ -584,7 +586,7 @@ def sum_src_counts( srcs, pars):
 
     cts = np.array([ s.source.counts for s in srcs ])
     out_cts = sum(cts)
-    
+
     exposure = np.array([ s.source.exposure for s in srcs])
     backscal = np.array([ s.source.backscal for s in srcs])
 
@@ -601,15 +603,15 @@ def sum_src_counts( srcs, pars):
         out_bsc = np.array( [1.0]*len(out_cts))  # source backscale is set to 1.0
 
 
-    phas = [full_path_or_none(s.source.infile) for s in srcs]    
-    arfs = [full_path_or_none(s.source.arffile) for s in srcs]    
-    rmfs = [full_path_or_none(s.source.rmffile) for s in srcs]    
+    phas = [full_path_or_none(s.source.infile) for s in srcs]
+    arfs = [full_path_or_none(s.source.arffile) for s in srcs]
+    rmfs = [full_path_or_none(s.source.rmffile) for s in srcs]
 
     # combine arf/rmfs
 
     if srcs[0].source.is_grating == True:
         outrmf,outarf = run_addresp( arfs, rmfs, phas, pars["outroot"], pars["method"] )
-        outfile = pars["outroot"]+".pha"        
+        outfile = pars["outroot"]+".pha"
     else:
         outrmf,outarf = run_addresp( arfs, rmfs, phas, pars["outroot"]+"_src", pars["method"] )
         outfile = pars["outroot"]+"_src.pi"
@@ -617,7 +619,7 @@ def sum_src_counts( srcs, pars):
     # sum background files. We do this here, first so that we get the file name
     # that can be written to the source file header.
     outbkg = sum_bkg_counts( srcs, pars )
-    
+
     write_spectrum( outfile, phas, srcs[0].source.channels, out_cts, out_exp, out_bsc, outrmf, outarf, outbkg )
 
 
@@ -625,18 +627,18 @@ def sum_src_counts( srcs, pars):
 def write_spectrum( outfile, phas, chans, out_cts, out_exp, out_bsc, outrmf, outarf, outbkg ):
     """
     Write the output spectrum.
-    
+
     We use dmmerge to combine the indivudal PHA files so that we get all
-    the other header merges applied.  
-    
-    For sanity, we remove any time and sky subspaces as this would make a 
+    the other header merges applied.
+
+    For sanity, we remove any time and sky subspaces as this would make a
     very mess output file.  We also don't care about the merged data so we
-    filter to remove all the rows.  (Just column definitions remain)    
-    
+    filter to remove all the rows.  (Just column definitions remain)
+
     """
 
     cols2rm = "[cols -"+",-".join(['grouping', 'quality', 'grp_num', 'chans_per_grp', 'grp_data', 'grp_stat_err'])+"]"
-    
+
     from ciao_contrib.runtool import dmmerge
     inf = [phas[0]+"[subspace -time,-expno,-sky,-pos]"+cols2rm  ]
     if len(phas) > 1:
@@ -645,7 +647,7 @@ def write_spectrum( outfile, phas, chans, out_cts, out_exp, out_bsc, outrmf, out
     dmmerge.outfile = outfile+".tmp"
     dmmerge.clobber=True
     dmmerge()
-    
+
     # Open temp file and set column/keyword values
     tab = pc.read_file( dmmerge.outfile)
     tab.get_column("channel").values = chans
@@ -682,7 +684,7 @@ def write_spectrum( outfile, phas, chans, out_cts, out_exp, out_bsc, outrmf, out
     tab.get_key("RESPFILE").value = os.path.basename(outrmf) if outrmf else 'NONE'
     tab.get_key("ANCRFILE").value = os.path.basename(outarf) if outarf else 'NONE'
     tab.get_key("BACKFILE").value = os.path.basename(outbkg) if outbkg else 'none'
-    
+
     tab.write( outfile, clobber=True)  #clobber check done at the beginning
     tab.__del__()
 
@@ -702,14 +704,14 @@ def main():
     from ciao_contrib._tools.fileio import outfile_clobber_checks
     from ciao_contrib.runtool import add_tool_history
 
-    pars = get_params(toolname, "rw", sys.argv, 
+    pars = get_params(toolname, "rw", sys.argv,
       verbose={"set":lw.set_verbosity, "cmd":verb2},
       musthave=["src_spectra","outroot","src_arfs","src_rmfs","bkg_spectra","bkg_arfs","bkg_rmfs","method","bscale_method","exp_origin","clobber","verbose"])
 
     srcstk,bkgstk = match_stacks( pars )
 
     srcs = [ Source(s,b,pars["exp_origin"]) for s,b in zip( srcstk,bkgstk )]
-    
+
     check_consistency( srcs )
 
     if srcs[0].source.is_grating == True:
@@ -720,13 +722,13 @@ def main():
 
     for extn in suffixes:
         outfile_clobber_checks( pars["clobber"] , pars["outroot"]+extn )
-    
+
     sum_src_counts( srcs, pars )
 
     for extn in suffixes:
          if os.path.exists(pars["outroot"]+extn):
             add_tool_history( pars["outroot"]+extn, toolname, pars, __revision__ )
-    
+
     # Summarize output
     verb1( "\nThe following files were created:")
     for extn in suffixes:
