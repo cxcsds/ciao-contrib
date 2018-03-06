@@ -153,21 +153,9 @@ def split_II_to_I( instk, arfs, rmfs, outroot, verbose, clobber ):
 
     verb1("Splitting TYPE:II pha files into TYPE:I")
 
-    # TODO: Replace with runtool
     import ciao_contrib.runtool as rt
-    newtool = {
-        'istool' : True,
-        'req' : [
-                rt.ParValue("infile", "f", "Input TYPE:II pha file", None),
-                rt.ParValue("arffile","f", "Input ARF files", None),
-                rt.ParValue("rmffile","f", "Input RMF files", None),
-                rt.ParValue("outroot", "f", "Output root file name", None),
-                ],
-        'opt' : [                
-                rt.ParValue("clobber","b","Overwrite if file exists",False),
-                rt.ParRange("verbose","i","Debug level",0,0,5)
-                ]}
-    tgsplit = rt.CIAOToolParFile( "tgsplit", newtool["req"], newtool["opt"])
+
+    tgsplit = rt.make_tool("tgsplit")
     
 
     retsrc = []
@@ -193,7 +181,11 @@ def split_II_to_I( instk, arfs, rmfs, outroot, verbose, clobber ):
         bkgs = [delme(x) for x in glob.glob( tmproot+"_?eg_??_bkg.pha")]
 
         retsrc.extend(outs)
-        retbkg.extend(bkgs)
+
+        if ( 0 == len(bkgs) ):
+            retbkg.extend([None]*len(outs))
+        else:
+            retbkg.extend(bkgs)
     
     retsrc.sort()
     retbkg.sort()
@@ -286,27 +278,13 @@ def try_nonstd_files( instk, arfs, rmfs, outroot ):
         #Not tgcat files
         return None, None
 
-    # TODO: Replace with runtool
     import ciao_contrib.runtool as rt
-    newtool = {
-        'istool' : True,
-        'req' : [
-                rt.ParValue("infile", "f", "Input TYPE:II pha file", None),
-                rt.ParValue("arffile","f", "Input ARF files", None),
-                rt.ParValue("rmffile","f", "Input RMF files", None),
-                rt.ParValue("outroot", "f", "Output root file name", None),
-                ],
-        'opt' : [                
-                rt.ParValue("clobber","b","Overwrite if file exists",False),
-                rt.ParRange("verbose","i","Debug level",0,0,5)
-                ]}
-    tgsplit = rt.CIAOToolParFile( "tgsplit", newtool["req"], newtool["opt"])
+    tgsplit = rt.make_tool("tgsplit")
     tmproots = [ outroot+"_tmp{:02d}".format(ii) for ii in range( len(instk)) ]    
 
     try:
         for ii,tt in zip(instk, tmproots):
             tgsplit( ii, arfs, rmfs, tt )
-        #map( tgsplit, instk, [arfs]*len(instk), [rmfs]*len(instk), tmproots )
         src = [ delme(i) for tt in tmproots for i in glob.glob(tt+"_?eg_??.pha") ]
         bkg = [ delme(i) for tt in tmproots for i in glob.glob(tt+"_?eg_??_bkg.pha") ]
         return src,bkg
