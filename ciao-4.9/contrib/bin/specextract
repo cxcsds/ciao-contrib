@@ -32,7 +32,7 @@ This script is an enhanced Python translation of the original CIAO tool specextr
 __version__ = "CIAO 4.9"
 
 toolname = "specextract"
-__revision__ = "14 March 2017"
+__revision__ = "12 December 2017"
 
 
 ##########################################################################
@@ -92,12 +92,13 @@ class suppress_stdout_stderr(object):
     to stderr just before a script exits, and after the context manager has
     exited (at least, I think that is why it lets exceptions through).      
 
+    https://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
     '''
     def __init__(self):
         # Open a pair of null files
-        self.null_fds =  [os.open(os.devnull,os.O_RDWR) for x in range(2)]
+        self.null_fds = [os.open(os.devnull,os.O_RDWR) for x in range(2)]
         # Save the actual stdout (1) and stderr (2) file descriptors.
-        self.save_fds = (os.dup(1), os.dup(2))
+        self.save_fds = [os.dup(1), os.dup(2)]
 
     def __enter__(self):
         # Assign the null pointers to stdout and stderr.
@@ -109,8 +110,8 @@ class suppress_stdout_stderr(object):
         os.dup2(self.save_fds[0],1)
         os.dup2(self.save_fds[1],2)
         # Close the null files
-        os.close(self.null_fds[0])
-        os.close(self.null_fds[1])
+        for fd in self.null_fds + self.save_fds:
+            os.close(fd)
 
 
 #############################################################################
@@ -240,16 +241,21 @@ def check_file_pbkheader(infile_stack):
 #   
 ##########################################################################
 
-def extract_spectra(full_outroot, infile, ptype, ewmap, binwmap, instrument, clobber, verbose):
+def extract_spectra(full_outroot, infile, ptype, channel, ewmap, binwmap, instrument, clobber, verbose):
     # output spectrum filename
     specfile = "{0}.{1}".format(full_outroot,ptype.lower())
 
     dmextract.punlearn() 
-    dmextract.infile  =  "{0}[bin {1}]".format(infile,ptype)
+
     dmextract.outfile =  specfile 
     dmextract.opt     =  "pha1"
     dmextract.clobber =  clobber
     dmextract.verbose =  str(verbose)
+
+    if channel == "1:1024:1":
+        dmextract.infile  =  "{0}[bin {1}]".format(infile,ptype)
+    else:
+        dmextract.infile  =  "{0}[bin {1}={2}]".format(infile,ptype,channel)
 
     if instrument == "ACIS":
         dmextract.wmap = "[energy={0}][bin {1}]".format(ewmap,binwmap)
@@ -3110,7 +3116,7 @@ def specextract(args):
              cxcdm.dmBlockClose(bl)
              del(fullfile_columns)
                  
-         (ret, phafile) = extract_spectra(full_outroot, fullfile, ptype, 
+         (ret, phafile) = extract_spectra(full_outroot, fullfile, ptype, channel, 
                                           ewmap, binwmap, instrument, clobber, verbose)
          
          # add nH values to phafile header
