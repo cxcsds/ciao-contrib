@@ -1,26 +1,26 @@
 #!/usr/bin/env python
-# 
-# Copyright (C) 2013 Smithsonian Astrophysical Observatory
-# 
+#
+# Copyright (C) 2013, 2018 Smithsonian Astrophysical Observatory
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-# 
+#
 
 from __future__ import print_function
 
 toolname = "search_csc"
-__revision__ = "05 December 2017"
+__revision__ = "06 March 2018"
 
 import sys
 
@@ -29,13 +29,17 @@ import os
 try:
     if not __file__.startswith(os.environ['ASCDS_INSTALL']):
         _thisdir = os.path.dirname(__file__)
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib/python2.7/site-packages'))
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
         if os.path.isdir(_pathdir):
-            os.sys.path.insert(0, _pathdir)
+            os.sys.path.insert(1, _pathdir)
         else:
             print("*** WARNING: no {}".format(_pathdir))
+
+        del _libname
         del _pathdir
-        del _thisdir        
+        del _thisdir
 except KeyError:
     raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
 
