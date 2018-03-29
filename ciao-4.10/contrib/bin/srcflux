@@ -313,7 +313,13 @@ def save_regions( myparams, regions, flavor ):
     """    
     from ciao_contrib.runtool import dmmakereg
     from tempfile import NamedTemporaryFile    
-    ss = stk.build(regions)
+
+    # CIAO 4.10 changes to NULL regions no longer creates a fake
+    # "point(0,0)" -- I'm using that so we'll put it back.
+    try:
+        ss = stk.build(regions)
+    except ValueError as ve:
+        ss = [ "point(0,0)" ]
     
     with open( regions[2:], "w" ) as oo:  # 2 => skip "@-"
         for ii in range( len(ss)):
