@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 #
-#  Copyright (C) 2014, 2015, 2016, 2017  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2014, 2015, 2016, 2017, 2018
+#                Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -36,14 +37,25 @@ ciao% deflare method=clean infile=lc.fits outfile=gti.fits
 """
 
 toolname = "deflare"
-__revision__ = "22 May 2017"
+__revision__ = "29 March 2018"
 
 import os
 import sys
 
 import paramio
 
-import pychips
+# Delay importing pychips until we need it, to allow the script to
+# be run in a non-interactive mode. Unfortunately we do want to
+# import ChIPS and then catch an error because
+#
+#   a) ChIPS goes through a long re-try loop to check that it
+#      can't start up the server, which wastes a lot of time
+#
+#   b) doesn't raise an ImportError in this case, instead a
+#      RuntimeError (which could be caught, but not worth it
+#      due to the above).
+#
+# import pychips
 
 import six
 
@@ -78,7 +90,10 @@ v1 = make_verbose_level(toolname, 1)
 
 
 def get_par(args):
-    """Get parameters from parameter file """
+    """Get parameters from parameter file.
+
+    This can also load/start up ChIPS, if plotting is requested.
+    """
 
     pinfo = open_param_file(args, toolname=toolname)
     pfile = pinfo["fp"]
@@ -106,6 +121,13 @@ def get_par(args):
 
     if not params["plot"] and params["save"] is not None:
         params["plot"] = True
+
+        # Importing ChIPS here only when we need it, so that the
+        # script can be run without an X server (when importing
+        # ChIPS fails to produce a working system). Note that
+        # it can fail with a RuntimeError.
+        #
+        import pychips
         pychips.set_preference("window.display", "false")
 
     if params["outfile"] == "" or params["outfile"].lower() == 'none':
