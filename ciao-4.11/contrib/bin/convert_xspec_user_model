@@ -1,0 +1,2075 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2018
+#           Smithsonian Astrophysical Observatory
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 USA.
+#
+
+# TODO:
+#
+#   update the convolution model interface to use the 'direct
+#   approach' rather than require a load_xsconv-style command?
+#
+#   can models that need to be re-evaluated per spectrum
+#   (mfl.flags[1]==1) be supported purely by turning off the cache
+#   code, or is it possible that thet need access to XSPEC internals?
+#   Actually, the following suggests that it can just be ignored (but
+#   then how about with flags[0] == 1 or any with an initString).
+#
+#   It looks like initpackage does not use the flags for each model -
+#   that is the two integers after the model type. The initialization
+#   code it creates passes the model definition file to
+#   XSModelFunction::updateComponentList(), which I guess does care
+#   about these. This function is in
+#   heasoft-6.16/Xspec/src/XSUtil/FunctionUtils/XSModelFunction.cxx
+#
+#   some following of bread crumbs leads to the fact that can have
+#     ... fnname mdltype 0/1 0/1
+#     ... fnname mdltype 0/1 string
+#     ... fnname mdltype 0/1 0/1 string
+#
+#   where the first boolean is referred to m_error and the second is
+#   m_isSpectrumDependency, with the string being m_initString
+#   (from XSModel/Model/Component/Component.cxx). The
+#   isSpectrumDependency and isError methods access the bool values
+#   and initString the string.
+#
+#   Looks like isSpectrumDependency is only used by
+#   XSModel/Model/ModelBase.cxx in setting up the
+#   checkForSpecDependency routine to set the m_areCompsSpecDependent
+#   flag / areCompsSpecDependent accessor.
+#
+#   From tracking through the code, it looks like the specturm
+#   dependency flag is used in UniqueEnergyManager::addRespEnergy() to
+#   determine whether a new energy grid is needed. From my
+#   understanding of the Sherpa internals, this is not relevant, ie we
+#   can ignore this particular flag.
+#
+
+"""
+Usage:
+
+  convert_xspec_user_model <name> <model.dat> [<additional files>]
+
+    --help
+    --no-xspec   Do not include XSPEC libraries in the build
+    --cfitsio    Include the CFITSIO library
+    --clobber  or -c
+    --verbose n  or -v n where n is 0, 1, 2, 3, 4, 5
+    --keep or -k
+    --prefix [p]  where p is the prefix for the user model names
+    --version
+    --copyright
+
+    --f2py=... or -f=... to pass through arguments to f2py
+      (can specify more than once)
+
+The script should be run in the directory containing the source code;
+it follows the XSPEC initpackage command and will compile files that
+match
+
+  Fortran: *.f *.f03 *.f90
+  C:       *.c
+  C++:     *.cxx *.C *.cc      (*.cpp files are ignored, unlike XSPEC)
+
+The list of additional files are included in the f2py - for instance a
+.o file can be added here if it needs to be compiled in a way that is
+not supported by f2py.
+
+Unlike most CIAO tools and scripts this does not use the CIAO
+parameter interface, instead it uses the standard UNIX command-line
+paradigm.  Use --help for more information.
+
+Requires:
+
+  The model loads sherpa_contrib.xspec.xsusermodels, so this must
+  be available.
+
+  The XSPEC include files are assumed to have been copied over from
+  the XSPEC xspec-modelsonly tar file - e.g.
+
+      cd xspec-modelsonly/Xspec/src
+      find . -name \*h > includes
+      tar czf includes.tgz -T includes
+
+  and then unpacked into
+
+      <script location>/../share/xspec/
+      $ASCDS_INSTALL/contrib/share/xspec
+
+  However, this needs to be supplemented by the creation of an include/
+  directory, with contents from the Xspec/BLD/<system>/include/ directory
+  (these are normally soft links so need to get converted too). Alternatively
+  this directory can be taken from the installation directory - e.g.
+  .../heasoft-<version>/Xspec/<system>/include/ - which has the advantage
+  of not having to deal with links. There may be other directories needed
+  too.
+
+Aim:
+
+Convert an XSPEC user model (written in Fortran, C, or C++) into a
+Python module that can be used by Sherpa.
+
+It is based in part on information from the create_xspec_extension
+script (provided as part of the Sherpa source distribution) and the
+initpackage command from the XSPEC source distribution.
+
+See
+http://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSappendixLocal.html
+for a description of the model.dat format.
+
+"""
+
+toolname = "convert_xspec_user_model"
+toolver  = "30 March 2018"
+
+import sys
+import os
+import string
+import subprocess as sbp
+import time
+import glob
+import argparse
+import importlib
+
+import six
+
+from distutils.sysconfig import get_config_var
+
+# Note: if I am going to hard-code the choice of compiler, then
+# it may make sense to write the wrapper code here, and then
+# call the compilers directly, rather than use f2py.
+#
+import numpy.distutils.fcompiler.gnu
+
+# This is only needed for development.
+try:
+    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
+        _libname = "python{}.{}".format(sys.version_info.major,
+                                        sys.version_info.minor)
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
+        if os.path.isdir(_pathdir):
+            os.sys.path.insert(1, _pathdir)
+        else:
+            # print("*** WARNING: no {}".format(_pathdir))
+            pass
+
+        del _libname
+        del _pathdir
+        del _thisdir
+
+except KeyError:
+    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+
+import sherpa
+import sherpa.astro.ui as ui
+
+# added in CIAO 4.8
+import ciao_version
+
+import ciao_contrib.logger_wrapper as lw
+
+lgr = lw.initialize_logger(toolname)
+v0 = lgr.verbose0
+v1 = lgr.verbose1
+v2 = lgr.verbose2
+v3 = lgr.verbose3
+
+valid_chars = string.ascii_letters + string.digits + '_'
+
+help_str = """
+Convert XSPEC user models into a form usable by Sherpa.
+
+This is *experimental* code and has seen limited testing. It does not
+support all possible XSPEC user models at this time; please contact
+the CXC HelpDesk at http://cxc.harvard.edu/helpdesk/ if you are unable
+to compile a model.
+
+The required arguments are
+
+  1) The name to use for the Python module name; this will be used
+     in the 'import <module name>' line to load the models into
+     Sherpa. It should not match the name of one of the models. A
+     directory matching this name will be created in the current
+     working directory.
+
+  2) The XSPEC definition file for the model (or models), which
+     is often called model.dat or lmodel.dat
+
+Files that match
+
+  Fortran: *.f *.f03 *.f90
+  C:       *.c
+  C++:     *.cxx *.C *.cc      (*.cpp files are ignored, unlike XSPEC)
+
+are automatically compiled. To include other files on the link line
+- e.g. .o files - add there names on the command line.
+
+So, if the model is defined in lmodel.dat and the source code is in
+mdl1.f and mdl2.f then you could run this script as
+
+  {0} mymodel lmodel.dat
+
+and, once it has finished, you would say, within a Sherpa session,
+
+  sherpa> import mymodel
+
+to load the models, assuming either
+
+  a) you are in the directory from which you ran {0}
+
+  b) you have changed the Python path - by editing the PYTHONPATH
+     environment variable or the os.sys.path array - to include this
+     directory.
+
+Note that some models may require data files in the working directory,
+or for you to set up environment variables.
+
+""".format(sys.argv[0])
+
+copyright_str = """
+Copyright (C) 2012, 2013, 2014, 2015, 2016, 2018
+Smithsonian Astrophysical Observatory
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
+"""
+
+
+def find_xspec_includes():
+    """Where are the XSPEC include files found?
+
+    The script returns the first match to the directory
+
+      <script location>/../share/xspec
+      <$ASCDS_INSTALL>/contrib/share/xspec
+
+    but it does not check that the directory contains anything.
+    """
+
+    # At present there's only one path looked for
+    v3("Looking for XSPEC includes in:")
+    thisdir = os.path.dirname(__file__)
+    for dname in ["../share/xspec"]:
+        path = os.path.normpath(os.path.join(thisdir, dname))
+        v3("  - {}".format(path))
+        if os.path.isdir(path):
+            return path
+
+    path = os.path.join(os.getenv("ASCDS_INSTALL"), "contrib/share/xspec")
+    path = os.path.normpath(path)
+    v3("  - {}".format(path))
+    if os.path.isdir(path):
+        return path
+
+    # only report the non-development version
+    raise IOError("Unable to find the XSPEC include directory: {}".format(path))
+
+
+def validate_namefunc(namefunc):
+    """Raise a ValueError if namefunc does not capitalize the return string."""
+    inval = 'bob'
+    outval = namefunc(inval)
+    if not outval[0].isupper():
+        raise ValueError("The namefunc routine does not capitalize the return value - e.g. '{}' -> '{}'.".format(inval, outval))
+
+
+def add_prefix(prefix, inval):
+    """Returns prefix prepended to inval (converting it to a string if
+    necessary)."""
+    return "{}{}".format(prefix, inval)
+
+
+def add_xs_prefix(inval):
+    """Returns XS prepended to inval (converting it to a string if
+    necessary)."""
+    return add_prefix("XS", inval)
+
+
+def no_prefix(inval):
+    """Returns inval converted to a string, after converting
+    the first character to upper case.
+    """
+    return str(inval).capitalize()
+
+
+class ModelDefinition():
+    """Represent the model definition from an XSPEC model file.
+
+    Do not instantiate this class directly.
+
+    The clname attribute gives the class name used to represent
+    this model - so must start with a capital letter - and is
+    also used (in lower-case form) as the model name that users
+    enter when creating an instance.
+
+    The language field determines the interface type - e.g.
+    Fortran, C, or C++. It is possible to have C code labelled
+    as using the Fortran interface.
+    """
+
+    modeltype = None
+    language = None
+
+    def __init__(self, name, clname, funcname, flags, elo, ehi, pars,
+                 initString=None):
+        assert self.modeltype is not None, \
+            "ModelDefinition should not be directly created."
+        self.name = name
+        self.clname = clname
+        self.funcname = funcname
+        self.flags = flags
+        self.elo = elo
+        self.ehi = ehi
+        self.pars = pars
+
+        # This will probably need to be changed if mixing models
+        # (mix or amx) are supported.
+        #
+        # We rely on f2py on dealing with converting the Fortran
+        # function name into the correct form (preceeding or
+        # following underscore characters).
+        #
+        # The use of strings for the language is not ideal; really
+        # should use some form of an enumeration.
+        if self.funcname.startswith('F_'):
+            self.language = 'Fortran - double precision'
+            self.funcname = self.funcname[2:]
+        elif self.funcname.startswith('c_'):
+            self.language = 'C style'
+            self.funcname = self.funcname[2:]
+        elif self.funcname.startswith('C_'):
+            self.language = 'C++ style'
+            self.funcname = "wrap_" + self.funcname[2:]
+        else:
+            self.language = 'Fortran - single precision'
+
+        if initString is not None and self.language.startswith('F'):
+            v1("WARNING: initString={} ignored as {} is fortran".format(initString, self.name))
+            initString = None
+
+        self.initString = initString
+
+
+    def __str__(self):
+        pstr = "\n".join([str(p) for p in self.pars])
+        return "{}.{} function={}\n{}\n{}".format(self.modeltype,
+                                                  self.name,
+                                                  self.funcname,
+                                                  self.language,
+                                                  pstr)
+
+
+class AddModelDefinition(ModelDefinition):
+    """XSPEC additive models. See
+    http://heasarc.gsfc.nasa.gov/docs/software/lheasoft/xanadu/xspec/manual/Additive.html
+    for examples."""
+    modeltype = "Add"
+
+
+class MulModelDefinition(ModelDefinition):
+    """XSPEC multiplicative models. See
+    http://heasarc.gsfc.nasa.gov/docs/software/lheasoft/xanadu/xspec/manual/Multiplicative.html
+    for examples."""
+    modeltype = "Mul"
+
+
+class ConModelDefinition(ModelDefinition):
+    """XSPEC convolution models. See
+    http://heasarc.gsfc.nasa.gov/docs/software/lheasoft/xanadu/xspec/manual/Convolution.html
+    for examples."""
+    modeltype = "Con"
+
+
+class MixModelDefinition(ModelDefinition):
+    """XSPEC mixing models. See
+    http://heasarc.gsfc.nasa.gov/docs/software/lheasoft/xanadu/xspec/manual/Mixing.html
+    for examples."""
+    modeltype = "Mix"
+
+
+class AcnModelDefinition(ModelDefinition):
+    """XSPEC Acn models: pile up models"""
+    modeltype = "Acn"
+
+
+# Found in looking through
+#   heasoft-6.16/Xspec/src/tools/initpackage/ModelMap.cxx
+class AmxModelDefinition(ModelDefinition):
+    """XSPEC Amx models: """
+    modeltype = "Amx: apparently a combination of mixing and pile-up models"
+
+
+class ParameterDefinition():
+
+    paramtype = None
+
+    def __init__(self, name, default, units=None,
+                 softmin=None, softmax=None,
+                 hardmin=None, hardmax=None, delta=None):
+        assert self.paramtype is not None, \
+            'ParameterDefinition should not be directly created'
+
+        self.name = name
+        self.default = default
+        self.units = units
+
+        self.softmin = softmin
+        self.softmax = softmax
+        self.hardmin = hardmin
+        self.hardmax = hardmax
+        if delta is None:
+            self.delta = None
+        else:
+            self.delta = abs(delta)
+
+    def param_string(self):
+        raise NotImplementedError("param_string has not been overridden for name={} paramtype={}".format(self.name, self.paramtype))
+
+
+class SwitchParameterDefinition(ParameterDefinition):
+
+    paramtype = "Switch"
+
+    def __str__(self):
+        return "{} = {}".format(self.name, self.default)
+
+    def param_string(self):
+        out = "Parameter(name, '{}', {}".format(self.name, self.default)
+
+        for (pval, pname) in [(self.softmin, "min"),
+                              (self.softmax, "max"),
+                              (self.hardmin, "hard_min"),
+                              (self.hardmax, "hard_max")]:
+            if pval is not None:
+                out += ",{}={}".format(pname, pval)
+
+        if self.units is not None:
+            out += ",units='{}'".format(self.units)
+
+        out += ",alwaysfrozen=True)"
+        return out
+
+
+class ScaleParameterDefinition(ParameterDefinition):
+
+    paramtype = "Scale"
+
+    def __str__(self):
+        out = "{} = {}".format(self.name, self.default)
+        if self.units is not None:
+            out += " units={}".format(self.units)
+        return out
+
+    def param_string(self):
+        out = "Parameter(name, '{}', {}".format(self.name, self.default)
+
+        for (pval, pname) in [(self.softmin, "min"),
+                              (self.softmax, "max"),
+                              (self.hardmin, "hard_min"),
+                              (self.hardmax, "hard_max")]:
+            if pval is not None:
+                out += ",{}={}".format(pname, pval)
+
+        if self.units is not None:
+            out += ",units='{}'".format(self.units)
+
+        out += ",alwaysfrozen=True)"
+        return out
+
+
+class BasicParameterDefinition(ParameterDefinition):
+
+    modeltype = "Basic"
+
+    def __init__(self, name, default, units, softmin, softmax,
+                 hardmin, hardmax, delta):
+
+        self.name = name
+
+        self.units = units
+        self.softmin = softmin
+        self.softmax = softmax
+
+        if self.softmin < 0.0:
+            self.hardmin = "-hugeval"
+        else:
+            self.hardmin = "0.0"
+
+        self.hardmax = "hugeval"
+
+        if default < self.softmin:
+            self.default = softmin
+        elif default > self.softmax:
+            self.default = softmax
+        else:
+            self.default = default
+
+        if delta < 0.0:
+            self.frozen = True
+            self.delta = abs(delta)
+        else:
+            self.frozen = False
+            self.delta = delta
+
+    def __str__(self):
+        out = "{} = {} ({} to {})".format(self.name, self.default,
+                                          self.softmin, self.softmax)
+        if self.units is not None:
+            out += " units={}".format(self.units)
+        if self.frozen:
+            out += " frozen"
+        return out
+
+    def param_string(self):
+        args = (self.name, self.default, self.softmin, self.softmax,
+                self.hardmin, self.hardmax)
+        out = "Parameter(name, '{}', {}, min={}, max={}, hard_min={}, hard_max={}".format(*args)
+        if self.frozen:
+            out += ", frozen=True"
+        if self.units is not None:
+            out += ", units='{}'".format(self.units)
+        out += ")"
+        return out
+
+
+def read_model_definition(fh, namefunc=add_xs_prefix):
+    """Represent the model definition from an XSPEC model file.
+    The format supported here is defined in
+    http://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSappendixLocal.html
+
+    A single model definition is read in and returned to the
+    user, or None if the end of file has been reached.
+
+    If an error occurs during parsing then the location of the
+    file handle is left at the point of the error - i.e. it
+    does not try to continue reading in the rest of this model
+    definition.
+
+    The namnefunc routine takes the model name (taken from the
+    XSPEC file) and returns the Python class name for the
+    model; at the least it should ensure the first character
+    is capitalized. The default is to prepend with XS, which
+    means that a user would create an instance of the model
+    foobar with xsfoobar.mdl
+    """
+
+    hdrline = ''
+    while hdrline == '':
+        hdrline = fh.readline()
+        if hdrline == '':
+            return None
+
+        hdrline = hdrline.strip()
+
+    v3("processing hdr line '{}'".format(hdrline))
+    toks = hdrline.split()
+    ntoks = len(toks)
+    if ntoks < 7 or ntoks > 9:
+        raise ValueError("Expected: modelname npars elo ehi funcname modeltype i1 [i2 [initString]] but sent:\n{}".format(hdrline))
+
+    name = toks[0]
+    clname = namefunc(name)
+    npars = int(toks[1])
+    if npars < 0:
+        raise ValueError("Number of parameters is {}:\n{}".format(npars, hdrline))
+
+    elo = float(toks[2])
+    ehi = float(toks[3])
+    funcname = toks[4]
+    modeltype = toks[5]
+
+    if ntoks == 9:
+        initString = toks.pop()
+    else:
+        initString = None
+
+    flags = [int(t) for t in toks[6:]]
+
+    v3("-> function={} {} ".format(funcname, modeltype) +
+       "npars={} elo={} ehi={} ".format(npars, elo, ehi) +
+       "flags={} initString={}".format(flags, initString))
+
+    pars = []
+    while len(pars) < npars:
+        pline = fh.readline().strip()
+        # not sure if it's technically valid to have a blank line here,
+        # but allow it for now
+        if pline == '':
+            continue
+
+        v3(" parameter #{}/{}: {}".format(len(pars) + 1, npars, pline))
+
+        pars.append(process_parameter_definition(pline, model=name))
+
+    if modeltype == "add":
+        nstr = 'norm " " 1.0 0.0 0.0 1.0e24 1.0e24 0.1'
+        pars.append(process_parameter_definition(nstr))
+        factory = AddModelDefinition
+
+    elif modeltype == "mul":
+        factory = MulModelDefinition
+
+    elif modeltype == "con":
+        factory = ConModelDefinition
+
+    elif modeltype == "mix":
+        factory = MixModelDefinition
+
+    elif modeltype == "acn":
+        factory = AcnModelDefinition
+
+    elif modeltype == "amx":
+        factory = AmxModelDefinition
+
+    else:
+        raise ValueError("Unexpected model type {} in:\n{}".format(modeltype,
+                                                                   hdrline))
+
+    # safety check on the parameter names.
+    #
+    pnames = [(par.name.lower(), par.name) for par in pars]
+    lnames = set(pnames)
+    if len(lnames) != len(pars):
+        from collections import defaultdict
+        d = defaultdict(list)
+        for (k, v) in pnames:
+            d[k].append(v)
+
+        multiple = [vs for (k, vs) in d.items() if len(vs) > 1]
+        mstr = [" and ".join(v) for v in multiple]
+        raise ValueError("The parameters in model={}".format(name) +
+                         " do not have unique names:\n  " +
+                         "{}".format("\n  ".join(mstr)))
+
+    return factory(name, clname, funcname, flags, elo, ehi, pars,
+                   initString=initString)
+
+
+def mpop(array, defval=None):
+    """Pop first element from array (converting to float),
+    returning defval if empty.
+    """
+
+    try:
+        return float(array.pop(0))
+    except IndexError:
+        return defval
+
+
+def process_parameter_definition(pline, model=None):
+    """process a parameter definition from the input line (pline)
+    and return the appropriate ParameterDefinition object.
+
+    The model argument is the name of the model to which the
+    parameter definition belongs, and is only used in error
+    messages.
+    """
+
+    if pline.endswith("P"):
+        raise ValueError("Periodic parameters are unsupported; model={}:\n{}\n".format(model, pline))
+
+    toks = pline.split()
+    orig_parname = toks.pop(0)
+
+    if orig_parname.startswith('<') and orig_parname.endswith('>'):
+        name = orig_parname[1:-1] + "_ave"
+    else:
+        name = orig_parname
+
+    name = name.replace('@', 'At')
+
+    # replace foo(bar) with foo_bar
+    # (do this before the following, otherwise have foo_bar_)
+    #
+    if name.endswith(')'):
+        lpos = name.rfind('(')
+        if lpos != -1:
+            name = name[:lpos] + "_" + name[lpos + 1:-1]
+
+    # Remove unsupported characters
+    # name = "".join([t for t in name if t in valid_chars])
+
+    # Replace unsupported characters with '_'. I'd like
+    # to use .translate(), but I am too lazy to see how
+    # this works.
+    def cconv(c):
+        if c in valid_chars:
+            return c
+        else:
+            return '_'
+
+    name = "".join(map(cconv, name))
+
+    if name in ["break", "lambda", "type"]:
+        name += "_"
+
+    if orig_parname != name:
+        v3("Original parameter name: {} -> new name: {}".format(orig_parname,
+                                                                name))
+
+    if orig_parname.startswith('$'):
+        # switch parameter
+        # the XSPEC documentation say that switches only have 2
+        # arguments but the model.dat from it's own model definitions
+        # includes these cases:
+        #
+        # $switch    1     0       0     1      1       -1
+        # $method   " "   1       1       1       3       3     -0.01
+        # $model    " "     0
+        #
+        ntoks = len(toks)
+        if ntoks == 1:
+            default = int(toks[0])
+            return SwitchParameterDefinition(name, default)
+
+        elif ntoks == 6:
+            default = int(toks.pop(0))
+            hardmin = float(toks.pop(0))
+            softmin = float(toks.pop(0))
+            softmax = float(toks.pop(0))
+            hardmax = float(toks.pop(0))
+            delta   = float(toks.pop(0))
+            return SwitchParameterDefinition(name, default, None,
+                                             softmin, softmax,
+                                             hardmin, hardmax, delta)
+
+        elif ntoks > 6:
+            # ignore units for now
+            delta   = float(toks.pop())
+            hardmax = float(toks.pop())
+            softmax = float(toks.pop())
+            softmin = float(toks.pop())
+            hardmin = float(toks.pop())
+            default = int(toks.pop())
+            return SwitchParameterDefinition(name, default, None,
+                                             softmin, softmax,
+                                             hardmin, hardmax, delta)
+
+        elif toks[0].startswith('"'):
+            # assume something like '$model " " val'
+            v3("Switch parameter with pline = {}".format(pline))
+            default = int(toks.pop())
+            return SwitchParameterDefinition(name, default)
+
+        else:
+            raise NotImplementedError("(switch) model={} pline=\n{}".format(model, pline))
+
+    # Handle units
+    val = toks.pop(0)
+    if val.startswith('"'):
+        units = val[1:]
+        if units.endswith('"'):
+            units = units[:-1]
+
+        else:
+            flag = True
+            while flag:
+                try:
+                    val = toks.pop(0)
+                except IndexError:
+                    raise ValueError("Unable to parse units; model={}\n{}".format(model, pline))
+
+                if val.endswith('"'):
+                    val = val[:-1]
+                flag = False
+
+                units += val
+
+    else:
+        units = val
+
+    if units.strip() == '':
+        units = None
+
+    if orig_parname.startswith('*'):
+        # scale parameter
+        default = float(toks.pop(0))
+
+        # if len(toks) > 0:
+        #    print("DBG: scale parameter: {}".format(pline))
+
+        hardmin = mpop(toks)
+        softmin = mpop(toks)
+        softmax = mpop(toks)
+        hardmax = mpop(toks)
+        delta   = mpop(toks)
+
+        return ScaleParameterDefinition(name, default, units,
+                                        softmin, softmax,
+                                        hardmin, hardmax, delta)
+
+    if len(toks) != 6:
+        v3("len(toks) = {}".format(len(toks)))
+        v3("toks = {}".format(toks))
+        raise ValueError("Expected 6 values after units; model={}\n{}".format(model, pline))
+
+    default = float(toks.pop(0))
+    hardmin = float(toks.pop(0))
+    softmin = float(toks.pop(0))
+    softmax = float(toks.pop(0))
+    hardmax = float(toks.pop(0))
+    delta = float(toks.pop(0))
+
+    return BasicParameterDefinition(name, default, units,
+                                    softmin, softmax,
+                                    hardmin, hardmax, delta)
+
+
+def parse_model_file(modelfile, namefunc=add_xs_prefix):
+    """Given an XSPEC model file - e.g. the lmodel.dat file -
+    return inforamtion about the models it contains.
+
+    The namefunc argument is used to convert the XSPEC
+    model name into a class name.
+    """
+
+    out = []
+    with open(modelfile, "r") as fh:
+
+        while True:
+            # If there is a problem reading in a model definition then
+            # we do not try to recover - e.g. by wrapping this in a
+            # try/except block - since it is not clear how to skip over
+            # the "invalid" model definiton so that we can move to the
+            # next model (well, some simple heuristics could be applied,
+            # but leave off developing these until it turns out to be
+            # a problem).
+            #
+            # A simple option would be to just stop parsing as soon as
+            # there is a problem, but process any parsed model.
+            #
+            mdl = read_model_definition(fh, namefunc=namefunc)
+
+            if mdl is None:
+                break
+            else:
+                v3("Read in model definition: {}".format(mdl.name))
+                out.append(mdl)
+
+    return out
+
+
+def fortran_spec(mdl, n=4):
+    """Return the spec fragment for a FORTRAN model. A blank string is
+    returned for unsupported models.
+
+    n is 4 for single precision, 8 for double precision.
+    """
+
+    assert n == 4 or n == 8, 'n should be 4 or 8'
+
+    t1 = ' ' * 8
+    t2 = ' ' * 12
+
+    # Handle correction for normalisation value
+    npars = len(mdl.pars)
+    if mdl.modeltype == "Add":
+        npars -= 1
+
+    out = "{}subroutine {}(ear,ne,param,ifl,photar,photer)\n".format(t1, mdl.funcname)
+    out += "{}real*{} dimension(ne+1), intent(in) :: ear\n".format(t2, n)
+    out += "{}integer intent(hide),depend(ear),check(ne>0) :: ne=len(ear)-1\n".format(t2)
+    if npars == 0:
+        out += "{}real*{} intent(hide) :: param = 0.0\n".format(t2, n)
+    else:
+        out += "{}real*{} dimension({}),intent(in) :: param\n".format(t2, n, npars)
+
+    out += "{}integer intent(hide) :: ifl=1\n".format(t2)
+    if mdl.modeltype == "Con":
+        intent = "in,out"
+    else:
+        intent = "out"
+
+    out += "{}real*{} dimension(ne),intent({}),depend(ne) :: photar\n".format(t2, n, intent)
+
+    out += "{}real*{} dimension(ne),intent(hide,cache),depend(ne) :: photer\n".format(t2, n)
+    out += "{}end subroutine {}\n".format(t1, mdl.funcname)
+    out += "\n"
+    return out
+
+
+def c_spec(mdl):
+    """Return the spec fragment for a C model.
+
+    A blank string is returned for unsupported models.
+    """
+
+    t1 = ' ' * 8
+    t2 = ' ' * 12
+
+    # Handle correction for normalisation value
+    npars = len(mdl.pars)
+    if mdl.modeltype == "Add":
+        npars -= 1
+
+    out = "{}subroutine {}(ear,ne,param,ifl,photar,photer,init)\n".format(t1, mdl.funcname)
+    out += "{}intent(c) {}\n".format(t2, mdl.funcname)
+
+    # The following is a short cut for adding "intent(c)" to all the
+    # arguments; it will result in f2py reporting a message like
+    # 'All arguments will have attribute intent(c)' for each
+    # wrapped function.
+    #
+    out += "{}intent(c)\n".format(t2)
+
+    out += "{}double precision dimension(ne+1), intent(in) :: ear\n".format(t2)
+    out += "{}integer intent(hide),depend(ear),check(ne>0) :: ne=len(ear)-1\n".format(t2)
+    if npars == 0:
+        out += "{}double precision intent(hide) :: param = 0.0\n".format(t2)
+    else:
+        out += "{}double precision dimension({}),intent(in) :: param\n".format(t2, npars)
+
+    out += "{}integer intent(hide) :: ifl=1\n".format(t2)
+    if mdl.modeltype == "Con":
+        intent = "in,out"
+    else:
+        intent = "out"
+
+    out += "{}double precision dimension(ne),intent({}),depend(ne) :: photar\n".format(t2, intent)
+    out += "{}double precision dimension(ne),intent(hide,cache),depend(ne) :: photer\n".format(t2)
+
+    # For now we hide the initialization string from the Python API
+    # since I can not work out how to define it as an optional string
+    # with a default of "".  I am not sure exactly what the following
+    # does, but so far it hasn't produced the garbage I saw when
+    # trying to add some form of defined(...)  statement. Perhaps
+    # because I had forgotten to put in a len argument? Anyway, it
+    # probably doesn't make sense to make this a user-editable
+    # value; rather, it should be hard coded.
+    #
+    if mdl.initString is None:
+        istring = ""
+    else:
+        istring = mdl.initString
+
+    ninit = len(istring)
+    out += "{}character(len={}) intent(hide) ::".format(t2, ninit) + \
+        " init=\"{}\"\n".format(istring)
+
+    out += "{}end subroutine {}\n".format(t1, mdl.funcname)
+    out += "\n"
+    return out
+
+
+def cpp_spec(mdl):
+    """Return the spec fragment for a C++ model.
+
+    A blank string is returned for unsupported models.
+    """
+
+    # As we create a wrapper routine to provide a C-style
+    # interface for the model, we can delegate this to
+    # c_spec. It may be possible to move the conversion
+    # code performed by the wrapper (convert C-style arrays
+    # to RealArray objects, and then back again after calling
+    # the C++ model) into the .pyf spec definition.
+    #
+    return c_spec(mdl)
+
+
+def cpp_wrapper(mdls):
+    """Create the C++ wrapper code that is needed to provide
+    a C-style interface to the C++ models in the mdls array.
+
+    If there are no C++ models in mdls then return None.
+    """
+
+    cmdls = [mdl for mdl in mdls if mdl.language == 'C++ style']
+    if len(cmdls) == 0:
+        return None
+
+    out = """
+// C style interface to the C++ model(s)
+//
+// This file is generated automatically by {progname}
+// version {progver}
+
+#include <xsTypes.h>
+#include <XSUtil/Utils/XSutility.h>
+
+#include <iostream>
+#include <cstring>
+
+extern "C" {{
+
+""".format(progname=toolname, progver=toolver)
+
+    c_funcargs = ", ".join(["const Real* energy",
+                            "int Nflux",
+                            "const Real* parameter",
+                            "int spectrum",
+                            "Real *flux",
+                            "Real *fluxError",
+                            "const char* init"])
+
+    cpp_funcargs = ", ".join(["const RealArray& energy",
+                              "const RealArray& parameter",
+                              "int spectrum",
+                              "RealArray& flux",
+                              "RealArray &fluxError",
+                              "const string& init"])
+
+    for mdl in cmdls:
+        out += "void {funcname}({funcargs});\n".format(funcname=mdl.funcname,
+                                                       funcargs=c_funcargs)
+        # strip off leading 'wrap_'
+        out += "void {funcname}({funcargs});\n".format(funcname=mdl.funcname[5:],
+                                                       funcargs=cpp_funcargs)
+    out += "\n}\n"
+
+    out += """
+
+// In the following we assume that the f2py code has initialized
+// the error arrays (i.e. fluxError is never NULL). I have added
+// a simple screen warning if this is ever not true, but I have
+// not included any error handling if this assertion fails.
+
+"""
+
+    for mdl in cmdls:
+        npars = len(mdl.pars)
+        if mdl.modeltype == "Add":
+            npars -= 1
+
+        out += """// model: {modelname}
+void {funcname}({funcargs}) {{
+  int nEar = Nflux + 1;
+  RealArray energyArray(energy, nEar);
+  RealArray params(parameter, {npars});
+  RealArray fluxArray(flux, Nflux);
+  if (fluxError == NULL) {{
+    std::cerr << "INTERNAL ERROR: flux error array is NULL for {unwrap}." << std::endl;
+  }}
+  RealArray fluxErrorArray(fluxError, Nflux);
+  {unwrap}(energyArray, params, spectrum, fluxArray, fluxErrorArray, init);
+  std::copy(&fluxArray[0], &fluxArray[Nflux], flux);
+}} // {funcname}
+
+""".format(modelname=mdl.name,
+           funcname=mdl.funcname,
+           unwrap=mdl.funcname[5:],
+           funcargs=c_funcargs,
+           npars=npars)
+
+    return out
+
+
+def model_to_spec(mdl):
+    """Convert a ModelDefinition to a spec fragment as used by f2py.
+
+    The return value is a string.
+    """
+
+    if mdl.language == 'Fortran - single precision':
+        return fortran_spec(mdl, n=4)
+
+    elif mdl.language == 'Fortran - double precision':
+        return fortran_spec(mdl, n=8)
+
+    elif mdl.language == 'C style':
+        return c_spec(mdl)
+
+    elif mdl.language == 'C++ style':
+        return cpp_spec(mdl)
+
+    else:
+        raise ValueError("No spec converter for model={} language={}".format(mdl.name, mdl.language))
+
+
+def simple_wrap(modelname, modulename, mdl):
+    """Create the Python class wrapping this model."""
+
+    v3(" - model={}.{} type={}".format(modulename,
+                                       mdl.name,
+                                       modelname))
+
+    t1 = ' ' * 4
+    t2 = ' ' * 8
+    out = "\nclass {}(xsum.XS{}):\n".format(mdl.clname, modelname)
+    out += "{}_calc = _{}.{}\n".format(t1, modulename, mdl.funcname)
+
+    out += "\n"
+    out += "{}def __init__(self, name='{}'):\n".format(t1, mdl.name)
+    parnames = []
+    for par in mdl.pars:
+        out += "{}self.{} = {}\n".format(t2, par.name, par.param_string())
+        parnames.append("self.{}".format(par.name))
+
+    assert len(parnames) > 0, 'Expected at least 1 parameter for {} model'.format(modelname)
+    if len(parnames) == 1:
+        pstr = "({},)".format(parnames[0])
+    else:
+        pstr = "({})".format(",".join(parnames))
+
+    # warn about untested models?
+    nflags = len(mdl.flags)
+    if nflags > 0:
+        if mdl.flags[0] == 1:
+            out += "{}warnings.warn('support for models like {} (variances are calculated by the model) is untested.')\n".format(t2, mdl.clname.lower())
+
+        if nflags > 1 and mdl.flags[1] == 1:
+            out += "{}warnings.warn('support for models like {} (recalculated per spectrum) is untested.')\n".format(t2, mdl.clname.lower())
+
+    out += "{}xsum.XS{}.__init__(self, name, {})\n".format(t2, modelname, pstr)
+    out += "\n"
+    return out
+
+
+def additive_wrap(modulename, mdl):
+    """Return a string representing the Python code used to wrap
+    up access to an Additive user model.
+    """
+
+    return simple_wrap('AdditiveUserModel', modulename, mdl)
+
+
+def multiplicative_wrap(modulename, mdl):
+    """Return a string representing the Python code used to wrap
+    up access to an Multiplicative user model.
+    """
+
+    return simple_wrap('MultiplicativeUserModel', modulename, mdl)
+
+
+def convolution_wrap(modulename, mdl):
+    """Return a string representing the Python code used to wrap
+    up access to a Convolution user model.
+    """
+
+    out = simple_wrap('ConvolutionUserKernel', modulename, mdl)
+    out += """
+def load_{0}(name):
+    "Create an instance of the XSPEC convolution model {0}"
+    xsm.load_xsconvolve({1}, name)
+
+""".format(mdl.name, mdl.clname)
+    return out
+
+
+def model_to_python(modulename, mdl):
+    """Return a string representing the Python code used to wrap
+    up access to the given user model.
+
+    The return value is a string.
+    """
+
+    if mdl.modeltype == "Add":
+        return additive_wrap(modulename, mdl)
+
+    elif mdl.modeltype == "Mul":
+        return multiplicative_wrap(modulename, mdl)
+
+    elif mdl.modeltype == "Con":
+        return convolution_wrap(modulename, mdl)
+
+    else:
+        raise ValueError("No wrapper for model={} type={}".format(mdl.name, mdl.modeltype))
+
+
+def stringify(s):
+    return "'" + s + "'"
+
+
+def find_file_types(types):
+    """Return a dictionary listing the types of
+    files in the types dictionary, which has
+    key as the type name and value as the glob
+    pattern - e.g.
+
+      types = { "generic": "*.f", "90": "*.f90" }
+
+    Only those types that contain a match are
+    included; if there are no matches then None
+    is returned.
+
+    At present it turns out that it is possible to
+    create the pattern from the typename, ie a
+    dictionary is not needed as input, but leave
+    as is as there is no need to "optimise" this.
+    """
+
+    out = {}
+    for (typename, pattern) in six.iteritems(types):
+        match = glob.glob(pattern)
+        if len(match) > 0:
+            out[typename] = match
+
+    if len(out) == 0:
+        return None
+    else:
+        return out
+
+
+def find_fortran_files():
+    """Return the Fortran files found in the current
+    directory, labelled by "type".
+
+      "f":   *.f
+      "f03": *.f03
+      "f90": *.f90
+
+    The dictionary only contains keys if there was a
+    match for that pattern; if there are no matches
+    then None is returned.
+    """
+
+    return find_file_types({"f": "*.f",
+                            "f03": "*.f03",
+                            "f90": "*.f90"})
+
+
+def find_c_files():
+    """Return the C files found in the current
+    directory, labelled by "type".
+
+      "c": *.c
+
+    The dictionary only contains keys if there was a
+    match for that pattern; if there are no matches
+    then None is returned.
+
+    Note that on case-insensitive file systems, this
+    will match the same files as find_c_files() for
+    the "C" and "c" options.
+    """
+
+    return find_file_types({"c": "*.c"})
+
+
+def find_cplusplus_files():
+    """Return the Fortran files found in the current
+    directory, labelled by "type".
+
+      "cxx": *.cxx
+      "C"  : *.C
+      "cc" : *.cc
+
+    Note that .cpp files are ignored, unlike in XSPEC.
+
+    The dictionary only contains keys if there was a
+    match for that pattern; if there are no matches
+    then None is returned.
+
+    Note that on case-insensitive file systems, this
+    will match the same files as find_c_files() for
+    the "C" and "c" options.
+    """
+
+    return find_file_types({"cxx": "*.cxx",
+                            "C": "*.C",
+                            "cc": "*.cc"})
+
+
+def count_nfiles(label, fileinfo):
+    """Display, at verbose=1, the number of files
+    found for this file type (combining all the
+    different types). At verbose=2 lists the files found.
+
+    Returns the number.
+    """
+
+    if fileinfo is None:
+        v1("Found no {} files.".format(label))
+        return 0
+
+    ntot = 0
+    for (k, vs) in six.iteritems(fileinfo):
+        n = len(vs)
+        ntot += n
+        if n == 1:
+            v2("Found one *.{} file".format(k))
+        else:
+            v2("Found {} *.{} files".format(n, k))
+        for v in vs:
+            v2("  {}".format(v))
+
+    v2("")
+    if ntot == 1:
+        v1("Found one {} file.".format(label))
+    else:
+        v1("Found {} {} files.".format(ntot, label))
+
+    return ntot
+
+
+@lw.handle_ciao_errors(toolname, toolver)
+def convert_xspec_user_model(modulename, modelfile,
+                             extrafiles=[],
+                             cfitsio=False,
+                             xspec=True,
+                             f2pyextra=None,
+                             clobber=False,
+                             keep=False,
+                             namefunc=add_xs_prefix):
+    """Create a Python module called modulename that allows the
+    XSPEC user model - defined by the model file (e.g.
+    modelfile='lmodel.dat') - using the code found in the following
+    files in the directory:
+
+      Fortran: *.f *.f03 *.f90
+      C:       *.c
+      C++:     *.cxx *.C *.cc  (*.cpp files are ignored, unlike XSPEC)
+
+    It creates (using the clobber to determine whether to continue if
+    the files already exist):
+
+        <modulename>/__init__.py
+        <modulename>/_<modulename>.so
+
+    If keep=True then the .pyf file is not deleted and the f2py
+    command is displayed at the end of the script at verbose=1.
+
+    If xspec is True then the following arguments are passed through
+    to f2py (order taken from XSPEC Makefile created by initpackage
+    for HEASOFT 6.13/XSPEC 12.8.0 (or possibly
+    HEASOFT 6.16/XSPEC 12.8.2).
+
+      -I$ASCDS_INSTALL/ots/include
+      -L$ASCDS_INSTALL/ots/lib
+      -lCCfits -lcfitsio
+      -lXS -lXSUtil -lXSFunctions -lXSModel
+      -I$hea
+      -I$hea/main
+      -I$hea/include
+      -I$hea/XSFunctions
+      -I$hea/xslib
+      -I$hea/XSModel
+      -I$hea/XSModel/Model
+      -I$hea/XSUser
+      -I$hea/XSUtil
+
+      -I$hea/XSUtil/FunctionUtils
+
+    (the last line added when trying to compile rfxconv)
+    where $hea is the location of the directory
+
+       ./share/xspec
+       ../share/xspec
+
+    relative to the location of this script.
+
+    If cfitsio is True and xspec is False then the following arguments
+    are passed through to f2py
+
+      -I$ASCDS_INSTALL/ots/include
+      -L$ASCDS_INSTALL/ots/lib
+      -lCCfits -lcfitsio
+
+    These options are added before any given in the f2pyextra
+    argument.
+
+    If f2pyextra is not None then it is added to the f2py call, just
+    before the files to be compiled (so that it can hopefully override
+    the settings hard-coded here). It should be an array of arguments
+    - i.e. as required by the subprocess.call routine.
+    """
+
+    v2("{}: {}".format(toolname, toolver))
+    v2("  name:       {}".format(modulename))
+    v2("  modelfile:  {}".format(modelfile))
+    v2("  extrafiles: {}".format(extrafiles))
+    v2("  xspec:      {}".format(xspec))
+    v2("  keep:       {}".format(keep))
+    v2("  f2py args:  {}".format(f2pyextra))
+    v2("  clobber:    {}".format(clobber))
+    v2("")
+
+    xspec_include = find_xspec_includes()
+    v2("  xspec inc:  {}".format(xspec_include))
+
+    # find source-code files; perhaps the cpp_files check should be
+    # done before the c_files one to ensure that .c/.C files always
+    # get treated as C++ on case-insensitive systems; not clear what
+    # order XSPEC/initpackage does this since it depends on the
+    # Makefile rules
+    #
+    # Note that if there is an old version of a wrapper file (for C++
+    # models) in the directory, then this will be picked up here.
+    # Ignore for now.
+    #
+    fortran_files = find_fortran_files()
+    c_files = find_c_files()
+    cpp_files = find_cplusplus_files()
+    n_fortran = count_nfiles("Fortran", fortran_files)
+    n_c = count_nfiles("C", c_files)
+    n_cpp = count_nfiles("C++", cpp_files)
+
+    if sum([n_fortran, n_c, n_cpp]) == 0:
+        raise IOError("No Fortran/C/C++ files found in {}".format(os.getcwd()))
+
+    # for now do not treat the different types differently; this may change
+    infiles = []
+    for d in [fortran_files, c_files, cpp_files]:
+        if d is None:
+            continue
+
+        for vs in six.itervalues(d):
+            infiles.extend(vs)
+
+    v3("Processing the following {} source code file(s):".format(len(infiles)))
+    v3("  {}".format("\n  ".join(infiles)))
+    v3("")
+
+    for f in extrafiles:
+        if not os.path.exists(f):
+            raise IOError("Unable to find file {}".format(f))
+
+    # ASCDS_OTS is not set for all shells (it is for csh/tcsh but not
+    # for bash), so use ASCDS_INSTALL/ots instead. By this point
+    # we know ASCDS_INSTALL exists, so don't bother providing a nice
+    # error message if os.getenv returns None
+    #
+    ascds_install = os.getenv("ASCDS_INSTALL")
+    ots = os.path.join(ascds_install, "ots")
+
+    # Support multiple naming schemes. I could make this version
+    # specific, but simpler this way.
+    #
+    f2py = None
+    f2pydir = os.path.join(ots, "bin")
+    for fext in ["", "2", "3"]:
+        f2py = os.path.join(f2pydir, "f2py{}".format(fext))
+        if os.path.isfile(f2py):
+            break
+
+    if f2py is None:
+        raise IOError("Unable to find f2py* in {}".format(f2pydir))
+
+    validate_namefunc(namefunc)
+
+    # check for output files
+    #
+    # This is tricky for Python 3, since it adds in a system
+    # identifier - e.g. instead of _foo.so it creates
+    # _foo.cpython-35m-x86_64-linux-gnu.so
+    # (or something like it).
+    #
+    # in Python3 using SO reports a deprecation warning and
+    # we should use EXT_SUFFIX, but using this in python 2.7
+    # returns nothing.
+    #
+    sosuffix = get_config_var('EXT_SUFFIX')
+    if sosuffix is None:
+        # Python 2.7
+        sosuffix = get_config_var('SO')
+
+    sofile = "_{}{}".format(modulename, sosuffix)
+    outsofile = os.path.join(modulename, sofile)
+    ofname = "{}/__init__.py".format(modulename)
+    specname = "{}.pyf".format(modulename)
+
+    clfiles = [sofile, outsofile, ofname, specname]
+
+    if not clobber:
+        for fname in clfiles:
+            if os.path.exists(fname):
+                raise IOError("The file {} exists and --clobber is not set.".format(fname))
+
+    mdlinfo = parse_model_file(modelfile, namefunc=namefunc)
+
+    # Strip out models that call the same function. This is a somewhat
+    # odd check, and could perhaps be done after other checks, but I
+    # do it first. It could just ignore those models for which the
+    # number of parameters is different, but as in that case it's
+    # really just an alias for the model it doesn't seem worth it,
+    # and better to skip the possible error.
+    #
+    # This was added to handle processing the XSPEC model file from
+    # 12.8.2, which has the eplogpar model (2 params) calling the
+    # logpar model - presumably by accident (bug report has been sent
+    # to Keith) - which accepts 3 parameters. Since the wrapper code
+    # includes an invariant on the number of parameters, this would
+    # complicate things, so for now exclude them. This particular
+    # model has since been fixed in XSPEC, but the check remains.
+    #
+    funcnames = {}
+    for mdl in mdlinfo:
+        try:
+            funcnames[mdl.funcname] += 1
+        except KeyError:
+            funcnames[mdl.funcname] = 1
+
+    invalidnames = [k for (k, v) in six.iteritems(funcnames) if v > 1]
+    if len(invalidnames) > 0:
+        mdls = []
+        for mdl in mdlinfo:
+            if mdl.funcname in invalidnames:
+                v1("Skipping model {} as it calls {} which is used by {} different models".format(mdl.name, mdl.funcname, funcnames[mdl.funcname]))
+            else:
+                mdls.append(mdl)
+
+        mdlinfo = mdls
+
+    # Strip out unsupported models
+    mdls = []
+    langs = set()
+    for mdl in mdlinfo:
+        if mdl.modeltype in ['Mix', 'Acn']:
+            v1("Skipping {} as model type = {}".format(mdl.name,
+                                                       mdl.modeltype))
+            continue
+
+        # The following check should never fire, but leave in
+        if mdl.language not in ['Fortran - single precision',
+                                'Fortran - double precision',  # un-tested
+                                'C style', 'C++ style']:
+            v1("Skipping {} as language = {}".format(mdl.name, mdl.language))
+            continue
+
+        langs.add(mdl.language)
+        mdls.append(mdl)
+
+    nmdl = len(mdls)
+    if nmdl == 0:
+        raise ValueError("No supported models were found!")
+
+    if nmdl == 1:
+        v1("Processing one model.")
+    else:
+        v1("Processing {} models.".format(nmdl))
+
+    langs = list(langs)
+    if len(langs) == 1:
+        v1("Using language interface: {}".format(langs[0]))
+    else:
+        v1("Using language interfaces: {}".format(" ".join(langs)))
+
+    # Could set has_cpp_model here but leave to the cpp_wrapper check
+    has_fortran_model = any([l.startswith('Fortran - ') for l in langs])
+
+    # Do we need to create wrapper code to provide a C-style interface
+    # to any C++ models?
+    wrapper = cpp_wrapper(mdls)
+    if wrapper is not None:
+        has_cpp_model = True
+        outwrap = "wrap_{}.cxx".format(modulename)
+        if not clobber and os.path.exists(outwrap):
+            raise IOError("The file {} exists and --clobber is not set.".format(outwrap))
+
+        if outwrap in infiles:
+            infiles.remove(outwrap)
+
+        with open(outwrap, "w") as fh:
+            fh.write(wrapper)
+
+        v1("Created wrapper code for C++ model(s): {}".format(outwrap))
+
+    else:
+        has_cpp_model = False
+
+    spec = "python module _{}\n".format(modulename)
+    spec += "    interface\n"
+
+    pymod = """"Use XSPEC user models from Sherpa"
+
+from sherpa.models import Parameter
+from sherpa.models.parameter import hugeval
+from sherpa.astro.ui import add_model
+
+import sherpa_contrib.xspec.xsmodels as xsm
+import sherpa_contrib.xspec.xsusermodels as xsum
+
+# To ensure that the XSPEC module is initialized, call a routine from
+# it. I chose the version string as it should have little to no cost
+# (other than the necessary initialization work).  This is in case any
+# of the model functions access XSPEC state information. It could be
+# done in a more-nuanced manner - e.g. by only calling get_xsversion
+# when a model is about to be evaluated, but for now go for the much
+# simpler route. A disadvantage to this route is that if the model
+# doesn't need any access to XSPEC state then this is a potential
+# waste of time.
+#
+import sherpa.astro.xspec as xspec
+xspec.get_xsversion()
+
+from . import _{}
+
+""".format(modulename)
+
+    # Drop support for pre CIAO 4.8 systems, where sherpa.__version__
+    # may not exist or be an integer.
+    #
+    sherpaver = sherpa.__version__
+
+    # Add some basic provenance information
+    atypes = [mdl.clname.lower()
+              for mdl in mdls if mdl.modeltype == "Add"]
+    mtypes = [mdl.clname.lower()
+              for mdl in mdls if mdl.modeltype == "Mul"]
+    ctypes = ["load_" + mdl.name
+              for mdl in mdls if mdl.modeltype == "Con"]
+
+    # store the system info in case a user tries to run on
+    # a different system to how it was built (this is for
+    # diagnostic purposes only; it is not used as a test
+    # anywhere).
+    #
+    system_name = os.path.join(ascds_install, "ciao-type")
+    try:
+        system_info = open(system_name, "r").read()
+    except IOError:
+        system_info = "unknown"
+
+    system_info = system_info.split('\n')[0]
+
+    # Note: the separation between "build info" and the rest is
+    #       not clear
+    pymod += "\n".join(["provenance = {",
+                        "  'date': '{}'".format(time.asctime()),
+                        "  , 'buildinfo': {{ 'tool': '{}', 'version': '{}', 'sherpaversion': '{}', 'ASCDS_INSTALL': '{}', 'ciaotype': '{}', 'machine': '{}' }}".format(toolname, toolver, sherpaver, ascds_install, system_info, os.uname()[1]),
+                        "  , 'modulename': '{}'".format(modulename),
+                        "  , 'modelfile': '{}'".format(modelfile),
+                        "  , 'files': {}".format(infiles),
+                        "  , 'extrafiles': {}".format(extrafiles),
+                        "  , 'dir': '{}'".format(os.getcwd()),
+                        "  , 'f2pyargs': {}".format(f2pyextra),
+                        "  , 'additive': {}".format(atypes),
+                        "  , 'multiplicative': {}".format(mtypes),
+                        "  , 'convolve': {}".format(ctypes),
+                        "  , 'langs': {}".format(langs),
+                        "}"])
+    pymod += "\n\n"
+
+    mnames = []
+    cnames = []
+    probs = []
+
+    known_models = ui.list_models()
+    known_symbols = dir(ui)
+
+    for mdl in mdls:
+
+        v3(" - processing model {}".format(mdl.name))
+
+        # TODO: should there be a more-extensive naming scheme, and
+        #       should this error out?
+        lname = mdl.clname.lower()
+        if lname == modulename:
+            pstr = "model class {} has the ".format(mdl.clname) + \
+                   "same name as the module, which may cause problems"
+            v1("WARNING: " + pstr)
+            probs.append(pstr)
+
+        specstr = model_to_spec(mdl)
+        pymodstr = model_to_python(modulename, mdl)
+        if specstr is not None and pymodstr is not None:
+            spec += specstr
+            pymod += pymodstr
+
+            if mdl.modeltype == 'Con':
+                name = "load_{}".format(mdl.name)
+                cnames.append(name)
+                if name in known_symbols:
+                    pstr = "Convolution model {} overwrites existing Sherpa function.".format(name)
+                    v1("WARNING: " + pstr)
+                    probs.append(pstr)
+
+            else:
+                mnames.append(mdl.clname)
+                if lname in known_models:
+                    pstr = "model {} has the same name as the existing model {}".format(mdl.name, lname)
+                    v1("WARNING: " + pstr)
+                    probs.append(pstr)
+
+            nflags = len(mdl.flags)
+            if nflags > 0:
+                v3(" - at least one model flag; [0] = {}".format(mdl.flags[0]))
+                if mdl.flags[0] == 1:
+                    probs.append("model {} calculates model variances; this is untested/unsupported in Sherpa".format(mdl.name))
+
+                if nflags > 1 and mdl.flags[1] == 1:
+                    v3(" - at least two model flags; [1] = {}".format(mdl.flags[1]))
+                    probs.append("model {} needs to be re-calculated per spectrum; this is untested.".format(mdl.name))
+
+        elif specstr is not None or pymodstr is not None:
+            # I no-longer remember why I was worried about this
+            v1("WARNING: {} has spec={} pymod={}".format(mdl.name,
+                                                         specstr is None,
+                                                         pymodstr is None))
+
+    if mnames == [] and cnames == []:
+        raise ValueError("No supported models were found in {}".format(modelfile))
+
+    spec += "    end interface\n"
+    spec += "end python module {}\n".format(modulename)
+
+    # Only export the load_xxx forms for the convolution models
+    # allnames = mnames + cnames
+    allnames = cnames
+    nall = len(allnames)
+    if nall == 0:
+        pymod += "__all__ = ()\n\n"
+    elif nall == 1:
+        pymod += "__all__ = ({}, )\n\n".format(stringify(allnames[0]))
+    else:
+        mstr = ",".join([stringify(m) for m in allnames])
+        pymod += "__all__ = ({})\n\n".format(mstr)
+
+    for mname in mnames:
+        pymod += "add_model({})\n".format(mname)
+
+    pymod += "\n"
+
+    if not os.path.isdir(modulename):
+        os.mkdir(modulename)
+
+    with open(ofname, "w") as fh:
+        fh.write(pymod)
+
+    v1("Created: {}".format(ofname))
+
+    # Displaying the f2py file + command-line arguments is not
+    # really needed now we have the keep option, but kept in.
+    v3("The f2py file is:")
+    v3("----- start of: {}".format(specname))
+    v3(spec)
+    v3("----- end of: {}".format(specname))
+
+    with open(specname, "w") as fh:
+        fh.write(spec)
+
+    v1("Created: {}".format(specname))
+
+    # How well will this work in mixed-language set ups?
+    # Not that this is a likely use case for this script.
+    #
+    v1("Compiling module")
+    f2pyargs = [f2py,
+                "-c",
+                "-m",
+                "_" + modulename,
+                # adjust when necessary OR we just require gnu95
+                # "--fcompiler=gnu95"
+                ]
+
+    # It is not guaranteed that the script is executable.
+    if not os.access(f2py, os.X_OK):
+        f2pyargs.insert(0, 'python')
+
+    # This was am attempt at fixing some build issues (missing
+    # symbols), but it did not work so left out.
+    #
+    # f2pyargs.insert(0, 'ciaorun')
+
+    if has_fortran_model:
+        # Ensure that "-fno-automatic" is added to the compile flags.
+        # It appears that the easieast way to do this is to query
+        # numpy.distutils for the compiler flags, append the
+        # one we want, and then pass through to f2py.
+        #
+        # PROBLEMS:
+        #  - this assumes that a gnu fortran compiler is being used;
+        #    this is likely true for our use cases
+        #  - is this really the best way?
+        #
+        # The F77 and F95 instances have different F77 flag values,
+        # so use both objects (is this sensible, rather than just
+        # using the G95 object, which has both set; can not use
+        # the F77 object since it does not set any F90 flags)?
+        #
+        gnucomp77 = numpy.distutils.fcompiler.gnu.GnuFCompiler()
+        gnucomp90 = numpy.distutils.fcompiler.gnu.Gnu95FCompiler()
+
+        f77flags = gnucomp77.get_flags_f77()
+        f90flags = gnucomp90.get_flags_f90()
+
+        v3("Updating F77 flags from: {}".format(f77flags))
+        f77flags.append("-fno-automatic")
+        f77_str = " ".join(f77flags)
+        v3("to: {}".format(f77_str))
+
+        v3("Updating F90 flags from: {}".format(f90flags))
+        f90flags.append("-fno-automatic")
+        f90_str = " ".join(f90flags)
+        v3("to: {}".format(f90_str))
+
+        f2pyargs.append("--f77flags='{}'".format(f77_str))
+        f2pyargs.append("--f90flags='{}'".format(f90_str))
+
+    # Could try and look in the code to see if this is needed, but
+    # rely on the user.
+    if xspec:
+        f2pyargs.extend(["-I$ASCDS_INSTALL/ots/include",
+                         "-L$ASCDS_INSTALL/ots/lib",
+                         "-lCCfits",
+                         "-lcfitsio",
+                         "-lXS",
+                         "-lXSUtil",
+                         "-lXSFunctions",
+                         "-lXSModel"])
+
+    if cfitsio and not xspec:
+        f2pyargs.extend(["-I$ASCDS_INSTALL/ots/include",
+                         "-L$ASCDS_INSTALL/ots/lib",
+                         "-lCCfits",
+                         "-lcfitsio"])
+
+    if f2pyextra is not None:
+        f2pyargs.extend(f2pyextra)
+
+    # Maybe it only makes sense to include this if
+    # has_cpp_model is True, but there may be C code
+    # using some of these files.
+    #
+    if xspec:
+        hea = xspec_include
+        for dname in [hea,
+                      os.path.join(hea, "main"),
+                      os.path.join(hea, "include"),
+                      os.path.join(hea, "XSFunctions"),
+                      os.path.join(hea, "xslib"),
+                      os.path.join(hea, "XSModel"),
+                      os.path.join(hea, "XSModel/Model"),
+                      os.path.join(hea, "XSUser"),
+                      os.path.join(hea, "XSUtil"),
+                      os.path.join(hea, "XSUtil/FunctionUtils")]:
+            f2pyargs.append("-I{}".format(dname))
+
+    # Try and allow Fortran code to be linked to other code; it
+    # depends on what compiler f2py picks. I do not know whether we
+    # can determine this at this time, and nor could I find
+    # routines/attributes in the gnucomp90/77 objects that could be
+    # used here, so it's a guess.
+    #
+    if has_fortran_model and has_cpp_model:
+        f2pyargs.append("-lgfortran")
+
+    f2pyargs.append(specname)
+
+    # Should it be added before or after the model files?
+    # Try before for now
+    if has_cpp_model:
+        f2pyargs.append(outwrap)
+
+    f2pyargs.extend(infiles)
+    f2pyargs.extend(extrafiles)
+
+    f2pycommand = "% " + " ".join(f2pyargs)
+    v3("The f2py call is:")
+    v3(f2pycommand)
+
+    rval = sbp.call(f2pyargs)
+    if rval != 0:
+        raise ValueError("Unable to run f2py on {}\n\n".format(specname) +
+                         "Command used:\n  {}".format(f2pycommand))
+
+    if not os.path.isfile(sofile):
+        raise IOError("f2py did not create {}\n\n".format(sofile) +
+                      "Command used:\n  {}".format(f2pycommand))
+
+    os.rename(sofile, outsofile)
+
+    mnames = [mname.lower() for mname in mnames]
+
+    # Test out whether we can import the model
+    v1("")
+    v1("Testing out importing the model ...")
+    ierr = None
+    try:
+        # Since there's a __init__.py in the directory,
+        # no point in trying to import just the .so file
+        #
+        # modname = "{0}._{0}".format(modulename)
+        modname = "{0}".format(modulename)
+        v2("Trying to import {}".format(modname))
+
+        # Just in case the current directory is not in the path
+        os.sys.path.insert(0, ".")
+        importlib.import_module(modname)
+        v1("Import succeeded")
+
+    except ImportError as exc:
+        v0("")
+        v0("Error: unable to import the module; possible reasons are:")
+        v0("  - incompatible version of gcc/gfortran used. If the models")
+        v0("    do not use the XSPEC libraries then please try with the")
+        v0("    --no-xspec or --cfitsio command-line flags")
+        v0("  - the model uses the udmget set of routines which are currently")
+        v0("    unsupported")
+        v0("  - missing a library or include directory; try using --keep to")
+        v0("    find out the current settings and --f2py to add more.")
+        v0("")
+        ierr = exc
+
+    if ierr is None:
+        v1("")
+        v1("------------------------------------------------------------------")
+        v1("")
+        v1("Finished. You should be able to now say")
+        v1("    import {}".format(modulename))
+        v1("from Sherpa, or")
+        v1("    from sherpa_contrib.xspec.local import lmod")
+        v1("    lmod(\"{}\", \"{}\")".format(modulename, os.getcwd()))
+        v1("to load the model from a different directory.")
+        v1("")
+
+        if mnames != []:
+            n = len(mnames)
+            if n == 1:
+                v1("The following model is available:")
+            else:
+                v1("The following {} models are available:".format(n))
+
+            v1("  {}".format("\n  ".join(mnames)))
+            v1("")
+
+        if cnames != []:
+            n = len(cnames)
+            if n == 1:
+                v1("The convolution model is available via:")
+            else:
+                v1("The following {} convolution models are available:".format(n))
+
+            longform = ["{}.{}".format(modulename, cn) for cn in cnames]
+            v1("  {}".format("\n  ".join(longform)))
+            v1("")
+
+            v1("The '{}.' prefix can be avoided by saying:".format(modulename))
+            v1("  from {} import *".format(modulename))
+            v1("")
+
+    # report any problems
+    if probs != []:
+        n = len(probs)
+        if n == 1:
+            v1("Please note the following problem:")
+        else:
+            v1("Please note the following {} problems:".format(n))
+
+        v1("  {}".format("\n  ".join(probs)))
+        v1("")
+
+    if keep:
+        if has_cpp_model:
+            v1("The {} wrapper file has not been deleted.".format(outwrap))
+
+        v1("The {} file has not been deleted. The f2py call was:".format(specname))
+        v1("")
+        v1(f2pycommand)
+        v1("")
+
+    else:
+        os.remove(specname)
+        if has_cpp_model:
+            os.remove(outwrap)
+
+    if ierr is not None:
+        raise ImportError("Unable to import model:\n{}".format(ierr))
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description=help_str,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument("name",
+                        help="Name of Sherpa module")
+    parser.add_argument("modelfile",
+                        help="The XSPEC model definition file (eg lmodel.dat)")
+    parser.add_argument("extrafiles", nargs='*',
+                        help="Additional files to pass to f2py")
+
+    parser.add_argument("--no-xspec", dest="xspec", action="store_false",
+                        default=True,
+                        help="Do not include XSPEC libraries when building")
+    parser.add_argument("--cfitsio", dest="cfitsio", action="store_true",
+                        default=False,
+                        help="Link to the CFITSIO library")
+
+    parser.add_argument("--keep", "-k", dest="keep", action="store_true",
+                        default=False,
+                        help="Retain the .pyf file and display the f2py command used")
+    parser.add_argument("--prefix", "-p", dest="prefix", nargs='?',
+                        default="XS", const=None,
+                        help="Prefix for model names (empty or must start with a capital letter; default is %(default)s)")
+
+    parser.add_argument("--f2py", "-f", dest="f2pyargs",
+                        action="append",
+                        help="Arguments to pass through to f2py")
+
+    parser.add_argument("--clobber", "-c", dest="clobber", action="store_true",
+                        default=False,
+                        help="Set to overwrite putput files, otherwise script exits")
+    parser.add_argument("--verbose", "-v", dest="verbose", type=int,
+                        choices=range(0, 6), default=1,
+                        help="Verbose level; higher for more screen output")
+
+    parser.add_argument("--version", action="version",
+                        version=toolver,
+                        help="List the version date for the script and exit")
+    parser.add_argument("--copyright", action="version",
+                        version=copyright_str,
+                        help="List the copyright for the script and exit")
+
+    # support some development options
+    arglist = lw.preprocess_arglist(sys.argv[1:])
+    args = parser.parse_args(arglist)
+
+    lw.set_verbosity(args.verbose)
+
+    # Perhaps should do something else; eg namefunc=None means
+    # use no_prefix (so that this can then be displayed at verbose=2
+    # from within convert_xspec_user_model rather than here)?
+    #
+    if args.prefix is None:
+        namefunc = no_prefix
+    else:
+        if not args.prefix[0].isupper():
+            # would like to make this appear the same as other errors
+            # but this is outside the handle_ciao_errors wrapper.
+            #
+            sys.stderr.write("# {} ({}): ".format(toolname, toolver) +
+                             "ERROR the prefix argument must start with a " +
+                             "capital letter; sent {}\n".format(args.prefix))
+            sys.exit(1)
+
+        def namefunc(inval):
+            return add_prefix(args.prefix, inval)
+
+    v3("f2pyargs = {}".format(args.f2pyargs))
+
+    # for some reason sys.tracebacklimit is 0, meaning no backtraces
+    # when using --tracebackdebug/--debug
+    sys.tracebacklimit = None
+
+    convert_xspec_user_model(args.name,
+                             args.modelfile,
+                             extrafiles=args.extrafiles,
+                             cfitsio=args.cfitsio,
+                             xspec=args.xspec,
+                             clobber=args.clobber,
+                             keep=args.keep,
+                             f2pyextra=args.f2pyargs,
+                             namefunc=namefunc)
+
+# End
