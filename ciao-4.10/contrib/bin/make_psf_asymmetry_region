@@ -42,6 +42,7 @@ import subprocess as sbp
 
 import paramio as pio
 import pycrates
+import pixlib
 
 from ciao_contrib.logger_wrapper import handle_ciao_errors, \
     initialize_logger, make_verbose_level, set_verbosity
@@ -149,17 +150,21 @@ def get_data_from_file(fname):
 
     v3("{}={} DETNAM={}".format(keyword, roll, detnam))
 
+    p = pixlib.Pixlib()
     if detnam.startswith("ACIS-"):
-        scale = 0.492
+        p.detector = "ACIS"
+        # scale = 0.492
 
     elif detnam.startswith("HRC-"):
-        scale = 0.13175
+        p.detector = detnam
+        # scale = 0.13175
 
     else:
         # e.g. Merged?
         raise IOError("Unexpected DETNAM of '{0}' in\n{1}".format(detnam,
                                                                   fname))
 
+    scale = p.fp_scale
     return {"roll": roll, "scale": scale}
 
 
