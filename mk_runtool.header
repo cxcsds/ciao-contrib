@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017
+# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -1606,7 +1606,7 @@ class CIAOTool(CIAOParameter):
         'redirect' - e.g. ")parname" - or a normal value.
 
         At present there is only support for redirects within
-        the same tool.
+        the same tool. This *can* return None.
         """
 
         if str(pval).startswith(")"):
@@ -1634,18 +1634,22 @@ class CIAOTool(CIAOParameter):
         use operator.gt when plimit is the parameter minimum and
         operator.lt when it is the parameter maximum
 
-        The check is ignored if plimit is None, and we assume that pval
-        is an actual value - ie not a redirect. plimit may be a redirect.
+        The check is skipped if plimit is None (either on input or after
+        expanding any redirects), and True is returned.
+
+        We assume that pval is an actual value - ie not a redirect.
 
         pval can be None, which will likely cause the check to fail
-        (but this is not guaranteed).
+        (but this is not guaranteed), particularly on post-Python 2.7
+        systems.
         """
 
         if plimit is None:
             return True
 
-        else:
-            lim = self._eval_redirect(plimit)
+        lim = self._eval_redirect(plimit)
+        if lim is None:
+            return True
 
         return pval == lim or op(pval, lim)
 

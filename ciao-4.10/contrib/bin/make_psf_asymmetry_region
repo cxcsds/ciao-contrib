@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010, 2011, 2015
+# Copyright (C) 2010, 2011, 2015, 2018
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -32,7 +32,7 @@ For more information, see
 """
 
 toolname = "make_psf_asymmetry_region"
-version = "12 November 2015"
+version = "30 March 2018"
 
 import sys
 import os
@@ -42,6 +42,7 @@ import subprocess as sbp
 
 import paramio as pio
 import pycrates
+import pixlib
 
 from ciao_contrib.logger_wrapper import handle_ciao_errors, \
     initialize_logger, make_verbose_level, set_verbosity
@@ -125,30 +126,45 @@ def location_to_region(anom, filename=None, regformat="ciao"):
 def get_data_from_file(fname):
     """Return the information we need for calculating the
     location of the anomaly.
+
+    The roll is taken from ROLL_PNT (if present) otherwise it
+    falls back to ROLL_NOM.
+
     """
 
     cr = pycrates.read_file(fname)
-    roll = cr.get_key_value("ROLL_NOM")
+
+    keyword = None
+    for sfx in ["PNT", "NOM"]:
+        keyword = "ROLL_{}".format(sfx)
+        roll = cr.get_key_value(keyword)
+        if roll is not None:
+            break
+
     if roll is None:
-        raise IOError("No ROLL_NOM keyword in {}".format(fname))
+        raise IOError("No ROLL_PNT/NOM keyword in {}".format(fname))
 
     detnam = cr.get_key_value("DETNAM")
     if detnam is None:
         raise IOError("No DETNAM keyword in {}".format(fname))
 
-    v3("ROLL_NOM={} DETNAM={}".format(roll, detnam))
+    v3("{}={} DETNAM={}".format(keyword, roll, detnam))
 
+    p = pixlib.Pixlib()
     if detnam.startswith("ACIS-"):
-        scale = 0.492
+        p.detector = "ACIS"
+        # scale = 0.492
 
     elif detnam.startswith("HRC-"):
-        scale = 0.13175
+        p.detector = detnam
+        # scale = 0.13175
 
     else:
         # e.g. Merged?
         raise IOError("Unexpected DETNAM of '{0}' in\n{1}".format(detnam,
                                                                   fname))
 
+    scale = p.fp_scale
     return {"roll": roll, "scale": scale}
 
 
@@ -156,7 +172,7 @@ def create_anomaly_region(infile, x, y, outfile, regformat="ciao",
                           clobber=False):
     """Create a regionfile called outfile that highlights the
     PSF anomaly location for the observation stored in infile (needs
-    ROLL_NOM and DETNAM keywords) for a source with sky coordinates
+    ROLL_PNT/NOM and DETNAM keywords) for a source with sky coordinates
     of (x,y).
 
     If clobber is False then outfile will not be overwritten if it
