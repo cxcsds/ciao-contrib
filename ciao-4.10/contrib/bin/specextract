@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2011, 2013, 2014, 2018
+# Copyright (C) 2011, 2013, 2014, 2015, 2016, 2017, 2018
 #        Smithsonian Astrophysical Observatory
 #
 #
@@ -33,7 +33,7 @@ This script is an enhanced Python translation of the original CIAO tool specextr
 __version__ = "CIAO 4.10"
 
 toolname = "specextract"
-__revision__ = "06 March 2018"
+__revision__ = "11 May 2018"
 
 
 ##########################################################################
@@ -935,7 +935,7 @@ def check_event_stats(file,refcoord,weights_check):
         return True
 
 
-def create_hrc_resp(specfile,refcoord,full_outroot,asp_param,clobber,verbose,mskfile,skyx,skyy,instrument,chip_id):
+def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,verbose,mskfile,skyx,skyy,instrument,chip_id):
 
     # check number of channels in PI file to determine RMF file to use from CalDB
     dmlist.punlearn()
@@ -946,46 +946,55 @@ def create_hrc_resp(specfile,refcoord,full_outroot,asp_param,clobber,verbose,msk
 
     detector = get_keyval(specfile,"detnam")
 
-    # cf. http://cxc.cfa.harvard.edu/cal/Hrc/detailed_info.html#rmf for HRC RMF information
-    #
-    # get path from $CALDB environmental variable
-    CALDB = os.environ["CALDB"]
+    if rmf_file.upper() == "CALDB":
 
-    if chan == 1024:
-        # use SAMP responses
-        if detector.upper() == "HRC-S":
-            rmf = "{}/data/chandra/hrc/rmf/hrcsD1999-07-22samprmfN0001.fits".format(CALDB)
-        elif detector.upper() == "HRC-I":
-            rmf = "{}/data/chandra/hrc/rmf/hrciD1999-07-22samprmfN0001.fits".format(CALDB)
-        else:
-            raise ValueError("{0} has an invalid HRC detnam value.".format(specfile))
+        # cf. http://cxc.cfa.harvard.edu/cal/Hrc/detailed_info.html#rmf for HRC RMF information
+        #
+        # get path from $CALDB environmental variable
+        CALDB = os.environ["CALDB"]
 
-    elif chan == 256:
-        # use non-SAMP responses
-        if detector.upper() == "HRC-S":
-            rmf = "{}/data/chandra/hrc/rmf/hrcsD1999-07-22rmfN0001.fits".format(CALDB)
-        elif detector.upper() == "HRC-I":
-            rmf = "{}/data/chandra/hrc/rmf/hrciD1999-07-22rmfN0002.fits".format(CALDB)
+        if chan == 1024:
+            # use SAMP responses
+            if detector.upper() == "HRC-S":
+                rmf = "{}/data/chandra/hrc/rmf/hrcsD1999-07-22samprmfN0001.fits".format(CALDB)
+            elif detector.upper() == "HRC-I":
+                rmf = "{}/data/chandra/hrc/rmf/hrciD1999-07-22samprmfN0001.fits".format(CALDB)
+            else:
+                raise ValueError("{0} has an invalid HRC detnam value.".format(specfile))
+
+        elif chan == 256:
+            # use non-SAMP responses
+            if detector.upper() == "HRC-S":
+                rmf = "{}/data/chandra/hrc/rmf/hrcsD1999-07-22rmfN0001.fits".format(CALDB)
+            elif detector.upper() == "HRC-I":
+                rmf = "{}/data/chandra/hrc/rmf/hrciD1999-07-22rmfN0002.fits".format(CALDB)
+            else:
+                raise ValueError("{0} has an invalid HRC detnam value.".format(specfile))
+
         else:
-            raise ValueError("{0} has an invalid HRC detnam value.".format(specfile))
+            raise IOError("{0} is an invalid HRC spectral file".format(specfile))
+
+        # if specfile fails for obsfile, introduce use of event file, which adds another variable to this function
+
+        # copy RMF
+        rmffile = full_outroot + ".rmf"
+
+        # use opt=all to get the ebounds block in addition to the specresp matrix block
+        #dmcopy.punlearn()
+        #dmcopy.infile = rmf
+        #dmcopy.outfile = rmffile
+        #dmcopy.option = "all"
+        #dmcopy.clobber = clobber
+        #dmcopy.verbose = verbose
+        #dmcopy()
+        shutil.copyfile(rmf,rmffile)
 
     else:
-        raise IOError("{0} is an invalid HRC spectral file".format(specfile))
+        # enable RMFFILE parameter for HRC data to support HRC Cal group
+        v1("Warning: 'rmffile' parameter for HRC observations is meant for Calibration Group and expert usage!")
 
-    # if specfile fails for obsfile, introduce use of event file, which adds another variable to this function
+        rmffile = rmf_file
 
-    # copy RMF
-    rmffile = full_outroot + ".rmf"
-
-    # use opt=all to get the ebounds block in addition to the specresp matrix block
-    #dmcopy.punlearn()
-    #dmcopy.infile = rmf
-    #dmcopy.outfile = rmffile
-    #dmcopy.option = "all"
-    #dmcopy.clobber = clobber
-    #dmcopy.verbose = verbose
-    #dmcopy()
-    shutil.copyfile(rmf,rmffile)
 
     # establish detsubsys
     if instrument == "HRC":
@@ -1008,10 +1017,15 @@ def create_hrc_resp(specfile,refcoord,full_outroot,asp_param,clobber,verbose,msk
     mkarf.obsfile       = specfile
     mkarf.maskfile      = mskfile
     mkarf.verbose       = str(verbose)
-    mkarf.engrid        = "grid({0}[SPECRESP MATRIX][cols ENERG_LO,ENERG_HI])".format(rmffile)
     mkarf.clobber       = clobber
 
-    return mkarf(), arffile, rmffile
+    try:
+        mkarf.engrid = "grid({0}[SPECRESP MATRIX][cols ENERG_LO,ENERG_HI])".format(rmffile)
+        return mkarf(), arffile, rmffile
+
+    except OSError:
+        mkarf.engrid = "grid({0}[MATRIX][cols ENERG_LO,ENERG_HI])".format(rmffile)
+        return mkarf(), arffile, rmffile
 
 
 def resp_pos(infile,asol,refcoord):
@@ -3199,10 +3213,14 @@ def specextract(args):
 
              else:
                  # make HRC ARF and copy RMF from CalDB
-                 ret, ancrfile, respfile = create_hrc_resp(phafile,refcoord,full_outroot,asp_arg,clobber,verbose,msk_arg,skyx,skyy,instrument,chip_id)
+                 ret, ancrfile, respfile = create_hrc_resp(phafile,rmffile,refcoord,full_outroot,asp_arg,clobber,verbose,msk_arg,skyx,skyy,instrument,chip_id)
 
                  add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
-                 add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+
+                 try:
+                     add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+                 except OSError:
+                     v3("skip writing file history to RMF")
 
                  if not ret and verbose != 0:
                      doexit("Failed to create ARF for " + fullfile, outroot, srcbkg, str(ii+1),full_outroot)
@@ -3247,8 +3265,10 @@ def specextract(args):
                          (ret, respfile) = build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile)
                      else:
                          (ret, respfile) = build_rmf_ps(rmftool, filename, fullfile, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, chip_id, chipx, chipy)
-
-                     add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+                     try:
+                         add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+                     except OSError:
+                         v3("skip writing file history to RMF")
 
              # NB: If 'ret' is null (b/c rmf tool fails),
              # the script should terminate here and exit with a mkacisrmf/mkrmf
@@ -3257,7 +3277,10 @@ def specextract(args):
                  else:
                      (ret, respfile) = build_rmf_ps(rmftool, filename, fullfile, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, chip_id, chipx, chipy)
 
-                     add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+                     try:
+                         add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+                     except OSError:
+                         v3("skip writing file history to RMF")
 
                  if not ret and verbose != 0:
                      doexit("Failed to create RMF for " + fullfile, outroot, srcbkg, ii+1)
