@@ -21,7 +21,7 @@ from __future__ import print_function
 
 
 toolname = "combine_spectra"
-__revision__ = "06 March 2018"
+__revision__ = "01 August 2018"
 
 import sys
 
@@ -554,12 +554,12 @@ def sum_bkg_counts( srcs, pars ):
     arfs = [full_path_or_none(s.background.arffile) for s in srcs]
     rmfs = [full_path_or_none(s.background.rmffile) for s in srcs]
 
-    outrmf,outarf = run_addresp( arfs, rmfs, phas, pars["outroot"]+"_bkg", pars["method"] )
+    outrmf,outarf = run_addresp( arfs, rmfs, phas, pars["outroot"]+"bkg", pars["method"] )
 
     if srcs[0].background.is_grating:
-        outfile = pars["outroot"]+"_bkg.pha"
+        outfile = pars["outroot"]+"bkg.pha"
     else:
-        outfile = pars["outroot"]+"_bkg.pi"
+        outfile = pars["outroot"]+"bkg.pi"
 
     if pars["bscale_method"] == "time":
         write_spectrum( outfile, phas, srcs[0].source.channels, out_cfa_cts,
@@ -610,11 +610,15 @@ def sum_src_counts( srcs, pars):
     # combine arf/rmfs
 
     if srcs[0].source.is_grating == True:
-        outrmf,outarf = run_addresp( arfs, rmfs, phas, pars["outroot"], pars["method"] )
-        outfile = pars["outroot"]+".pha"
+        myroot = pars["outroot"]
+        if myroot.endswith("_"):
+            myroot=myroot[:-1]
+
+        outrmf,outarf = run_addresp( arfs, rmfs, phas, myroot, pars["method"] )
+        outfile = myroot+".pha"
     else:
-        outrmf,outarf = run_addresp( arfs, rmfs, phas, pars["outroot"]+"_src", pars["method"] )
-        outfile = pars["outroot"]+"_src.pi"
+        outrmf,outarf = run_addresp( arfs, rmfs, phas, pars["outroot"]+"src", pars["method"] )
+        outfile = pars["outroot"]+"src.pi"
 
     # sum background files. We do this here, first so that we get the file name
     # that can be written to the source file header.
@@ -706,7 +710,9 @@ def main():
 
     pars = get_params(toolname, "rw", sys.argv,
       verbose={"set":lw.set_verbosity, "cmd":verb2},
-      musthave=["src_spectra","outroot","src_arfs","src_rmfs","bkg_spectra","bkg_arfs","bkg_rmfs","method","bscale_method","exp_origin","clobber","verbose"])
+      musthave=["src_spectra","outroot","src_arfs","src_rmfs",
+        "bkg_spectra","bkg_arfs","bkg_rmfs","method","bscale_method",
+        "exp_origin","clobber","verbose"])
 
     srcstk,bkgstk = match_stacks( pars )
 
@@ -714,10 +720,21 @@ def main():
 
     check_consistency( srcs )
 
-    if srcs[0].source.is_grating == True:
-        suffixes = [ ".pha", "_bkg.pha", ".arf", "_bkg.arf", ".rmf", "_bkg.rmf"]
+    outroot_is_a_dir = os.path.isdir( pars["outroot"] )
+    strip_outroot = True
+    dot="."
+    if not outroot_is_a_dir:
+        pars["outroot"] = pars["outroot"]+"_"
+    elif not pars["outroot"].endswith("/"):
+        pars["outroot"] = pars["outroot"]+"/"
+        dot=""
     else:
-        suffixes = [ "_src.pi", "_bkg.pi", "_src.arf", "_bkg.arf", "_src.rmf", "_bkg.rmf"]
+        strip_outroot = False
+
+    if srcs[0].source.is_grating == True:
+        suffixes = [ dot+"pha", "bkg.pha", dot+"arf", "bkg.arf", dot+"rmf", "bkg.rmf"]
+    else:
+        suffixes = [ "src.pi", "bkg.pi", "src.arf", "bkg.arf", "src.rmf", "bkg.rmf"]
 
 
     for extn in suffixes:
@@ -725,16 +742,18 @@ def main():
 
     sum_src_counts( srcs, pars )
 
-    for extn in suffixes:
-         if os.path.exists(pars["outroot"]+extn):
-            add_tool_history( pars["outroot"]+extn, toolname, pars, __revision__ )
+    outroot = pars["outroot"]
+    if strip_outroot:
+        pars["outroot"] = outroot[:-1]
 
-    # Summarize output
     verb1( "\nThe following files were created:")
     for extn in suffixes:
-         if os.path.exists(pars["outroot"]+extn):
-            verb1("  {}".format(pars["outroot"]+extn))
-
+        outfile = outroot + extn
+        outfile = outfile.replace("_.",".")
+                    
+        if os.path.exists(outfile):
+            add_tool_history( outfile, toolname, pars, __revision__ )
+            verb1("  {}".format(outfile))
 
 
 
