@@ -2,7 +2,7 @@
 #
 #
 # 
-# Copyright (C) 2012, 2014, 2016 Smithsonian Astrophysical Observatory
+# Copyright (C) 2012, 2014, 2016, 2018 Smithsonian Astrophysical Observatory
 # 
 # 
 # 
@@ -28,7 +28,7 @@ import sys
 import subprocess
 
 toolname = "simulate_psf"
-__revision__ = "06 March 2017"
+__revision__ = "03 August 2018"
 
 
 from cxcdm import *
@@ -314,7 +314,7 @@ def make_spectrum( pars ):
     import numpy as np
     
     infile=pars["spectrumfile"]
-    outfile=pars["outroot"]+"_spectrum.rdb"
+    outfile=pars["outroot"]+"spectrum.rdb"
     
     if infile.lower().endswith(".rdb"):
         # DM/crates will not read .rdb files
@@ -1085,7 +1085,7 @@ def get_src_info( pars ):
 # Different ways to get grids
 #
 @verboseCall(2)
-def get_xygrid( pars, src_info):
+def get_xygrid( pars, use_root, src_info):
     """
     Get grid from stats of ray data    
     """
@@ -1094,7 +1094,7 @@ def get_xygrid( pars, src_info):
     
     dmstat = make_tool("dmstat")
     dmstat.punlearn()
-    dmstat.infile  = pars["_outroot_"]+"_projrays.fits[cols x,y]"
+    dmstat.infile  = use_root+"projrays.fits[cols x,y]"
     dmstat.verbose = 0
     dmstat.sig     = "yes"
     dmstat.clip    = "yes"
@@ -1177,7 +1177,7 @@ def create_psf_image(pars, src_info ):
     Create an image from the projected ray file.
 
     """
-    xygrid = get_xygrid( pars, src_info )    
+    xygrid = get_xygrid( pars, pars["_outroot_"]+"_", src_info )    
     totl = get_normalization( pars, src_info )
     outfile = pars["_outroot_"]+".psf[PSF]"
     
@@ -1219,7 +1219,7 @@ def create_average_image( pars, src_info ):
     from pycrates import read_file
 
     dmmerge = make_tool("dmmerge")
-    dmmerge( pars["__raystk"], pars["outroot"]+"_projrays.fits", clobber=True)
+    dmmerge( pars["__raystk"], pars["outroot"]+"projrays.fits", clobber=True)
 
     cts = [read_file(i).get_key_value("TOTCTS") for i in pars["__raystk"]]
     cts = sum(cts)    
@@ -1229,11 +1229,13 @@ def create_average_image( pars, src_info ):
 
     pars["__xygrid"] = None
     pars["_outroot_"] = pars["outroot"]
-    xygrid = get_xygrid( pars, src_info )    
-    outfile = pars["outroot"]+".psf[PSF]"
+    xygrid = get_xygrid( pars, pars["outroot"], src_info )    
+
+    dot = "" if os.path.isdir(pars["outroot"]) else "."
+    outfile = pars["outroot"].rstrip("_")+dot+"psf[PSF]"
 
     dmimgcalc = make_tool("dmimgcalc")
-    dmimgcalc.infile=pars["outroot"]+"_projrays.fits[2][bin {0}][opt type=i4][PSF]".format(xygrid) 
+    dmimgcalc.infile=pars["outroot"]+"projrays.fits[2][bin {0}][opt type=i4][PSF]".format(xygrid) 
     dmimgcalc.infile2=""
     dmimgcalc.outfile=outfile
     dmimgcalc.operation="imgout=((float)(img1))/img1_totcts"
@@ -1241,6 +1243,8 @@ def create_average_image( pars, src_info ):
     dmimgcalc()
 
     add_history_to_file( outfile, pars )
+
+    return outfile 
 
     """
     from ciao_contrib.runtool import dmkeypar as kpar
@@ -1251,7 +1255,7 @@ def create_average_image( pars, src_info ):
     from ciao_contrib.runtool import dmimgfilt as dmimgfilt
     dmimgfilt.punlearn()
     dmimgfilt.infile = pars["__imgstk"]
-    dmimgfilt.outfile = pars["outroot"]+"_psf.img[PSF]"
+    dmimgfilt.outfile = pars["outroot"]+"psf.img[PSF]"
     dmimgfilt.function = "sum" # "mean"
     dmimgfilt.mask = "point(0,0)"
     dmimgfilt.clobber = "yes"    
@@ -1277,7 +1281,7 @@ def cleanup_iterations( pars ):
     if "no" == pars["keepiter"]:
         for extn in clnextn:
             for nn in range( int(pars["numiter"]) ) :
-                gorm( "{0}_i{1:04d}{2}".format( pars["outroot"],nn,extn ))
+                gorm( "{0}i{1:04d}{2}".format( pars["outroot"],nn,extn ))
     
     if pars["__spectrum"]:
         gorm( pars["__spectrum"] )
@@ -1293,7 +1297,7 @@ def iteration_loop( pars, obi_info, src_info ):
     """
     for nn in range( int( pars["numiter"] )):
         
-        pars["_outroot_"] = pars["outroot"]+"_i{0:04d}".format(nn)
+        pars["_outroot_"] = pars["outroot"]+"i{0:04d}".format(nn)
         pars["random_seed"] = int( pars["random_seed"] )+nn
 
         verb1( "Performing iteration {0} of {1}".format(nn+1, pars["numiter"]))
@@ -1338,6 +1342,14 @@ def main():
     # check saotrace and marx setup parameters
     check_setup( pars )
     
+    
+    if not os.path.isdir( pars["outroot"] ):
+        pars["outroot"] = pars["outroot"]+"_"
+    elif not pars["outroot"].endswith("/"):
+        pars["outroot"] = pars["outroot"]+"/"
+    else:
+        pass
+    
     # check parameter combinations
     resolve_parameter_dependencies( pars )
 
@@ -1354,12 +1366,12 @@ def main():
     iteration_loop( pars, obi_info, src_info )
 
     # Create an the average from sims
-    create_average_image( pars, src_info )
+    outfile = create_average_image( pars, src_info )
 
     # Cleanup temp files (rays, projrays, and images)
     cleanup_iterations( pars )
     
-    verb1( "\nFinal output PSF image is : "+pars["outroot"]+".psf\n")
+    verb1( "\nFinal output PSF image is : "+outfile )
     
 
 
