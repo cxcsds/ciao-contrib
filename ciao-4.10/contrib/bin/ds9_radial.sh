@@ -33,7 +33,7 @@ fi
 
 
 \rm -f $ASCDS_WORK_PATH/$$_ds9.reg
-xpaget $xpa regions -format ds9 -coord physical | cut -d"#" -f1 | sed 's, *$,,' | \
+xpaget $xpa regions -format ds9 -system physical | cut -d"#" -f1 | sed 's, *$,,' | \
   awk -f $ASCDS_CONTRIB/config/ds9_region_expand.awk > $ASCDS_WORK_PATH/$$_ds9.reg
 
 dmextract "${file}[bin sky=@$ASCDS_WORK_PATH/$$_ds9.reg]" - op=generic | \
