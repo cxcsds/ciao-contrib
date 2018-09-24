@@ -21,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "download_obsid_caldb"
-__revision__ = "17 January 2018"
+__revision__ = "01 August 2018"
 
 import os
 import sys
@@ -387,6 +387,8 @@ def retrieve_caldb_file( ftp, rootdir, looking_for, outdir, clobber, missing ):
     # strip off the extension numbers, we want the whole file
     # get unique set of file names
     uniq = set([x.split('[')[0] for x in looking_for])
+    uniq = list(uniq)
+    uniq.sort()
 
     for products in uniq:
         # This is used to graft the CALDB directory path onto the
@@ -394,21 +396,20 @@ def retrieve_caldb_file( ftp, rootdir, looking_for, outdir, clobber, missing ):
         # outdir path w/ the trailing "/" (but only if it's not
         # already there).
         hasdir = os.path.dirname( products )
+        init_output_dir( hasdir )
         zz = hasdir.replace( os.path.join(outdir,""), "", 1 )
         hasnam = os.path.basename(products)
 
         outfile = "{}/{}".format(hasdir,hasnam)
         updated = os.path.exists( outfile )
-
+        outfile_size = os.path.getsize(outfile) if updated else 0
+        
         sys.stderr.write("    {:<40s}".format(hasnam))
 
         if missing:
             sys.stderr.write( "."*20)
             good = "online" if updated else "* MISSING *"
             sys.stderr.write( " {}".format(good))            
-        elif updated and not clobber:
-            sys.stderr.write( "."*20)
-            sys.stderr.write( " (skipped)")
         else:
             #
             # Note to future self:  Since FITS files are stored in 2880
@@ -419,12 +420,19 @@ def retrieve_caldb_file( ftp, rootdir, looking_for, outdir, clobber, missing ):
             # is read to get the CHECKSUM/DATASUM (in all extensions!)
             # to know file is unchanged.
             #
+            # But, if ftp size != on-disk-size then we know it's
+            # wrong so then download it.
+            #
 
-            init_output_dir( hasdir )
             ftp.cwd("/{}/{}".format(rootdir,zz))
+            fsize = FtpFile( ftp, hasnam ).get_ftp_filesize()
+
+            if (fsize == outfile_size) and not clobber:
+                sys.stderr.write( "."*20)
+                sys.stderr.write( " (skipped)\n")
+                continue
 
             outfp = open(outfile,"wb")
-            fsize = FtpFile( ftp, hasnam ).get_ftp_filesize()
             logdl = LoggingFile( outfp, fsize, sys.stderr, None )
 
             ftp.retrbinary( "RETR {}".format(hasnam), logdl.write, 8*1024)
@@ -432,6 +440,7 @@ def retrieve_caldb_file( ftp, rootdir, looking_for, outdir, clobber, missing ):
 
             if updated:
                 sys.stderr.write( ' (updated)')
+
 
         sys.stderr.write("\n")
         
@@ -680,10 +689,12 @@ def print_new_setup(oldcaldb):
         verb0( "(t)csh:")
         verb0( "setenv CALDB "+os.path.abspath(os.environ["CALDB"]))
         verb0( "setenv CALDBCONFIG "+os.path.abspath(os.environ["CALDBCONFIG"]))
+        verb0( "setenv CALDBALIAS none")
         verb0( "")
         verb0( "bash:")
         verb0( "export CALDB="+os.path.abspath(os.environ["CALDB"]))
         verb0( "export CALDBCONFIG="+os.path.abspath(os.environ["CALDBCONFIG"]))
+        verb0( "export CALDBALIAS=none")
         verb0( "")
 
 
