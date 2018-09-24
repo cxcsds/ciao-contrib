@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # 
-# Copyright (C) 2013,2014,2016 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013,2014,2016,2018 Smithsonian Astrophysical Observatory
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@
 from __future__ import print_function
 
 toolname = "combine_grating_spectra"
-__revision__ = "15 Sep 2016"
+__revision__ = "01 August 2018"
 
 from pycrates import read_file, write_file
 import numpy as np
@@ -161,7 +161,7 @@ def split_II_to_I( instk, arfs, rmfs, outroot, verbose, clobber ):
     retsrc = []
     retbkg = []
     for ii,ss in enumerate(instk):
-        tmproot = outroot+"_tmp{:02d}".format(ii)
+        tmproot = outroot+"tmp{:02d}".format(ii)
 
         tgsplit.infile =ss
         tgsplit.arffile = arfs
@@ -407,7 +407,7 @@ def combine( tocombo, pars, add_pm, method=None, sign=None):
             sgn = sign
         
         arm = tgpart[key.tg_part].lower()
-        combine_spectra.outroot = "{}_{}_{}{}".format( pars["outroot"], arm, sgn, abs(key.tg_m))
+        combine_spectra.outroot = "{}{}_{}{}".format( pars["outroot"], arm, sgn, abs(key.tg_m))
 
         vv = combine_spectra()
         if vv: verb0( vv )
@@ -445,13 +445,23 @@ def main():
 
 
     instk = stk.build(pars["infile"])
-    #map( check_infile, instk )
-    for ii in instk:  check_infile(ii)
+    for ii in instk:  
+        check_infile(ii)
     flavor = [determine_pha_type(ii) for ii in instk ] # map(determine_pha_type, instk)
 
     # Check for type:II vs type:I -ness. Should be 1 unique value.
     if len(set(flavor)) != 1:  
         raise IOError("Input appears to a mix of TYPE:I and TYPE:II pha files. This is not supported.")
+
+    root_is_dir = os.path.isdir(pars["outroot"]) 
+    strip_outroot = True
+    if not root_is_dir:
+        pars["outroot"] = pars["outroot"]+"_"
+    elif not pars["outroot"].endswith("/"):
+        pars["outroot"] = pars["outroot"]+"/"
+    else:
+        strip_outroot = False
+
 
     if "TYPE:II" in flavor:
         verb1("Input TYPE:II pha file(s).  The output will be one or more TYPE:I pha files")
@@ -475,6 +485,10 @@ def main():
 
         tocombo = add_typeI( outstk, "", "", "", useabs=True, outroot=pars["outroot"] )
         outstk = combine( tocombo, pars, add_pm, method='avg', sign="abs")
+
+
+    if strip_outroot:
+        pars["outroot"] = pars["outroot"][:-1]
 
     for oo in outstk:
         add_tool_history( oo, toolname, pars, toolversion=__revision__)

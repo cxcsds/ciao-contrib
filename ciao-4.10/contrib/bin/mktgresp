@@ -20,7 +20,7 @@
 from __future__ import print_function
 
 toolname = "mktgresp"
-__revision__ = "17 January 2018"
+__revision__ = "01 August 2018"
 
 
 import os
@@ -199,7 +199,7 @@ def get_outfile_name( outroot, spectrum, filetype ):
     """
 
     outfile = outroot
-    outfile += "_{}".format( map_part_to_name( spectrum.part ).lower())
+    outfile += "{}".format( map_part_to_name( spectrum.part ).lower())
 
     pm = "p"     # plus, +
     if spectrum.order < 0:
@@ -252,7 +252,7 @@ def make_asphist( obsinfo, outroot ):
         for ccd in ccds:
             asphist.evtfile = obsinfo.evt+"[ccd_id={}]".format(ccd)
             asphist.dtffile = ""
-            asphist.outfile = outroot+"_{}.asphist".format(ccd)            
+            asphist.outfile = outroot+"{}.asphist".format(ccd)            
             asphist.clobber = True
             oo = asphist()
             if oo:
@@ -261,7 +261,7 @@ def make_asphist( obsinfo, outroot ):
     else:  # HRC
         asphist.evtfile = obsinfo.evt
         asphist.dtffile = obsinfo.dtf
-        asphist.outfile = outroot+".asphist"
+        asphist.outfile = outroot+"asphist"
         oo = asphist()
         if oo:
             verb0(oo)
@@ -328,7 +328,7 @@ def run_fullgarf( obsinfo, spectrum, outroot, dafile, osipfile ):
         toadd = []
         for ccd in ccds:
             verb2("    ccd={}".format(ccd))
-            mkgarf.asphistfile = outroot+"_{}.asphist".format(ccd)
+            mkgarf.asphistfile = outroot+"{}.asphist".format(ccd)
             mkgarf.outfile = get_outfile_name( outroot, spectrum, "{}.arf".format(ccd))
             mkgarf.detsubsys = "ACIS-{}".format(ccd)
             oo = mkgarf()
@@ -341,7 +341,7 @@ def run_fullgarf( obsinfo, spectrum, outroot, dafile, osipfile ):
         list(map( os.remove, toadd ))
 
     elif obsinfo.keywords["DETNAM"] == "HRC-I":
-        mkgarf.asphistfile = outroot+".asphist"
+        mkgarf.asphistfile = outroot+"asphist"
         mkgarf.outfile = get_outfile_name( outroot, spectrum, "arf" )
         mkgarf.detsubsys = "HRC-I"
         oo = mkgarf()
@@ -351,7 +351,7 @@ def run_fullgarf( obsinfo, spectrum, outroot, dafile, osipfile ):
         dmarfadd.outfile = mkgarf.outfile  # just to make the return easier below
 
     elif obsinfo.keywords["DETNAM"] == "HRC-S":
-        mkgarf.asphistfile = outroot+".asphist"
+        mkgarf.asphistfile = outroot+"asphist"
 
         if spectrum.order < 0:
             ccds = [ "S2", "S3" ]
@@ -443,8 +443,19 @@ def main():
     pars = get_params(toolname, "rw", sys.argv, 
         verbose={"set":lw.set_verbosity, "cmd":verb1} )
 
+    root_is_dir = os.path.isdir( pars["outroot"])
+    strip_outroot=True
+    if not root_is_dir:
+        pars["outroot"] = pars["outroot"]+"_"
+    elif not pars["outroot"].endswith("/"):
+        pars["outroot"] = pars["outroot"]+"/"
+    else:
+        strip_outroot = False
+
+
     # Locate aux files
-    obsinfo = ObservationFiles( pars["evtfile"], asp=pars["asolfile"], msk=pars["mskfile"], dtf=pars["dtffile"], bpx=pars["bpixfile"] )
+    obsinfo = ObservationFiles( pars["evtfile"], asp=pars["asolfile"], 
+        msk=pars["mskfile"], dtf=pars["dtffile"], bpx=pars["bpixfile"] )
 
     # Determine order, and grating arm pairs
     doit = get_order_and_arm( pars["infile"],pars["orders"] )
@@ -472,10 +483,15 @@ def main():
         ## For some reason, the add_tool_history doesn't work well when
         ## run in parallel (problem with punlearn().  Since this is quick
         ## we just add a loop at the end here.
+
+        _outroot = pars["outroot"]
+        if strip_outroot:
+            pars["outroot"] = pars["outroot"][:-1]
+            
         for dd in doit:
-            ff = get_outfile_name( pars["outroot"], dd, 'rmf' )
+            ff = get_outfile_name( _outroot, dd, 'rmf' )
             add_tool_history( ff, toolname, pars, toolversion=__revision__)
-            ff = get_outfile_name( pars["outroot"], dd, 'arf' )
+            ff = get_outfile_name( _outroot, dd, 'arf' )
             add_tool_history( ff, toolname, pars, toolversion=__revision__)
 
     finally:
