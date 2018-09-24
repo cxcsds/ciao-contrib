@@ -37,7 +37,7 @@ fi
 
 
 
-src=`xpaget ${ds9} regions -format ciao -system physical source -strip -selected | tr -d ";"`
+src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selected | tr -d ";"`
 
 if test "x${src}" = x
 then

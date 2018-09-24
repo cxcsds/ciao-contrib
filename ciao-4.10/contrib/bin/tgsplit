@@ -20,7 +20,7 @@
 from __future__ import print_function
 
 toolname = "tgsplit"
-__revision__ = "06 March 2017"
+__revision__ = "01 August 2018"
 
 from ciao_contrib.runtool import make_tool
 from pycrates import read_file, write_file
@@ -117,7 +117,7 @@ def copy_infile( infile, tgm, tgp, root, clobber ):
     sgn = 'p' if tgm > 0 else 'm'
     arm = tgpart[tgp].lower()    
     dmcopy.infile=infile
-    dmcopy.outfile= "{}_{}_{}{}.pha[SPECTRUM]".format( root,arm,sgn,abs(tgm))
+    dmcopy.outfile= "{}{}_{}{}.pha[SPECTRUM]".format( root,arm,sgn,abs(tgm))
     dmcopy.clobber = clobber
     v = dmcopy()    
     if v : verb2(v)
@@ -137,7 +137,7 @@ def split_pha2( tgm, tgp, infile, root, clobber ):
     sgn = 'p' if tgm > 0 else 'm'
     arm = tgpart[tgp].lower()    
     dmtype2split.infile="{}[tg_m={},tg_part={}]".format(infile, tgm, tgp)
-    dmtype2split.outfile= "{}_{}_{}{}.pha[SPECTRUM]".format( root,arm,sgn,abs(tgm))
+    dmtype2split.outfile= "{}{}_{}{}.pha[SPECTRUM]".format( root,arm,sgn,abs(tgm))
     dmtype2split.clobber = clobber
     v = dmtype2split()    
     if v : verb2(v)
@@ -330,7 +330,6 @@ def split_pha2_and_background( infile, root, clobber ):
         tgm = tab.get_column("tg_m").values
         tgp = tab.get_column("tg_part").values
         # split into TYPE:I files
-        #src = map( split_pha2, tgm, tgp, [infile]*len(tgm), [root]*len(tgm), [clobber]*len(tgm) )
         src = [split_pha2(t[0],t[1],infile, root, clobber) for t in zip(tgm,tgp)]
     else:
         tgm = [ tab.get_key("tg_m").value ]
@@ -454,6 +453,8 @@ def main():
     root=    pars["outroot"] # "tg/acisf05422_repro"
     clobber= pars["clobber"] # False
     
+    if not os.path.isdir(root):
+        root=root+"_"
 
     srcdict, bkgdict = split_pha2_and_background( infile, root, clobber )
     for ss in srcdict:

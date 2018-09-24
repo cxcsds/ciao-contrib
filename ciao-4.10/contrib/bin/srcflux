@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 #
-# Copyright (C) 2013-2017 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2018 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "srcflux"
-__revision__ = "11 July 2017"
+__revision__ = "02 August 2018"
 
 import os
 
@@ -111,7 +111,7 @@ def get_root( myparams, at_energy ):
     else:
         ename = "-".join(at_energy.split(":")[0:2])
 
-    myroot = "_".join([myparams.outroot, ename])
+    myroot = "".join([myparams.outroot, ename])
     return myroot
 
 
@@ -130,7 +130,7 @@ def run_roi( infile, fovfile, tmproot="/tmp", bkgmode='mul', bkgradius=3, bkgfun
         roi.fovregion = ''
 
     roi.streakregion = ''
-    roi.outsrcfile = tmproot+r"_%04d_reg.fits"
+    roi.outsrcfile = tmproot+r"%04d_reg.fits"
     roi.group = 'exclude'     # overlap srcs are cut out
     roi.targetbkg = 'target'  # background only around this src
     roi.clobber = True
@@ -160,6 +160,13 @@ def del_temp_regions_files( tmpregs ):
             gorm(ff)
 
 
+def locate_fovfile( myparams ):    
+    myroot = myparams.outroot
+
+    dot = "" if os.path.isdir(myroot) else "."    
+    fov = myparams.fovfile if not is_none(myparams.fovfile) else myroot+dot+"fov"
+    return(fov)
+
 
 def run_split_roi( myparams ):
     """
@@ -173,14 +180,14 @@ def run_split_roi( myparams ):
     # since we are already fixed at 90% at 1kev, fix
     # background to be 5x and 1x src regions.
     
-    fov = myparams.fovfile if not is_none(myparams.fovfile) else myroot+".fov"
+    fov = locate_fovfile( myparams)
 
-    roi_files = run_roi( myroot+"_srcs.fits", fov,
+    roi_files = run_roi( myroot+"srcs.fits", fov,
         tmproot=myroot, bkgradius=5.0,
         bkgfactor=1.0 )
 
     mycmd = ["splitroi",
-             myroot+r"_????_reg.fits",
+             myroot+r"????_reg.fits",
              myroot ]
              
     if 0 != sp.call( mycmd ):
@@ -188,7 +195,14 @@ def run_split_roi( myparams ):
 
     del_temp_regions_files( roi_files)
 
-    return "@-"+myroot+".src.reg","@-"+myroot+".bg.reg"
+    #~# splitroi always puts a '.' 
+    #~ if os.path.isdir(myroot):
+        #~ dot=""
+    #~ else:
+        #~ dot="."
+    dot="."
+
+    return "@-"+myroot+dot+"src.reg","@-"+myroot+dot+"bg.reg"
 
 
 
@@ -199,7 +213,7 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
     from cxcdm import dmTableOpen, dmTableClose, dmTableGetNoRows
     from region import regParse, regRegionString
 
-    tab = dmTableOpen(myroot+"_srcs.fits")
+    tab = dmTableOpen(myroot+"srcs.fits")
     nrows= dmTableGetNoRows( tab)
     dmTableClose(tab)
 
@@ -247,14 +261,14 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
         return region_to_phys(reg)
 
     ss = list(map( validate_region, src_stk ))
-    outsrc = myroot+"_src.stk"
+    outsrc = myroot+"src.stk"
     with open( outsrc, "w" ) as fp:
         for s in ss:
             fp.write( s+"\n")
 
 
     bb = map( validate_region, bkg_stk )
-    outbkg = myroot+"_bkg.stk"
+    outbkg = myroot+"bkg.stk"
     with open( outbkg, "w" ) as fp:
         for b in bb:
             fp.write( b+"\n")
@@ -266,14 +280,16 @@ def run_skyfov( myparams ):
     
     import ciao_contrib._tools.obsinfo as o
     from ciao_contrib.runtool import skyfov
-    
+
+    dot= "" if os.path.isdir(myparams.outroot) else "."
+
     obs = o.ObsInfo( myparams.infile )
     
     skyfov.infile= myparams.infile
     skyfov.aspect = obs.get_asol() if 0 == len(myparams.asolfile) else myparams.asolfile
     skyfov.kernel = "FITS"
     skyfov.msk = obs.get_ancillary("mask") if 0 == len(myparams.mskfile) else myparams.mskfile
-    skyfov.outfile = myparams.outroot+".fov"
+    skyfov.outfile = myparams.outroot+dot+"fov"
     skyfov.clobber = True
     
     x = skyfov()
@@ -308,7 +324,7 @@ def check_pos_in_srcreg( infile, srcs ):
 
 def save_regions( myparams, regions, flavor ):
     """
-    
+        !!! TODO: Use new region module in ciao4.10 instead of dmmakereg
     
     """    
     from ciao_contrib.runtool import dmmakereg
@@ -323,7 +339,7 @@ def save_regions( myparams, regions, flavor ):
     
     with open( regions[2:], "w" ) as oo:  # 2 => skip "@-"
         for ii in range( len(ss)):
-            outfile = "{}_{:04d}_{}reg.fits".format(myparams.outroot, ii+1, flavor)
+            outfile = "{}{:04d}_{}reg.fits".format(myparams.outroot, ii+1, flavor)
 
             tmpreg = NamedTemporaryFile( dir=myparams.tmpdir )
 
@@ -361,7 +377,7 @@ def make_regions( myparams ):
 
     # 7/7: JCM req energy and ecf be hard coded to 90% @ 1keV
     psfsize_srcs.infile=myparams.infile
-    psfsize_srcs.outfile=myparams.outroot+"_srcs.fits"
+    psfsize_srcs.outfile=myparams.outroot+"srcs.fits"
     psfsize_srcs.pos=myparams.pos
     psfsize_srcs.energy=1.0
     psfsize_srcs.ecf=0.9
@@ -465,8 +481,7 @@ def get_counts( myparams, at_energy, src, bkg ):
     else:
         inroot = myparams.infile
 
-    fov = myparams.outroot+".fov" if is_none(myparams.fovfile) else myparams.fovfile
-    
+    fov = locate_fovfile( myparams)
     inroot = "{}[sky=region({})]".format(inroot,fov)
 
     myroot = get_root(myparams, at_energy)
@@ -482,7 +497,7 @@ def get_counts( myparams, at_energy, src, bkg ):
     # TODO:  If we want to start dropping/renaming dmextract columns
     # TODO: ... this is where to do it.
 
-    pp = myparams.outroot+"_srcs.fits"
+    pp = myparams.outroot+"srcs.fits"
     dmpaste.infile = dmextract.outfile
     dmpaste.pastefile = pp+"[cols XPOS=x,YPOS=y,THETA,PHI,RAPOS=ra,DECPOS=dec,INSIDE_FOV,near_chip_edge,chip_id,chipx,chipy]"
     dmpaste.outfile = delme(dmextract.outfile+".tmp")
@@ -532,6 +547,8 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
     verb1("Simulating psfs using {}".format(simulator))
 
     myroot = get_root( myparams, at_energy )
+    suffix = myroot.replace( myparams.outroot, "")
+
     src_stk = stk.build(src)
     nrow = len(src_stk)
     
@@ -548,7 +565,7 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
         if float(rate) == 0:
             rate = 1.0e-6
 
-        outroot = myroot.replace( myparams.outroot, myparams.outroot+"_{:04d}".format(ii))
+        outroot = "{}{:04d}_{}".format( myparams.outroot, ii, suffix)
         simulate_psf = make_tool("simulate_psf")
         simulate_psf.infile=myparams.infile
         simulate_psf.asolfile=''
@@ -620,7 +637,7 @@ def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
     if len( src_stk ) != len(psf_stk):
         raise ValueError("Must have as many psffiles as pos/src values")
     
-    fov = myparams.outroot+".fov" if is_none(myparams.fovfile) else myparams.fovfile
+    fov = locate_fovfile( myparams)
     fov = [fov]*len(src_stk)
 
     infiles = [ "{}[sky=region({})][bin sky={}]".format(*x) for x in list(zip(psf_stk,fov,src_stk))]
@@ -748,13 +765,13 @@ def run_arfcorr_and_dme( myparams, at_energy, src, bkg,ii):
     aa = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "area")
 
     if src.lower() == "point(0,0)" and bkg.lower() == "point(0,0)":
-        with open( myroot+"{:04d}_model.psffrac".format(ii), "w" ) as fp:
+        with open( myroot+"_{:04d}_model.psffrac".format(ii), "w" ) as fp:
             fp.write("#COUNTS\tBG_COUNTS\n")
             fp.write("0\t0\n")
         return
 
     if 0 == aa:
-        with open( myroot+"{:04d}_model.psffrac".format(ii), "w" ) as fp:
+        with open( myroot+"_{:04d}_model.psffrac".format(ii), "w" ) as fp:
             fp.write("#COUNTS\tBG_COUNTS\n")
             fp.write("0\t0\n")
         return
@@ -762,7 +779,7 @@ def run_arfcorr_and_dme( myparams, at_energy, src, bkg,ii):
 
     infile="{}[sky={}][bin sky={}]".format( myparams.infile, bound_src_and_bkg(src, bkg, myparams.tmpdir), myparams.binsize)
 
-    outroot = myparams.outroot+"_{:04d}".format(ii)
+    outroot = myparams.outroot+"{:04d}".format(ii)
     if at_energy in ['broad', 'soft', 'medium', 'hard', 'wide', 'ultrasoft']:
         outroot = outroot+"_"+at_energy
     else:
@@ -791,11 +808,11 @@ def run_arfcorr_and_dme( myparams, at_energy, src, bkg,ii):
         verb2(arfcorr())
         ac_out = arfcorr.outfile
     
-    fov = myparams.outroot+".fov" if is_none(myparams.fovfile) else myparams.fovfile
+    fov = locate_fovfile( myparams)
     
     dmextract.infile = "{}[cntFrac=region({})][bin sky={}]".format(ac_out, fov,src )
     dmextract.bkg = "{}[cntFrac=region({})][bin sky={}]".format(ac_out, fov, bkg )
-    dmextract.outfile=myroot+"{:04d}_model.psffrac".format(ii)
+    dmextract.outfile=myroot+"_{:04d}_model.psffrac".format(ii)
     dmextract.clobber=myparams.clobber
     dmextract.verbose=myparams.verbose
     verb2(dmextract())
@@ -825,7 +842,7 @@ def get_psf_from_model( myparams, at_energy, src, bkg):
     taskrunner = TaskRunner()
     for ii in range(1, len(src_stk)+1 ):
         taskrunner.add_task( "arfcorr_{:04d}".format(ii), "", run_arfcorr_and_dme, myparams, at_energy, src_stk[ii-1], bkg_stk[ii-1],ii )
-        outfiles.append(myroot+"{:04d}_model.psffrac[cols PSFFRAC=counts,BG_PSFFRAC=bg_counts][subspace -sky]".format(ii) )
+        outfiles.append(myroot+"_{:04d}_model.psffrac[cols PSFFRAC=counts,BG_PSFFRAC=bg_counts][subspace -sky]".format(ii) )
 
     taskrunner.run_tasks(processes=myparams.nproc, label=False)
 
@@ -956,7 +973,7 @@ def get_net_rate_aper( taskrunner, myparams, at_energy, src, bkg ):
 
     outfiles = []
     for ii in range( len(src_cts) ):
-        outroot = myparams.outroot+"_{:04d}".format(ii+1)
+        outroot = myparams.outroot+"{:04d}".format(ii+1)
 
         if at_energy in ['broad', 'soft', 'medium', 'hard', 'wide', 'ultrasoft']:
             myroot = outroot+"_"+at_energy
@@ -1109,7 +1126,7 @@ def run_fluximage( infile, outroot, at_energy, src, bkg, myparams ):
     
     from ciao_contrib.runtool import fluximage,dmextract
 
-    fov = myparams.outroot+".fov" if is_none(myparams.fovfile) else myparams.fovfile
+    fov = locate_fovfile( myparams)
 
     
     fluximage.infile = infile
@@ -1181,7 +1198,7 @@ def get_fluximage_flux( taskrunner, myparams, at_energy, src, bkg ):
 
         #infile = inroot+"[sky={},{}]".format(src_stk[ii-1], bkg_stk[ii-1])
         infile = inroot+"[sky={}]".format(bound)
-        outfile= myroot+"_{:04d}".format(ii)
+        outfile= myroot+"{:04d}".format(ii)
         taskrunner.add_task( outfile, "", run_fluximage,
             infile, outfile, at_energy, src_stk[ii-1], bkg_stk[ii-1], myparams )
         srcfiles.append( delme(outfile+".exp") )
@@ -1533,7 +1550,7 @@ def replace_nh_tokens( myparams, at_energy, ii ):
         if token not in modelparam:
             return modelparam
             
-        pi = myparams.outroot+"_{:04d}.pi".format(ii)
+        pi = myparams.outroot+"{:04d}.pi".format(ii)
         if not os.path.exists(pi):
             verb1("Cannot locate spectrum file, will try to get from colden")
             nh = get_nh_from_colden( myparams, token, at_energy, ii )
@@ -1576,7 +1593,7 @@ def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf,
 
         if make_resp:
             try:
-                run_specextract( myparams, myparams.outroot+"_{:04d}".format(ii), src, bkg, ii, at_energy )
+                run_specextract( myparams, myparams.outroot+"{:04d}".format(ii), src, bkg, ii, at_energy )
             except OutsideFOV:
                 write_none( outroot )
                 return
@@ -1584,12 +1601,12 @@ def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf,
                 write_none( outroot )
                 return
 
-        arf = myparams.outroot+"_{:04d}.arf".format(ii)
+        arf = myparams.outroot+"{:04d}.arf".format(ii)
         if not os.path.exists( arf ):
             write_none( outroot )
             return
 
-        rmf = myparams.outroot+"_{:04d}.rmf".format(ii)
+        rmf = myparams.outroot+"{:04d}.rmf".format(ii)
         if not os.path.exists( rmf ):
             write_none( outroot )
             return
@@ -1651,17 +1668,19 @@ def cleanup_tempfiles( myparams, src, bkg ):
     nn = len(stk.build( src ))
     gorm(src[2:]) # skip '@-'
     gorm(bkg[2:]) # skip '@-'
-    gorm( myparams.outroot+"_srcs.fits" )
+    gorm( myparams.outroot+"srcs.fits" )
 
-    if is_none(myparams.fovfile) and os.path.exists( myparams.outroot+".fov" ):
-        gorm( myparams.outroot+".fov")
+
+    fov = locate_fovfile( myparams )
+    if is_none(myparams.fovfile) and os.path.exists(fov):
+        gorm(fov)
 
     if not is_none( myparams.arffile):
         # If arffile was input, no cleanup here is necessary
-        return
+        pass
 
     for ii in range(1,nn+1):
-        myroot = myparams.outroot+"_{:04d}".format(ii)
+        myroot = myparams.outroot+"{:04d}".format(ii)
         orig = myroot+".warf" if os.path.exists( myroot+".warf" ) else myroot+".arf"
         if os.path.exists( orig ):
             corr = orig +".corr"
@@ -1670,7 +1689,7 @@ def cleanup_tempfiles( myparams, src, bkg ):
     
     # Cleanup specextract output
     for ii in range(1,nn+1):
-        myroot = myparams.outroot+"_{:04d}".format(ii)
+        myroot = myparams.outroot+"{:04d}".format(ii)
         for tt in [ '.warf.orig', '.arf.orig', '.wfef', '_tdet.fits', '_bkg.warf.orig', '_bkg.arf.orig', '_bkg.wfef', '_bkg_tdet.fits' ]:
             if os.path.exists( myroot+tt ):
                 gorm( myroot+tt)
@@ -1836,19 +1855,19 @@ def merge_modelflux( stk_params, myparams ):
 
         combine_spectra = make_tool("combine_spectra")        
 
-        pi_files = [ p.outroot+"_{:04d}.pi".format(snum+1) for p in stk_params ]
-        arf_files = [ p.outroot+"_{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
+        pi_files = [ p.outroot+"{:04d}.pi".format(snum+1) for p in stk_params ]
+        arf_files = [ p.outroot+"{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
         combine_spectra.src_spectra=[x for x in pi_files if os.path.exists(x)]
         combine_spectra.src_arf=[x for x in arf_files if os.path.exists(x)]
-        combine_spectra.outroot = myparams.outroot+"_{:04d}".format(snum+1)
+        combine_spectra.outroot = myparams.outroot+"{:04d}".format(snum+1)
         combine_spectra.clobber=True
         vv = combine_spectra()
         if vv:
             verb2(vv)
 
         verb2("Running model_flux")
-        out_arf = combine_spectra.outroot+"_src.arf"
-        out_rmf = combine_spectra.outroot+"_src.rmf"
+        out_arf = combine_spectra.outroot+"src.arf"
+        out_rmf = combine_spectra.outroot+"src.rmf"
         for at_energy in bands:
             myroot = get_root( myparams, at_energy )
             outroot = myroot+"_{:04d}.dat".format(snum+1)
@@ -2160,7 +2179,7 @@ def summarize_results( myparams, obi=None, single=False ):
     _lead_fmt = "{:"+str(_lead)+"s}"
     vals={}
 
-    text_summary = open( myparams.outroot+"_summary.txt", "w")
+    text_summary = open( myparams.outroot+"summary.txt", "w")
     def logverb( message ):
         text_summary.write( message+"\n")
         verb1(message)
@@ -2333,10 +2352,10 @@ def check_pos_inside_fov( myparam ):
     
     from region import regParse, regInsideRegion
     from pycrates import read_file
-    fov = myparam.fovfile if not is_none( myparam.fovfile ) else myparam.outroot+".fov"
+    fov = locate_fovfile( myparam )
 
     fov = regParse( "region({})".format(fov))
-    tab = read_file( myparam.outroot+"_srcs.fits", mode="rw")
+    tab = read_file( myparam.outroot+"srcs.fits", mode="rw")
     xx = tab.get_column("x").values.copy()
     yy = tab.get_column("y").values.copy()
     
@@ -2552,6 +2571,15 @@ def main():
     pars = get_params(toolname, "rw", sys.argv, 
         verbose={"set":lw.set_verbosity, "cmd":verb1} )
     set_nproc(pars)
+
+    if not os.path.isdir( pars["outroot"] ):
+        pars["outroot"] = pars["outroot"]+"_"
+    elif not pars["outroot"].endswith("/") :
+        pars["outroot"] = pars["outroot"]+"/"
+    else:
+        pass
+
+
     
     stk_pars = obi_main(pars)   
 

@@ -19,8 +19,8 @@ fi
 
 
 
-src=`xpaget ${ds9} regions -format ciao source -strip -selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
-bkg=`xpaget ${ds9} regions -format ciao background -strip -selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
 
 
 fmt=`xpaget ${ds9} fits type`

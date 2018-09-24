@@ -38,11 +38,8 @@ fi
 echo "--------------------------------------------------------"
 echo " (1/4) Parsing Regions" 
 
-#
-# -selected doesn't seem to robustly work with CIAO regions :(
-#
-src=`xpaget ${ds9} regions -format ciao source -strip -selected | tr -d ";"`
-bkg=`xpaget ${ds9} regions -format ciao background -strip -selected | tr -d ";" ` 
+src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr -d ";"`
+bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr -d ";" ` 
 
 
 if test "x$src" = x
