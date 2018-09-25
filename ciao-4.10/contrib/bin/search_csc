@@ -144,7 +144,12 @@ def summarize_sensitivity( ra, dec, bands ):
     ra_deg,dec_deg = sex2deg(ra, dec ) 
     
     page = csc.query_csc1_limsens( ra_deg, dec_deg )
-    vals, units = csc.parse_limsens( page )
+    
+    try:
+        vals, units = csc.parse_limsens( page )
+    except RuntimeError as rte:
+        verb0("Error in contacting CSC sensitivity server")
+        return
 
     verb0("CSC Sensitivity for position: {},{}".format(ra,dec))
     for b in bands.split(","):
