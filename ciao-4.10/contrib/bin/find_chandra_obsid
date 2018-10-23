@@ -76,7 +76,7 @@ ftp://anonymous:foo@bar.org@cda.cfa.harvard.edu/pub/.
 """
 
 toolname = "find_chandra_obsid"
-version = "09 May 2018"
+version = "29 Oct 2018"
 
 import sys
 import os
@@ -122,6 +122,7 @@ lw.initialize_logger(toolname)
 v1 = lw.make_verbose_level(toolname, 1)
 v2 = lw.make_verbose_level(toolname, 2)
 v3 = lw.make_verbose_level(toolname, 3)
+v4 = lw.make_verbose_level(toolname, 4)
 
 
 def protect_string(s):
@@ -516,25 +517,29 @@ def find_obsid_position(obsid):
 
     # error handling based on ciao_contrib.caldb.get_caldb_releases()
     try:
-        ans = urllib.request.urlopen(url).read()
+        v3("Trying to identify obsid={}".format(obsid))
+        v4(" using URL={}".format(url))
+        ans = urllib.request.urlopen(url)
+
     except urllib.error.URLError as ue:
-        if hasattr(ue, "reason"):
-            if hasattr(ue.reason, "errno") and ue.reason.errno == socket.EAI_NONAME:
-                raise IOError("Unable to reach the Chandra Data Archive - is the network down?")
-            else:
-                raise IOError("Unable to reach the Chandra Data Archive - {}".format(ue.reason))
+        # There used to be a lot of code trying to provide a
+        # "nice" error message, but it was not well tested,
+        # so simplify
+        #
+        v3("Error opening URL: {}".format(ue))
 
-        elif hasattr(ue, "getcode"):
-            cval = ue.getcode()
-            if cval == 404:
-                raise IOError("The Chandra Data Archive site appears to be unreachable.")
-            else:
-                raise IOError("The Chandra Data Archive site returned {}".format(ue))
+        if hasattr(ue, 'reason'):
+            v3("error.reason = {}".format(ue.reason))
 
+            if ue.reason == 'unknown url type: https':
+                ans = search._manual_download(url)
+            else:
+                raise
         else:
-            raise IOError("Unable to access the Chandra Data Archive site - {}".format(ue))
+            raise
 
     # Ugly code; what is the better way to do this
+    ans = ans.read()
     if not isinstance(ans, six.string_types):
         ans = ans.decode('utf8')
 
