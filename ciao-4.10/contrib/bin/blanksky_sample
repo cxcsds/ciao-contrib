@@ -1,0 +1,909 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2017, 2018
+#           Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 USA.
+#
+
+__version__ = "CIAO 4.10"
+toolname = "blanksky_sample"
+__revision__  = "23 October 2018"
+
+import os, sys, paramio, tempfile
+import pycrates as pcr
+
+#######################################################################
+# This is only needed for development.
+try:
+    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
+        _libname = "python{}.{}".format(sys.version_info.major,sys.version_info.minor)
+
+        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib',_libname, 'site-packages'))
+        
+        if os.path.isdir(_pathdir):
+            os.sys.path.insert(1, _pathdir)
+        else:
+            print("*** WARNING: no {}".format(_pathdir))
+            
+        del _libname
+        del _pathdir
+        del _thisdir
+
+except KeyError:
+    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
+#######################################################################
+
+from ciao_contrib.param_wrapper import open_param_file
+from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
+from ciao_contrib.stacklib import expand_stack
+
+from ciao_contrib._tools import fileio, utils
+
+from ciao_contrib.runtool import dmcopy, dmhedit, dmlist, dmmerge, dmsort, dmtcalc, reproject_events, add_tool_history
+
+from sherpa.utils import parallel_map
+from ciao_contrib.parallel_wrapper import parallel_pool
+from ciao_contrib.runtool import new_pfiles_environment
+
+#############################################################################
+#############################################################################
+
+# Set up the logging/verbose code
+initialize_logger(toolname)
+
+# Use v<n> to display messages at the given verbose level.
+v0 = make_verbose_level(toolname, 0)
+v1 = make_verbose_level(toolname, 1)
+v2 = make_verbose_level(toolname, 2)
+v3 = make_verbose_level(toolname, 3)
+v4 = make_verbose_level(toolname, 4)
+v5 = make_verbose_level(toolname, 5)
+
+
+class ScriptError(RuntimeError):
+    """Error found during running the script. This class is introduced
+    in case there is a need to catch such an error and deal with it
+    appropriately (e.g. recognize it as distinct from an error raised
+    by the code).
+    """
+    pass
+
+
+def error_out(msg):
+    "Throw a ScriptError with msg as the message."
+    raise ScriptError(msg)
+
+
+def get_par(argv):
+    """ Get data_products parameters from parameter file """
+    pfile = open_param_file(argv,toolname=toolname)["fp"]
+
+    # Common parameters:
+    params = {}
+    pars = {}
+
+    # load all parameters to dictionary
+    pars["infile"] = params["infile"] = paramio.pgetstr(pfile,"infile")
+    pars["bkgfile"] = params["bkgfile"] = paramio.pgetstr(pfile,"bkgfile")
+    pars["bkgout"] = params["bkgout"] = paramio.pgetstr(pfile,"bkgout")
+    pars["psf_bkg_out"] = params["psf_bkg_out"] = paramio.pgetstr(pfile,"psf_bkg_out")
+    #params["rate"] = paramio.pgetd(pfile,"rate")
+    pars["regionfile"] = params["regionfile"] = paramio.pgetstr(pfile,"regionfile")
+    pars["fill_out"] = params["fill_out"] = paramio.pgetstr(pfile,"fill_out")
+    pars["reproject"] = params["reproject"] = paramio.pgetstr(pfile,"reproject")
+    pars["asolfile"] = params["asol"] = paramio.pgetstr(pfile,"asolfile")
+    pars["tmpdir"] = params["tmpdir"] = paramio.pgetstr(pfile,"tmpdir")
+    pars["random"] = params["randomseed"] = paramio.pgeti(pfile,"random")
+    pars["verbose"] = params["verbose"] = paramio.pgeti(pfile,"verbose")
+    pars["clobber"] = params["clobber"] = paramio.pgetstr(pfile, "clobber")
+    pars["mode"] = params["mode"] = paramio.pgetstr(pfile, "mode")
+
+    ## check and modify parameters
+    ################################
+
+    ## error out if there are spaces in absolute paths of various parameters
+    if " " in os.path.abspath(params["infile"]):
+        raise IOError("The absolute path for the source events file, '{}', cannot contain any spaces".format(os.path.abspath(params["infile"])))
+
+    if " " in os.path.abspath(params["bkgfile"]):
+        raise IOError("The absolute path for the blanksky background file, '{}', cannot contain any spaces".format(os.path.abspath(params["bkgfile"])))
+
+    if " " in os.path.abspath(params["bkgout"]):
+        raise IOError("The absolute path for the sampled background output file, '{}', cannot contain any spaces".format(os.path.abspath(params["bkgout"])))
+
+    if " " in os.path.abspath(params["psf_bkg_out"]):
+        raise IOError("The absolute path for the PSF+background output file, '{}', cannot contain any spaces".format(os.path.abspath(params["psf_bkg_out"])))
+
+    for asol in params["asol"]:
+        if " " in os.path.abspath(asol):
+            raise IOError("The absolute path for the asol file, '{}', cannot contain any spaces".format(os.path.abspath(asol)))
+
+    if " " in os.path.abspath(params["regionfile"]):
+        raise IOError("The absolute path for the region file, '{}', cannot contain any spaces".format(os.path.abspath(params["regionfile"])))
+
+    if " " in os.path.abspath(params["fill_out"]):
+        raise IOError("The absolute path for the events substituted output file, '{}', cannot contain any spaces".format(os.path.abspath(params["fill_out"])))
+
+    # check if produced "dmfilth"ed events file will be made
+    if params["regionfile"] != "":
+        if params["fill_out"] == "":
+            error_out("input 'regionfile' specified, an output 'fill_out' file must be specified")
+            
+    else:
+        if params["fill_out"] != "":
+            error_out("'fill_out' output file specified, an input 'regionfile' must also be specified")
+
+    # input PSF file
+    if params["infile"] == "":
+        error_out("Input events file must be specified.")
+    elif params["infile"].startswith("@"):
+        error_out("'infile' does not support stacks.")
+    else:
+        params["infile_filter"] = fileio.get_filter(params["infile"])
+        params["infile"] = fileio.get_file(params["infile"])
+
+    # input blanksky background file
+    if params["bkgfile"] == "":
+        error_out("Input blanksky background file must be specified.")
+    elif params["bkgfile"].startswith("@"):
+        error_out("Input blanksky background stacks not supported.")
+    else:
+        params["bkgfile_filter"] = fileio.get_filter(params["bkgfile"])
+        params["bkgfile"] = fileio.get_file(params["bkgfile"])
+    
+    # output blanksky sampled file name
+    if params["bkgout"] == "":
+        error_out("Please specify an output background file name.")
+    else:
+        params["bkgoutdir"],bkgoutfile = utils.split_outroot(params["bkgout"])
+        
+        if params["bkgout"].endswith("_"):
+            params["bkgout"] = bkgoutfile
+        else:
+            params["bkgout"] = bkgoutfile.rstrip("_")
+
+        # check if output directory is writable
+        fileio.validate_outdir(params["bkgoutdir"])
+
+    # output PSF+bkg file name
+    if params["psf_bkg_out"] != "":
+        psf_bkg_outdir,psf_bkg_outfile = utils.split_outroot(params["psf_bkg_out"])
+        
+        if params["psf_bkg_out"].endswith("_"):
+            params["psf_bkg_out"] = psf_bkg_outfile
+        else:
+            params["psf_bkg_out"] = psf_bkg_outfile.rstrip("_")
+
+        # check if output directory is writable
+        params["psf_bkg_outdir"] = psf_bkg_outdir
+        fileio.validate_outdir(params["psf_bkg_outdir"])
+
+    # input region file
+    if params["regionfile"] != "":
+        params["regionfile"] = fileio.get_file(params["regionfile"])
+    
+    # output fill_out file name
+    if params["fill_out"] != "":
+        params["fill_outdir"],fill_outfile = utils.split_outroot(params["fill_out"])
+        
+        if params["fill_out"].endswith("_"):
+            params["fill_out"] = fill_outfile
+        else:
+            params["fill_out"] = fill_outfile.rstrip("_")
+
+        # check if output directory is writable
+        fileio.validate_outdir(params["fill_outdir"])
+
+    # aspect solution files, listed in quotes.    
+    if params["asol"] != "":
+        params["asol"] = ",".join(expand_stack(params["asol"]))
+
+
+    # close parameters block after validation
+    paramio.paramclose(pfile)
+
+    v3("  Parameters: {0}".format(params))
+
+    return params,pars
+
+
+def _get_nevt(fn):
+    """get number of events"""
+    
+    cr = pcr.read_file(fn)
+    
+    nevt = cr.get_nrows()
+
+    cr.__del__()
+
+    return nevt
+
+
+def _cols2int4(fn,tmpdir):
+    """Convert the PI and PHA columns in the blanksky file from Int2 to Int4 data types"""
+
+    # check that column datatype
+    cr = pcr.read_file("{}[cols pi,pha][#row=1]".format(fn))
+
+    pi_type = cr.get_column("pi").values.dtype.name
+    pha_type = cr.get_column("pha").values.dtype.name
+
+    cr.__del__()
+
+    if False in [pi_type=="int64",pha_type=="int64"]:
+        v2("Converting PI and PHA column integer type for compatibility...")
+
+        tmp1 = tempfile.NamedTemporaryFile(dir=tmpdir)
+        tmp2 = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+        if [True,True] == [pi_type!="int64",pha_type!="int64"]:
+            convert_col = "tmppha=(long)pha,tmppi=(long)pi"
+            tmpcol = "pha=tmppha,pi=tmppi"
+            col_replace = "[cols -pha,-pi]"
+            tmpcol_del = "[cols -tmppha,-tmppi]"
+        else:
+            if pi_type != "int64":
+                convert_col = "tmppi=(long)pi"
+                tmpcol = "pi=tmppi"
+                col_replace = "[cols -pi]"
+                tmpcol_del = "[cols -tmppi]"
+            elif pha_type != "int64":
+                convert_col = "tmppha=(long)pha"
+                tmpcol = "pha=tmppha"
+                col_replace = "[cols -pha]"
+                tmpcol_del = "[cols -tmppha]"
+
+        dmtcalc.punlearn()
+        dmtcalc.infile = fn 
+        dmtcalc.outfile = tmp1.name
+        dmtcalc.expression = convert_col
+        dmtcalc.verbose = "0"
+        dmtcalc.clobber= "yes"
+        dmtcalc()
+
+        dmtcalc.punlearn()
+        dmtcalc.infile = "{0}{1}".format(tmp1.name,col_replace)
+        dmtcalc.outfile = tmp2.name
+        dmtcalc.expression = tmpcol
+        dmtcalc.verbose = "0"
+        dmtcalc.clobber= "yes"
+        dmtcalc()
+
+        tmp1.close()
+
+        dmcopy.punlearn()
+        dmcopy.infile = "{0}{1}".format(tmp2.name,tmpcol_del)
+        dmcopy.outfile = fn
+        dmcopy.verbose = "0"
+        dmcopy.clobber = "yes"
+        dmcopy()   
+
+        tmp2.close()
+
+
+def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
+    tmp1 = tempfile.NamedTemporaryFile(dir=tmpdir)
+    tmp2 = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+    # copy the DETPOS column to a new DET column, for merging purposes
+    dmtcalc.punlearn()
+    dmtcalc.infile = infile
+    dmtcalc.outfile = tmp1.name
+    dmtcalc.expression = "tmpx=(float)x,tmpy=(float)y,tmpdetx=(float)detx,tmpdety=(float)dety,tmpchipx=(short)chipx,tmpchipy=(short)chipy" 
+    dmtcalc.verbose = "0"
+    dmtcalc.clobber= "yes"
+    dmtcalc()
+
+    dmtcalc.punlearn()
+    dmtcalc.infile = "{}[cols -sky,-chip,-detpos]".format(tmp1.name)
+    dmtcalc.outfile = tmp2.name
+    dmtcalc.expression = "x=tmpx,y=tmpy,detx=tmpdetx,dety=tmpdety,chipx=tmpchipx,chipy=tmpchipy"
+    dmtcalc.verbose = "0"
+    dmtcalc.clobber= "yes"
+    dmtcalc()
+
+    dmhedit.punlearn()
+    dmhedit.infile = tmp2.name 
+    dmhedit.operation = "add"
+    dmhedit.key = "MTYPE1"
+    dmhedit.value = "chip"
+    dmhedit.verbose = "0"
+    dmhedit()
+
+    dmhedit.punlearn()
+    dmhedit.infile = tmp2.name 
+    dmhedit.operation = "add"
+    dmhedit.key = "MFORM1"
+    dmhedit.value = "chipx,chipy"
+    dmhedit.verbose = "0"
+    dmhedit()
+
+    dmhedit.punlearn()
+    dmhedit.infile = tmp2.name 
+    dmhedit.operation = "add"
+    dmhedit.key = "MTYPE2"
+    dmhedit.value = "det"
+    dmhedit.verbose = "0"
+    dmhedit()
+
+    dmhedit.punlearn()
+    dmhedit.infile = tmp2.name 
+    dmhedit.operation = "add"
+    dmhedit.key = "MFORM2"
+    dmhedit.value = "detx,dety"
+    dmhedit.verbose = "0"
+    dmhedit()
+
+    dmhedit.punlearn()
+    dmhedit.infile = tmp2.name 
+    dmhedit.operation = "add"
+    dmhedit.key = "MTYPE3"
+    dmhedit.value = "sky"
+    dmhedit.verbose = "0"
+    dmhedit()
+
+    dmhedit.punlearn()
+    dmhedit.infile = tmp2.name 
+    dmhedit.operation = "add"
+    dmhedit.key = "MFORM3"
+    dmhedit.value = "x,y"
+    dmhedit.verbose = "0"
+    dmhedit()
+
+    for key in ["X","Y","DETX","DETY"]:
+        keynum = _structural_kw(tmp2.name,key,tmpdir)
+
+        if keynum != None:
+            dmhedit.punlearn()
+            dmhedit.infile = tmp2.name 
+            dmhedit.operation = "add"
+            dmhedit.key = "TLMIN{}".format(keynum)
+            dmhedit.value = "0.5"
+            dmhedit.verbose = "0"
+            dmhedit()
+
+            dmhedit.punlearn()
+            dmhedit.infile = tmp2.name 
+            dmhedit.operation = "add"
+            dmhedit.key = "TLMAX{}".format(keynum)
+            dmhedit.value = "8192.5"
+            dmhedit.verbose = "0"
+            dmhedit()
+
+    if instrument == "HRC":
+        # ppr output columns is agnostic on instrument and just uses CCD_ID, which
+        # isn't appropriate for HRC data, which uses CHIP_ID
+
+        dmtcalc.punlearn()
+        dmtcalc.infile = tmp2.name
+        dmtcalc.outfile = tmp1.name
+        dmtcalc.expression = "chip_id=ccd_id"
+        dmtcalc.verbose = "0"
+        dmtcalc.clobber= "yes"
+        dmtcalc()
+
+        dmcopy.punlearn()
+        dmcopy.infile = "{}[cols -ccd_id]".format(tmp1.name)
+        dmcopy.outfile = outfile 
+        dmcopy.verbose = "0"
+        dmcopy.clobber = "yes"
+        dmcopy()
+
+    else:
+        dmcopy.punlearn()
+        dmcopy.infile = "{}".format(tmp2.name)
+        dmcopy.outfile = outfile 
+        dmcopy.verbose = "0"
+        dmcopy.clobber = "yes"
+        dmcopy()
+
+    tmp1.close()
+    tmp2.close()
+
+
+def _structural_kw(fn,keyval,tmpdir):
+    # import shutil
+
+    # tmp_dmlist = tempfile.NamedTemporaryFile(dir=tmpdir)
+    # tmp1 = tempfile.NamedTemporaryFile(dir=tmpdir)
+    # tmp2 = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+    # with open(tmp1.name, "w") as text_file:
+    #     text_file.write("#")
+
+    # dmlist.punlearn()
+    # dmlist.infile = fn
+    # dmlist.outfile = tmp2.name
+    # dmlist.opt = "header,raw"
+    # dmlist.verbose = "0"
+    # dmlist()
+
+    # # concatentate
+    # with open(tmp_dmlist.name,'wb') as wfd:
+    #     for f in [tmp1.name,tmp2.name]:
+    #         with open(f,'rb') as fd:
+    #             shutil.copyfileobj(fd,wfd)
+
+    # tmp1.close()
+    # tmp2.close()  
+
+    # ## strip empty lines
+    # #open(filename_out, "w").write(open(filename_in).read().strip())
+
+    # cr = pcr.read_file("{}[exclude #row=1:3]".format(tmp_dmlist.name))
+    # tmp_dmlist.close()
+
+    # col = cr.get_column("col1").values
+
+    dmlist.punlearn()
+    dmlist.infile = fn
+    dmlist.opt = "header,raw"
+    dmlist.verbose = "0"
+
+    col = dmlist()
+    col = col.split("\n")[5:]
+    col = [ln for ln in col if "TTYPE" in ln]
+    col = [j for j in [i.split("=") for i in col]]
+
+    dict = {}
+
+    for d in col:
+        dict[d[0][d[0].find("*")+1:].replace(" ","")] = d[1][:d[1].find("/")]
+
+    del(col)
+
+    keys = dict.keys()
+
+    for key in keys:
+        if dict[key].strip(" ").lower() == keyval.lower():
+            keynum = key.lstrip("TTYPE")
+
+    try:
+        return keynum.strip(" ")
+
+    except UnboundLocalError:
+        return None
+
+
+def _evt_type(fn):
+    """
+    ID infile input type. 
+    # MARX: HDUNAME=EVENTS, DATACLAS=SIMULATED
+    # PPR: HDUNAME=RAYEVENTS, DATACLAS=OBSERVED
+    # Obs: HDUNAME=EVENTS, DATACLAS=OBSERVED
+    """
+    
+    kw = fileio.get_keys_from_file(fn)
+    
+    hduclass = kw["HDUNAME"]
+    dataclass = kw["DATACLAS"]
+
+    status = (hduclass == "EVENTS", dataclass == "OBSERVED")
+
+    if status == (True,True):
+        evt_type = "obs"
+    elif status == (True,False):
+        evt_type = "marx"
+    elif status == (False,True):
+        evt_type = "ppr"
+    else:
+        evt_type = None
+
+    return evt_type
+
+
+#def num_pick((bkg,outfile,bkgscale,tmpdir,verbose)):
+def _num_pick(args): # P3
+    """Pick number of photons to add to the simulation"""
+
+    (bkg,outfile,bkgscale,randomseed,tmpdir,verbose) = args # P3
+    
+    with new_pfiles_environment(ardlib=True):
+    
+        ## get total number of events; the NAXIS2/__NROWS keyword aren't updated if 
+        ## evt file is filtered
+        # n = kw["__NROWS"]
+        # n = _get_nevt(bkg)
+        # cts = rate*exptime # sample the scaled down background
+
+        # these generate random values between 0 and 1, inclusive
+        if randomseed > 0:
+            randseed = "#rand({})".format(randomseed)
+        else:
+            randseed = "#trand"
+
+        def_rand = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+        dmtcalc.punlearn()
+        dmtcalc.infile = bkg
+        dmtcalc.outfile = def_rand.name
+        #dmtcalc.expression = "randnum={0}/{1}*#trand".format(n,cts) 
+        dmtcalc.expression = "randnum={0}/{1}".format(randseed,bkgscale)
+        dmtcalc.verbose = verbose
+        dmtcalc.clobber = "yes"
+
+        dmtcalc()
+
+        dmcopy.punlearn()
+        dmcopy.infile = "{}[randnum=0:1]".format(def_rand.name)
+        dmcopy.outfile = outfile # sampled event will have RANDNUM value less than 1
+        dmcopy.clobber = "yes"
+
+        dmcopy()
+
+        def_rand.close()
+    
+
+def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
+    """Assign some random time during the observation to each photon"""
+
+    t0 = kw["TSTART"]
+    t1 = kw["TSTOP"]
+
+    time_rand = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+    if randomseed > 0:
+        randseed = "#rand({})".format(randomseed)
+    else:
+        randseed = "#trand"
+
+    dmtcalc.punlearn()
+
+    dmtcalc.infile = bkg_rand
+    dmtcalc.outfile = time_rand.name
+    dmtcalc.expression = "time={0}+({1}-{0})*{2}".format(t0,t1,randseed)
+    dmtcalc.clobber = "yes"
+    dmtcalc.verbose = verbose
+
+    dmtcalc()
+
+    dmsort.punlearn()
+
+    dmsort.infile = time_rand.name 
+    dmsort.outfile = time_sorted_outfile
+    dmsort.keys = "TIME"
+    dmsort.clobber = "yes"
+
+    dmsort()
+
+    time_rand.close()
+
+    # update time-related header keywords of the sampled file
+    dmhedit.punlearn()
+    dmhedit.infile = time_sorted_outfile
+    dmhedit.operation = "add"
+    dmhedit.verbose = "0"
+
+    for tkey in ["ONTIME","LIVETIME","EXPOSURE","TSTART","TSTOP"]:
+        dmhedit.key = tkey
+        dmhedit.value = kw[tkey]
+        dmhedit()    
+
+    if kw["INSTRUME"] == "ACIS":
+        chips = fileio.get_ccds(bkg_rand)
+   
+        for chip in chips:
+            dmhedit.key = "ONTIME{}".format(chip)
+            dmhedit.value = kw["ONTIME{}".format(chip)]
+            dmhedit()                
+
+            dmhedit.key = "LIVTIME{}".format(chip)
+            dmhedit.value = kw["LIVTIME{}".format(chip)]
+            dmhedit()                
+
+            dmhedit.key = "EXPOSUR{}".format(chip)
+            dmhedit.value = kw["EXPOSUR{}".format(chip)]
+            dmhedit()     
+    
+
+def sample_chip(bkg,outfile,kw,randomseed,tmpdir,verbose):
+    instrument = kw["INSTRUME"]
+
+    # determine chips to be used for the image
+    if instrument == "HRC":
+        bkgscale = kw["BKGSCALE"]
+
+        _num_pick((bkg,outfile,bkgscale,randomseed,tmpdir,verbose))
+
+    else:
+        chips = fileio.get_ccds(bkg)
+
+        bkg_sample = []
+        bkg_tmp = [] 
+
+        try:
+            for chip in chips:
+                bkgtmp = tempfile.NamedTemporaryFile(suffix=".bkg{}".format(chip),dir=tmpdir)
+                bkgscale = kw["BKGSCAL{}".format(chip)]
+                bkgchipstr = "{0}[ccd_id={1}]".format(bkg,chip)
+
+                bkg_sample.append((bkgchipstr,bkgtmp.name,bkgscale,randomseed,tmpdir,verbose))
+                bkg_tmp.append(bkgtmp)
+
+            #parallel_map(_num_pick,bkg_sample)
+            parallel_pool(_num_pick,bkg_sample)
+
+        finally:
+            dmmerge.punlearn()
+
+            dmmerge.infile = [bg.name for bg in bkg_tmp]
+            dmmerge.outfile = outfile
+            dmmerge.clobber = "yes"
+            dmmerge.verbose = verbose
+
+            dmmerge()
+
+            for fn in bkg_tmp:
+                fn.close()
+
+
+@handle_ciao_errors(toolname,__revision__)
+def doit():
+    params,pars = get_par(sys.argv)
+
+    # print script info
+    set_verbosity(params["verbose"])
+    utils.print_version(toolname, __revision__)
+
+    infile = params["infile"]
+    bkgfile = params["bkgfile"]
+    bkgout = params["bkgout"]
+    bkgoutdir = params["bkgoutdir"]
+    psf_bkg_out = params["psf_bkg_out"]
+    asol = params["asol"]
+    reproject = params["reproject"]
+    fill_out = params["fill_out"]
+    regionfile = params["regionfile"]
+    tmpdir = params["tmpdir"]
+    seed = params["randomseed"]
+    clobber = params["clobber"]
+    verbose = params["verbose"]
+   
+    ############
+
+    get_rand = tempfile.NamedTemporaryFile(dir=tmpdir)
+    time_sorted = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+    kw_psf = fileio.get_keys_from_file(infile)
+    kw_bkg = fileio.get_keys_from_file(bkgfile)
+
+    instrument = kw_bkg["INSTRUME"]
+
+    etype = _evt_type(infile)
+
+    # filter CCDs if input is a PSF to what's available in the BKG, since PPR contains
+    # all CCD_IDs and MARX is strictly defined between ACIS-I and ACIS-S
+    if etype != "obs":
+        if instrument == "ACIS":
+
+            tmpin = tempfile.NamedTemporaryFile(dir=tmpdir)
+            tmpbkg = tempfile.NamedTemporaryFile(dir=tmpdir)
+            
+            ccd_psf = fileio.get_ccds(infile)
+            ccd_bkg = fileio.get_ccds(bkgfile)
+
+            ccd = set(ccd_psf) & set(ccd_bkg)
+            ccd = ",".join([str(i) for i in sorted(ccd)])
+
+            dmcopy.punlearn()
+            dmcopy.infile = "{0}[ccd_id={1}]".format(infile,ccd)
+            dmcopy.outfile = tmpin.name
+            dmcopy.verbose = "0"
+            dmcopy.clobber = "yes"
+            dmcopy()
+
+            dmcopy.punlearn()
+            dmcopy.infile = "{0}[ccd_id={1}]".format(bkgfile,ccd)
+            dmcopy.outfile = tmpbkg.name
+            dmcopy.verbose = "0"
+            dmcopy.clobber = "yes"
+            dmcopy()
+
+            infile = tmpin.name
+            bkgfile = tmpbkg.name
+            
+    # check for background CALDB version; any ACIS background before 4.7.5.1 
+    # will need to convert the PHA and PI datatype which were short integers 
+    # (Int16/Int2) and match the event files with long integers (Int64/Int4)
+    cr_bkg = pcr.read_file("{}[#row=1]".format(bkgfile))
+
+    if True in [cr_bkg.pi.values.dtype != "int64",cr_bkg.pha.values.dtype != "int64"]:
+        bkg_old = True
+    else:
+        bkg_old = False
+
+    cr_bkg.__del__()
+
+    # sample background file and assign times to each event
+    sample_chip(bkgfile,get_rand.name,kw_bkg,seed,tmpdir,verbose)
+    assign_time(get_rand.name,time_sorted.name,kw_psf,seed,tmpdir,verbose)
+
+    get_rand.close()
+
+    try:
+        tmpbkg.close()
+    except NameError:
+        pass
+
+    if etype != "ppr":
+        if instrument == "ACIS":
+            if bkg_old:
+                _cols2int4(time_sorted.name,tmpdir) # convert PHA and PI columns to Int4 to match observed evt
+
+    if reproject == "yes":
+        # Reproject the blank sky fields to the same position on the sky as the marx simulation.
+        reproject_events.punlearn()
+        
+        if instrument == "ACIS":
+            reproject_events.infile = "{}[cols ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status,time]".format(time_sorted.name)
+        else:
+            reproject_events.infile = "{}[cols chip_id,chip,det,sky,pha,pi,status,time]".format(time_sorted.name)
+
+        reproject_events.outfile = bkgoutdir+bkgout
+        reproject_events.aspect = asol
+        reproject_events.match = infile
+        reproject_events.random = seed
+        reproject_events.clobber = "yes"
+        reproject_events.verbose = verbose
+
+        reproject_events()
+        
+    else:
+        # if the blank sky file is already reprojected or if the blanksky script was used
+        dmcopy.punlearn()
+
+        if instrument == "ACIS":
+            dmcopy.infile = "{}[cols ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status,time]".format(time_sorted.name)
+        else:
+            dmcopy.infile = "{}[cols chip_id,chip,det,sky,pha,pi,status,time]".format(time_sorted.name) 
+
+        dmcopy.outfile = bkgoutdir+bkgout
+        dmcopy.clobber = clobber
+        dmcopy()
+
+    time_sorted.close()
+    
+    try:
+        add_tool_history(bkgoutdir+bkgout,toolname,pars)
+    except OSError:
+        pass
+        
+    ## Merge marx simulation and blank sky fields into a single fits table.
+    if psf_bkg_out != "":
+
+        psf_bkg_outdir = params["psf_bkg_outdir"]
+
+        dmmerge.punlearn()
+
+        tmppsf = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+        if etype == "ppr":
+            _convert_ppr_cols(infile,tmppsf.name,instrument,tmpdir)
+            dmmerge.infile = "{0},{1}".format(tmppsf.name,bkgoutdir+bkgout)
+
+        elif etype in ["obs","marx"]:
+            if (True,True) == (etype=="obs",instrument=="ACIS"):
+                dmmerge.infile = "{0},{1}".format(infile,bkgoutdir+bkgout)
+
+            else:
+                # first need to convert data type for PI and PHA columns
+                dmcopy.punlearn()
+                dmcopy.infile = infile
+                dmcopy.outfile = tmppsf.name 
+                dmcopy.verbose = "0"
+                dmcopy.clobber = "yes"
+                dmcopy()
+
+                _cols2int4(tmppsf.name,tmpdir)
+                dmmerge.infile = "{0},{1}".format(tmppsf.name,bkgoutdir+bkgout)
+
+        else:
+            v3("'infile' has unrecognized creator")
+
+
+        if etype == "ppr":
+            if instrument == "ACIS":
+                dmmerge.columnList = "ccd_id,chip,det,sky,energy"
+            else:
+                dmmerge.columnList = "chip_id,chip,det,sky"
+
+        else:
+            if instrument == "ACIS":
+                dmmerge.columnList = "time,ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status"    
+            else:
+                dmmerge.columnList = "time,chip_id,chip,det,sky,pha,status"    
+
+        dmmerge.outfile = psf_bkg_outdir+psf_bkg_out
+        dmmerge.clobber = clobber
+        dmmerge.verbose = verbose
+
+        dmmerge()
+        
+        try:
+            add_tool_history(psf_bkg_outdir+psf_bkg_out,toolname,pars)
+        except OSError:
+            pass
+
+    if fill_out != "":
+
+        fill_outdir = params["fill_outdir"]
+
+        dmmerge.punlearn()
+
+        dmmerge.outfile = fill_outdir+fill_out
+        dmmerge.clobber = clobber
+        dmmerge.verbose = verbose
+
+        if etype == "ppr":
+            if psf_bkg_out == "":
+                tmppsf = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+                _convert_ppr_cols(infile,tmppsf.name,instrument,tmpdir)
+
+                dmmerge.infile = "{0}[exclude sky=region({2})],{1}[sky=region({2})]".format(tmppsf.name+params["infile_filter"],bkgoutdir+bkgout+params["infile_filter"],regionfile)
+
+            else:
+                dmmerge.infile = "{0}[exclude sky=region({2})],{1}[sky=region({2})]".format(tmppsf.name+params["infile_filter"],bkgoutdir+bkgout+params["infile_filter"],regionfile)
+
+            if instrument == "ACIS":
+                dmmerge.columnList = "ccd_id,chip,det,sky,energy"
+            else:
+                dmmerge.columnList = "chip_id,chip,det,sky"
+
+        else:
+            dmmerge.infile = "{0}[exclude sky=region({2})],{1}[sky=region({2})]".format(infile+params["infile_filter"],bkgoutdir+bkgout+params["infile_filter"],regionfile)
+
+            if instrument == "ACIS":
+                dmmerge.columnList = "ccd_id,node_id,chip,det,sky,PHA,energy,PI,fltgrade,grade,status,time"
+            else:
+                if etype == "obs":
+                    dmmerge.columnList = "chip_id,chip,det,sky,pha,pi,status,TIME"
+                elif etype == "marx":
+                    dmmerge.columnList = "chip_id,chip,det,sky,pha,status,TIME"
+                else:
+                    v3("'infile' has unrecognized creator")
+
+        dmmerge()
+
+        try:
+            add_tool_history(fill_outdir+fill_out,toolname,pars)
+        except OSError:
+            pass
+
+    try:
+        tmppsf.close()
+    except NameError:
+        pass
+
+    try:
+        tmpin.close()
+    except NameError:
+        pass
+
+    # if 'tmppsf' in locals():
+    #     tmppsf.close()
+
+
+if __name__  == "__main__":
+    doit()
+
+
+
