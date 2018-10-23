@@ -20,7 +20,7 @@
 
 __version__ = "CIAO 4.10"
 toolname = "blanksky"
-__revision__  = "06 March 2018"
+__revision__  = "18 October 2018"
 
 import os, sys, paramio, tempfile, shutil, stat
 import pycrates as pcr
@@ -28,6 +28,7 @@ import pycrates as pcr
 # This is only needed for development.
 try:
     if not __file__.startswith(os.environ['ASCDS_INSTALL']):
+        _thisdir = os.path.dirname(__file__)
         _libname = "python{}.{}".format(sys.version_info.major,
                                         sys.version_info.minor)
         _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
@@ -137,24 +138,51 @@ def caldb_blanksky(detector):
         return False
 
 
-def t_norm(evtfile,bkgfile,chip,evt_keywords):
+def t_norm(evtfile,bkgfile,chip,evt_keywords,bkg_keywords):
     # use pre-filtered evtfile that matches the filtering applied to the bkgfile
 
     det = evt_keywords["INSTRUME"]
 
-    dmkeypar.punlearn()
-    dmkeypar.infile = bkgfile
-
     if det == "HRC":
-        dmkeypar.keyword = "exposure"
         obs_time = evt_keywords["EXPOSURE"]
+        bkg_time = bkg_keywords["EXPOSURE"]
+    
     else:
-        dmkeypar.keyword = "livtime{}".format(str(chip))
-        obs_time = evt_keywords["LIVTIME{}".format(chip)]
+        try:
+            bkg_time = bkg_keywords["LIVETIM{}".format(chip)] 
+        except KeyError:
+            try:
+                bkg_time = bkg_keywords["LIVTIME{}".format(chip)]
+            except KeyError:
+                bkg_time = bkg_keywords["LIVETIME"]
 
-    dmkeypar()
+        try:
+            obs_time = evt_keywords["LIVETIM{}".format(chip)] 
+        except KeyError:
+            try:
+                obs_time = evt_keywords["LIVTIME{}".format(chip)]
+            except KeyError:
+                obs_time = evt_keywords["LIVETIME"]
 
-    bkg_time = dmkeypar.rval
+        # if evt_keywords["DATAMODE"] == "GRADED":
+              ##subarray_scale = float(evt_keywords["NROWS"])/1024
+              ##subarray_scale = evt_keywords["EXPTIME"]/bkg_keywords["EXPTIME"]
+              ##subarray_scale = evt_keywords["TIMEDEL"]/bkg_keywords["TIMEDEL"]
+              ##subarray_scale = (evt_keywords["EXPTIME"]/evt_keywords["NROWS"])/(bkg_keywords["EXPTIME"]/1024) #rate
+              ##subarray_scale = (evt_keywords["NROWS"]/evt_keywords["EXPTIME"])/(1024/bkg_keywords["EXPTIME"]) #rate2
+              ##subarray_scale = (evt_keywords["TIMEDEL"]/evt_keywords["NROWS"])/(bkg_keywords["TIMEDEL"]/1024) #rate3
+
+
+        #     subarray_scale = (bkg_keywords["EXPTIME"]/1024)/(evt_keywords["EXPTIME"]/evt_keywords["NROWS"])
+            
+        #     return (obs_time/bkg_time)*subarray_scale
+        # else:
+        #     return obs_time/bkg_time
+
+
+        ## assign random exposure number to each event
+        # import random
+        # bkg_expno = [random.randint(1,int(bkg_keywords["ONTIME{}".format(chip)]/bkg_keywords["EXPTIME"])) for i in range(bkg_keywords["__NROWS"])]
 
     return obs_time/bkg_time
 
@@ -223,20 +251,6 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
 
         eventdef = "{"+",".join(eventdef)+"}"
 
-        # add a time and expno column to the blanksky file, so acis_process_events
-        # can run on it (change introduced in 4.8)
-        bkg_col = tempfile.NamedTemporaryFile(dir=tmpdir)
-
-        dmtcalc.punlearn()
-
-        dmtcalc.infile = infile
-        dmtcalc.outfile = bkg_col.name
-        dmtcalc.expression = "time=#nan;expno=#nan"
-        dmtcalc.clobber = "yes"
-        dmtcalc.verbose = "0"
-
-        dmtcalc()
-
         ## CTI and TGAIN Calibration Files
         #
         # The calibration files used to apply the CTI and time-dependent
@@ -248,7 +262,6 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
         # the faint, extended objects for which people use these backgrounds.
         acis_process_events.punlearn()
 
-        acis_process_events.infile = bkg_col.name
         acis_process_events.outfile = outfile
         acis_process_events.acaofffile = "NONE"
         acis_process_events.stop = "none"
@@ -262,9 +275,30 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
         acis_process_events.clobber = "yes"
         acis_process_events.verbose = verbose
 
-        acis_process_events()
+        try:
+            acis_process_events.infile = infile
+            acis_process_events()
 
-        bkg_col.close()
+        except OSError:
+
+            # add a time and expno column to the blanksky file, so acis_process_events
+            # can run on it (change introduced in 4.8)
+            bkg_col = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+            dmtcalc.punlearn()
+
+            dmtcalc.infile = infile
+            dmtcalc.outfile = bkg_col.name
+            dmtcalc.expression = "time=#nan;expno=#nan"
+            dmtcalc.clobber = "yes"
+            dmtcalc.verbose = "0"
+
+            dmtcalc()
+
+            acis_process_events.infile = bkg_col.name
+            acis_process_events()
+
+            bkg_col.close()
 
     else:
         shutil.copyfile(infile,outfile)
@@ -406,9 +440,9 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
         v1("Creating HRC-I background files, if available.\n")
 
         # 1999-12-06T00:00:00 is the earliest observation date with valid background files (CALDB 4.3.1)
-        # 2000-01-01T00:00:00 is the earliest observation date with valid background files (CALDB 4.6.1)
-
         #hrc_earliest = dates("1999-12-06T00:00:00",fromcal="GREG",tocal="CHANDRA")
+
+        # 2000-01-01T00:00:00 is the earliest observation date with valid background files (CALDB 4.6.1)
         hrc_earliest = dates("2000-01-01T00:00:00",fromcal="GREG",tocal="CHANDRA")
 
         if not caldb_blanksky("HRC"):
@@ -475,8 +509,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
             v1("Ignoring ACIS-S5, as no blank-sky map is available for this chip with CTI corrections applied.\n")
             ccds.remove(9)
 
-        #if 0 in ccds and (4 or 5 or 6 or 7 or 8 or 9) in ccds:
-        if 0 in ccds and not set([4,5,6,7,8,9]).isdisjoint(set(ccds)):
+        if [0 in ccds, set([4,5,6,7,8,9]).isdisjoint(set(ccds))] == [True,False]:
             # check location of aimpoint with dmcoords using the nominal (optical-axis) coordinates
             ra_nom = keywords["RA_NOM"]
             dec_nom = keywords["DEC_NOM"]
@@ -553,12 +586,33 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
 
                 # combine files
                 dmmerge.punlearn()
+
                 dmmerge.infile = acis_bkg
                 dmmerge.outfile = bkg_calib.name
                 dmmerge.clobber = "yes"
                 dmmerge.verbose = "0"
 
                 dmmerge()
+
+            # spatially handle sub-array observations
+            if keywords["NROWS"] != 1024:
+                nrows = keywords["NROWS"]
+                firstrow = keywords["FIRSTROW"]
+
+                bkg_subarray = tempfile.NamedTemporaryFile(suffix=".bkg",dir=tmpdir)
+
+                dmcopy.punlearn()
+
+                dmcopy.infile = "{0}[chipy={1}:{2}]".format(bkg_calib.name,firstrow,firstrow+nrows-1)
+                dmcopy.outfile = bkg_subarray.name
+                dmcopy.verbose = "0"
+                dmcopy.clobber = "yes"
+
+                dmcopy()
+
+                bkg_calib.close()
+
+                bkg_calib = bkg_subarray
 
             # # apply new gain file, if necessary
             # bkg_repro = tempfile.NamedTemporaryFile(dir=tmpdir)
@@ -569,7 +623,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
 
             # add the PNT and AVG header keywords from the evt file
             # modify bkg file header
-            for key in ["RA_PNT","DEC_PNT","ROLL_PNT","DY_AVG","DZ_AVG","DTH_AVG"]:
+            for key in ["RA_PNT","DEC_PNT","ROLL_PNT","DY_AVG","DZ_AVG","DTH_AVG","FIRSTROW","NROWS"]:
                 dmkeypar.punlearn()
                 dmhedit.punlearn()
 
@@ -602,6 +656,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
                 dmcopy.clobber = "yes"
 
                 dmcopy()
+
             else:
                 shutil.copyfile(bkg_repro.name,bkg.name)
 
@@ -620,7 +675,7 @@ def doit():
     outdir = params["outdir"]
     outfile = params["outfile"]
     asol = params["asol"]
-#    enband = params["enband"]
+    # enband = params["enband"]
     bkgparams = params["bkgparams"]
     method = params["weight"].lower()
     seed = params["randomseed"]
@@ -718,7 +773,8 @@ def doit():
     scale = []
     for ccd in sorted(ccds):
         if method == "time":
-            scalefactor = t_norm(check_evt.name,outdir+outfile,ccd,kw)
+            bkg_kw = fileio.get_keys_from_file(outdir+outfile)
+            scalefactor = t_norm(check_evt.name,outdir+outfile,ccd,kw,bkg_kw)
         else:
             scalefactor = e_norm(check_evt.name,outdir+outfile,ccd,e_particle,instrument)
 
