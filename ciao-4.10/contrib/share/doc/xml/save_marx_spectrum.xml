@@ -1,0 +1,176 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+
+  <!ENTITY marx '<HREF link="http://space.mit.edu/cxc/marx/index.html">MARX</HREF>'>
+
+]>
+<cxchelptopics>
+  <ENTRY key="save_marx_spectrum" context="contrib" pkg="sherpa"
+	 refkeywords="write_marx_spectrum save write create marx spectrum spectra file psf simulate simulation"
+	 seealsogroups="sh.save sh.marx">
+
+    <SYNOPSIS>
+      Write out the model spectrum in the form required by MARX
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>save_marx_spectrum(outfile, clobber=True, verbose=True, id=None, elow=None, ehigh=None, ewidth=None, norm=None)</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The save_marx_spectrum() command writes out the current model
+	values in the form expected by &marx;
+	(the Chandra simulator).
+	Please see the
+	<HREF
+	    link="http://space.mit.edu/cxc/marx/indetail/models.html#spectrum-of-the-simulated-x-ray-source">MARX
+	documentation of the spectrum format</HREF>
+	for further information on how to use this routine.
+      </PARA>
+
+      <PARA title="Loading the routine">
+        The routine can be loaded into Sherpa by saying:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.marx import *
+</VERBATIM>
+
+      <TABLE>
+	<CAPTION>Arguments</CAPTION>
+	<ROW>
+	  <DATA>Name</DATA><DATA>Default value</DATA><DATA>Description</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>outfile</DATA>
+	  <DATA></DATA>
+	  <DATA>The name of the file to create.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>clobber</DATA>
+	  <DATA>True</DATA>
+	  <DATA>Determines the behavior if the output file already
+	    exists: a value of True (the default) means that the
+	    file will be overwritten, otherwise an error will be
+	    raised.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>verbose</DATA>
+	  <DATA>True</DATA>
+	  <DATA>If verbose is True then a message will be printed to the
+	  standard output when the file has been created.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>id</DATA>
+	  <DATA>None</DATA>
+	  <DATA>Which dataset to use: if None then the value returned
+	  by get_default_id() will be used.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>elow</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    The minimum energy at which to evaluate the model; this parameter
+	    controls the lower edge of the lowest-energy bin, and is in keV.
+	    A value of None means to use the lowest energy bin from the
+	    ARF grid. This value should not be smaller than 0.2 keV.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ehigh</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    The maximum energy at which to evaluate the model; this parameter
+	    controls the upper edge of the highest-energy bin, and is in keV.
+	    A value of None means to use the highest energy bin from the
+	    ARF grid. This valus should not be larger than 10 keV.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>ewidth</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    The bin width to use, in keV.
+	    A value of None means to use the bin width from the
+	    ARF grid.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>norm</DATA>
+	  <DATA>None</DATA>
+	  <DATA>
+	    A scaling factor to allow you to easily change the overall flux
+	    of the model. A value of None is equivalent to a factor
+	    of 1; a value of 10 would create a MARX spectral model ten times
+	    brighter than the input model.
+	  </DATA>
+	</ROW>
+
+      </TABLE>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; load_pha("3c273.pi")</LINE>
+	  <LINE>&pr; subtract()</LINE>
+	  <LINE>&pr; notice(0.1, 6)</LINE>
+          <LINE>&pr; set_source(xsphabs.abs1 * powlaw1d.p1)</LINE>
+          <LINE>&pr; abs1.nh = 0.07</LINE>
+          <LINE>&pr; freeze(abs1)</LINE>
+          <LINE>&pr; guess(p1)</LINE>
+          <LINE>&pr; fit()</LINE>
+          <LINE>...</LINE>
+          <LINE>&pr; save_marx_spectrum("marx.dat")</LINE>
+	</SYNTAX>
+	<DESC>
+
+          <PARA>
+	    Here we load in a source spectrum from the file 3c273.pi, along
+	    with the associated files (e.g. ARF, RMF, and background) that are indicated
+	    in its header.
+	    The background is subtracted, the analysis restricted to the 0.1 to 6 keV
+	    range, a model is created - consisting of an absorbed power law - and then
+	    parameter values are set before the fit is made.
+	  </PARA>
+	  <PARA>
+	    After the fit has been made the save_marx_spectrum() routine is used to
+	    write out the best-fit model - in a format usable by
+	    &marx; - 
+	    to the text file "marx.dat".
+	  </PARA>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>&pr; save_marx_spectrum("marx.dat", elow=1, ehigh=8)</LINE>
+	</SYNTAX>
+	<DESC>
+          <PARA>
+	    In this example the output is restricted to the range 1 to 8 keV, using the default
+	    binning given by the ARF grid. Note that this energy range need not overlap the
+	    range used to fit the data (or even the energy ranges of the ARF and RMF files).
+	    It should however remain within the range 0.2 to 10 keV.
+	  </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/sherpa/bugs/">bugs pages
+        on the Sherpa website</HREF> for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>September 2018</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
