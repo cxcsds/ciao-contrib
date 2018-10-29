@@ -36,6 +36,7 @@ try:
         else:
             print("*** WARNING: no {}".format(_pathdir))
         del _pathdir
+        del _libname
         del _thisdir
 except KeyError:
     raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
@@ -65,18 +66,22 @@ def parse_inputs( pars ):
 
     if not all( [x.isdigit() for x in retval["obsid"].split(",")]):
         raise ValueError("obsid must be a list of individual integers")
-
+    
     if "INDEF" == pars["columns"] or len(pars["columns"]) == 0:
-        retval["columns"] = csc.get_default_columns()
+        retval["columns"] = csc.get_default_columns(pars["catalog"])
     else:
         retval["columns"] = stk.build( pars["columns"] )
-        retval["columns"] = csc.check_required_names( retval["columns"] )
+        retval["columns"] = csc.check_required_names( retval["columns"], pars["catalog"] )
 
     if 'none' == pars["outfile"].lower():
         retval["outfile"] = None
     else:
         retval["outfile"] = pars["outfile"]
 
+    #~ if "cur" == pars["catalog"] and "none" != pars["download"]:
+        #~ pars["download"] = "none"
+        #~ verb0("WARNING: files cannot yet be retrieved using the current catalog release")
+    
     if "none" == pars["download"]:
         retval["getfiles"] = False
         retval["myfiles"] = None
@@ -87,13 +92,13 @@ def parse_inputs( pars ):
         retval["root"] = pars["root"]
 
         if len(pars["filetypes"] ) == 0:
-            # if filetypes is blank, use all of them
-            retval["myfiles"] = ",".join( csc.fileTypes.keys() )
+            # if filetypes is blank, use all of them 
+            retval["myfiles"] = ",".join( csc.fileTypes[pars["catalog"]].keys() )
         else:
-            retval["myfiles"] = csc.check_filetypes( pars["filetypes"] )
+            retval["myfiles"] = csc.check_filetypes( pars["filetypes"], pars["catalog"] )
             if len(retval["myfiles"]) == 0:
                 raise ValueError("No recognized file types supplied")
-
+        
         if len(pars["bands"]) == 0:
             # if bands is blank, use all of them
             retval["mybands"] = ",".join(csc.all_bands())
@@ -102,9 +107,10 @@ def parse_inputs( pars ):
             if len(retval["mybands"]) == 0:
                 raise ValueError("No recognized energy band supplied")
 
-
+    
     retval["clobber"] = ( pars["clobber"] == "yes" )
-
+    retval["catalog"] = pars["catalog"]
+    
     return retval
 
 
@@ -116,28 +122,28 @@ def main():
     """
     """
     # get parameters
-    pars = get_params(toolname, "rw", sys.argv,
+    pars = get_params(toolname, "rw", sys.argv, 
       verbose={"set":lw.set_verbosity, "cmd":verb1} )
     pp = parse_inputs( pars )
 
     #
     # Query catalog by position
     #
-    mypage = csc.search_src_by_obsid( pp["obsid"], pp["columns"] )
-    csc.save_results( mypage, pp["outfile"], pp["clobber"] )
+    mypage = csc.search_src_by_obsid( pp["obsid"], pp["columns"], pp["catalog"] )
+    csc.save_results( mypage, pp["outfile"], pp["clobber"] )    
 
     #
     # Print results
     #
     mysrcs = csc.parse_csc_result( mypage )
-    xtra = csc.extra_cols_to_summarize( mysrcs, pars["columns"])
+    xtra = csc.extra_cols_to_summarize( mysrcs, pars["columns"], pp["catalog"])
     csc.summarize_results( mysrcs, extracols=xtra )
-
+    
     #
     # Retrieve the files if asked
-    #
+    # 
     if pp["getfiles"]:
-        csc.retrieve_files( mysrcs, pp["root"], pp["myfiles"], pp["mybands"], pp["getfiles"], byObi=True )
+        csc.retrieve_files( mysrcs, pp["root"], pp["myfiles"], pp["mybands"], pp["getfiles"], pp["catalog"], byObi=True )
 
 
 if __name__ == "__main__":
@@ -147,3 +153,4 @@ if __name__ == "__main__":
         print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
+    
