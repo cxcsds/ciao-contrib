@@ -16,14 +16,6 @@
       lc_sigma_clip
     </SYNOPSIS>
 
-    <SYNTAX>
-      <LINE>
-	deflare infile method [outfile] [nsigma] [minlength] [mean]
-	[stddev] [scale] [minfrac] [plot] [save] [rateaxis] [pattern] 
-	[good_color] [exclude_color] [verbose]
-      </LINE>
-    </SYNTAX>
-
      <DESC>
       <PARA>
         The deflare routine is a Python script which allows the user
@@ -380,7 +372,7 @@
             </PARA>
          </DESC>
       </PARAM>
-      <PARAM name="outfile" type="file" filetype="output" reqd="no" def="None">
+      <PARAM name="outfile" type="file" filetype="output" reqd="yes" def="None">
          <SYNOPSIS>
             The name of the GTI file to create.
          </SYNOPSIS>
@@ -421,80 +413,7 @@
 	      deviations to retain).
             </PARA>
          </DESC>
-      </PARAM>     
-      <PARAM name="minlength" type="real" reqd="no" def="3">
-         <SYNOPSIS>
-            Minimum number of consecutive time bins which must pass rate filter in lc_sigma_clip routine.
-         </SYNOPSIS>
-         <DESC>
-            <PARA>
-	      The lc_sigma_clip minlength parameter determines the
-	      minimum number of consecutive time bins that must all
-	      pass the rate filter for the period to be considered
-	      'good'. This parameter is not used within the
-	      sigma-clipping iteration. If minlength=1 then a filter
-	      on the count rate is determined instead.
-            </PARA>
-         </DESC>
-      </PARAM>     
-      <PARAM name="mean" type="real" reqd="no" def="None">
-         <SYNOPSIS>
-            Mean count rate (ct/s) of input light curve, as determined by lc_clean.
-         </SYNOPSIS>
-         <DESC>
-            <PARA>
-             If 'mean' is 'None' (default), then the mean count rate
-             is calculted from the input light curve, using a single
-             sigma clip of the data (deflare 'nsigma' parameter, which
-             is the same as lc_clean 'clip'). Otherwise, the mean
-             count rate supplied should match the actual mean count
-             rate of the input light curve. The standard deviation is
-             calculated as sqrt(mean-rate/bin width). The mean value
-             is used to clip the light curve.
-            </PARA>
-         </DESC>
-      </PARAM>     
-      <PARAM name="stddev" type="real" reqd="no" def="None">
-         <SYNOPSIS>
-            Standard deviation of signal, as determined by lc_clean.
-         </SYNOPSIS>
-         <DESC>
-            <PARA>
-             The 'stddev' parameter is the lc_clean 'sigma' parameter,
-             which is calculated from the 'mean' value as
-             sqrt(mean-rate/bin width). When stddev is 'None', then the
-             limits used for clipping the light curve are mean/scale
-             to min*scale, otherwise they are mean - nsigma*stddev to
-             mean + nsigma*stddev.
-            </PARA>
-         </DESC>
-      </PARAM>    
-      <PARAM name="scale" type="real" reqd="no" def="1.2">
-         <SYNOPSIS>
-            The scale factor about the mean count rate to use for
-            light curve limits, as determined by lc_clean.
-         </SYNOPSIS>
-         <DESC>
-            <PARA>
-              When the 'stddev' parameter is 'None', then the limits
-              used by lc_clean for clipping the light curve are
-              mean/scale to min*scale, otherwise they are mean -
-              nsigma*stddev to mean + nsigma*stddev.
-            </PARA>
-         </DESC>
-      </PARAM>      
-      <PARAM name="minfrac" type="real" reqd="no" def="0.1">
-         <SYNOPSIS>
-           Minimum fraction of light curve bins that must pass the count-rate filter, as determined by lc_clean.
-         </SYNOPSIS>
-         <DESC>
-            <PARA>
-              The 'minfrac' parameter gives the minimum fraction of
-              the light curve bins that must pass the count-rate
-              filter (after ignoring the zero count-rate bins).
-            </PARA>
-         </DESC>
-      </PARAM>      
+      </PARAM>
       <PARAM name="plot" type="boolean" reqd="no" def="no">
          <SYNOPSIS>
             Plot light curve and histograms of values?
@@ -584,6 +503,79 @@
             </PARA>
          </DESC>
       </PARAM>      
+      <PARAM name="minlength" type="real" reqd="no" def="3">
+         <SYNOPSIS>
+            Minimum number of consecutive time bins which must pass rate filter in lc_sigma_clip routine.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+	      The lc_sigma_clip minlength parameter determines the
+	      minimum number of consecutive time bins that must all
+	      pass the rate filter for the period to be considered
+	      'good'. This parameter is not used within the
+	      sigma-clipping iteration. If minlength=1 then a filter
+	      on the count rate is determined instead.
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="mean" type="real" reqd="no" def="None">
+         <SYNOPSIS>
+            Mean count rate (ct/s) of input light curve, as determined by lc_clean.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+             If 'mean' is 'None' (default), then the mean count rate
+             is calculted from the input light curve, using a single
+             sigma clip of the data (deflare 'nsigma' parameter, which
+             is the same as lc_clean 'clip'). Otherwise, the mean
+             count rate supplied should match the actual mean count
+             rate of the input light curve. The standard deviation is
+             calculated as sqrt(mean-rate/bin width). The mean value
+             is used to clip the light curve.
+            </PARA>
+         </DESC>
+      </PARAM>     
+      <PARAM name="stddev" type="real" reqd="no" def="None">
+         <SYNOPSIS>
+            Standard deviation of signal, as determined by lc_clean.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+             The 'stddev' parameter is the lc_clean 'sigma' parameter,
+             which is calculated from the 'mean' value as
+             sqrt(mean-rate/bin width). When stddev is 'None', then the
+             limits used for clipping the light curve are mean/scale
+             to min*scale, otherwise they are mean - nsigma*stddev to
+             mean + nsigma*stddev.
+            </PARA>
+         </DESC>
+      </PARAM>    
+      <PARAM name="scale" type="real" reqd="no" def="1.2">
+         <SYNOPSIS>
+            The scale factor about the mean count rate to use for
+            light curve limits, as determined by lc_clean.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+              When the 'stddev' parameter is 'None', then the limits
+              used by lc_clean for clipping the light curve are
+              mean/scale to min*scale, otherwise they are mean -
+              nsigma*stddev to mean + nsigma*stddev.
+            </PARA>
+         </DESC>
+      </PARAM>      
+      <PARAM name="minfrac" type="real" reqd="no" def="0.1">
+         <SYNOPSIS>
+           Minimum fraction of light curve bins that must pass the count-rate filter, as determined by lc_clean.
+         </SYNOPSIS>
+         <DESC>
+            <PARA>
+              The 'minfrac' parameter gives the minimum fraction of
+              the light curve bins that must pass the count-rate
+              filter (after ignoring the zero count-rate bins).
+            </PARA>
+         </DESC>
+      </PARAM>      
       <PARAM name="verbose" type="integer" def="1" min="0" max="5" reqd="no">
          <SYNOPSIS>
             Verbose can be from 0 to 5, generating different amounts of output.
@@ -619,6 +611,16 @@
       </PARA>
     </ADESC>
     -->
+
+    <ADESC title="Changes in the scripts 4.10.3 (October 2018) release">
+      <PARA>
+        The ahelp file - the SYNTAX and PARAMETERS sections - has been
+        updated to match the order of the parameters given in the
+        deflare parameter file (e.g. 'plist deflare'). Please note that
+        the exact set of parameters that are used depends on the
+        method parameter.
+      </PARA>
+    </ADESC>
 
     <ADESC title="Changes in the scripts 4.9.3 (May 2017) release">
       <PARA>
@@ -656,7 +658,7 @@
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>May 2017</LASTMODIFIED>
+    <LASTMODIFIED>October 2018</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>
