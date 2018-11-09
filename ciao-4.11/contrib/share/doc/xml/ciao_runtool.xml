@@ -1,0 +1,1173 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'chips>'>
+  <!ENTITY ciaover '4.11'>
+
+  <!ENTITY scripts "axbary, dmgti, evalpos, fullgarf, mean_energy_map, pileup_map, tgdetect, and wavdetect">
+
+]>
+<cxchelptopics>
+  <ENTRY key="ciao_runtool" context="contrib"
+	 refkeywords="ciao_contrib.runtool runtool runtools run spawn shell tool tools
+		      get_runtime_details punlearn read_params write_params
+		      contrib contributed ciao script package module extra python py
+		      history toolhistory
+		      CIAOTool CIAOToolParFile CIAOToolDirect
+		      get_pfiles set_pfiles add_tool_history make_tool list_tools
+		      new_tmpdir new_pfiles_environment pfiles parameter
+		      "
+	 >
+
+    <SYNOPSIS>
+      Run CIAO tools from Python as if they were functions (CIAO contributed package).
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>from ciao_contrib.runtool import *</LINE>
+      <LINE/>
+      <LINE>Run the dmcopy tool:</LINE>
+      <LINE>dmcopy("evt2.fits[bin sky=::8]", "img.fits")</LINE>
+      <LINE/>
+      <LINE>Run dmstat:</LINE>
+      <LINE>dmstat.punlearn()</LINE>
+      <LINE>dmstat.median = True</LINE>
+      <LINE>dmstat("src.dat[cols z,fx]", verbose=0)</LINE>
+      <LINE>print("The medians are {0}".format(dmstat.out_median))</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The ciao_contrib.runtool module allows CIAO tools to be run as
+	if they were Python functions, and supports a pset-like mode
+	where tool parameters can be set before the tool is run, named
+	parameters when calling the tool, and easy access to the
+	parameter values after the tool has completed.  Parameter
+	values are given using native Python types - e.g. True and
+	False for boolean parameters.
+      </PARA>
+
+      <PARA>
+        The ciao_contrib.runtool module is provided as part of the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO contributed
+        scripts</HREF> package.
+      </PARA>
+
+      <PARA title="Loading the routines">
+        The module can be loaded into ChIPS, Sherpa or a Python script
+	by saying:
+      </PARA>
+
+<VERBATIM>
+from ciao_contrib.runtool import *
+</VERBATIM>
+
+      <PARA>
+	Note that it is not provided by the ciao_contrib.all module,
+	unlike the other ciao_contrib modules.
+      </PARA>
+
+      <PARA title="Tools and parameter files">
+	The runtool module provides a function for each major tool in the
+	CIAO bin and contrib/bin directories that has a parameter file.
+	It also provides functions to set and get settings 
+	for those parameter files without an associated tool, such as
+	ardlib, lut and colors.
+      </PARA>
+
+      <PARA title="Extra routines">
+	The following routines are also provided:
+      </PARA>
+
+      <LIST>
+	<ITEM>
+	  get_pfiles() - return the user or system portion of the PFILES
+	  environment variable;
+	</ITEM>
+	<ITEM>
+	  set_pfiles() - easily change the user portion of the PFILES
+	  environment variable;
+	</ITEM>
+        <ITEM>
+	  make_tool() - create a routine that can be used to call a CIAO tool;
+        </ITEM>
+        <ITEM>
+	  list_tools() - returns a list of the tools and parameter files that
+	  are covered by this module;
+        </ITEM>
+	<ITEM>
+	  new_tmpdir() - a context manager that creates a temporary directory
+	  and ensures that the directory is removed once the block has finished;
+	</ITEM>
+	<ITEM>
+	  new_pfiles_environment() - a context manager that creates a
+	  temporary directory and uses it as the user path of the
+	  PFILES environment variable for the duration of the block;
+	  on exit the PFILES variable is restored to its original value and
+	  the temporary directory is removed;
+	</ITEM>
+	<ITEM>
+	  add_tool_history() - adds a CIAO history block to one or more files
+	  to indicate that a tool has been run with a given set of parameters
+	  (this block can be read by the dmhistory tool).
+	</ITEM>
+      </LIST>
+
+      <PARA>
+        The new_pfiles_environment context manager should be used if you are
+        running multiple copies of the same CIAO tool simultaneously (either
+        using Python's multiprocessing module or by running several copies of
+        the same script). See the "Running tools in parallel" section below for
+        more information.
+      </PARA>
+
+      <PARA>
+        The new_tmpdir context manager is useful when you need access to
+        a unique temporary directory, as shown below in the
+        "Changing the temporary directory used by a tool" example.
+      </PARA>
+
+      <PARA>
+        For more information on these tools please use the Python help
+        system - e.g.
+      </PARA>
+
+<VERBATIM>
+&pr; import ciao_contrib.runtool as rt
+&pr; help(rt.new_pfiles_environment)
+</VERBATIM>
+
+      <PARA title="Running a tool">
+	A tool can be run by calling the routine with all the arguments
+	it needs; required arguments are given either by positional order 
+	or as a named argument whereas optional arguments
+	always have to be given as a named argument. As an example
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; dmcopy("in.fits[sky=region(src.reg)][bin sky=::1]", "img.fits")</LINE>
+	  <LINE>&pr; dmstat(infile="img.fits", median=True, centroid=False)</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	Parameters can also be set using a parameter-style interface of
+	&lt;toolname&gt;.&lt;parname&gt; before calling the tool as shown
+	below:
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; dmcopy.outfile = "img.fits"</LINE>
+	  <LINE>&pr; dmcopy.infile = "in.fits[sky=region(src.reg)][bin sky=::1]"</LINE>
+	  <LINE>&pr; dmcopy()</LINE>
+	  <LINE>&pr; dmstat.median = True</LINE>
+	  <LINE>&pr; dmstat.centroid = False</LINE>
+	  <LINE>&pr; dmstat(infile="img.fits")</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	You can mix both approaches, as shown above in the
+	last dmstat call.
+      </PARA>
+
+      <PARA title="Running tools in parallel">
+        The Python multiprocessing module makes it possible to run tools in
+        parallel, and is used to provide the multiprocessing feature
+        in scripts like fluximage and merge_obs. Alternatively, you
+        can run several copies of your script at the same time.
+        In either case, you may see errors or problems because the same
+        parameter file is being used for each run of the tool (this
+        can lead to invalid results, as inconsistent parameter settings
+        are used, or the tool can fail). To avoid this, use the
+        new_pfiles_environment context manager to create a new
+        copy of your PFILES environment. An example of its
+        use is shown below (this uses Sherpa's parallel_map routine,
+        which provides a simple way to use the multiprocessing
+        module):
+      </PARA>
+
+<VERBATIM>
+import ciao_contrib.runtool as rt
+import sherpa.utils
+
+# The asphist/mkinstmap/mkexpmap call below will use their own
+# PFILES directory and so will not collide with other runs of
+# these tools (or changes to the default ardlib parameter file
+# since this has been copied over to the new directory)
+#
+def getemap((ccd, gridstr)):
+    """Create an ACIS exposure map for the ccd and grid that can
+    be run in parallel. The routine can only accept a single
+    argument as it is to be called via Sherpa's parallel_map
+    routine. As we need multiple values, we therefore use a tuple.
+
+    This routine is only for didactic purposes since it assumes
+    a number of things, such as file names, that will not be
+    true in general.
+    """
+
+    # We copy over the ardlib so that if the bad-pixel file
+    # has been set, its value is used in the new environment.
+    #
+    with rt.new_pfiles_environment(ardlib=True):
+        afile = "asphist{0}.fits".format(ccd)
+        ah = rt.make_tool("asphist")
+        ah(infile="asol1.fits", outfile=afile,
+           evtfile="evt2.fits[ccd_id={0}]".format(ccd),
+           clobber=True)
+
+        ifile = "imap{0}.fits".format(ccd)
+        mki = rt.make_tool("mkinstmap")
+        mki(outfile=ifile, monoenergy=1.7, pixelgrid="1:1024:1,1:1024:1",
+            obsfile=afile+"[asphist]", detsubsys="ACIS-{0}".format(ccd),
+            maskfile="msk1.fits", clobber=True)
+
+        efile = "emap{0}.fits".format(ccd)
+        mke = rt.make_tool("mkexpmap")
+        mke(asphistfile=afile, outfile=efile, instmapfile=ifile,
+            xygrid=gridstr, clobber=True)
+
+# Create the arguments for CCDs 0-3 and 6
+grid = "2824.5:6552.5:#932,2868.5:5328.5:#615"
+ccds = [0, 1, 2, 3, 6]
+args = [(ccd,grid) for ccd in ccds]
+
+# Run getemap on all available CPUs
+sherpa.utils.parallel_map(getemap, args)
+</VERBATIM>
+
+      <PARA>
+        Note that new_pfiles_environment automatically creates the temporary
+        parameter directory, changes the PFILES environment variable, runs your
+        code, and then restores the PFILES variable and deletes the temporary
+        directory for you.
+      </PARA>
+
+      <PARA>
+        The location of the temporary direction is determined by the
+        ASCDS_WORK_PATH environment variable.
+      </PARA>
+      
+      <PARA title="Clearing, setting, and viewing parameter settings">
+	Each tool has a punlearn() method which will reset the values to
+	the CIAO defaults. As shown above, parameter values can be set
+	either when calling the tool or via the 
+	&lt;toolname&gt;.&lt;parname&gt; approach, and
+	the current settings can be displayed using print. As an example
+      </PARA>
+<VERBATIM>
+&pr; dmjoin.punlearn()
+&pr; dmjoin.interpolate = "closest"
+&pr; print(dmjoin)
+Parameters for dmjoin:
+
+Required parameters:
+              infile =                  Input file
+            joinfile =                  Input join file
+             outfile =                  Output file
+                join =                  Join col
+
+Optional parameters:
+         interpolate = closest          Interpolate mode
+             verbose = 0                Debug Level(0-5)
+             clobber = False            Clobber
+</VERBATIM>
+      <PARA>
+	There are also write_params() and read_params() methods
+	that can be used to create a .par file from the current
+	settings or read values in from a given .par file.
+	See
+	"help &lt;toolname&gt;.read_params"
+	or
+	"help &lt;toolname&gt;.write_params" 
+	for more information on these methods.
+      </PARA>
+      <PARA title="Support for unique parameter prefixes">
+	As with the command line, parameter names can be
+	shortened to any unique prefix. This means that
+	dmjoin.inf can be used to read or write the infile
+	parameter of dmjoin, but dmstat.joi will fail since
+	it matches both the join and joinfile parameters.
+      </PARA>
+      <PARA>
+	This support also holds when calling a tool, so
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; dmcopy(infile, outfile, cl=True)</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	calls dmcopy with the clobber parameter set to yes.
+      </PARA>
+      <PARA>
+	An error will be raised if the prefix is not unique; for
+	instance
+      </PARA>
+<VERBATIM>
+&pr; dmjoin.joi
+AttributeError: Multiple matches for dmjoin parameter 'joi', choose from:
+  joinfile join
+</VERBATIM>
+      <PARA>
+	A SyntaxError will occur if a Python reserved word - such as
+	"in" or "for" - is used as the parameter name.
+      </PARA>
+
+      <PARA title="Stack support">
+	There is limited support for stacks in this module: if a string or
+	file parameter is sent an array then the elements are turned into
+	a comma-separated string and this is used as the parameter value.
+      </PARA>
+
+      <PARA>
+	The following example creates the average of all the files that match imgn.fits,
+	with n being from 1 to 9, to create avg.fits:
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; import glob</LINE>
+	  <LINE>&pr; from ciao_contrib.runtool import dmimgcalc</LINE>
+	  <LINE>&pr; dmimgcalc.punlearn()</LINE>
+	  <LINE>&pr; infiles = glob.glob("img[1-9].fits")</LINE>
+	  <LINE>&pr; nf = len(infiles)</LINE>
+	  <LINE>&pr; inames = ["img{0}".format(i) for i in range(1,nf+1)]</LINE>
+	  <LINE>&pr; opstr = "imgout=({0})/{1}.0".format("+".join(inames), nf)</LINE>
+	  <LINE>&pr; dmimgcalc(infiles, out="avg.fits", op=opstr)</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	The build() routine from the stk module can be used
+	to convert a parameter value to an array of values, and the
+	make_stackfile() routine from the 
+	ciao_contrib.stacklib module can be used to
+	create a temporary stack file from an array.
+      </PARA>
+
+      <PARA title="Parameter constraints">
+	If a parameter can only be one of a set of values then
+	the parameter value can be set to a unique substring, just
+	as on the command line. As an example, the interpolate
+	parameter of dmjoin can be one of "linear", "first", "last",
+	"closest", "furthest", "minimum", or "maximum", so the following are
+	all valid:
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; dmjoin.interp = "min"</LINE>
+	  <LINE>&pr; dmjoin("a.dat","b.dat","c.dat","x",interp="lin")</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	An error occurs if a parameter is set to an invalid value;
+	e.g. either using a number outside the valid range or if
+	there are a limited set of choices, as shown below:
+      </PARA>
+<VERBATIM>
+&pr; dmjoin.verbose = 10
+ValueError: dmjoin.verbose must be &lt;= 5 but set to 10
+&pr; dmjoin.interp = "foo"
+ValueError: The parameter interpolate was set to foo when it must be one of:
+  linear first last closest furthest minimum maximum
+</VERBATIM>
+
+      <PARA title="The return value">
+	If there is no screen output from the tool then the tool returns
+	None, otherwise it returns a single string containing both the
+	STDOUT and STDERR channels. This output can either be stored
+	in a variable or - if used from an interactive environment
+	such as ChIPS and Sherpa - it will be automatically displayed.
+	In the following, the dmcopy call creates no screen output, so
+	it returns None which is not displayed by ChIPS, whereas the
+	dmstat output is displayed
+      </PARA>
+<VERBATIM>
+&pr; dmcopy(infile, outfile)
+&pr; dmstat(outfile)
+
+y
+    min:	10 	      @:	1 
+    max:	87.3 	      @:	5 
+   mean:	35.3 
+  sigma:	28.55548984 
+    sum:	176.5 
+   good:	5 
+   null:	0
+&pr; out = dmstat(outfile)
+&pr; lines = out.split("\n")
+&pr; print(lines[1])
+    min:	10 	      @:	1 
+</VERBATIM>
+
+      <PARA title="What happens if the tool fails?">
+	An IOError is raised 
+	if the tool returns a non-zero exit status.
+	The error contains the screen output of the tool,
+	as shown below where I used an invalid file:
+      </PARA>
+<VERBATIM>
+&pr; dmstat("simple.dat[cols z]")
+IOError: An error occurred while running 'dmstat':
+  # DMSTAT (CIAO &ciaover;): could not open infile simple.dat[cols z].
+</VERBATIM>
+      <PARA>
+	The return value can be retrieved using the get_runtime_details()
+	method of the tool, which is described below.
+      </PARA>
+      <PARA>
+	Unfortunately not all CIAO tools set the exit status correctly
+	on error, so these will appear to have run successfully even
+	on failure.
+      </PARA>
+
+      <PARA title="How long did the tool run for?">
+	The get_runtime_details() method returns a dictionary which lists
+	information on the last time the tool was run using this interface.
+	This information is cleared when the punlearn() method is used.
+	The keyword and values returned are listed below.
+	Note that no keyword is guaranteed to be present and that
+	the timings are not intended for precise bench-marking so should
+	not be considered to be accurate to more than about one second.
+      </PARA>
+      <TABLE>
+	<ROW>
+	  <DATA>Keyword</DATA><DATA>Value</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>code</DATA><DATA>The return value for the tool (0 indicates success,
+	  otherwise there was a failure).</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>start</DATA><DATA>The start time, as returned by the time.localtime()
+	  routine.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>end</DATA><DATA>The end time, as returned by the time.localtime()
+	  routine.</DATA>
+	</ROW>
+	<ROW>
+	  <DATA>delta</DATA>
+	  <DATA>
+	    A string representing the run time. It is useful for a simple display, but
+	    use the start and end fields for a more accurate representation.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>args</DATA>
+	  <DATA>
+	    An array of the command-line arguments used to run the tool, stored as
+	    (name,value) pairs.
+	  </DATA>
+	</ROW>
+	<ROW>
+	  <DATA>output</DATA>
+	  <DATA>
+	    The screen output for the tool (includes both STDOUT and STDERR in the same
+	    string). This is not cleaned up to remove trailing white space as is done for
+	    the return value when calling the tool.
+	  </DATA>
+	</ROW>
+      </TABLE>
+      <PARA>
+	See the 
+	<HREF link="http://docs.python.org/library/time.html">documentation for
+	the Python time module</HREF>
+	for more information on how to use the start and end
+	values.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<DESC>
+	  <PARA title="Providing all the arguments in the call">
+	    In this example we run the dmcopy tool and provide
+	    all the necessary arguments when the routine is called.
+	    The dmcopy.punlearn routine is used to ensure the settings
+	    are at their default values.
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; dmcopy.punlearn()</LINE>
+	      <LINE>&pr; dmcopy("evt2.fits[ccd_id=7]", "ccd7.fits", clobber=True)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    We adapt this to loop through the ccd_id values 0, 1, 2, 3, and 6
+	    and create the files "ccd&lt;n&gt;.fits". We also take advantage
+	    of the support for using parameter prefixes to shorten "clobber" to "cl".
+	  </PARA>
+<VERBATIM>
+&pr; for ccd in [0,1,2,3,6]:
+           infile = "evt2.fits[ccd_id={0}]".format(ccd)
+           outfile = "ccd{0}.fits".format(ccd)
+           dmcopy(infile, outfile, cl=True)
+           print("Created: {0}".format(outfile))
+
+
+Created: ccd0.fits
+Created: ccd1.fits
+Created: ccd2.fits
+Created: ccd3.fits
+Created: ccd6.fits
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<DESC>
+	  <PARA title="Setting the arguments before the call">
+	    The "pset" approach can also be used to set the arguments
+	    before the call. The original example above can be re-written
+	    as:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; dmcopy.punlearn()</LINE>
+	      <LINE>&pr; dmcopy.infile = "evt2.fits[ccd_id=7]"</LINE>
+	      <LINE>&pr; dmcopy.outfile = "ccd7.fits"</LINE>
+	      <LINE>&pr; dmcopy.cl = True</LINE>
+	      <LINE>&pr; dmcopy()</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<DESC>
+	  <PARA title="Mixing both approaches">
+	    Both approaches can be combined. For instance, if you wish
+	    to call a tool multiple times with some parameters fixed
+	    you may wish to use the pset approach for those parameters
+	    and call the tool with those arguments that change.
+	  </PARA>
+	  <PARA>
+	    Here we set the clobber argument and then call dmcopy with
+	    the infile and outfile arguments.
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; dmcopy.punlearn()</LINE>
+	      <LINE>&pr; dmcopy.cl = True</LINE>
+	      <LINE>&pr; dmcopy(infile, outfile)</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<DESC>
+	  <PARA title="Accessing parameter values after a tool runs">
+	    Some tool set parameter values after being run. These
+	    values can be inspected and used as shown below, which includes
+	    setting the parameter value for the mkexpmap tool based on the
+	    output of get_sky_limits.
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; get_sky_limits("img.fits", verbose=0)</LINE>
+	      <LINE>&pr; dmf = get_sky_limits.dmfilter</LINE>
+	      <LINE>&pr; print("Filter: {0}".format(get_sky_limits.dmf))</LINE>
+	      <LINE>Filter: X=4047.5:4098.5:#51,Y=3920.5:3971.5:#51</LINE>
+	      <LINE>&pr; mkexpmap.xygrid = get_sky_limits.xygrid</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    The whole set of parameters can also be displayed:
+	  </PARA>
+
+<VERBATIM>
+&pr; print(get_sky_limits)
+Parameters for get_sky_limits:
+
+Required parameters:
+               image = img.fits         Image for which you want to know the binning
+
+Optional parameters:
+           precision = 1                Precision [# decimal points] for output numbers
+            dmfilter = X=4047.5:4098.5:#51,Y=3920.5:3971.5:#51  DM filter syntax to match image
+              xygrid = 4047.5:4098.5:#51,3920.5:3971.5:#52  xygrid parameter for mkexpmap to match image
+             verbose = 0                Debug Level (0-5)
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<DESC>
+	  <PARA title="Multiple copies of a tool">
+	    Multiple versions of a tool can be created, each with its own
+	    set of parameters. As a simple case, if you want to 
+	    run dmstat with the median parameter set to True or False
+	    you could try the following:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; dms1 = make_tool("dmstat")</LINE>
+	      <LINE>&pr; dms1.median = False</LINE>
+	      <LINE>&pr; dms2 = make_tool("dmstat")</LINE>
+	      <LINE>&pr; dms2.median = True</LINE>
+	    </SYNTAX>
+	  </PARA>
+	  <PARA>
+	    Then using dms1 or dms2 will run dmstat with the median parameter
+	    set to False and True repsectively:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; dms1("lc.fits[cols count_rate]")</LINE>
+	      <LINE>&pr; dms2("lc.fits[cols count_rate]")</LINE>
+	    </SYNTAX>
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<DESC>
+	  <PARA title="Changing the temporary directory used by a tool">
+	    Several tools allow you to change the location of the temporary directory 
+	    used to store intermediate products. This parameter should be changed
+	    if multiple copies of the tool are being run simultaneously,
+	    to avoid clashes and potential tool failure.
+	    One way to do this is to use the new_tmpdir context manager,
+	    which creates a temporary directory and guarantees it's clean up.
+	    As an example:
+	  </PARA>
+<VERBATIM>
+    with new_tmpdir() as tmpdir:
+        # tmpdir has been created and can be used in this block
+        bmap = make_tool("create_bkg_map")
+        bmap.tmpdir = tmpdir
+        ...
+        bmap(...)
+
+    # at this point the temporary directory is guaranteed to have been
+    # deleted, even if there is was an error in the block of code above
+    #
+    ...
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Controlling the location of temporary files and directories">
+      <PARA>
+        The ASCDS_WORK_PATH environment variable (not TMPDIR)
+        is used to determine the location to use for temporary
+        files and directories. This location is used when running
+        CIAO tools - those that are instances of the
+        CIAOToolParFile class - since a copy of the parameter file
+        is created to ensure there to ensure that tools can be
+        run in parallel without conflict. It is also used by the
+        new_tmpdir and new_pfiles_environment context managers.
+      </PARA>
+    </ADESC>
+    
+    <ADESC title="Routines with no corresponding tool">
+      <PARA>
+	There are a number of CIAO parameter files which have no
+	corresponding tool - for instance ardlib, geom, colors and
+	lut.
+	These are provided in this module for reading and setting
+	parameters, but you can not call them. Also, as
+	discussed below in the "PARAMETER FILES" section, setting
+	these parameters does not change the on-disk parameter
+	file unless you call the write_params method.
+      </PARA>
+      <PARA>
+	Here is an example of accessing the lut parameter file:
+      </PARA>
+<VERBATIM>
+&pr; print(lut)
+Parameters for lut:
+                   a = ${ASCDS_CALIB}/a.lut  Color lookup table
+                aips = ${ASCDS_CALIB}/aips.lut  Color lookup table
+                   b = ${ASCDS_CALIB}/b.lut  Color lookup table
+                  bb = ${ASCDS_CALIB}/bb.lut  Color lookup table
+                blue = ${ASCDS_CALIB}/blue.lut  Color lookup table
+               color = ${ASCDS_CALIB}/color.lut  Color lookup table
+                cool = ${ASCDS_CALIB}/cool.lut  Color lookup table
+               green = ${ASCDS_CALIB}/green.lut  Color lookup table
+                grey = ${ASCDS_CALIB}/grey.lut  Color lookup table
+              halley = ${ASCDS_CALIB}/halley.lut  Color lookup table
+               heaob = ${ASCDS_CALIB}/heaob.lut  Color lookup table
+                heat = ${ASCDS_CALIB}/heat.lut  Color lookup table
+                 hsv = ${ASCDS_CALIB}/hsv.lut  Color lookup table
+                  i8 = ${ASCDS_CALIB}/i8.lut  Color lookup table
+            rainbow1 = ${ASCDS_CALIB}/rainbow1.lut  Color lookup table
+            rainbow2 = ${ASCDS_CALIB}/rainbow2.lut  Color lookup table
+                ramp = ${ASCDS_CALIB}/ramp.lut  Color lookup table
+                 red = ${ASCDS_CALIB}/red.lut  Color lookup table
+                 sls = ${ASCDS_CALIB}/sls.lut  Color lookup table
+           staircase = ${ASCDS_CALIB}/staircase.lut  Color lookup table
+            standard = ${ASCDS_CALIB}/standard.lut  Color lookup table
+
+&pr; hl = lut.halley
+&pr; print(os.path.expandvars(hl))
+/soft/ciao-&ciaover;/data/halley.lut
+</VERBATIM>
+      <PARA>
+	(assuming CIAO is installed in /soft/ciao-&ciaover;/) but it can not be called
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; lut(b="tst.lut")</LINE>
+	  <LINE>TypeError: 'CIAOParameter' object is not callable</LINE>
+	</SYNTAX>
+      </PARA>
+
+    </ADESC>
+
+    <ADESC title="Parameter files">
+      <PARA>
+	Using these routines does not change any parameter file on disk,
+	unless you use one of the routines listed below.
+	This means it is safe to use this module to run tools from
+	a script whilst using CIAO tools from the command line;
+	the parameter files used by the command-line tools will not
+	be over-written or changed by the Python script.
+      </PARA>
+      <PARA>
+	Any routine that is an instance of the CIAOToolParFile class
+	- which, as of CIAO 4.9, is all tools except for 
+	&scripts; -
+	will not change the on-disk parameter file.
+      </PARA>
+
+      <PARA title="Routines that do change the on-disk parameter file">
+	Running instances of the CIAOToolDirect class - so
+	&scripts; - will change the on-disk parameter file.
+      </PARA>
+
+      <PARA title="How to check whether a parameter file will be changed?">
+	The class of the routine - which can be returned by the type() call
+	or checked using isinstance() - determines whether a parameter file
+	will be changed ("CIAOToolDirect") or not ("CIAOToolParFile").
+	For instance,
+      </PARA>
+
+<VERBATIM>
+&pr; type(dmgti)
+       &lt;class 'ciao_contrib.runtool.CIAOToolDirect'>
+&pr; type(dmstat)
+       &lt;class 'ciao_contrib.runtool.CIAOToolParFile'>
+&pr; type(wavdetect)
+       &lt;class 'ciao_contrib.runtool.CIAOToolDirect'>
+</VERBATIM>
+      <PARA>
+	These class names are rather confusing and may be changed in a
+	later release.
+      </PARA>
+      <PARA title="WARNING: use of ardlib and other such parameter files">
+	Many instrument-specific tools use parameter files like ardlib and
+	geom to find certain files. When the tool is run, they still use
+	the on-disk version of the file and not the values stored in
+	the Python object of the same name. So the setting
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; ardlib.AXAF_ACIS0_BADPIX = "bpix.fits[ccd_id=0]"</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	  will not be picked up when a tool such as mkinstmap is run.
+	  One solution is to use the write_params method, which is described further
+	  below, to write out the ardlib parameter file to disk after making
+	  changes.
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; ardlib.AXAF_ACIS0_BADPIX = "bpix.fits[ccd_id=0]"</LINE>
+	  <LINE>&pr; ardlib.write_params()</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA title="Updating a parameter file">
+	If you want to write the current set of parameters to 
+	disk, you can use the "write_params" method. As an example,
+	where e1, e2 and e3 are numbers that have been calculated
+	elsewhere
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; expr = "imgout=(img1*{0}+img2*{2})+{3}".format(e1,e2,e3)</LINE>
+	  <LINE>&pr; dmimgcalc.operation = expr</LINE>
+	  <LINE>&pr; dmimgcalc.write_params()</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	will write the expression out to the dmimgcalc parameter file
+	(eg try "!plist dmimgcalc" to see the result).
+      </PARA>
+      <PARA>
+	To write to a specific file, give a file name as the argument to 
+	write_params. A ".par" suffix will be appended if the filename
+	does not contain one.
+      </PARA>
+      <PARA title="Updating to match a parameter file">
+	The default values - and those used when the punlearn() method
+	is used - are taken from the CIAO defaults. To update the values
+	to match those from an on-disk file use the "read_params" method:
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; dmimgcalc.read_params()</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	To read from  a specific file, give a file name as the argument to 
+	write_params. A ".par" suffix will be appended if the filename
+	does not contain one.
+      </PARA>
+      <PARA title="Changing the PFILES environment variable">
+	The set_pfiles() routine changes the user portion of the
+	PFILES environment variable. This controls where 
+	the tools look for ancillary parameter files (e.g. ardlib)
+	and where the read_params and write_params methods default
+	to when no explicit filename is given. See 'help set_pfiles'
+	for more information.
+      </PARA>
+      <PARA>
+	The get_pfiles() routine can be used to get the current user or system
+	portions of the PFILES environment variable. See 'help get_pfiles'
+	for more information.
+      </PARA>
+      <PARA>
+	The new_pfiles_environment() context manager can be used to
+	automatically handle the creation and clean up of a directory,
+	as well as changing the PFILES environment variable. For
+	instance:
+      </PARA>
+<VERBATIM>
+def getemap(ccd, gridstr):
+    """Create an ACIS exposure map for the given CCD and using gridstr
+    as the xygrid parameter of mkexpmap.
+
+    The input files are hard coded to simple names for simplicitly.
+    """
+
+    with new_pfiles_environment(ardlib=True):
+        afile = "asphist{0}.fits".format(ccd)
+        ah = make_tool("asphist")
+        ah(infile="asol1.fits", outfile=afile,
+           evtfile="evt2.fits[ccd_id={0}]".format(ccd),
+           clobber=True)
+
+        ifile = "imap{0}.fits".format(ccd)
+        mki = make_tool("mkinstmap")
+        mki(outfile=ifile, monoenergy=1.7, pixelgrid="1:1024:1,1:1024:1",
+            obsfile=afile+"[asphist]", detsubsys="ACIS-{0}".format(ccd),
+            maskfile="msk1.fits", clobber=True)
+
+        efile = "emap{0}.fits".format(ccd)
+        mke = make_tool("mkexpmap")
+        mke(asphistfile=afile, outfile=efile, instmapfile=ifile,
+            xygrid=gridstr, clobber=True)
+</VERBATIM>
+
+      <PARA>
+	defines a routine, getemp(), which will run the asphist, mkinstmap
+	and mkexpmap tools using a temporary directory and PFILES setting.
+	This directory will be automatically removed, and the PFILES environment
+	variable restored at the end of the routine, even if one of tools
+	fails.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Differences to CIAO tools">
+      <PARA title="No mode parameter">
+	All tools are run with the mode parameter set to "hl". This is
+	to avoid the tool trying to prompt you for missing
+	parameter values, which would lead to it appear to hang
+	as the prompt would not be seen by the user.
+      </PARA>
+      <PARA title="Missing parameters">
+	As well as the mode parameters, there are a few tools which
+	have a parameter that can only be set to a single value. These
+	parameters are excluded from the interface.
+      </PARA>
+      <PARA title="Parameter values">
+	Parameters should be set using the appropriate Python
+	type, namely booleans, integers, floats or strings.
+	For floating-point values, None is used to indicate the
+	"INDEF" setting. None can be used for filenames and strings
+	to indicate the value "".
+	File names are given as strings, but you do not need to
+	add extra quotes if it contains a space - so the
+	following is valid
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; dmstat("evt2.fits[sky=region(src.reg)][cols energy]")</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA title="Redirected values">
+	There is limited support for the use of parameter redirects - the
+	use of ")&lt;parname&gt;" to use the value from another parameter -
+	but it only supports redirects to the same parameter file.
+      </PARA>
+      <PARA title="Parameter names">
+	When required, parameter names are adjusted to make sure they are valid Python.
+	At present the only change used is to convert any "-" characters to
+	"_"; this is only required for several parameters in ardlib.
+	Purely numeric parameter names are ignored; this only
+	occurs for the "helper" parameters of dmtabfilt.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.11.1 (December 2018) release">
+      <PARA title="Updated for CIAO 4.11">
+        The module has been updated to reflect the parameters for
+        the tools included in CIAO 4.11.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.10.1 (April 2018) release">
+      <PARA title="Updated for CIAO 4.10">
+        The module has been updated to reflect the parameters for
+        the tools included in CIAO 4.10.
+      </PARA>
+      <PARA title="Improved Python 3 support for INDEF parameters">
+        Fixed an issue which prevented the use of INDEF as a parameter
+        value when run on a Python 3.5 version of CIAO.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.9.4 (July 2017) release">
+      <PARA title="Running scripts">
+	The following tools have been changed to use the
+	CIAOToolDirect class, which means that care should be taken
+	if multiple copies of these tools are run in parallel:
+	axbary, evalpos, mean_energy_map, pileup_map, tgdetect,
+	and wavdetect. It is suggested that the new_pfiles_environment
+	context manager is used to run these tools, as it automates
+	the creation and deletion of a temporary parameter directory
+	for use by the tools.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.9.2 (April 2017) release">
+      <PARA title="Changed tool">
+        The blanksky routine supports the new 'random' seed parameter in order to create 
+	reproducible background files.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.8.4 (October 2016) release">
+      <PARA title="New tools">
+	The module was updated to support the new 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/blanksky.html">blanksky</HREF>,
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/blanksky_image.html">blanksky_image</HREF>,
+	and 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/correct_periscope_drift.html">correct_periscope_drift</HREF>
+	scripts added in this release.
+      </PARA>
+
+      <PARA title="Changed tool">
+        The specextract routine supports the new 'binarfcorr'
+        parameter to explicitly specify detector pixel size used by
+        arfcorr PSF correction.  The 'srcflux' script has the
+        'psfmethod=marx' option enabled to simulate a monochromatic
+        PSF for aperture correction if MARX is installed.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.8.3 (April 2016) release">
+      <PARA title="New tools">
+	The module was updated to support the new 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/simulate_psf.html">simulate_psf</HREF>
+	script added in this release.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the script 4.8.2 (January 2016) release">
+      <PARA title="Changed tools">
+	Support for the add_grating_orders and add_grating spectra
+	scripts has been removed, superseded by
+	the <HREF link="http://cxc.harvard.edu/ciao/ahelp/combine_grating_spectra.html">combine_grating_spectra</HREF>
+	script to combine grating orders and spectra.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the script 4.8.1 (December 2015) release">
+      <PARA title="Removed tools">
+	The fluximage, merge_obs, flux_obs, and
+	readout_bkg routines support the 'random' seed parameter in
+	order to create reproducible results.  
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.7.4 (September 2015) release">
+      <PARA title="New tools">
+	The module was updated to support the new 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/readout_bkg.html">readout_bkg</HREF>,
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/install_marx.html">install_marx</HREF>,
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/detilt.html">detilt</HREF>,
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/dewiggle.html">dewiggle</HREF>,
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/symmetrize.html">symmetrize</HREF>,
+	and 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/download_obsid_caldb.html">download_obsid_caldb</HREF>
+	scripts added in this release.
+      </PARA>
+
+      <PARA title="Changed tool">
+        The specextract routine supports the new 'binarfcorr'
+        parameter to explicitly specify detector pixel size used by
+        arfcorr PSF correction.  The 'srcflux' script has the
+        'psfmethod=marx' option enabled to simulate a monochromatic
+        PSF for aperture correction if MARX is installed.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.7.2 (April 2015) release">
+      <PARA title="New tools">
+	The module was updated to support the new 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/splitobs.html">splitobs</HREF>,
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/gti_align.html">gti_align</HREF>,
+	and 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/multi_chip_gti.html">multi_chip_gti</HREF>
+	scripts added in this release.
+      </PARA>
+
+      <PARA title="Changed tool">
+        The mktgresp routine supports the new 'orders' parameter to
+        allow the creation of responses for an arbitrary set of
+        orders.  The responses for different orders are can now be
+        created in parallel, controlled by the new 'parallel' and
+        'nproc' parameters.   
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.7 (October 2014) release">
+      <PARA title="New tools">
+	The module was updated to support the new 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/combine_grating_spectra.html">combine_grating_spectra</HREF>
+	and 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/tgsplit.html">tgsplit</HREF>
+	scripts added in this release.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.6 (September 2014) release">
+      <PARA title="Using $ASCDS_WORK_PATH for temporary files">
+	The new_pfiles_environment() and new_tmpdir() context managers
+	have a new parameter tmpdir, and default to using the
+	$ASCDS_WORK_PATH environment variable to set the location of
+	the temporary directories they create; previously they used
+	/tmp or the $TMPDIR environment variable.
+	The tmpdir argument has been added to the
+	add_tool_history() function.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.3 (March 2014) release">
+      <PARA title="New tool">
+	The module was updated to support the new 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/ecf_calc.html">ecf_calc</HREF>
+	script
+	added in this release.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.6.1 (December 2013) release">
+      <PARA>
+	The module was updated to support the new tools and scripts in
+	the CIAO 4.6 release 
+	(e.g. 
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/srcflux.html">srcflux,</HREF>
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/tgdetect2.html">tgdetect2,</HREF>
+	<HREF link="http://cxc.harvard.edu/ciao/ahelp/tg_choose_method.html">tg_choose_method)</HREF>
+	the removed tools and scripts 
+	(acis_classify_hotpix, acis_find_hotpix,
+	acis_run_hotpix, merge_all),
+	and for changes in parameters of existing tools 
+	(such as mkinstmap, acis_process_events, and specextract).
+      </PARA>
+      <PARA title="Automatic stack handling">
+	Long parameter values are automatically written out as a stack file,
+	to avoid problems with long line lengths. Prior to this release
+	the stack files were accessed using '@filename', which has now
+	been changed to '@-filename' to avoid the path to the stack file
+	being added to the entries. See 'ahelp stack' for more information.
+      </PARA>
+      <PARA title="Improved support for modelflux">
+	The modelflux routine now no longer changes the on-disk
+	parameter file (i.e. it is now an instance of the CIAOToolParFile
+	rather than CIAOToolDirect class). See the "Parameter files"
+	section above for more information.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.4 (August 2013) release">
+      <PARA title="New tools">
+	The module supports the new scripts in this release:
+        search_csc and obsid_search_csc.
+      </PARA>
+      <PARA title="Changed tools">
+	The specextract and find_chandra_obsid commands have been
+        updated to reflect the changes in the parameter files of these tools.
+      </PARA>
+      <PARA title="Running tools in parallel">
+        A new section to the ahelp file has been added: Running tools in parallel.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.2 (April 2013) release">
+      <PARA title="New tools">
+	The module supports the new scripts in this release:
+	mktgresp, tgmask2reg, and reg2tgmask.
+      </PARA>
+      <PARA title="Changed tools">
+	The chandra_repro command supports the new 
+        recreate_tg_mask parameter.
+      </PARA>
+      <PARA title="Renamed parameter files">
+	The list of look-up tables available via the ximage and imagej 
+	parameter files are now accessed through their new
+	names: ximage_lut and imagej_lut.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.5.1 (December 2012) release">
+      <PARA>
+	The module was updated to support the new tools in
+	the CIAO 4.5 release (tg_findzo), the removed tools (mkpsf),
+	and for changes in parameters of existing tools (e.g. modelflux).
+	Support for INDEF with numeric parameters has been improved.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+<!--
+      <PARA title="INDEF values">
+	The use of None as a replacement for INDEF for numeric
+	parameters has not been well tested.
+      </PARA>
+-->
+      <PARA title="Use of parameter redirects to other parameter files">
+	Parameter values of the form ")toolname.parname", which use the
+	parameter value from another parameter file, are not supported. So, for
+	example tgdetect, which has its thresh parameter set to
+	")celldetect.thresh", will not run unless you manually set these
+	parameters to a valid value. For example:
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&pr; from ciao_contrib.runtool import *</LINE>
+	  <LINE>&pr; print(tgdetect.thresh)</LINE>
+	  <LINE>)celldetect.thresh</LINE>
+	  <LINE>&pr; tgdetect.thresh = celldetect.thresh</LINE>
+	  <LINE>&pr; print(tgdetect.thresh)</LINE>
+	  <LINE>3.0</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/">bugs pages</HREF>
+	for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>December 2018</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
