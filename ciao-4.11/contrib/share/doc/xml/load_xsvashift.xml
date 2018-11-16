@@ -3,56 +3,37 @@
  <!ENTITY pr "sherpa>">
 ]>
 <cxchelptopics>
-  <ENTRY pkg="sherpa" key="load_xskdblur"
-	 refkeywords="xskdblur kdblur load_kdblur
-		      blur laor
+  <ENTRY pkg="sherpa" key="load_xsvashift"
+	 refkeywords="xsvashift vashift load_vashift
+		      velocity additive
 		      x-spec xspec convolution model experimental
 		      "
 	 seealsogroups="sh.models "
 	 displayseealsogroups="" context="models">
 
     <SYNOPSIS>
-      convolve with the laor model shape.
+      Velocity shift an additive model.
       XSpec convolution model 
       *Experimental*.
     </SYNOPSIS>
 
     <DESC>
       <PARA>
-	A convolution model to smooth a spectrum by 
-	relatavistic effects from an accretion disk around
-	a rotating black hole.
-	Uses Ari Loar's calculation including
-	GR effects
-	(<HREF link="http://adsabs.harvard.edu/abs/1991ApJ...376...90L">ApJ
-	376, 90</HREF>).
-	Modified from laor model by Andy Fabian and
-	Roderick Johnstone.
+	This convolution model velocity shifts an additive model. It
+	takes the calculated model and shifts energies by
+        -Ev/c.
       </PARA>
-
+      
       <TABLE>
-	<CAPTION>xskdblur Parameters</CAPTION>
+	<CAPTION>xsvashift Parameters</CAPTION>
 	<ROW> 
 	  <DATA>Number</DATA>
 	  <DATA>Name</DATA>
 	  <DATA>Description</DATA> 
 	</ROW>
 	<ROW> 
-	  <DATA>1</DATA> <DATA>Index</DATA>
-	  <DATA>Index: power law dependence of emissivity 
-	  (scales as R^-Index)</DATA>
-	</ROW>
-	<ROW> 
-	  <DATA>2</DATA> <DATA>Rin_G</DATA>
-	  <DATA>inner radius (units of GM/c^2)</DATA>
-	</ROW>
-	<ROW> 
-	  <DATA>3</DATA> <DATA>Rout_G</DATA>
-	  <DATA>outer radius (units of GM/c^2)</DATA>
-	</ROW>
-	<ROW> 
-	  <DATA>4</DATA> <DATA>Incl</DATA>
-	  <DATA>inclination (degrees)</DATA>
+	  <DATA>1</DATA> <DATA>Velocity</DATA>
+	  <DATA>Velocity in km/s</DATA>
 	</ROW>
       </TABLE>
 
@@ -67,6 +48,10 @@
 	<ITEM>
 	  This is an experimental release of the convolution models;
 	  please take care when using this model.
+	</ITEM>
+	<ITEM>
+	  Sherpa does not have an equivalent of the extend command
+	  in X-Spec.
 	</ITEM>
       </LIST>
 
@@ -83,16 +68,15 @@
     <QEXAMPLELIST>
       <QEXAMPLE>
 	<SYNTAX>
-	  <LINE>&pr; from sherpa_contrib.xspec.xsconvolve import load_xskdblur</LINE>
-	  <LINE>&pr; load_xskdblur("kdb")</LINE>
-	  <LINE>&pr; set_source(kdb(xspowerlaw.pl + xsgaussian.gs))</LINE>
-	  <LINE>&pr; kdb.index = 1.5</LINE>
-	  <LINE>&pr; kdb.rin_g = 10</LINE>
+	  <LINE>&pr; from sherpa_contrib.xspec.xsconvole import load_xsvashift</LINE>
+	  <LINE>&pr; load_xsvashift("vas")</LINE>
+	  <LINE>&pr; set_source(xsphabs.gal * vas(xspowerlaw.pl + xsgaussian.gl))</LINE>
+	  <LINE>&pr; vas.velocity = 8000</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
-	    The powerlaw and gaussian components are convolved by the kdblur model, with index set
-	    to 1.5 and the inner radius 10.
+	    The power-law and gaussian components are shifted
+	    and then an absorption model is applied.
 	  </PARA>
 	</DESC>
       </QEXAMPLE>

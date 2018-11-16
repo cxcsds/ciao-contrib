@@ -3,25 +3,27 @@
  <!ENTITY pr "sherpa>">
 ]>
 <cxchelptopics>
-  <ENTRY pkg="sherpa" key="load_xscflux"
-	 refkeywords="xscflux cflux load_cflux
-		      component flux measure calculate norm
-		      normalization sum lg10flux emin emax lgflux
-		      log10flux logflux convolution model
+  <ENTRY pkg="sherpa" key="load_xsclumin"
+	 refkeywords="xsclumin clumin load_clumin
+                      particle photon
+		      component luminosity measure calculate norm
+		      normalization sum emin emax
+                      loglum lglum lg10lum
+		      convolution model
 		      x-spec xspec convolution model experimental
 		      "
 	 seealsogroups="sh.models "
 	 displayseealsogroups="" context="models">
 
     <SYNOPSIS>
-      calculate flux.
+      calculate luminosity.
       XSpec convolution model 
       *Experimental*.
     </SYNOPSIS>
 
     <DESC>
       <PARA>
-	A convolution model to calculate the flux of other model
+	A convolution model to calculate the luminosity of other model
 	components.
       </PARA>
 
@@ -34,11 +36,14 @@
 	as well as the 
 	<HREF link="http://cxc.harvard.edu/sherpa/threads/sample_flux/">Calculating 
 	Model Flux and Flux Uncertainty</HREF> thread
-	can also be used.
+	can also be used. These would then need to be converted to a
+        luminosity using your favorite Cosmology. See also
+        the calc_kcorr function for applying a K correction to
+        a spectral model.
       </PARA>
 
       <TABLE>
-	<CAPTION>xscflux Parameters</CAPTION>
+	<CAPTION>xsclumin Parameters</CAPTION>
 	<ROW> 
 	  <DATA>Number</DATA>
 	  <DATA>Name</DATA>
@@ -46,16 +51,20 @@
 	</ROW>
 	<ROW> 
 	  <DATA>1</DATA> <DATA>Emin</DATA>
-	  <DATA>Minimum energy over which flux is calculated (keV)</DATA>
+	  <DATA>Minimum source-frame energy over which luminosity is calculated (keV)</DATA>
 	</ROW>
 	<ROW> 
 	  <DATA>2</DATA> <DATA>Emax</DATA>
-	  <DATA>Maximum energy over which flux is calculated (keV)</DATA>
+	  <DATA>Maximum source-frame energy over which luminosity is calculated (keV)</DATA>
+	</ROW>
+	<ROW> 
+	  <DATA>3</DATA> <DATA>Redshift</DATA>
+	  <DATA>Redshift of the source</DATA>
 	</ROW>
 
 	<ROW> 
-	  <DATA>3</DATA> <DATA>lg10Flux</DATA>
-	  <DATA>log (base 10) flux in erg/cm^2/s</DATA>
+	  <DATA>4</DATA> <DATA>lg10Lum</DATA>
+	  <DATA>log (base 10) of the luminosity in erg/s</DATA>
 	</ROW>
       </TABLE>
 
@@ -72,7 +81,7 @@
 	  please take care when using this model.
 	</ITEM>
 	<ITEM>
-	  When cflux is used with multiple additive models, the
+	  When lumin is used with multiple additive models, the
 	  normalization of one of the additive models must be
 	  fixed to a non-zero value.
 	</ITEM>
@@ -81,7 +90,7 @@
 	  must lie inside the energy range of the response matrix.
 	</ITEM>
 	<ITEM>
-	  If the model to which cflux is applied
+	  If the model to which lumin is applied
 	  integrates to zero then a divide-by-zero error will occur
 	  and the fit will likely fail due to the presence of NaN
 	  values.
@@ -101,45 +110,47 @@
     <QEXAMPLELIST>
       <QEXAMPLE>
 	<SYNTAX>
-	  <LINE>&pr; from sherpa_contrib.xspec.xsconvole import load_xscflux</LINE>
-	  <LINE>&pr; load_xscflux("cflux")</LINE>
+	  <LINE>&pr; from sherpa_contrib.xspec.xsconvole import load_xsclumin</LINE>
+	  <LINE>&pr; load_xsclumin("clumin")</LINE>
 	  <LINE>&pr; xsphabs.gal()</LINE>
 	  <LINE>&pr; xspowerlaw.pl()</LINE>
 	  <LINE>&pr; xsgaussian.gs()</LINE>
-          <LINE>&pr; cflux.emin = 0.5</LINE>
-          <LINE>&pr; cflux.emax = 7</LINE>
-	  <LINE>&pr; set_source(cflux(gal * (pl + gs)))</LINE>
+          <LINE>&pr; clumin.emin = 0.5</LINE>
+          <LINE>&pr; clumin.emax = 7</LINE>
+          <LINE>&pr; clumin.redshift = 0.2</LINE>
+	  <LINE>&pr; set_source(clumin(gal * (pl + gs)))</LINE>
 	</SYNTAX>
 	<DESC>
-	  <PARA title="Flux of the absorbed model">
+	  <PARA title="Luminosity of the absorbed model">
 	    If the power-law or gaussian normalization is fixed to a non-zero
 	    value then the above will calculate
-	    the flux and error on the entire model (absorbed).
-            The energy range is taken to be 0.5 to 7 keV.
+	    the luminosity and error on the entire model (absorbed).
+            The redshift and energy range range are 0.2 and 0.5 to 7 keV
+            respectively.
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
 
       <QEXAMPLE>
 	<SYNTAX>
-	  <LINE>&pr; set_source(gal * cflux(pl + gs)))</LINE>
+	  <LINE>&pr; set_source(gal * clumin(pl + gs)))</LINE>
 	</SYNTAX>
 	<DESC>
-	  <PARA title="Flux of the un-absorbed model">
+	  <PARA title="Luminosity of the un-absorbed model">
 	    If the power-law or gaussian normalization is fixed to a non-zero
-	    value then this calculates the unabsorbed flux and error.
+	    value then this calculates the unabsorbed luminosity and error.
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
 
       <QEXAMPLE>
 	<SYNTAX>
-	  <LINE>&pr; set_source(gal * (pl + cflux(gs)))</LINE>
+	  <LINE>&pr; set_source(gal * (pl + clumin(gs)))</LINE>
 	</SYNTAX>
 	<DESC>
-	  <PARA title="Flux of a component">
+	  <PARA title="Luminosity of a component">
 	    If the gaussian normalization is fixed to a non-zero
-	    value then this calculates the unabsorbed flux and
+	    value then this calculates the unabsorbed luminosity and
 	    error of the gaussian component.
 	  </PARA>
 	</DESC>
