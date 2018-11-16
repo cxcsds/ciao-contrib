@@ -3,56 +3,58 @@
  <!ENTITY pr "sherpa>">
 ]>
 <cxchelptopics>
-  <ENTRY pkg="sherpa" key="load_xskdblur"
-	 refkeywords="xskdblur kdblur load_kdblur
-		      blur laor
+  <ENTRY pkg="sherpa" key="load_xsxilconv"
+	 refkeywords="xsxilconv xilconv load_xilconv
+		      reflection angle ionized disk
 		      x-spec xspec convolution model experimental
 		      "
 	 seealsogroups="sh.models "
 	 displayseealsogroups="" context="models">
 
     <SYNOPSIS>
-      convolve with the laor model shape.
+      angle-dependent reflection from an ionized disk
       XSpec convolution model 
       *Experimental*.
     </SYNOPSIS>
 
     <DESC>
       <PARA>
-	A convolution model to smooth a spectrum by 
-	relatavistic effects from an accretion disk around
-	a rotating black hole.
-	Uses Ari Loar's calculation including
-	GR effects
-	(<HREF link="http://adsabs.harvard.edu/abs/1991ApJ...376...90L">ApJ
-	376, 90</HREF>).
-	Modified from laor model by Andy Fabian and
-	Roderick Johnstone.
+        This implements the XSPEC
+        <HREF link="https://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSmodelXilconv.html">xilconv convolution model</HREF>.
       </PARA>
 
       <TABLE>
-	<CAPTION>xskdblur Parameters</CAPTION>
+	<CAPTION>xsxilconv Parameters</CAPTION>
 	<ROW> 
 	  <DATA>Number</DATA>
 	  <DATA>Name</DATA>
 	  <DATA>Description</DATA> 
 	</ROW>
 	<ROW> 
-	  <DATA>1</DATA> <DATA>Index</DATA>
-	  <DATA>Index: power law dependence of emissivity 
-	  (scales as R^-Index)</DATA>
+	  <DATA>1</DATA> <DATA>rel_refl</DATA>
+	  <DATA>the relative reflection normalization</DATA>
 	</ROW>
 	<ROW> 
-	  <DATA>2</DATA> <DATA>Rin_G</DATA>
-	  <DATA>inner radius (units of GM/c^2)</DATA>
+	  <DATA>2</DATA> <DATA>redshift</DATA>
+	  <DATA>redshift</DATA>
 	</ROW>
 	<ROW> 
-	  <DATA>3</DATA> <DATA>Rout_G</DATA>
-	  <DATA>outer radius (units of GM/c^2)</DATA>
+	  <DATA>3</DATA> <DATA>Fe_abund</DATA>
+	  <DATA>iron abundance relative to Solar; all other
+          elements are assumed to have Solar abundance.
+          </DATA>
 	</ROW>
 	<ROW> 
-	  <DATA>4</DATA> <DATA>Incl</DATA>
-	  <DATA>inclination (degrees)</DATA>
+	  <DATA>4</DATA> <DATA>cosIncl</DATA>
+	  <DATA>cos i, the inclination angle</DATA>
+	</ROW>
+	<ROW> 
+	  <DATA>5</DATA> <DATA>log_xi</DATA>
+	  <DATA>the ionization parameter used by the table models</DATA>
+	</ROW>
+	<ROW> 
+	  <DATA>6</DATA> <DATA>cutoff</DATA>
+	  <DATA>the exponential cut-off energy (keV)</DATA>
 	</ROW>
       </TABLE>
 
@@ -68,6 +70,10 @@
 	  This is an experimental release of the convolution models;
 	  please take care when using this model.
 	</ITEM>
+	<ITEM>
+	  Sherpa does not have an equivalent of the extend command
+	  in X-Spec.
+	</ITEM>
       </LIST>
 
       <PARA title="XSpec version">
@@ -80,24 +86,27 @@
 
     </DESC>
 
+<!-- I do not feel it's worth an example without showing how to extend
+     the grid. It also needs to be updated to xilconv from reflect
     <QEXAMPLELIST>
       <QEXAMPLE>
 	<SYNTAX>
-	  <LINE>&pr; from sherpa_contrib.xspec.xsconvolve import load_xskdblur</LINE>
-	  <LINE>&pr; load_xskdblur("kdb")</LINE>
-	  <LINE>&pr; set_source(kdb(xspowerlaw.pl + xsgaussian.gs))</LINE>
-	  <LINE>&pr; kdb.index = 1.5</LINE>
-	  <LINE>&pr; kdb.rin_g = 10</LINE>
+	  <LINE>&pr; from sherpa_contrib.xspec.xsconvole import load_xsreflect</LINE>
+	  <LINE>&pr; load_xsreflect("lsm")</LINE>
+	  <LINE>&pr; set_source(lsm(xspowerlaw.pl))</LINE>
+	  <LINE>&pr; lsm.index = 1.5</LINE>
+	  <LINE>&pr; lsm.sigat6kev = 0.5</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
-	    The powerlaw and gaussian components are convolved by the kdblur model, with index set
-	    to 1.5 and the inner radius 10.
+	    The powerlaw is convolved by a lorentzian whose
+	    sigma varies as Energy^1.5 and is 0.5 keV at 6 keV.
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
 
     </QEXAMPLELIST>
+-->
 
     <ADESC title="About Contributed Software">
       <PARA>
