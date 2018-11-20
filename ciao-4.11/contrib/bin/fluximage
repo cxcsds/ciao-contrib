@@ -370,6 +370,30 @@ def get_par(argv):
 
     pars['bkgparams'] = paramio.pgetstr(pfile, 'bkgparams')
 
+    # PSF creation
+    #
+    # Argh: I forget why we have params and pars
+    pars['psfecf'] = paramio.pgetstr(pfile, 'psfecf')
+    if pars['psfecf'] == 'INDEF':
+        params['psfecf'] = None
+    else:
+
+        # Check tha we do not have any spectral weights files.
+        # This should be a temporary restriction.
+        #
+        for b in params['enbands']:
+            if isinstance(b, bands.WeightedEnergyBand):
+                raise ValueError("Unable to calculate PSFs with a weighted energy band.")
+
+        # Validate the result in case the .par file has been adjusted
+        # (also because then we can be sure about <= vs < in the checks)
+        #
+        # Question: can we let psfecf=1?
+        #
+        params['psfecf'] = paramio.pgetd(pfile, 'psfecf')
+        if params['psfecf'] <= 0 or params['psfecf'] > 1:
+            raise ValueError("psfecf={} is not valid, it must be > 0 and <= 1".format(params['psfecf']))
+
     # only used (at present) for background subtraction
     params['random'] = paramio.pgeti(pfile, 'random')
 
@@ -469,6 +493,9 @@ def fluximage():
     thresh = params['thresh']
     units = params['units']
 
+    psfecf = params['psfecf']
+    want_psf = psfecf is not None
+
     parallel = params['parallel']
     verbose = params['verbose']
     clobber = params['clobber']
@@ -488,6 +515,7 @@ def fluximage():
     # What files are we going to create?
     outputs = fi.get_output_filenames(outpath, enbands, chips,
                                       blanksky=(bkginfo is not None),
+                                      psf=want_psf,
                                       thresh=utils.thresh_is_set(thresh))
 
     fi.clobber_checks(outputs[0], clobber=clobber)
@@ -526,6 +554,7 @@ def fluximage():
                            asol,
                            outpath, grid, binval, enbands, units,
                            thresh,
+                           ecf=psfecf,
                            tmpdir=tmpdir,
                            verbose=verbose,
                            random=params['random'],
