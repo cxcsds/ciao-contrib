@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2018
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -35,9 +35,6 @@ can be broken down into
   flux_obs out/ out/
 
 """
-
-toolname = 'flux_obs'
-__revision__ = '12 September 2016'
 
 import os
 import sys
@@ -75,6 +72,9 @@ import ciao_contrib._tools.utils as utils
 
 from ciao_contrib._tools.aspsol import AspectSolution
 from ciao_contrib._tools.taskrunner import TaskRunner
+
+toolname = 'flux_obs'
+__revision__ = '20 November 2018'
 
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
@@ -148,6 +148,28 @@ def get_par(argv):
     pars['bkgparams'] = paramio.pgetstr(pfile, 'bkgparams')
     params['bkgparams'] = fi.validate_bkgparams(pars['background'],
                                                 pars['bkgparams'])
+
+    # PSF creation
+    #
+    # Argh: I forget why we have params and pars
+    pars['psfecf'] = paramio.pgetstr(pfile, 'psfecf')
+    pars['psfmerge'] = paramio.pgetstr(pfile, 'psfmerge')
+
+    if pars['psfecf'] == 'INDEF':
+        params['psfecf'] = None
+        params['psfmerge'] = None
+    else:
+        # Validate the result in case the .par file has been adjusted
+        # (also because then we can be sure about <= vs < in the checks,
+        #  since it's not clear to me what the param library uses)
+        #
+        # Question: can we let psfecf=1?
+        #
+        params['psfecf'] = paramio.pgetd(pfile, 'psfecf')
+        if params['psfecf'] <= 0 or params['psfecf'] > 1:
+            raise ValueError("psfecf={} is not valid, it must be > 0 and <= 1".format(params['psfecf']))
+
+        params['psfmerge'] = pars['psfmerge']
 
     # only used (at present) for background subtraction
     params['random'] = paramio.pgeti(pfile, 'random')
@@ -224,6 +246,7 @@ def data_products(taskrunner,
                   xygrids,
                   outdir,
                   outhead,
+                  ecf=None,
                   background="default",
                   bkgparams="",
                   random=0,
@@ -282,12 +305,14 @@ def data_products(taskrunner,
                                bands,
                                units,
                                thresh,
+                               ecf=ecf,
                                random=random,
                                tmpdir=tmpdir,
                                verbose=tverbose,
                                clobber=clobber,
                                cleanup=cleanup,
                                parallel=parallel)
+
 
 """
 TODO:
@@ -381,6 +406,7 @@ subspace filters?
 
 
 def setup_output_names(outdir, outhead, obsinfos, enbands,
+                       psf=False,
                        threshold=False):
     """Set up entries in params that give the file names
     that the code creates.
@@ -390,6 +416,7 @@ def setup_output_names(outdir, outhead, obsinfos, enbands,
 
     obsids = [obs.obsid for obs in obsinfos]
     out = fi.fluximage_output(outdir, outhead, obsids, enbands,
+                              psf=psf,
                               threshold=threshold)
 
     if threshold:
@@ -406,12 +433,20 @@ def setup_output_names(outdir, outhead, obsinfos, enbands,
     out[img_label] = []
     out[emap_label] = []
     out['out_fluxmaps'] = []
+
+    if psf:
+        out['out_psfmaps'] = []
+
     for enband in enbands:
         eband = enband.bandlabel
         out[img_label].append(ifunc(outdir, outhead, eband))
         out[emap_label].append(efunc(outdir, outhead, eband))
         fmap = merging.name_coadd_flux(outdir, outhead, eband)
         out['out_fluxmaps'].append(fmap)
+
+        if psf:
+            pmap = merging.name_coadd_psfmap(outdir, outhead, eband)
+            out['out_psfmaps'].append(pmap)
 
     return out
 
@@ -447,7 +482,11 @@ def fluxobs():
     xygrid = params['xygrid']
     bin = params['bin']
 
+    psfecf = params['psfecf']
+    want_psf = psfecf is not None
+
     outfiles = setup_output_names(outdir, outhead, obsinfos, enbands,
+                                  psf=want_psf,
                                   threshold=is_thresh)
     fi.clobber_checks(outfiles, clobber=clobber)
 
@@ -479,6 +518,7 @@ def fluxobs():
                   xygrids,
                   outdir,
                   outhead,
+                  ecf=psfecf,
                   background=params['background'],
                   bkgparams=params['bkgparams'],
                   random=params['random'],
@@ -497,6 +537,7 @@ def fluxobs():
                   toolname,
                   __revision__,
                   verbose=verbose,
+                  psfmerge=params['psfmerge'],
                   threshold=is_thresh,
                   clobber=clobber,
                   tmpdir=tmpdir)
