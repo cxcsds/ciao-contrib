@@ -63,6 +63,7 @@
 	creating this directory if necessary.
 	The output files include:
       </PARA>
+      <!-- WHY use a list for one item here? -->
       <LIST>
 	<ITEM>reproj/broad&flname;, the exposure-corrected
 	broad-band image.</ITEM>
@@ -225,6 +226,36 @@
 	</DESC>
       </QEXAMPLE>
 
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; &fname; @evt2.lis merged/ psfecf=0.9</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            Create per-observation PSF maps using an encircled-energy fraction
+            of 0.9 (that is, the pixels in the PSF map give the radius,
+            in arcsec, of the PSF size that contains 90 per cent of the
+            PSF at that location). These maps are combined to create
+            a single version for the field, using the default
+            psfmerge setting, which uses the minimum ECF value at each
+            pixel.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+      
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; &fname; @evt2.lis merged/ psfecf=0.9 psfmerge=exptime</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+            The combined PSF map is created by weighting the ECF values
+            by the observation exposure times rather than taking the
+            minimum value (which is the default psfmerge setting).
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+      
       <QEXAMPLE>
 	<SYNTAX>
 	  <LINE>&upr; &fname; @evt2.lis hires bin=2</LINE>
@@ -1080,9 +1111,66 @@
             in the the bands parameter or the weight file).
           </PARA>
           <PARA>
+            The output files are identified by the label "psfmap".
+            The combined version is controlled by the psfmerge
+            parameter.
+          </PARA>
+          <PARA title="Note">
+            The PSF sizes are calculated using a number of approximations
+            and so should not be used for detailed analysis of sources,
+            where the PSF should be modelled as discussed in the
+            <HREF link="http://cxc.harvard.edu/ciao/PSFs/psf_central.html">CIAO
+            PSF Central documentation</HREF>.
+          </PARA>
+        </DESC>
+      </PARAM>
+      
+      <PARAM name="psfmerge" type="string" def="min">
+	<SYNOPSIS>
+          How are the PSF maps combined?
+	</SYNOPSIS>
+	<DESC>
+	  <PARA>
+            There is no one "correct" way to combine the per-observation
+            PSF maps, so this script provides several options, which
+            are controlled by the psfmerge parameter.
             The output file is identified by the label "psfmap".
           </PARA>
-          <!-- XXX TODO: how are PSF maps combined XXX -->
+          <PARA>
+            The available options for psfmerge are:
+            exptime, expmap, min, max, mean, median, and mid.
+          </PARA>
+          <PARA title="psfmerge=exptime">
+            Weight each pixel by the exposure time of the observation,
+            dividing by the total exposure time observed by the pixel.
+          </PARA>
+          <PARA title="psfmerge=expmap">
+            Weight each pixel by the exposure map of the observation,
+            dividing by the sum of the exposure map values for the pixel.
+            This result should be similar to using the "exptime" method,
+            but will include features seen in the exposure maps, such
+            as bad pixels and columns.
+          </PARA>
+          <PARA title="psfmerge=min">
+            Use the minimum PSF size for each pixel.
+          </PARA>
+          <PARA title="psfmerge=max">
+            Use the maximum PSF size for each pixel.
+          </PARA>
+          <PARA title="psfmerge=mean">
+            Use the average PSF size for each pixel.
+          </PARA>
+          <PARA title="psfmerge=median">
+            Use the median of the PSF sizes for each pixel. If there are an
+            even number (n) values to chose from, then the median is
+            taken to be the n/2-th value, rather than averaging the
+            (n/2) and (n/2)+1 values.
+          </PARA>
+          <PARA title="psfmerge=mid">
+            Use the mid-point of the PSF sizes for each pixel. This finds
+            the minimum (min) and maximum (max) PSF size for a pixel and uses
+            (min + max) / 2.
+          </PARA>
         </DESC>
       </PARAM>
       
@@ -1354,6 +1442,10 @@
 	<ROW><DATA>Combined exposure map</DATA><DATA>outroot_blabel.expmap</DATA></ROW>
 	<ROW><DATA>Clipped counts image</DATA><DATA>outroot_blabel_thresh.img</DATA></ROW>
 	<ROW><DATA>Clipped exposure map</DATA><DATA>outroot_blabel_thresh.expmap</DATA></ROW>
+        <ROW>
+          <DATA>PSF map (optional)</DATA>
+          <DATA>outroot_blabel.psfmap</DATA>
+        </ROW>
 	<ROW><DATA>Exposure-corrected image</DATA><DATA>outroot_blabel&flname;</DATA></ROW>
       </TABLE>
       
@@ -1364,6 +1456,10 @@
 	<ROW><DATA>Combined exposure map</DATA><DATA>outroot_obsid_blabel.expmap</DATA></ROW>
 	<ROW><DATA>Clipped counts image</DATA><DATA>outroot_obsid_blabel_thresh.img</DATA></ROW>
 	<ROW><DATA>Clipped exposure map</DATA><DATA>outroot_obsid_blabel_thresh.expmap</DATA></ROW>
+        <ROW>
+          <DATA>PSF map (optional)</DATA>
+          <DATA>outroot_obsid_blabel.psfmap</DATA>
+        </ROW>
 	<ROW><DATA>Exposure-corrected image</DATA><DATA>outroot_outsid_blabel_flux.img</DATA></ROW>
       </TABLE>
       
@@ -1589,8 +1685,9 @@
 	</ITEM>
 
 	<ITEM>
-	  For each new event file images, exposure maps, and exposure-corrected
-	  images are created for the required band(s).
+	  For each new event file, images, exposure maps, exposure-corrected
+	  images, and an optional PSF map
+          are created for the requested list of bands.
 	  An optional thresholding step is applied to both the
 	  image and exposure map when the expmapthresh
 	  parameter is set.
@@ -1600,7 +1697,9 @@
 	<ITEM>
 	  For each band, the counts images and exposure maps are summed,
 	  and used to create exposure-corrected images,
-	  one per band.
+	  one per band. Any observation PSF maps are combined together,
+          using the psfmerge-defined scheme, to create the output
+          PSF map.
 	</ITEM>
       </LIST>
 
@@ -1609,7 +1708,9 @@
     <ADESC title="Changes in the scripts 4.11.1 (December 2018) release">
       <PARA>
         The script will now create PSF maps for the observations if the
-        psfecf parameter is set.
+        psfecf parameter is set. The combined PSF map can be created
+        using a variety of merging rules, such as weighting by the
+        exposure time or using the minimum value.
       </PARA>
     </ADESC>
     
