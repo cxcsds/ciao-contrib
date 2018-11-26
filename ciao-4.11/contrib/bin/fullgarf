@@ -30,6 +30,7 @@
 # the version of the script
 #
 # Changes:
+#   (4.11)       Add parameter to set ARDLIB qualifyers
 #   (4.5)        Support HRC-I
 #   (4.1.4)      If bad pixel file is not supplied, use the one from the CALDB
 #   (4.1.3)      Replaced use of tail command with CIAO "dmkeypar" tool
@@ -453,6 +454,7 @@ runMkgarf ()
    osip=`pquery $pacc osipfile`
    mask=`pquery $pacc maskfile`
    evtfile=`pquery $pacc evtfile`
+   ardlibqual=`pquery $pacc ardlibqual`
 
 ### We're now ready to run mkgarf . . .
 #
@@ -469,7 +471,7 @@ runMkgarf ()
 
      if [ ! -f ${out} -a ! -f ${out}.gz ]; then
 
-       echo mkgarf detsubsys=$mydet \
+       echo mkgarf detsubsys=$mydet$ardlibqual \
                    order=$ord \
                    grating_arm=$garm \
 		   outfile=$out \
@@ -486,7 +488,7 @@ runMkgarf ()
 		   mode="hl" \
 		   verb=0
 
-       mkgarf detsubsys="$mydet" \
+       mkgarf detsubsys="$mydet$ardlibqual" \
                    order=$ord \
 		   grating_arm="$garm" \
                    outfile="$out" \
@@ -508,7 +510,7 @@ runMkgarf ()
         if [ $clob -eq 1 ]; then
           echo "$out exists . . . will clobber "
 
-          echo mkgarf detsubsys=$mydet \
+          echo mkgarf detsubsys=$mydet$ardlibqual \
 	           order=$ord \
                    grating_arm=$garm \
 		   outfile=$out \
@@ -526,7 +528,7 @@ runMkgarf ()
 		   verb=0 \
 		   clobber=$clobber 
 
-          mkgarf detsubsys="$mydet" \
+          mkgarf detsubsys="$mydet$ardlibqual" \
 	           order=$ord \
 		   grating_arm="$garm" \
                    outfile="$out" \
