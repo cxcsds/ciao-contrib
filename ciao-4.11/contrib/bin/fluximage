@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016
+# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2018
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -26,12 +26,8 @@
 fluximage - create exposure corrected images for an ObsId
 """
 
-toolname = 'fluximage'
-__revision__  = '12 September 2016'
-
 import os
 import sys
-import cxcdm
 import paramio
 import stk
 import pycrates
@@ -59,13 +55,9 @@ import ciao_contrib.logger_wrapper as lw
 
 from ciao_contrib.param_wrapper import open_param_file
 
-import ciao_contrib.ancillaryfiles as ancillary
-
-import ciao_contrib._tools.run as run
 import ciao_contrib._tools.fileio as fileio
 import ciao_contrib._tools.bands as bands
 import ciao_contrib._tools.utils as utils
-import ciao_contrib._tools.merging as merging
 import ciao_contrib._tools.obsinfo as obsinfo
 
 from ciao_contrib._tools.aspsol import AspectSolution
@@ -73,9 +65,13 @@ from ciao_contrib._tools.taskrunner import TaskRunner
 
 import ciao_contrib._tools.fluximage as fi
 
+toolname = 'fluximage'
+__revision__  = '28 November 2018'
+
 lgr = lw.initialize_logger(toolname)
 v1 = lgr.verbose1
 v3 = lgr.verbose3
+
 
 def handle_ancillary_input(obs, anctype, ancfile):
     """Handle the user inut for the given ancillary file type.
@@ -96,7 +92,9 @@ def handle_ancillary_input(obs, anctype, ancfile):
     if ancfile == "":
         keyname = "{}FILE".format(anctype.upper())
         filename = obs.get_ancillary_(anctype)
-        infile = obs.get_evtfile() # local, rather than absolute path that .evtfile would return
+
+        # local, rather than absolute path that .evtfile would return
+        infile = obs.get_evtfile()
 
         # if there is no file, then either the file does not exist or
         # the header keyword does not exist
@@ -126,7 +124,9 @@ def handle_ancillary_input(obs, anctype, ancfile):
     else:
         obs.set_ancillary(anctype, ancfile)
 
+
 _background_override = None
+
 
 def handle_background_override(argv):
     """Look for --background=filename in argv and, if found, remove
@@ -159,6 +159,7 @@ def handle_background_override(argv):
         pycrates.read_file(_background_override + "[#row=1]")
 
     return out
+
 
 def get_par(argv):
     """ Get data_products parameters from parameter file """
@@ -204,24 +205,23 @@ def get_par(argv):
     if infile != pars['infile']:
         v1("Using event file {}".format(infile))
 
+    """
     # We assume that the first [ character indicates a DM filter,
     # and so remove it and anything else after it. This is not
     # guaranteed to be true but should be okay for our use case.
     #
+    # WARNING: this is not actually used anywhere; why is this?
     bpos = infile.find('[')
     if bpos == -1:
         indir = os.path.dirname(infile)
     else:
         indir = os.path.dirname(infile[:bpos])
+    """
 
     # output root
     pars["outroot"] = params["outroot"] = paramio.pgetstr(pfile, "outroot")
     if params["outroot"] == ".":
         params["outroot"] = ""
-
-    # Allow an empty root for now
-    #if params["outroot"] == "":
-    #    raise ValueError("The outroot parameter can not be empty.")
 
     (outdir, outhead) = utils.split_outroot(params["outroot"])
     params["outpath"] = outdir + outhead
@@ -370,6 +370,23 @@ def get_par(argv):
 
     pars['bkgparams'] = paramio.pgetstr(pfile, 'bkgparams')
 
+    # PSF creation
+    #
+    # Argh: I forget why we have params and pars
+    pars['psfecf'] = paramio.pgetstr(pfile, 'psfecf')
+    if pars['psfecf'] == 'INDEF':
+        params['psfecf'] = None
+    else:
+        # Validate the result in case the .par file has been adjusted
+        # (also because then we can be sure about <= vs < in the checks,
+        #  since it's not clear to me what the param library uses)
+        #
+        # Question: can we let psfecf=1?
+        #
+        params['psfecf'] = paramio.pgetd(pfile, 'psfecf')
+        if params['psfecf'] <= 0 or params['psfecf'] > 1:
+            raise ValueError("psfecf={} is not valid, it must be > 0 and <= 1".format(params['psfecf']))
+
     # only used (at present) for background subtraction
     params['random'] = paramio.pgeti(pfile, 'random')
 
@@ -399,7 +416,7 @@ def get_par(argv):
         if _background_override is None:
             bmap = None
         else:
-            bmap = { }
+            bmap = {}
             bmap[obs.get_evtfile()] = _background_override
 
         params['bkgparams'] = fi.validate_bkgparams(params['background'],
@@ -420,6 +437,7 @@ def get_par(argv):
 
     paramio.paramclose(pfile)
     return (params, pars, obs)
+
 
 @lw.handle_ciao_errors(toolname, __revision__)
 def fluximage():
@@ -468,12 +486,16 @@ def fluximage():
     thresh = params['thresh']
     units = params['units']
 
+    psfecf = params['psfecf']
+    want_psf = psfecf is not None
+
     parallel = params['parallel']
     verbose = params['verbose']
     clobber = params['clobber']
     cleanup = params['cleanup']
     tmpdir  = params['tmpdir']
 
+    # NOTE: normflag is not used; should it be?
     if units == 'default':
         normflag = 'no'
     elif units == 'area':
@@ -486,6 +508,7 @@ def fluximage():
     # What files are we going to create?
     outputs = fi.get_output_filenames(outpath, enbands, chips,
                                       blanksky=(bkginfo is not None),
+                                      psf=want_psf,
                                       thresh=utils.thresh_is_set(thresh))
 
     fi.clobber_checks(outputs[0], clobber=clobber)
@@ -524,6 +547,7 @@ def fluximage():
                            asol,
                            outpath, grid, binval, enbands, units,
                            thresh,
+                           ecf=psfecf,
                            tmpdir=tmpdir,
                            verbose=verbose,
                            random=params['random'],
@@ -538,6 +562,7 @@ def fluximage():
 
     v3("{} has run to completion.".format(sys.argv[0]))
     fi.print_output(outputs, cleanup=cleanup)
+
 
 # do it
 if __name__ == '__main__':
