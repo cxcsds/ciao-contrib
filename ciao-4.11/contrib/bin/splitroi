@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # 
-# Copyright (C) 2011, 2012  Smithsonian Astrophysical Observatory
+# Copyright (C) 2011, 2012, 2018  Smithsonian Astrophysical Observatory
 # 
 # 
 # 
@@ -36,7 +36,7 @@ gives the head/stem of the output files created:
 """
 
 toolname = "splitroi"
-version = "08 November 2012"
+version = "29 November 2018"
 
 import sys
 
@@ -52,7 +52,22 @@ def rparse(fname):
     """
 
     try:
-        return region.regParse("region({})".format(fname))
+        retval = region.regParse("region({})".format(fname))
+
+        # In CIAO 4.10, FITS regions with 0 rows are now returning
+        # a region with 0 shapes to which regRegionString() 
+        # returns a blank string.  stk_expand on blank lines
+        # are lost (multiple-stack separators are collapsed into 1)
+        # this may produce different number of regions in the src
+        # and bg outputs.
+        #
+        # This workaround restores the point(0,0) which was what
+        # the DM/regionlib did before CIAO 4.10. 
+        #
+        if region.regGetNoShapes(retval) == 0:
+            retval = region.regParse("point(0,0)")
+        
+        return retval
 
     except ValueError as ve:
         if str(ve) == "regParse() Could not parse region string":
