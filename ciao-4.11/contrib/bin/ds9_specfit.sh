@@ -1,6 +1,6 @@
 #! /bin/sh
 
-#  Copyright (C) 2013,2015,2016  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2013,2015,2016,2018  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -44,7 +44,7 @@ bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr -d "
 
 if test "x$src" = x
 then
-  echo "Please specify a source region"
+  echo "Please **select** a source region"
   exit 1
 fi
 
@@ -59,7 +59,7 @@ fi
 
 if test x"${bkg}" = x
 then
-  :
+  echo "No background region **selected**, ignoring background."
 else
     nbkg=`echo "${bkg}" | grep "^-"`
     if test x"${bkg}" = x"${nbkg}"
@@ -160,7 +160,7 @@ then
   subtract=""
 else
   bg="${file}[sky=${bkg}]"
-  subtract="subtract()"
+  subtract="sherpa.subtract()"
 fi
 
 if test $redo -eq 1
@@ -205,42 +205,42 @@ echo " (4/4) Fitting spectrum"
 
 cat <<EOF > $cmd
 
-load_data("$spi")
+import sherpa.astro.ui as sherpa
+import pychips
 
-group_counts(${grpcts})
-notice(${elo},${ehi})
+sherpa.load_data("$spi")
+
+sherpa.group_counts(${grpcts})
+sherpa.notice(${elo},${ehi})
 $subtract
-set_source("${model}.mdl1 * xswabs.abs1")
+sherpa.set_source("${model}.mdl1 * xswabs.abs1")
 abs1.nH = $nH
 $extra
 
 try:
-  fit()
-  conf()
+  sherpa.fit()
+  sherpa.conf()
 except:
   pass
 
-print( "\nPhoton Flux = %s photon/cm^2/s\n" % calc_photon_flux())
-print( "Energy Flux = %s ergs/cm^2/s\n" % calc_energy_flux())
+print( "\nPhoton Flux = %s photon/cm^2/s\n" % sherpa.calc_photon_flux())
+print( "Energy Flux = %s ergs/cm^2/s\n" % sherpa.calc_energy_flux())
 
 
 try:
-  disconnect()
-  connect("${ds9}")
-  plot_fit_delchi()
+  pychips.disconnect()
+  pychips.connect("${ds9}")
+  sherpa.plot_fit_delchi()
 except:
   pass
 
 
-
-save("$sav", clobber=True)
-
-quit()
+sherpa.save("$sav", clobber=True)
 
 EOF
 
 
-sherpa -b $cmd 2>&1 ### | grep -v "^read" | grep -v "grouping flags"
+python $cmd 2>&1 ### | grep -v "^read" | grep -v "grouping flags"
 
 echo ""
 echo "To restore session, start sherpa and type"
