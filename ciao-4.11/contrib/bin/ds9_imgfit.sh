@@ -1,7 +1,7 @@
 #! /bin/sh
 
 # 
-#  Copyright (C) 2010-2015  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010-2015,2018  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -41,12 +41,13 @@ src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selec
 
 if test "x${src}" = x
 then
-  src="field()"
+  echo "No sources **selected** "
+  exit 1
 fi
 
 if test x$getconf = x1
 then
-  conf="conf()"
+  conf="sherpa.conf()"
 else
   conf=""
 fi
@@ -69,16 +70,19 @@ phi=`pget imgmoment phi | awk '{print (($1+360.0)%360)*3.141592/180.0}'`
 
 cat <<EOF > $ASCDS_WORK_PATH/$$_img.cmd
 
-load_data("$ASCDS_WORK_PATH/$$_img.fits")
-set_coord("physical")
+import sherpa.astro.ui as sherpa
+import numpy as np
 
-set_source("${model}.mdl1+${modelbkg}.bkg1")
-ignore2d()
-notice2d("${src}")
-thaw(mdl1)
-thaw(bkg1)
-guess(mdl1)
-guess(bkg1)
+sherpa.load_data("$ASCDS_WORK_PATH/$$_img.fits")
+sherpa.set_coord("physical")
+
+sherpa.set_source("${model}.mdl1+${modelbkg}.bkg1")
+sherpa.ignore2d()
+sherpa.notice2d("${src}")
+sherpa.thaw(mdl1)
+sherpa.thaw(bkg1)
+sherpa.guess(mdl1)
+sherpa.guess(bkg1)
 
 mdl1.theta=$phi
 ee=${mnr}/${mjr}
@@ -88,20 +92,19 @@ mdl1.ellip=np.sqrt( 1-(ee*ee))
 mdl1.xpos=$xx
 mdl1.ypos=$yy
 try:
-  fit()
+  sherpa.fit()
   ${conf}
 except:
   pass
 
 
-notice()
-save_source("$ASCDS_WORK_PATH/$$_out.fits", clobber=True)
-quit()
+sherpa.notice()
+sherpa.save_source("$ASCDS_WORK_PATH/$$_out.fits", clobber=True)
 EOF
 
 echo "  (3/3) Doing fit"
 
-sherpa -b $ASCDS_WORK_PATH/$$_img.cmd
+python $ASCDS_WORK_PATH/$$_img.cmd
 
 xpaset -p $ds9 frame new
 cat $ASCDS_WORK_PATH/$$_out.fits | xpaset $ds9 fits
