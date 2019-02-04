@@ -2,39 +2,50 @@
 <!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
 <cxchelptopics>
   <ENTRY key="correct_periscope_drift" context="tools"
-         refkeywords="aspect solution motion source coordinates astrometry alignment
-         correction temporal drift sub-arcsec sub-pixel subarcsec subpixel thermal
-         periscope alignment psf"
+         refkeywords="aspect solution motion source coordinates astrometry
+		      alignment correct correction temporal drift sub-arcsec
+		      sub-pixel subarcsec subpixel thermal aimpoint accurate
+		      accuracy periscope alignment psf"
          seealsogroups="" displayseealsogroups="pixtools asptools">
 
     <SYNOPSIS>
-        Correct a Chandra aspect solution for temporal drift calculated from a fit of the
-        drift in the sky positions of the events in a supplied circle region.
+        Correct a Chandra aspect solution for temporal drift
+        calculated from a fit of the drift in the sky positions of the
+        events in a supplied circle region.
     </SYNOPSIS>
 
     <DESC>
       <PARA>
-        Thermal cycling on the spacecraft can result in an apparent temporal drift of the sky
-        position of an X-ray source during an observation.  This appears as a drift of up to about
-        0.5 arcsec in X-ray event sky X, Y coordinates over time.  Because of the thermal
-        variation time scales, this effect is usually most prominent in long observations (more
-        than about 50 ksec).
+        Thermal cycling on the spacecraft can result in an apparent
+        temporal drift of the sky position of an X-ray source during
+        an observation.  This appears as a drift of up to about 0.5
+        arcsec in X-ray event sky X, Y coordinates over time.  Because
+        of the thermal variation time scales, this effect is usually
+        most prominent in long observations (more than about 50 ksec).
       </PARA>
       <PARA>
-        As of DS 8.4, a drift correction is applied to the aspect solution using the periscope
-        gradients telemetry.  However, temporal drifts have continued to increase with thermal
-        variation of the spacecraft.  Therefore the Aspect team suggests that to accomplish
-        science related to sub-arcsec source structure, users should follow this thread to correct
-        residual drift induced by the periscope.  This requires a relatively bright, on-axis
-        source (within
-        a few arcmin off-axis angle) to perform a "self-calibration" of the aspect solution.
+        As of DS 8.4, a drift correction is applied to the aspect
+        solution using the periscope gradients telemetry.  However,
+        temporal drifts have continued to increase with thermal
+        variation of the spacecraft.  Therefore the Aspect team
+        suggests that to accomplish science related to sub-arcsec
+        source structure, users should follow this thread to correct
+        residual drift induced by the periscope.  This requires a
+        relatively bright, on-axis source (within a few arcmin
+        off-axis angle) to perform a "self-calibration" of the aspect
+        solution.
       </PARA>
       <PARA>
-        This tool takes as input a source aspect solution and event files and returns a
-        new/corrected aspect solution that may be applied to the events to correct
-        residual temporal drift.
+        This tool takes as input a source aspect solution and event
+        files and returns a new/corrected aspect solution that may be
+        applied to the events to correct residual temporal drift.
       </PARA>
-
+      <PARA title="WARNING: do not apply without review">
+	The tool creates four plots as part of the output (they
+	end in _yag.png and _zag.png). These must be reviewed before
+	the correction is used, to ensure that the automatic fitting
+	process has not produced invalid results.
+      </PARA>
     </DESC>
 
     <QEXAMPLELIST>
@@ -42,25 +53,25 @@
          <SYNTAX>
            <LINE>
               % correct_periscope_drift 
-infile=pcadf537654279N001_asol1.fits.gz 
-evtfile=acisf16659N001_evt2.fits.gz 
+pcadf537654279N001_asol1.fits.gz 
+acisf16659N001_evt2.fits.gz 
+driftcorr_asol1.fits 
 x=4133.76 
 y=4078.74 
 radius=6 
-outfile=driftcorr_asol1.fits 
 verbose=2
            </LINE>
          </SYNTAX>
          <DESC>
 <VERBATIM>
 Running: correct_periscope_drift
-  version = 0.1
+  version = 0.3
 with parameters:
   infile=pcadf537654279N001_asol1.fits.gz
   evtfile=acisf16659N001_evt2.fits.gz
   outfile=driftcorr_asol1.fits
   verbose=2
-  and ASCDS_INSTALL is /soft/ciao-4.8
+  and ASCDS_INSTALL is /soft/ciao-4.11
 ------------------------------------------------------------
 Fitting a line to the data to get reduced stat errors
 Fitting a polynomial of degree 2 to the data
@@ -68,17 +79,23 @@ Fitting a line to the data to get reduced stat errors
 Fitting a polynomial of degree 2 to the data
 ------------------------------------------------------------
 Fit results
-Events show drift range of 0.24 arcsec in yag axis
-Max absolute correction of 0.14 arcsec for yag axis
-Events show drift range of 0.20 arcsec in zag axis
-Max absolute correction of 0.11 arcsec for zag axis
+        Events show drift range of 0.24 arcsec in yag axis
+        Max absolute correction of 0.14 arcsec for yag axis
+        Events show drift range of 0.20 arcsec in zag axis
+        Max absolute correction of 0.11 arcsec for zag axis
 ------------------------------------------------------------
 Writing out corrected aspect solution file to driftcorr_asol1.fits
-To review fit see correction plots in:
-corr_fit_yag.png
-corr_data_yag.png
-corr_fit_zag.png
-corr_data_zag.png
+
+You *must* review the following plots before using this correction:
+        corr_fit_yag.png
+        corr_data_yag.png
+        corr_fit_zag.png
+        corr_data_zag.png
+
+Adding HISTORY record for correct_periscope_drift (0.3)
+Adding history to driftcorr_asol1.fits
+Running tool dmhistory using:
+>>> dmhistory driftcorr_asol1.fits correct_periscope_drift action=put
 </VERBATIM>
 
          </DESC>
@@ -99,8 +116,9 @@ corr_data_zag.png
        </SYNOPSIS>
        <DESC>
           <PARA>
-            The event file should have been made with/processed with the aspect solution
-            supplied with infile (evtfile ASOLFILE header key value should match infile)
+            The event file should have been made with/processed with
+            the aspect solution supplied with infile (evtfile ASOLFILE
+            header key value should match infile)
           </PARA>
        </DESC>
      </PARAM>
@@ -117,42 +135,46 @@ corr_data_zag.png
        </SYNOPSIS>
        <DESC>
           <PARA>
-            The output prefix for fit and data plots.  The
-            output names will look like ${corr_plot_root}_fit_${axis}.png and
-            ${corr_plot_root}_data_${axis}.png where ${axis} will be 'yag' or 'zag'.
+            The output prefix for fit and data plots.  The output
+            names will look like ${corr_plot_root}_fit_${axis}.png and
+            ${corr_plot_root}_data_${axis}.png where ${axis} will be
+            'yag' or 'zag'.
           </PARA>
        </DESC>
      </PARAM>
 
      <PARAM name="x" type="float" min="1">
        <SYNOPSIS>
-         Sky X position of center of circle region used to extract events to fit correction.
+         Sky X position of center of circle region used to extract
+         events to fit correction.
        </SYNOPSIS>
      </PARAM>
 
      <PARAM name="y" type="float" min="1">
        <SYNOPSIS>
-         Sky Y position of center of circle region used to extract events to fit correction.
+         Sky Y position of center of circle region used to extract
+         events to fit correction.
        </SYNOPSIS>
      </PARAM>
 
      <PARAM name="radius" type="float" min="0">
        <SYNOPSIS>
-         Radius in pixels of circle region used to extract events to fit correction.
+         Radius in pixels of circle region used to extract events to
+         fit correction.
        </SYNOPSIS>
      </PARAM>
 
      <PARAM name="src_min_counts" type="float" min="0" def="250">
        <SYNOPSIS>
-         Minimum number of counts required in extracted source region (below which the
-         tool will complain and not fit).
+         Minimum number of counts required in extracted source region
+         (below which the tool will complain and not fit).
        </SYNOPSIS>
      </PARAM>
 
      <PARAM name="corr_poly_degree" type="integer" min="1" max="8" def="2">
        <SYNOPSIS>
-         Degree of polynomial used in the fit model to fit and correct drift in the two
-         Aspect Camera axes.
+         Degree of polynomial used in the fit model to fit and correct
+         drift in the two Aspect Camera axes.
        </SYNOPSIS>
      </PARAM>
 
@@ -171,24 +193,47 @@ corr_data_zag.png
    </PARAMLIST>
 
    <ADESC title="Caveats">
-        <PARA title="Bad fits">
-            This tool is provides output plots of the fits of the events.  The user
-            must evaluate those plots to determine if a correction is warranted and
-            if the output fit is reasonable.  This tool should not be blindly applied
-            to observations in aggregate.
-        </PARA>
-        <PARA title="Cannot be run headless or without ChIPS">
-            The output plots are not optional.
-        </PARA>
-        <PARA title="Counts needed for good fit">
-            The tool is not intended for short observations (less than 50ks) and
-            will not fit observations well without a bright point-like source.
-        </PARA>
-        <PARA title="Multiple aspect solutions files">
-            This tool is only intended for observations with single aspect solution files.
-        </PARA>
+     <PARA title="Bad fits">
+       This tool provides output plots of the fits of the
+       events. The user must evaluate those plots to determine
+       if a correction is warranted and if the output fit is
+       reasonable. This tool *should not* be blindly applied to
+       observations.
+     </PARA>
+     <PARA title="Counts needed for good fit">
+       The tool is not intended for short observations (less than
+       50ks) and will not work well for observations well without a
+       bright point-like source.
+     </PARA>
+     <PARA title="Multiple aspect solutions files">
+       This tool is only intended for observations with single
+       aspect solution files.
+     </PARA>
    </ADESC>
 
+   <ADESC title="Changes in the scripts 4.11.4 (2019) release">
+     <PARA title="Matlotlib support">
+       The plots now use the chosen Sherpa plotting backend,
+       rather than always using ChIPS. To use Matplotlib,
+       change the plot_pkg line in your ~/.sherpa.rc file
+       so that it reads:
+     </PARA>
+     <PARA>
+       <SYNTAX>
+	 <LINE>plot_pkg : pylab</LINE>
+       </SYNTAX>
+     </PARA>
+     <PARA>
+       Note that making this change will also change
+       any new Sherpa sessions to use Matplotlib!
+     </PARA>
+     <PARA>
+       Using Matplotlib rather than ChIPS, will allow the script
+       to be run when there is no X Display, over a remote connection,
+       or on recent macOS releases. It also means that the plot windows
+       will no longer briefly appear on the screen when the script is run.
+     </PARA>
+   </ADESC>
 
     <ADESC title="About Contributed Software">
       <PARA>
@@ -199,7 +244,7 @@ corr_data_zag.png
       </PARA>
     </ADESC>
 
-    <LASTMODIFIED>December 2018</LASTMODIFIED>
+    <LASTMODIFIED>June 2019</LASTMODIFIED>
 
   </ENTRY>    
 </cxchelptopics>
