@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-#  Copyright (C) 2014, 2015, 2016, 2017  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2014, 2015, 2016, 2017, 2018, 2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -36,14 +36,15 @@ ciao% deflare method=clean infile=lc.fits outfile=gti.fits
 """
 
 toolname = "deflare"
-__revision__ = "22 May 2017"
+__revision__ = "31 January 2019"
 
 import os
 import sys
 
 import paramio
 
-import pychips
+import matplotlib
+matplotlib.interactive(True)
 
 import six
 
@@ -68,8 +69,7 @@ except KeyError:
 
 from lightcurves import lc_clean, lc_sigma_clip, lc_sigma_uclip
 
-from ciao_contrib.logger_wrapper import initialize_logger, \
-    make_verbose_level, set_verbosity, handle_ciao_errors
+from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
 from ciao_contrib.param_wrapper import open_param_file
 
 initialize_logger(toolname)
@@ -90,7 +90,7 @@ def get_par(args):
     params["outfile"]  = paramio.pgetstr(pfile, "outfile")
     params["method"]   = paramio.pgetstr(pfile, "method")
     params["nsigma"]   = paramio.pgetd(pfile, "nsigma")
-    params["plot"]     = paramio.pgetb(pfile, "plot") == 1
+    plot_stat = params["plot"]     = paramio.pgetb(pfile, "plot") == 1
     params["save"]     = paramio.pgetstr(pfile, "save")
     params["rateaxis"] = paramio.pgetstr(pfile, "rateaxis")
     params["pattern"]       = paramio.pgetstr(pfile, "pattern")
@@ -101,12 +101,11 @@ def get_par(args):
     if params["save"].strip() == "":
         params["save"] = None
 
-    # Assume that if the user has selected save then they must also
-    # want a plot, even if plot is False.
-
+    # # Assume that if the user has selected save then they must also
+    # # want a plot, even if plot is False.
+    #
     if not params["plot"] and params["save"] is not None:
         params["plot"] = True
-        pychips.set_preference("window.display", "false")
 
     if params["outfile"] == "" or params["outfile"].lower() == 'none':
         params["outfile"] = None
@@ -133,14 +132,14 @@ def get_par(args):
         raise ValueError("Invalid method parameter: expected clean,sigma,usigma sent '{0}'".format(params["method"]))
 
     paramio.paramclose(pfile)
-    return params
+    return params,plot_stat
 
 
 def pause():
-    six.moves.input("Press ENTER to close the ChIPS window and exit:")
+    six.moves.input("Press ENTER to close the plot window and exit:")
 
 
-def wrapup(params):
+def wrapup(params,plot_stat):
     "Let the user know what has happened."
 
     labels = {"clean": "lc_clean", "sigma": "lc_sigma_clip",
@@ -150,17 +149,31 @@ def wrapup(params):
     v1("Light curve cleaned using the {0} routine.".format(label))
 
     if params["save"] is not None:
+        import matplotlib.pyplot as plt
+
         oplot = params["save"]
-        pychips.print_window(oplot,
-                             ["format", "ps", "clobber", True])
-        if not oplot.endswith(".ps"):
-            oplot += ".ps"
+
+        if oplot.lower().endswith(".pdf"):
+            format = "pdf"
+        elif oplot.lower().endswith(".ps"):
+            format = "ps"
+        elif oplot.lower().endswith(".eps"):
+            format = "eps"
+        elif oplot.lower().endswith("png"):
+            format = "png"
+        else:
+            oplot += ".pdf"
+            format = "pdf"
+
+#        if not oplot.endswith(".pdf"):
+#            oplot += ".pdf"
+
+        plt.savefig(oplot,format=format,frameon=True)
 
         v1("Created: {0}".format(oplot))
 
-    if params["plot"] != 0:
-        if pychips.get_preference("window.display") == "true":
-            pause()
+    if plot_stat:
+        pause()
 
 
 # Note that at present (July 2014) the uclip version isn't
@@ -170,7 +183,7 @@ def wrapup(params):
 def deflare(arglist):
     "Do the work"
 
-    params = get_par(arglist)
+    params,plot_stat = get_par(arglist)
     set_verbosity(params["verbose"])
 
     # Set up the common arguments
@@ -205,7 +218,6 @@ def deflare(arglist):
         func = lc_clean
 
     else:
-
         kwargs["sigma"] = params["nsigma"]
         kwargs["minlength"] = params["minlength"]
         if params['method'] == "usigma":
@@ -213,8 +225,16 @@ def deflare(arglist):
         else:
             func = lc_sigma_clip
 
+    # if plot_stat:
+    #     matplotlib.use("TkAgg")
+    #     matplotlib.interactive(True)
+        
+    # else:
+    #     matplotlib.use("PS")
+    #     matplotlib.interactive(True)
+
     func(*args, **kwargs)
-    wrapup(params)
+    wrapup(params,plot_stat)
 
 
 if __name__ == "__main__":
