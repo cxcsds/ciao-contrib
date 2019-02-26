@@ -1,6 +1,6 @@
-#! /bin/sh 
+#!/bin/bash 
 # 
-#  Copyright (C) 2004-2008  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2008,2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -95,5 +95,15 @@ dmextract "${file}${src}[bin ${hist}=${min}:${max}:${step}]" - op=$type \
   $ASCDS_WORK_PATH/$$_${hist}.fits
 
 
+ds9_plot_blt "$ASCDS_WORK_PATH/$$_${hist}.fits[cols $hist,$outcol]" "$hist , $$_${hist}.fits" $ds9
 
-ds9_plot.py "$ASCDS_WORK_PATH/$$_${hist}.fits[cols $hist,$outcol]" "$hist" $ds9
+
+
+echo "-----------------------------"
+echo `date`
+echo ""
+echo "infile: ${file}"
+echo "srcreg: ${srcreg}"
+echo "outfile: $ASCDS_WORK_PATH/$$_${hist}.fits"
+echo ""
+

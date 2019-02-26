@@ -1,6 +1,6 @@
 #! /bin/sh
 
-#  Copyright (C) 2013,2015,2016,2018  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2013,2015,2016,2018-2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -226,16 +226,81 @@ except:
 print( "\nPhoton Flux = %s photon/cm^2/s\n" % sherpa.calc_photon_flux())
 print( "Energy Flux = %s ergs/cm^2/s\n" % sherpa.calc_energy_flux())
 
-
-try:
-  pychips.disconnect()
-  pychips.connect("${ds9}")
-  sherpa.plot_fit_delchi()
-except:
-  pass
-
-
 sherpa.save("$sav", clobber=True)
+
+
+# -- Emulate the 'plot_fit()' sherpa command, 
+
+import subprocess
+
+def xpa_plot_cmd( access_point, command ):
+    """Wrapper around xpaset for plot commands"""
+    
+    cc = ["xpaset", "-p", access_point, "plot" ]
+    cc.extend( command.split(' '))    
+    xpa = subprocess.Popen(cc)
+    xpa.communicate()
+
+
+def blt_plot_data(access_point,xx, ex, yy, ey, title, x_label, y_label):
+    """Plot the data"""
+    
+    cmd = ["xpaset", access_point, "plot"]    
+    cmd.extend( ["new", "line", 
+        "{{{0}}}".format(title), 
+        "{{{0}}}".format(x_label), 
+        "{{{0}}}".format(y_label),
+        "xyey"
+        ] )
+
+    # Plot the data
+    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
+    for vv in zip(xx, yy, ey):
+        pair = " ".join( [str(x) for x in vv])+"\n"        
+        pb = pair.encode()
+        xpa.stdin.write(pb)        
+    xpa.communicate()
+
+    # Make pretty
+    xpa_plot_cmd(access_point, "shape circle")
+    xpa_plot_cmd(access_point, "shape fill yes")
+    xpa_plot_cmd(access_point, "shape color cornflowerblue")
+    xpa_plot_cmd(access_point, "error color cornflowerblue")
+    xpa_plot_cmd(access_point, "width 0")
+    xpa_plot_cmd(access_point, "legend yes")
+    xpa_plot_cmd(access_point, "legend position right")
+    xpa_plot_cmd(access_point, "name {Data }")    
+    xpa_plot_cmd(access_point, "axis x grid no")
+    xpa_plot_cmd(access_point, "axis y grid no")
+
+def blt_plot_model(access_point,x_vals, y_vals):
+    """Plot the model"""
+    
+    cmd = ["xpaset", access_point, "plot"]
+    cmd.extend( ["data", "xy"] )
+
+    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
+    for x,y in zip(x_vals, y_vals):
+        pair = "{} {}\n".format(x,y)
+        pb = pair.encode()
+        xpa.stdin.write(pb)        
+    xpa.communicate()
+    xpa_plot_cmd(access_point, "shape none")
+    xpa_plot_cmd(access_point, "shape fill no")
+    xpa_plot_cmd(access_point, "color orange")
+    xpa_plot_cmd(access_point, "shape color orange")
+    xpa_plot_cmd(access_point, "width 2")
+    xpa_plot_cmd(access_point, "name Model")
+
+_f = sherpa.get_fit_plot()
+_d = _f.dataplot
+_m = _f.modelplot
+
+blt_plot_data( "${ds9}", _d.x, _d.xerr/2.0, _d.y, _d.yerr, 
+    "${spi}", "Energy [keV]", "Count Rate [c/s]")
+
+blt_plot_model( "${ds9}", _m.x, _m.y)
+
 
 EOF
 

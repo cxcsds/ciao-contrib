@@ -1,0 +1,64 @@
+#!/usr/bin/env python
+# 
+#  Copyright (C) 2004-2008,2010,2019  Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+
+import sys
+import os
+
+import matplotlib
+matplotlib.use("TkAgg")
+
+
+
+if __name__ == '__main__':
+
+    infile=sys.argv[1]
+    title=sys.argv[2]
+    ds9XPA=sys.argv[3]
+    
+    from pycrates import read_file
+    tab = read_file(infile)
+
+    def get_col(k):
+        kcol = tab.get_column(k)
+        k_vals = kcol.values.copy()
+        k_name = kcol.name
+        k_units = kcol.unit
+        k_label = "{} [{}]".format(k_name, k_units)
+        return k_vals, k_label
+    
+    x_vals,x_label = get_col(0)
+    y_vals,y_label = get_col(1)
+    
+
+    import matplotlib.pyplot as plt
+    plt.plot( x_vals, y_vals, linestyle="solid" )
+    plt.xlabel( x_label )
+    plt.ylabel( y_label )
+    plt.title(title)
+
+    plt.show()
+    
+    baseFile = infile.split('[')[0] # strip off dm filter
+    if os.path.exists(baseFile):
+        os.unlink( baseFile )
+
+
+
