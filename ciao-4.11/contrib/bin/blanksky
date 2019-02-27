@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2018
+#  Copyright (C) 2018, 2019
 #            Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -18,9 +18,9 @@
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-__version__ = "CIAO 4.10"
+__version__ = "CIAO 4.11"
 toolname = "blanksky"
-__revision__  = "18 October 2018"
+__revision__  = "23 April 2019"
 
 import os, sys, paramio, tempfile, shutil, stat
 import pycrates as pcr
@@ -146,10 +146,10 @@ def t_norm(evtfile,bkgfile,chip,evt_keywords,bkg_keywords):
     if det == "HRC":
         obs_time = evt_keywords["EXPOSURE"]
         bkg_time = bkg_keywords["EXPOSURE"]
-    
+
     else:
         try:
-            bkg_time = bkg_keywords["LIVETIM{}".format(chip)] 
+            bkg_time = bkg_keywords["LIVETIM{}".format(chip)]
         except KeyError:
             try:
                 bkg_time = bkg_keywords["LIVTIME{}".format(chip)]
@@ -157,7 +157,7 @@ def t_norm(evtfile,bkgfile,chip,evt_keywords,bkg_keywords):
                 bkg_time = bkg_keywords["LIVETIME"]
 
         try:
-            obs_time = evt_keywords["LIVETIM{}".format(chip)] 
+            obs_time = evt_keywords["LIVETIM{}".format(chip)]
         except KeyError:
             try:
                 obs_time = evt_keywords["LIVTIME{}".format(chip)]
@@ -601,9 +601,9 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
 
             bkg_repro = bkg_calib # delete if apply_gain is implemented, uncomment above block
 
-            # add the PNT and AVG header keywords from the evt file
-            # modify bkg file header
-            for key in ["RA_PNT","DEC_PNT","ROLL_PNT","DY_AVG","DZ_AVG","DTH_AVG","FIRSTROW","NROWS"]:
+            # add keywords as needed; as of CIAO 4.11, reproject_events
+            # handles teh _PNT and _AVG keywords.
+            for key in ["FIRSTROW", "NROWS"]:
                 dmkeypar.punlearn()
                 dmhedit.punlearn()
 
