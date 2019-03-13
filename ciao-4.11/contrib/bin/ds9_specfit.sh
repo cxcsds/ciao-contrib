@@ -23,7 +23,10 @@ model=$2
 grpcts=$3
 elo=$4
 ehi=$5
-xtra="$6"
+method=$6
+stat=$7
+absmodel=$8
+xtra="$9"
 
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
@@ -214,8 +217,12 @@ sherpa.load_data("$spi")
 sherpa.group_counts(${grpcts})
 sherpa.notice(${elo},${ehi})
 $subtract
-sherpa.set_source("${model}.mdl1 * xswabs.abs1")
+sherpa.set_source("${model}.mdl1 * ${absmodel}.abs1")
 abs1.nH = $nH
+
+sherpa.set_method("${method}")
+sherpa.set_stat("${stat}")
+
 $extra
 
 try:

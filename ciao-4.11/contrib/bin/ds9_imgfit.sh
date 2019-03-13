@@ -23,6 +23,8 @@ ds9=$1
 model=$2
 modelbkg=$3
 getconf=$4
+method=$5
+stat=$6
 
 
 
@@ -81,6 +83,10 @@ import numpy as np
 
 sherpa.load_data("${TMPDIR}/img.fits")
 sherpa.set_coord("physical")
+sherpa.set_method("${method}")
+sherpa.set_stat("${stat}")
+
+
 
 sherpa.set_source("${model}.mdl1+${modelbkg}.bkg1")
 sherpa.ignore2d()

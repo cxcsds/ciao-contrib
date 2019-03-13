@@ -172,12 +172,17 @@ param spectral
   elo entry {elo} 0.3 {[keV] Lower energy range to perform fit}
   ehi entry {ehi} 7.0 {[keV] Upper energy range to perform fit}
   extra entry {extra} {} {Additional commands, use mdl1 and abs1, eg mdl1.redshift=0.2}
+  specfit_method menu {Method} levmar|neldermead|moncar {Optimization method}
+  specfit_stat menu {Statistic} chi2gehrels|chi2xspecvar|cash|cstat|wstat {Goodness of fit statistic}
+  specfit_absmodel menu {Absorption model} xswabs|xsphabs {Absorption model}
 endparam
 
 param imagefit
   imgmodel menu {Source} gauss2d|beta2d|devaucouleurs2d|lorentz2d {Source model component}
   bkgmodel menu {Background} const2d|polynom2d {Background model component}
   getconf checkbox {Confidence} 0 {Compute confidence intervals (slow)}
+  imgfit_method menu {Method} levmar|neldermead|moncar {Optimization method}
+  imgfit_stat menu {Statistic} chi2gehrels|chi2xspecvar|cash|cstat|wstat {Goodness of fit statistic}
 endparam
 
 
@@ -532,7 +537,7 @@ hmenu CIAO
     Spectral Fit
     *EVT* *evt*
     menu
-    $param(spectral); $env(ASCDS_CONTRIB)/bin/ds9_specfit.sh $xpa $model $grpcts $elo $ehi '$extra' |& $text
+    $param(spectral); $env(ASCDS_CONTRIB)/bin/ds9_specfit.sh $xpa $model $grpcts $elo $ehi $specfit_method $specfit_stat $specfit_absmodel '$extra' |& $text
 
 ###    Clean Cache
 ###    *
@@ -544,7 +549,7 @@ hmenu CIAO
     2D Image Fit
     *
     menu
-    $param(imagefit); $env(ASCDS_CONTRIB)/bin/ds9_imgfit.sh $xpa $imgmodel $bkgmodel $getconf |& $text
+    $param(imagefit); $env(ASCDS_CONTRIB)/bin/ds9_imgfit.sh $xpa $imgmodel $bkgmodel $getconf $imgfit_method $imgfit_stat |& $text
 
 #NEW#    Source Extent
 #NEW#    *
