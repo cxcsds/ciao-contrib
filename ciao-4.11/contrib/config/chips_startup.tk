@@ -1,9 +1,27 @@
 #~ global chipsPID
 #~ global ds9
 
-#~ global env
+global env
 
-#~ set env(PATH) $env(ASCDS_INSTALL)/bin:$env(PATH)
+# Need to make sure CIAO's paths are first
+set env(PATH) $env(ASCDS_INSTALL)/bin:$env(PATH)
+
+## Dax output directory setup
+if { [info exists env(DAX_OUTDIR)] == 0 } {
+    set env(DAX_OUTDIR) [exec pget dax outdir]
+}
+file mkdir $env(DAX_OUTDIR)
+
+
+proc ChangeDaxOutdir {} {
+    global env
+    set dir [tk_chooseDirectory -initialdir $env(DAX_OUTDIR) -title "DAX output directory" ]
+    if { $dir ne "" } {
+        set env(DAX_OUTDIR) $dir
+        file mkdir $env(DAX_OUTDIR)
+    }    
+}
+
 
 #~ #set chipsPID [exec env PATH=$env(ASCDS_INSTALL)/bin:$env(PATH) startchips $ds9(title) &]
 #~ set chipsPID [exec startchips $ds9(title) &]
