@@ -92,10 +92,10 @@ esac
 
 dmextract "${file}${src}[bin ${hist}=${min}:${max}:${step}]" - op=$type \
   bkg="${file}${bkg}"   > \
-  $ASCDS_WORK_PATH/$$_${hist}.fits
+  $DAX_OUTDIR/$$_${hist}.fits
 
 
-ds9_plot_blt "$ASCDS_WORK_PATH/$$_${hist}.fits[cols $hist,$outcol]" "$hist , $$_${hist}.fits" $ds9
+ds9_plot_blt "$DAX_OUTDIR/$$_${hist}.fits[cols $hist,$outcol]" "$hist , $$_${hist}.fits" $ds9
 
 
 
@@ -104,6 +104,6 @@ echo `date`
 echo ""
 echo "infile: ${file}"
 echo "srcreg: ${srcreg}"
-echo "outfile: $ASCDS_WORK_PATH/$$_${hist}.fits"
+echo "outfile: $DAX_OUTDIR/$$_${hist}.fits"
 echo ""
 

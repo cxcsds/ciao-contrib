@@ -1,6 +1,6 @@
 #! /bin/sh
 # 
-#  Copyright (C) 2004-2008,2015  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2008,2015,2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -33,9 +33,9 @@ fi
 
 
 xpaget $ds9 regions -format ciao -system physical | egrep -v "^#" | \
-  egrep polygon > $ASCDS_WORK_PATH/$$_poly.reg
+  egrep polygon > $DAX_OUTDIR/$$_poly.reg
 
-np=`wc -l  $ASCDS_WORK_PATH/$$_poly.reg | awk '{print $1}'`
+np=`wc -l  $DAX_OUTDIR/$$_poly.reg | awk '{print $1}'`
 if test "$np" -eq 0
 then
   echo "# ---------------------"
@@ -44,13 +44,21 @@ then
 fi
 
 
-dmmakereg region="region($ASCDS_WORK_PATH/$$_poly.reg)" \
-  outfile=$ASCDS_WORK_PATH/$$_poly.fits ker=fits
+dmmakereg region="region($DAX_OUTDIR/$$_poly.reg)" \
+  outfile=$DAX_OUTDIR/$$_poly.fits ker=fits
 
-dmimgpick $ASCDS_WORK_PATH/$$_poly.fits"[cols x,y]" - - $meth | \
+
+echo "#--------------------"
+echo `date`
+echo ""
+
+dmimgpick $DAX_OUTDIR/$$_poly.fits"[cols x,y]" - - $meth | \
+  tee $DAX_OUTDIR/$$_polypick.fits | \
   dmlist - data,clean,array
 
+echo ""
+echo "Output file is $DAX_OUTDIR/$$_polypick.fits"
 
-\rm -f $ASCDS_WORK_PATH/$$_poly.fits $ASCDS_WORK_PATH/$$_poly.reg
+\rm -f $DAX_OUTDIR/$$_poly.reg $DAX_OUTDIR/$$_poly.fits
 
 exit 0

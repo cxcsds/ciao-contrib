@@ -32,24 +32,24 @@ fi
 
 
 
-\rm -f $ASCDS_WORK_PATH/$$_ds9.reg
+\rm -f $DAX_OUTDIR/$$_ds9.reg
 xpaget $xpa regions -format ds9 -system physical | cut -d"#" -f1 | sed 's, *$,,' | \
-  awk -f $ASCDS_CONTRIB/config/ds9_region_expand.awk > $ASCDS_WORK_PATH/$$_ds9.reg
+  awk -f $ASCDS_CONTRIB/config/ds9_region_expand.awk > $DAX_OUTDIR/$$_ds9.reg
 
-dmextract "${file}[bin sky=@$ASCDS_WORK_PATH/$$_ds9.reg]" op=generic \
-  outfile=$ASCDS_WORK_PATH/$$_radial.fits
+dmextract "${file}[bin sky=@$DAX_OUTDIR/$$_ds9.reg]" op=generic \
+  outfile=$DAX_OUTDIR/$$_radial.fits
 
 
 
-ds9_plot_blt "$ASCDS_WORK_PATH/$$_radial.fits[cols rmid,sur_bri]" "Radial Profile $$_radial.fits" $xpa
+ds9_plot_blt "$DAX_OUTDIR/$$_radial.fits[cols rmid,sur_bri]" "Radial Profile $$_radial.fits" $xpa
 
-\rm -f $ASCDS_WORK_PATH/$$_ds9.reg
+\rm -f $DAX_OUTDIR/$$_ds9.reg
 
 echo "-----------------------------"
 echo `date`
 echo ""
 echo "infile: ${file}"
-echo "outfile: $ASCDS_WORK_PATH/$$_radial.fits"
+echo "outfile: $DAX_OUTDIR/$$_radial.fits"
 echo ""
 
 

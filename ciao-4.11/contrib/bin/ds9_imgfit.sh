@@ -53,7 +53,7 @@ else
   conf=""
 fi
 
-TMPDIR=$ASCDS_WORK_PATH/ds9imgfit.${USER}/$$/
+TMPDIR=$DAX_OUTDIR/imgfit/$$/
 mkdir -p $TMPDIR
 
 echo "# -------------------"

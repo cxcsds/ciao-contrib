@@ -48,27 +48,41 @@ fi
 if test `xpaget $ds9 mode` = crosshair
 then
 
-  x=`xpaget $ds9 crosshair -system physical -skyformat degrees | awk '{print $1}'`
-  y=`xpaget $ds9 crosshair -system physical -skyformat degrees | awk '{print $2}'`
+    x=`xpaget $ds9 crosshair physical | awk '{print $1}'`
+    y=`xpaget $ds9 crosshair physical | awk '{print $2}'`
+
+    if test x$x = x
+    then
+      echo "ERROR getting coordinates"
+      exit 1
+    fi
+
+    if test x$y = x
+    then
+      echo "ERROR getting coordinates"
+      exit 1
+    fi
 
 else
 
-  x=`xpaget $ds9 regions selected -format ciao -system physical -strip | tr ";" "\012" | tail -1 | tr "()," " " | cut -d" " -f2`
-  y=`xpaget $ds9 regions selected -format ciao -system physical -strip | tr ";" "\012" | tail -1 | tr "()," " " | cut -d" " -f3`
+    x=`xpaget $ds9 regions selected -format ciao -system physical -strip | tr ";" "\012" | tail -1 | tr "()," " " | cut -d" " -f2`
+    y=`xpaget $ds9 regions selected -format ciao -system physical -strip | tr ";" "\012" | tail -1 | tr "()," " " | cut -d" " -f3`
+
+    if test x$x = x
+    then
+      echo "ERROR getting coordinates, make sure single region is selected"
+      exit 1
+    fi
+
+    if test x$y = x
+    then
+      echo "ERROR getting coordinates, make sure single region is selected"
+      exit 1
+    fi
+
 fi
 
 
-if test x$x = x
-then
-  echo "ERROR getting coordinates"
-  exit 1
-fi
-
-if test x$y = x
-then
-  echo "ERROR getting coordinates"
-  exit 1
-fi
 
 
 

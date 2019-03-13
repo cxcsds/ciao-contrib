@@ -96,15 +96,16 @@ checksum=`dmkeypar "${file}" checksum echo+`
 
 root=`echo "${file} $checksum ${src} ${bkg}" | python -c 'import hashlib;import sys;print(hashlib.md5(sys.stdin.readline().encode("ascii")).hexdigest())' `
 
+RUNDIR=$DAX_OUTDIR/specfit/${root}
 
-mkdir -p $ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/param
+mkdir -p $RUNDIR/param
 
-rmf=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/out.rmf
-arf=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/out.arf
-spi=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/out.pi
-bpi=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/out_bkg.pi
-sav=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/sav
-cmd=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/cmd
+rmf=$RUNDIR/out.rmf
+arf=$RUNDIR/out.arf
+spi=$RUNDIR/out.pi
+bpi=$RUNDIR/out_bkg.pi
+sav=$RUNDIR/sav
+cmd=$RUNDIR/cmd
 
 redo=0
 for d in $rmf $arf $spi
@@ -119,7 +120,7 @@ done
 
 
 
-PFILES=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/param\;$ASCDS_INSTALL/param:$ASCDS_INSTALL/contrib/param
+PFILES=$RUNDIR/param\;$ASCDS_INSTALL/param:$ASCDS_INSTALL/contrib/param
 punlearn ardlib mkarf asphist mkacisrmf dmextract dmcoords
 
 
@@ -168,7 +169,7 @@ then
   specextract \
     infile="${file}[sky=${src}]" \
     bkgfile="${bg}" \
-    outroot=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/out \
+    outroot=$RUNDIR/out \
     bkgresp=no \
     weight=no\
     refcoord="$ra_hms $dec_hms" \
@@ -188,8 +189,8 @@ else
 
 fi
 
-echo "$root ${file} ${src} ${bkg}" >> $ASCDS_WORK_PATH/ds9specfit.${USER}/inventory.lis
-echo "${file} ${src} ${bkg}" >> $ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/info.txt
+echo "$root ${file} ${src} ${bkg}" >> $RUNDIR/../inventory.lis
+echo "${file} ${src} ${bkg}" >> $RUNDIR/info.txt
 
 
 if test x"${xtra}" = x

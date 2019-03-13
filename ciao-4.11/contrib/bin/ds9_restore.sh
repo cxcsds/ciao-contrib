@@ -42,11 +42,16 @@ else
 fi
 
 
-xpaget $ds9 fits | dmcopy "-[(x,y)=$reg]" $ASCDS_WORK_PATH/$$_psf.fits clob+
-xpaget $ds9 fits | arestore - $ASCDS_WORK_PATH/$$_psf.fits - 20 | \
+xpaget $ds9 fits | dmcopy "-[(x,y)=$reg]" $DAX_OUTDIR/$$_psf.fits clob+
+xpaget $ds9 fits | arestore - $DAX_OUTDIR/$$_psf.fits - 20 | \
+  tee $DAX_OUTDIR/$$_restore.fits | \
   xpaset $ds9 fits new
 
-\rm -f $ASCDS_WORK_PATH/$$_psf.fits
+\rm -f $DAX_OUTDIR/$$_psf.fits
 
+echo "#----------"
+echo `date`
+echo ""
+echo "Output file: $DAX_OUTDIR/$$_restore.fits"
 
 exit 0

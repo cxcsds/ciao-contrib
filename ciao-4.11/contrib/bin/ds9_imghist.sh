@@ -33,10 +33,10 @@ else
 fi
 
 cat - | dmimghist -"$regions" - 1 > \
- $ASCDS_WORK_PATH/$$_hist.fits
+ $DAX_OUTDIR/$$_pixelhist.fits
 
 
-ds9_plot_blt "$ASCDS_WORK_PATH/$$_hist.fits[cols bin,counts]" "Pixel Histogram $$_hist.fits" $ds9
+ds9_plot_blt "$DAX_OUTDIR/$$_pixelhist.fits[cols bin,counts]" "Pixel Histogram $$_pixelhist.fits" $ds9
 
 file=`xpaget $ds9 file name `
 file=`basename "${file}"`
@@ -47,5 +47,5 @@ echo `date`
 echo ""
 echo "infile: ${file}"
 echo "region: ${reg}"
-echo "outfile: $ASCDS_WORK_PATH/$$_hist.fits"
+echo "outfile: $DAX_OUTDIR/$$_pixelhist.fits"
 echo ""
