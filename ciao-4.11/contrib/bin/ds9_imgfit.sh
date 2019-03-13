@@ -1,7 +1,7 @@
 #! /bin/sh
 
 # 
-#  Copyright (C) 2010-2015,2018  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010-2015,2018,2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -41,6 +41,7 @@ src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selec
 
 if test "x${src}" = x
 then
+  echo "# -------------------"
   echo "No sources **selected** "
   exit 1
 fi
@@ -52,15 +53,20 @@ else
   conf=""
 fi
 
+TMPDIR=$ASCDS_WORK_PATH/ds9imgfit.${USER}/$$/
+mkdir -p $TMPDIR
+
+echo "# -------------------"
+echo `date`
 
 echo "  (1/3) Getting data"
 
-xpaget $ds9 fits > $ASCDS_WORK_PATH/$$_img.fits 
+xpaget $ds9 fits > ${TMPDIR}/img.fits 
 
 echo "  (2/3) Getting moments to provide better guess"
 
 punlearn imgmoment
-imgmoment "$ASCDS_WORK_PATH/$$_img.fits[(x,y)=$src]" 
+imgmoment "${TMPDIR}/img.fits[(x,y)=$src]" 
 xx=`pget imgmoment x_mu`
 yy=`pget imgmoment y_mu`
 mjr=`pget imgmoment xsig`
@@ -68,12 +74,12 @@ mnr=`pget imgmoment ysig`
 phi=`pget imgmoment phi | awk '{print (($1+360.0)%360)*3.141592/180.0}'`
 
 
-cat <<EOF > $ASCDS_WORK_PATH/$$_img.cmd
+cat <<EOF > ${TMPDIR}/fit.cmd
 
 import sherpa.astro.ui as sherpa
 import numpy as np
 
-sherpa.load_data("$ASCDS_WORK_PATH/$$_img.fits")
+sherpa.load_data("${TMPDIR}/img.fits")
 sherpa.set_coord("physical")
 
 sherpa.set_source("${model}.mdl1+${modelbkg}.bkg1")
@@ -99,17 +105,23 @@ except:
 
 
 sherpa.notice()
-sherpa.save_source("$ASCDS_WORK_PATH/$$_out.fits", clobber=True)
+sherpa.save_source("${TMPDIR}/out.fits", clobber=True)
 EOF
 
 echo "  (3/3) Doing fit"
 
-python $ASCDS_WORK_PATH/$$_img.cmd
+python ${TMPDIR}/fit.cmd
+
+xpaset -p $ds9 tile
 
 xpaset -p $ds9 frame new
-cat $ASCDS_WORK_PATH/$$_out.fits | xpaset $ds9 fits
+cat ${TMPDIR}/out.fits | xpaset $ds9 fits
 
-echo "Done!"
+dmimgcalc ${TMPDIR}/img.fits ${TMPDIR}/out.fits ${TMPDIR}/residual.fits op=sub look= clob+
+xpaset -p $ds9 frame new
+cat ${TMPDIR}/residual.fits | xpaset $ds9 fits
+
+echo ""
+echo "Data products and fitting script are in: ${TMPDIR}"
 
 
-/bin/rm -f  $ASCDS_WORK_PATH/$$_img.fits $ASCDS_WORK_PATH/$$_img.cmd $ASCDS_WORK_PATH/$$_out.fits
