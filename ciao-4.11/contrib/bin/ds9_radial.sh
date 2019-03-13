@@ -21,6 +21,7 @@
 
 xpa=$1
 file=$2
+units=$3
 
 nxpa=`xpaaccess -n ${xpa}`
 if test $nxpa -ne 1
@@ -28,6 +29,19 @@ then
   echo "# -------------------"
   echo "Multiple (${nxpa}) ds9's are running using the same title: '${xpa}'.  Please close the other windows and restart."
   exit 1
+fi
+
+
+if test x$units = xphysical
+then
+    outcol=rmid
+else if test x$units = xarcsec
+then
+    outcol=cel_rmid
+else
+    echo "ERROR: Unexpected value for units: ${units}"
+    exit 1
+fi
 fi
 
 
@@ -41,7 +55,7 @@ dmextract "${file}[bin sky=@$DAX_OUTDIR/$$_ds9.reg]" op=generic \
 
 
 
-ds9_plot_blt "$DAX_OUTDIR/$$_radial.fits[cols rmid,sur_bri]" "Radial Profile $$_radial.fits" $xpa
+ds9_plot_blt "$DAX_OUTDIR/$$_radial.fits[cols ${outcol},sur_bri]" "Radial Profile $$_radial.fits" $xpa
 
 \rm -f $DAX_OUTDIR/$$_ds9.reg
 
