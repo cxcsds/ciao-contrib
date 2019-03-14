@@ -186,6 +186,14 @@ param imagefit
 endparam
 
 
+param rproffit
+   rprof_units menu {Units} physical|arcsec {Display radius in which units?}
+   rprof_srcA menu {Model1} gauss1d|beta1d|const1d|lorentz1d|polynom1d|powlaw1d {First model component}
+   rprof_srcB menu {Model2} none|gauss1d|beta1d|const1d|lorentz1d|polynom1d|powlaw1d {2nd additive model component}
+   rprof_mthd menu {Method} levmar|neldermead|moncar {Optimization method}
+endparam
+
+
 param srcflux
   energy entry {Energy band} broad {CSC bands or values in keV}
   model entry {Model definition} "xspowerlaw.pow1" {Sherpa model expression}
@@ -556,6 +564,14 @@ hmenu CIAO
 #NEW#    *
 #NEW#    menu
 #NEW#    $env(ASCDS_CONTRIB)/bin/ds9_extent "$filename" "$regions(ciao,strip)" |& $text
+
+
+     ---
+     
+     Radial Profile Fit
+     *
+     menu
+     $param(rproffit); $env(ASCDS_CONTRIB)/bin/ds9_radial_fit $xpa $rprof_units $rprof_srcA $rprof_srcB $rprof_mthd |& $text
 
 
   endhmenu

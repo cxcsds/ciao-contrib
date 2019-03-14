@@ -1,0 +1,237 @@
+#!/usr/bin/env python
+
+# 
+# Copyright (C) 2019  Smithsonian Astrophysical Observatory
+# 
+# 
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+
+import sys
+import os
+
+
+def blt_plot_fit(sherpa_plot_fit_obj, xpa="ds9", 
+       tle="Plot Fit", xlb="x ", ylb="y " ):
+
+    import subprocess as subprocess
+
+    def xpa_plot_cmd( access_point, command ):
+        """Wrapper around xpaset for plot commands"""
+        
+        cc = ["xpaset", "-p", access_point, "plot" ]
+        cc.extend( command.split(' '))    
+        xpa = subprocess.Popen(cc)
+        xpa.communicate()
+
+
+    def blt_plot_data(access_point,xx, ex, yy, ey, title, x_label, y_label):
+        """Plot the data"""
+        
+        cmd = ["xpaset", access_point, "plot"]    
+        cmd.extend( ["new", "line", 
+            "{{{0}}}".format(title), 
+            "{{{0}}}".format(x_label), 
+            "{{{0}}}".format(y_label),
+            "xyey"
+            ] )
+
+        # Plot the data
+        xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
+        for vv in zip(xx, yy, ey):
+            pair = " ".join( [str(x) for x in vv])+"\n"        
+            pb = pair.encode()
+            xpa.stdin.write(pb)        
+        xpa.communicate()
+
+
+        # Make pretty
+        xpa_plot_cmd(access_point, "shape circle")
+        xpa_plot_cmd(access_point, "shape fill yes")
+        xpa_plot_cmd(access_point, "shape color cornflowerblue")
+        xpa_plot_cmd(access_point, "error color cornflowerblue")
+        xpa_plot_cmd(access_point, "width 0")
+        xpa_plot_cmd(access_point, "legend yes")
+        xpa_plot_cmd(access_point, "legend position right")
+        xpa_plot_cmd(access_point, "name {Data }")    
+        xpa_plot_cmd(access_point, "axis x grid no")
+        xpa_plot_cmd(access_point, "axis y grid no")
+
+
+    def blt_plot_model(access_point,x_vals, y_vals):
+        """Plot the model"""
+        
+        cmd = ["xpaset", access_point, "plot"]
+        cmd.extend( ["data", "xy"] )
+
+        xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
+        for x,y in zip(x_vals, y_vals):
+            pair = "{} {}\n".format(x,y)
+            pb = pair.encode()
+            xpa.stdin.write(pb)        
+        xpa.communicate()
+        xpa_plot_cmd(access_point, "shape none")
+        xpa_plot_cmd(access_point, "shape fill no")
+        xpa_plot_cmd(access_point, "color orange")
+        xpa_plot_cmd(access_point, "shape color orange")
+        xpa_plot_cmd(access_point, "width 2")
+        xpa_plot_cmd(access_point, "name Model")
+
+    
+    _d = sherpa_plot_fit_obj.dataplot
+    _m = sherpa_plot_fit_obj.modelplot
+
+    blt_plot_data( xpa, _d.x, None, _d.y, _d.yerr, 
+        tle, xlb, ylb)
+    blt_plot_model( xpa, _m.x, _m.y)
+
+
+# -----------------------------------------
+
+import subprocess as sp
+from tempfile import NamedTemporaryFile    
+import sherpa.astro.ui as sherpa
+
+ROOT=os.path.join( os.environ["DAX_OUTDIR"], "rprof_fit", str(os.getpid()))
+
+
+def translate_units(units):
+    if 'physical' == units:
+        rcol = 'rmid'
+    elif 'arcsec' == units:
+        rcol = 'cel_rmid'
+    else:
+        raise ValueError("Unknown units: {}".format(units))
+
+    return rcol
+
+def translate_model(model, model_name):
+    
+    if 'none' == model:
+        return None
+
+    m = sherpa.create_model_component( model, model_name )
+    if "polynom1d" == model:
+        sherpa.thaw(m.c1)
+        sherpa.thaw(m.c2)
+
+    return(m)
+
+    
+
+def load_arguments():
+    plist =  ['xpa', 'units', 'model1', 'model2', 'method']    
+    pars = { d : sys.argv[i+1] for i,d in enumerate(plist) }
+    return pars
+
+
+def get_ciao_stack_from_ds9(xpa):
+    ds9_file = NamedTemporaryFile(dir=ROOT, suffix="_ds9.reg")
+    ciao_list = NamedTemporaryFile(dir=ROOT, suffix="_ciao.lis", delete=False)
+
+    cmd = [ 'xpaget', xpa, 'regions', '-format', 'ds9', '-system', 'physical' ]
+    ds9_reg = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    open(ds9_file.name,"w").write(ds9_reg.decode())
+    
+    cmd = [ 'convert_ds9_region_to_ciao_stack', ds9_file.name, ciao_list.name, "clobber=yes", "verbose=0"]
+    sp.run(cmd, check=True)    
+    return(ciao_list.name)
+    
+
+def save_ds9_image(xpa):
+    ds9_file = NamedTemporaryFile(dir=ROOT, suffix="_ds9.fits", delete=False)
+
+    cmd = [ 'xpaget', xpa, 'fits' ]
+    fits = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    open(ds9_file.name,"wb").write(fits)
+    
+    return(ds9_file.name)
+    
+
+def run_dmextract( infile, stack, bgstack=None):    
+    from ciao_contrib.runtool import dmextract
+
+    prof = NamedTemporaryFile(dir=ROOT, suffix="_radial.prof", delete=False)
+    dmextract.infile = "{}[bin (x,y)=@-{}]".format(infile, stack)
+    dmextract.outfile = prof.name
+    dmextract.clobber=True
+    dmextract.verbose=0
+    dmextract.opt="generic"
+    
+    vv = dmextract()
+    if vv:
+        print(vv)
+    
+    return prof.name
+
+    
+def fit_profile( xpa, infile, model, xcol, method, ycol="sur_bri", ycol_err="sur_bri_err" ):
+    sherpa.load_data( 1, infile, colkeys=[xcol, ycol, ycol_err])
+    sherpa.set_model(model)
+    sherpa.set_method(method)
+    sherpa.fit()
+    
+    fobj = sherpa.get_fit_plot()    
+    blt_plot_fit( fobj, xpa)
+    sav = ROOT+"/sherpa.save"
+    sherpa.save( sav, clobber=True)
+    print("\nTo restore session, start sherpa and type\n\nrestore('{}')".format(sav))
+
+
+def doit():
+    
+    pars = load_arguments()
+
+    os.makedirs(ROOT)
+
+    xcol = translate_units( pars["units"])
+    my_model = translate_model( pars["model1"], "first_cpt")
+    if my_model is None:
+        raise ValueError("First model cannot be none")
+
+    model2 = translate_model( pars["model2"], "second_cpt")
+    if model2 is not None:
+        my_model = my_model + model2
+
+    stk = fits = prof = None
+
+    try:
+        stk = get_ciao_stack_from_ds9("ds9")
+        fits = save_ds9_image("ds9")
+        prof = run_dmextract( fits, stk )
+        fit_profile(pars["xpa"], prof, my_model, xcol, pars["method"])
+    finally:
+        if stk is not None and os.path.exists(stk):
+            os.unlink( stk )
+        if fits is not None and os.path.exists(fits):
+            os.unlink( fits )
+    
+    
+    
+
+doit()
+
+
+def test_plot():
+    import sherpa.astro.ui as sherpa
+    sherpa.load_arrays(1, [1,2,3], [3,4,3])
+
+
+    sherpa.set_model(sherpa.const1d.c0)
+    sherpa.fit()
+    ff = sherpa.get_fit_plot()
+    blt_plot_fit(ff, "ds9")
