@@ -1,0 +1,322 @@
+#!/usr/bin/env python
+#
+#
+# Copyright (C) 2019 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+import sys
+import os
+
+toolname = "convert_ds9_region_to_ciao_stack"
+__revision__ = "14 March 2019"
+
+import ciao_contrib.logger_wrapper as lw
+lw.initialize_logger(toolname)
+lgr = lw.get_logger(toolname)
+verb0 = lgr.verbose0
+verb1 = lgr.verbose1
+verb2 = lgr.verbose2
+verb3 = lgr.verbose3
+verb4 = lgr.verbose4
+verb5 = lgr.verbose5
+
+
+from region import *
+
+
+
+def ds9_annulus( *args ):
+    """
+    annulus(3938.5052,4158.5084,0,31.085122,62.170244,93.255366,124.34049,155.42561)
+        : annulus( x, y, r0, r1, r2, r3, ... rN)
+    """
+    if (len(args)<4):
+        raise RuntimeError( "not engough parameters" )
+
+    xx = args[0]
+    yy = args[1]
+    retval = []
+    for i in range( 3, len(args),1 ):
+        retval.append( annulus( xx, yy, args[i-1], args[i] ) )
+
+    return retval
+
+
+def ds9_ellipse( *args ):
+    """
+    ellipse(4270.4871,4030.506,0,0,36,25.999999,72,51.999999,108,77.999998,144,104,42.150903)
+      : ellipse( x, y, m0, n0, m1, n1, m2, n2, ... , mN, nN, angle)
+    """
+
+    if (len(args)<5):
+        raise RuntimeError( "not engough parameters" )
+
+    xx = args[0]
+    yy = args[1]
+    angle = args[-1] # Last value is angle
+
+    retval = []
+    for i in range( 4, len(args)-1, 2 ):
+        inner = ellipse( xx, yy, args[i-2], args[i-1], angle )
+        outer = ellipse( xx, yy, args[i], args[i+1], angle )
+        retval.append( outer-inner )
+
+    return retval
+
+
+def ds9_box( *args ):
+    """
+    box(4656.5148,4106.5044,0,0,62.664,74.664,125.328,149.328,187.992,223.992,44.993503)
+       : box( x, y, m0, n0, m1, n1, m2, n2, ... , mN, nN, angle)
+
+    """
+    if (len(args)<5):
+        raise RuntimeError( "not engough parameters" )
+
+    xx = args[0]
+    yy = args[1]
+    angle = args[-1] # Last value is angle
+
+    retval = []
+    for i in range( 4, len(args)-1, 2 ):
+        inner = box( xx, yy, args[i-2], args[i-1], angle )
+        outer = box( xx, yy, args[i], args[i+1], angle )
+        retval.append( outer-inner )
+
+    return retval
+
+
+def ds9_panda( xx, yy, start_angle, stop_angle, num_angle, inner, outer, num_rad):
+    """
+    panda(3874.5018,3550.4989,3.4160865e-09,359.9995,4,73.913415,147.82683,2)
+       : panda( x, y, angle_min, angle_max, #angle, rmin, rmax, #rad)
+    """
+    if start_angle > stop_angle:
+        stop_angle = stop_angle + 360.0
+
+    da = (stop_angle-start_angle)/float(num_angle)
+    dr = (outer-inner)/float(num_rad)
+    
+    retval = []
+    for aa in range( int(num_angle) ):        
+        ss = sector( xx, yy, start_angle+(aa*da), start_angle+((aa+1)*da) )
+        for rr in range( int(num_rad) ):
+            anl = annulus( xx, yy, inner+(rr*dr), inner+((rr+1)*dr) )
+            retval.append( anl*ss )
+
+    return retval
+
+
+def ds9_foo_panda( myshape, xx, yy, start_angle, stop_angle, num_angle, mjr_inner, mnr_inner, mjr_outer, mnr_outer, num_rad, ang):
+    """
+    """
+    start_angle = start_angle+ang
+    stop_angle = stop_angle+ang
+    if start_angle > stop_angle:
+        stop_angle = stop_angle + 360.0
+
+    da = (stop_angle-start_angle)/float(num_angle)
+    dm = (mjr_outer-mjr_inner)/float(num_rad)
+    dj = (mnr_outer-mnr_inner)/float(num_rad)
+    
+    retval = []
+    for aa in range( int(num_angle) ):        
+        ss = sector( xx, yy, start_angle+(aa*da), start_angle+((aa+1)*da) )
+        for rr in range( int(num_rad) ):
+            inner = myshape( xx, yy, mjr_inner+(rr*dm), mnr_inner+(rr*dj), ang )
+            outer = myshape( xx, yy, mjr_inner+((rr+1)*dm), mnr_inner+((rr+1)*dj), ang )
+            retval.append((outer*ss)-inner)
+    
+    return retval
+
+
+def ds9_epanda( xx, yy, start_angle, stop_angle, num_angle, mjr_inner, mnr_inner, mjr_outer, mnr_outer, num_rad, ang):
+    """
+    epanda(4222.4993,3518.4984,3.4160865e-09,359.9995,3,0,0,120,196,6,3.4160865e-09)
+       : epanda( x, y, angle_min, angle_max, #angle, rmin_major, rmin_minr, rmax_maj, rmax_min, #rad, angle)
+    """
+    retval = ds9_foo_panda(ellipse, xx, yy, start_angle, stop_angle, 
+                    num_angle, mjr_inner, mnr_inner, mjr_outer, 
+                    mnr_outer, num_rad, ang) 
+    return retval
+    
+
+def ds9_bpanda( xx, yy, start_angle, stop_angle, num_angle, mjr_inner, mnr_inner, mjr_outer, mnr_outer, num_rad, ang):
+    """
+    epanda(4222.4993,3518.4984,3.4160865e-09,359.9995,3,0,0,120,196,6,3.4160865e-09)
+       : epanda( x, y, angle_min, angle_max, #angle, rmin_major, rmin_minr, rmax_maj, rmax_min, #rad, angle)
+    """
+    retval = ds9_foo_panda(box, xx, yy, start_angle, stop_angle, 
+                    num_angle, mjr_inner, mnr_inner, mjr_outer, 
+                    mnr_outer, num_rad, ang) 
+    return retval
+
+
+def _stack_shape( line, expander):
+    """
+    
+    """
+    ss = line.split("#")[0].strip()
+    try:
+        rr = CXCRegion(ss)
+    except:
+        verb2("Expanding {} shape".format(expander.__name__))
+
+        tt = ss.replace("(", ",").replace(")","").split(",")
+        tt = [float(x) for x in tt[1:]]
+        rr = expander(*tt)
+    return rr
+
+
+def open_ds9_region(infile):
+    region_file = open(infile,"r").readlines()
+    
+    global_line = [i for i,r in enumerate(region_file) if r.startswith("global")]
+    assert len(global_line) != 0, "Input file is missing 'global' line.  Be sure it is in ds9 format"
+    assert len(global_line) == 1, "Input file has multiple 'global' lines, I don't know what to do"
+    
+    physical_line = region_file[global_line[0]+1].strip()
+    assert "physical" == physical_line, "Input file must be saved in physical coordinates not:"+physical_line
+    
+    start_line = global_line[0]+2
+    return( region_file[start_line:] )
+
+
+def parse_ds9_region( infile ):
+    """    
+    This will only work with region files saved in physical coordintes
+    """
+
+    verb2("Parsing infile")
+    region_data= open_ds9_region(infile)
+    outstk = []
+
+    for line in region_data:
+        if line.startswith("circle") or line.startswith("polygon") or line.startswith("point"):
+            ss = line.split("#")[0].strip()
+            rr = CXCRegion(ss)
+        elif line.startswith("ellipse"):
+            rr = _stack_shape(line, ds9_ellipse)
+        elif line.startswith("box"):
+            rr = _stack_shape(line, ds9_box)
+        elif line.startswith("annulus"):
+            rr = _stack_shape(line, ds9_annulus)
+        elif line.startswith("panda"):
+            rr = _stack_shape(line, ds9_panda)
+        elif line.startswith("bpanda"):
+            rr = _stack_shape(line, ds9_bpanda)
+        elif line.startswith("epanda"):
+            rr = _stack_shape(line, ds9_epanda)
+        else:
+            # we don't care, skip all other lines.
+            verb3("Skipping '{}'".format(line.strip()))
+            rr = None
+
+        if rr is not None:
+            outstk.extend(rr)
+            rline = "\n    ".join([str(r) for r in rr])
+            verb4("Expanding '{}' :\n    {}".format(line.strip(),rline))
+        
+    return outstk
+
+
+def write_stack_region( outstk, outfile ):
+    """
+    Write to an ascii file
+    """
+    verb2("Writting output")
+
+    oo = "\n".join( [str(r) for r in outstk])
+    
+    with open(outfile,"w") as fp:
+        fp.write(oo+"\n")
+    
+
+@lw.handle_ciao_errors( toolname, __revision__)
+def main():
+
+    from ciao_contrib.param_soaker import get_params
+    # Load the parameters
+    pars = get_params(toolname, "rw", sys.argv, 
+        verbose={"set":lw.set_verbosity, "cmd":verb1} )
+    
+    import ciao_contrib._tools.fileio as fileio
+    fileio.outfile_clobber_checks(pars["clobber"], pars["outfile"] )
+    if os.path.exists(pars["outfile"]): os.remove( pars["outfile"] )
+    
+    regstk = parse_ds9_region( pars["infile"])
+    write_stack_region( regstk, pars["outfile"])
+    
+
+
+
+    
+def _test():
+
+    r1 = """# Region file format: DS9 version 4.1
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+physical
+circle(5534.4155,5410.7554,130.07236)
+ellipse(5262.4155,5582.7554,84,164,0)
+box(6066.4155,5542.7554,96,152,0)
+polygon(5652.2102,5680.9607,5792.6207,5680.9607,5914.4155,5626.7554,5792.6207,5540.5502,5652.2102,5540.5502)
+line(5210.4155,4846.7554,5202.4155,4646.7554) # line=0 0
+# vector(5274.4155,4862.7554,171.02047,280.7843) vector=1
+# projection(5362.4155,4814.7554,5418.4155,4646.7554,0)
+# segment(5418.8706,4842.3003,5534.4155,4766.7554,5530.4155,4650.7554)
+# text(5610.4155,4654.7554) text={Foo}
+point(5226.4155,5222.7554) # point=circle
+# ruler(5626.4155,4782.7554,5722.4155,4762.7554) ruler=fk5 degrees
+# compass(5802.4155,4694.7554,44) compass=fk5 {N} {E} 1 1
+annulus(5286.4155,5638.7554,64.737691,129.47538)
+"""
+
+    r2 = """# Region file format: DS9 version 4.1
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+physical
+annulus(5286.4149,5638.755,0,64.737646,129.47529)
+ellipse(5586.4155,5654.7554,66,34,132,68,0)
+box(6014.4195,5566.7514,111.996,91.996,223.992,183.992,0)
+panda(5294.4155,5218.7554,0,360,4,48.123046,96.246092,1)
+epanda(5638.4155,5178.7554,0,360,4,79.180333,119.10697,158.36067,238.21395,1,13.153015)
+bpanda(6054.4175,5016.7534,0,360,4,83.998,129.998,167.996,259.996,1,0)
+"""
+
+    open("ds9.reg","w").write(r1)
+    open("ds9_stack.reg","w").write(r2)
+
+    c = parse_ds9_region( "ds9.reg")
+    write_stack_region(c, "ciao1.lis")
+
+    c = parse_ds9_region( "ds9_stack.reg")
+    write_stack_region(c, "ciao2.lis")
+
+    from ciao_contrib.runtool import dmcopy
+
+    fin = "/export/img.fits[sky={}][opt full]" 
+    fout = "out_{:04d}.fits"
+    for i,z in enumerate(c):
+        dmcopy(fin.format(z),fout.format(i), clobber=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as E:
+        sys.stderr.write("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n")
+        sys.exit(1)
+    sys.exit(0)
