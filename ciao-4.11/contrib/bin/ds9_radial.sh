@@ -45,7 +45,6 @@ fi
 fi
 
 
-
 xpaget $xpa regions -format ds9 -system physical > $DAX_OUTDIR/$$_ds9.reg 
 convert_ds9_region_to_ciao_stack $DAX_OUTDIR/$$_ds9.reg $DAX_OUTDIR/$$_ciao.lis clob+ verb=0
 
