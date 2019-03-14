@@ -20,8 +20,8 @@
 
 
 xpa=$1
-file=$2
-units=$3
+#####file=$2
+units=$2
 
 nxpa=`xpaaccess -n ${xpa}`
 if test $nxpa -ne 1
@@ -49,17 +49,19 @@ fi
 xpaget $xpa regions -format ds9 -system physical > $DAX_OUTDIR/$$_ds9.reg 
 convert_ds9_region_to_ciao_stack $DAX_OUTDIR/$$_ds9.reg $DAX_OUTDIR/$$_ciao.lis clob+ verb=0
 
-dmextract "${file}[bin (x,y)=@-$DAX_OUTDIR/$$_ciao.lis]" op=generic \
+# dmextract can't take pipe'd images :(  Make temp file
+cat - > $DAX_OUTDIR/$$_ds9.fits
+
+dmextract "$DAX_OUTDIR/$$_ds9.fits[bin (x,y)=@-$DAX_OUTDIR/$$_ciao.lis]" op=generic \
   outfile=$DAX_OUTDIR/$$_radial.fits
 
 ds9_plot_blt "$DAX_OUTDIR/$$_radial.fits[cols ${outcol},sur_bri]" "Radial Profile $$_radial.fits" $xpa
 
-\rm -f $DAX_OUTDIR/$$_ds9.reg $DAX_OUTDIR/$$_ciao.lis
+\rm -f $DAX_OUTDIR/$$_ds9.reg $DAX_OUTDIR/$$_ciao.lis $DAX_OUTDIR/$$_ds9.fits
 
 echo "-----------------------------"
 echo `date`
 echo ""
-echo "infile: ${file}"
 echo "outfile: $DAX_OUTDIR/$$_radial.fits"
 echo ""
 
