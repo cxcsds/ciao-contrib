@@ -46,18 +46,15 @@ fi
 
 
 
-\rm -f $DAX_OUTDIR/$$_ds9.reg
-xpaget $xpa regions -format ds9 -system physical | cut -d"#" -f1 | sed 's, *$,,' | \
-  awk -f $ASCDS_CONTRIB/config/ds9_region_expand.awk > $DAX_OUTDIR/$$_ds9.reg
+xpaget $xpa regions -format ds9 -system physical > $DAX_OUTDIR/$$_ds9.reg 
+convert_ds9_region_to_ciao_stack $DAX_OUTDIR/$$_ds9.reg $DAX_OUTDIR/$$_ciao.lis clob+ verb=0
 
-dmextract "${file}[bin sky=@$DAX_OUTDIR/$$_ds9.reg]" op=generic \
+dmextract "${file}[bin (x,y)=@-$DAX_OUTDIR/$$_ciao.lis]" op=generic \
   outfile=$DAX_OUTDIR/$$_radial.fits
-
-
 
 ds9_plot_blt "$DAX_OUTDIR/$$_radial.fits[cols ${outcol},sur_bri]" "Radial Profile $$_radial.fits" $xpa
 
-\rm -f $DAX_OUTDIR/$$_ds9.reg
+\rm -f $DAX_OUTDIR/$$_ds9.reg $DAX_OUTDIR/$$_ciao.lis
 
 echo "-----------------------------"
 echo `date`
