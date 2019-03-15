@@ -152,6 +152,25 @@ def get_ciao_stack_from_ds9(xpa):
     return(ciao_list.name)
     
 
+def check_unique(xpa):
+    cmd = [ 'xpaaccess','-n',xpa]
+    try:
+        # xpaaccess returns num proc as exit status
+        num = sp.run( cmd, check=False, stdout=sp.PIPE).stdout
+    except:
+        raise RuntimeError("Cannot access "+xpa)
+
+    if num == '' or num is None or 0 == int(num):
+        raise RuntimeError("What happened to ds9?")
+    
+    if int(num) != 1:
+        raise RuntimeError("Multiple ({}) ds9's are running using the "+
+            "same title: '{}'.  Please close the other windows "+
+            "and restart.".format(num,xpa))
+
+
+
+
 def save_ds9_image(xpa):
     ds9_file = NamedTemporaryFile(dir=ROOT, suffix="_ds9.fits", delete=False)
 
@@ -186,15 +205,21 @@ def fit_profile( xpa, infile, model, xcol, method, ycol="sur_bri", ycol_err="sur
     sherpa.fit()
     
     fobj = sherpa.get_fit_plot()    
-    blt_plot_fit( fobj, xpa)
+    blt_plot_fit( fobj, xpa, 
+       tle="Radial Profile: {}".format(model.name),
+       xlb="Radius [{}]".format(xcol),
+       ylb="sur_bri [counts/pixel**2]"        
+       )
     sav = ROOT+"/sherpa.save"
     sherpa.save( sav, clobber=True)
     print("\nTo restore session, start sherpa and type\n\nrestore('{}')".format(sav))
+    print("-----------------------")
 
 
 def doit():
     
     pars = load_arguments()
+    check_unique( pars["xpa"])
 
     os.makedirs(ROOT)
 
@@ -210,8 +235,8 @@ def doit():
     stk = fits = prof = None
 
     try:
-        stk = get_ciao_stack_from_ds9("ds9")
-        fits = save_ds9_image("ds9")
+        stk = get_ciao_stack_from_ds9(pars["xpa"])
+        fits = save_ds9_image(pars["xpa"])
         prof = run_dmextract( fits, stk )
         fit_profile(pars["xpa"], prof, my_model, xcol, pars["method"])
     finally:
