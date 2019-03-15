@@ -41,14 +41,16 @@ else
   exclude=yes
 fi
 
-
-
-xpaget $ds9 regions source | awk ' NR <5 {print $0; next} 0 == index($0,"tag=") { if ( 0==index($0,"#")) {s=" # "  } else {s=" "}  print $0""s"tag={dummy "NR"}"; next } {print $0}' > $DAX_OUTDIR/$$_src.reg
-xpaget $ds9 regions background | awk ' NR <5 { print $0; next} 0 == index($0,"tag=") { if ( 0==index($0,"#")) {s=" # "  } else {s=" "}  print $0""s"tag={dummy "NR"}"; next } {print $0}' > $DAX_OUTDIR/$$_bkg.reg
-
+# Get source and background regions.  Tag them.
+xpaget $ds9 regions source -format ds9 -system physical -strip |  \
+  tr ";" "\012" | egrep -v 'physical' | cat - | \
+  awk '{print $0" # tag={"NR"}"}' > $DAX_OUTDIR/$$_src.reg
+xpaget $ds9 regions background -format ds9 -system physical -strip | \
+  tr ";" "\012" | egrep -v 'physical' | cat - |\
+  awk '{print $0" # background tag={"NR"}"}' > $DAX_OUTDIR/$$_bkg.reg
 cat $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg > $DAX_OUTDIR/$$_all.reg
 
-# TODO: BETTER ERROR CHECKING ON GROUPS, SRC, BKG
+# Groupreg to match groups -- maybe not necessary
 dmgroupreg $DAX_OUTDIR/$$_all.reg  $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg clob+ exclude=$exclude
 
 
