@@ -48,13 +48,34 @@ xpaget $ds9 regions source -format ds9 -system physical -strip |  \
 xpaget $ds9 regions background -format ds9 -system physical -strip | \
   tr ";" "\012" | egrep -v 'physical' | cat - |\
   awk '{print $0" # background tag={"NR"}"}' > $DAX_OUTDIR/$$_bkg.reg
+
+
 cat $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg > $DAX_OUTDIR/$$_all.reg
 
 # Groupreg to match groups -- maybe not necessary
 dmgroupreg $DAX_OUTDIR/$$_all.reg  $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg clob+ exclude=$exclude
 
+# doesn't set non-zero exit status
+dmfilth - - $meth @-$DAX_OUTDIR/$$_src.reg @-$DAX_OUTDIR/$$_bkg.reg > $DAX_OUTDIR/$$_fill.fits 2>&1 
 
-dmfilth - - $meth @-$DAX_OUTDIR/$$_src.reg @-$DAX_OUTDIR/$$_bkg.reg 2>&1 | xpaset $ds9 fits new
+# Check if this is a FITS file
+cat $DAX_OUTDIR/$$_fill.fits | fold -80 | grep ^SIMPLE > /dev/null 2>&1
+if test $? -ne 0
+then
+  # Display error message
+  echo `date`
+  echo ""
+  cat $DAX_OUTDIR/$$_fill.fits
+  echo "--------"
+else
+  # Display image
+  cat $DAX_OUTDIR/$$_fill.fits | xpaset $ds9 fits new
+  echo `date`
+  echo ""
+  echo "Output file: $DAX_OUTDIR/$$_fill.fits"
+  echo "--------"
+
+fi
 
 \rm -f  $DAX_OUTDIR/$$_all.reg  $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg 
 
