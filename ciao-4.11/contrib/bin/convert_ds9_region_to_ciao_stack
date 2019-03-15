@@ -196,6 +196,32 @@ def open_ds9_region(infile):
     return( region_file[start_line:] )
 
 
+def parse_line( line ):
+    """
+    
+    """
+    if line.startswith("circle") or line.startswith("polygon") or line.startswith("point"):
+        ss = line.split("#")[0].strip()
+        rr = CXCRegion(ss)
+    elif line.startswith("ellipse"):
+        rr = _stack_shape(line, ds9_ellipse)
+    elif line.startswith("box"):
+        rr = _stack_shape(line, ds9_box)
+    elif line.startswith("annulus"):
+        rr = _stack_shape(line, ds9_annulus)
+    elif line.startswith("panda"):
+        rr = _stack_shape(line, ds9_panda)
+    elif line.startswith("bpanda"):
+        rr = _stack_shape(line, ds9_bpanda)
+    elif line.startswith("epanda"):
+        rr = _stack_shape(line, ds9_epanda)
+    else:
+        # we don't care, skip all other lines.
+        verb2("Skipping '{}'".format(line.strip()))
+        rr = None
+    return rr
+
+
 def parse_ds9_region( infile ):
     """    
     This will only work with region files saved in physical coordintes
@@ -206,30 +232,18 @@ def parse_ds9_region( infile ):
     outstk = []
 
     for line in region_data:
-        if line.startswith("circle") or line.startswith("polygon") or line.startswith("point"):
-            ss = line.split("#")[0].strip()
-            rr = CXCRegion(ss)
-        elif line.startswith("ellipse"):
-            rr = _stack_shape(line, ds9_ellipse)
-        elif line.startswith("box"):
-            rr = _stack_shape(line, ds9_box)
-        elif line.startswith("annulus"):
-            rr = _stack_shape(line, ds9_annulus)
-        elif line.startswith("panda"):
-            rr = _stack_shape(line, ds9_panda)
-        elif line.startswith("bpanda"):
-            rr = _stack_shape(line, ds9_bpanda)
-        elif line.startswith("epanda"):
-            rr = _stack_shape(line, ds9_epanda)
+        if line.startswith('-'):
+            verb1("Excluded region will be exluded from all shapes, not just the last one.")
+            excluded_region = parse_line(line[1:])
+            assert len(excluded_region) == 1, "Excluded region must be simple, single shapes"
+            ss = excluded_region[0]
+            outstk = [o-ss for o in outstk] 
         else:
-            # we don't care, skip all other lines.
-            verb3("Skipping '{}'".format(line.strip()))
-            rr = None
-
-        if rr is not None:
-            outstk.extend(rr)
-            rline = "\n    ".join([str(r) for r in rr])
-            verb4("Expanding '{}' :\n    {}".format(line.strip(),rline))
+            rr = parse_line(line)
+            if rr is not None:
+                outstk.extend(rr)
+                rline = "\n    ".join([str(r) for r in rr])
+                verb4("Expanding '{}' :\n    {}".format(line.strip(),rline))
         
     return outstk
 
@@ -296,14 +310,26 @@ epanda(5638.4155,5178.7554,0,360,4,79.180333,119.10697,158.36067,238.21395,1,13.
 bpanda(6054.4175,5016.7534,0,360,4,83.998,129.998,167.996,259.996,1,0)
 """
 
+    r3 = """# Region file format: DS9 version 4.1
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+physical
+annulus(5286.4149,5638.755,0,64.737646,129.47529)
+-circle(3186.4149,5638.755,100)
+-circle(5186.4149,5638.755,30)
+"""
+
     open("ds9.reg","w").write(r1)
     open("ds9_stack.reg","w").write(r2)
+    open("ds9_ex.reg","w").write(r3)
 
     c = parse_ds9_region( "ds9.reg")
     write_stack_region(c, "ciao1.lis")
 
     c = parse_ds9_region( "ds9_stack.reg")
     write_stack_region(c, "ciao2.lis")
+
+    c = parse_ds9_region( "ds9_ex.reg")
+    write_stack_region(c, "ciao3.lis")
 
     from ciao_contrib.runtool import dmcopy
 
@@ -316,6 +342,7 @@ bpanda(6054.4175,5016.7534,0,360,4,83.998,129.998,167.996,259.996,1,0)
 if __name__ == "__main__":
     try:
         main()
+        #_test()
     except Exception as E:
         sys.stderr.write("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n")
         sys.exit(1)
