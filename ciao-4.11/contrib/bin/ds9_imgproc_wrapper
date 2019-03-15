@@ -128,6 +128,30 @@ elif "apowerspectrum" == toolname:
 elif "acrosscorr" == toolname:
     tool.infile1 = infile
     tool.infile2 = "none"
+elif "aconvolve" == toolname:
+    ker=sys.argv[3]
+    xx=sys.argv[4]
+    yy=sys.argv[5]
+    meth=sys.argv[6]
+    nrad=4
+
+    kernels = { 
+        "gaus"   : "lib:{ker}(2,{nrad},1,{xx},{yy})",
+        "mexhat" : "lib:{ker}(2,{nrad},1,{xx},{yy})",
+        "power"  : "lib:{ker}(2,{nrad},1,{xx},{yy})",
+        "exp"    : "lib:{ker}(2,{nrad},1,{xx},{yy})",
+        "tophat" : "lib:{ker}(2,1,{xx},{yy})",
+        "box"    : "lib:{ker}(2,1,{xx},{yy})",
+        "sinc"   : "lib:{ker}(2,{nrad},1,{xx})",
+        "beta"   : "lib:{ker}(2,{nrad},1,{xx})",
+        "cone"   : "lib:{ker}(2,1,{xx})",
+        "pyramid": "lib:{ker}(2,1,{xx})",
+        "sphere" : "lib:{ker}(2,{xx})",
+        }
+
+    tool.kernelspec = kernels[ker].format(ker=ker,xx=xx,yy=yy,nrad=nrad)
+    tool.method=meth
+
 else:
     raise ValueError("Unknown Tool")
 
