@@ -1,0 +1,149 @@
+#!/usr/bin/env python
+# 
+#  Copyright (C) 2019  Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+
+
+
+import sys
+import os
+
+
+
+import subprocess as sp
+from tempfile import NamedTemporaryFile    
+
+ROOT=os.path.join( os.environ["DAX_OUTDIR"], str(os.getpid()))
+
+
+def check_unique(xpa):
+    cmd = [ 'xpaaccess','-n',xpa]
+    try:
+        # xpaaccess returns num proc as exit status
+        num = sp.run( cmd, check=False, stdout=sp.PIPE).stdout
+    except:
+        raise RuntimeError("Cannot access "+xpa)
+
+    if num == '' or num is None or 0 == int(num):
+        raise RuntimeError("What happened to ds9?")
+    
+    if int(num) != 1:
+        raise RuntimeError("Multiple ({}) ds9's are running using the "+
+            "same title: '{}'.  Please close the other windows "+
+            "and restart.".format(num,xpa))
+
+
+def save_ds9_image(xpa):
+    ds9_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"], suffix="_ds9.fits", delete=False)
+
+    cmd = [ 'xpaget', xpa, 'fits' ]
+    fits = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    open(ds9_file.name,"wb").write(fits)
+    
+    return(ds9_file.name)
+
+def send_output_image_to_ds9(xpa, outfile):
+    cmd = [ 'xpaset', '-p', xpa, 'fits', 'new', outfile ]
+    fits = sp.run( cmd, check=True )
+    
+
+xpa=sys.argv[1]
+toolname=sys.argv[2]
+
+check_unique(xpa)
+infile = save_ds9_image(xpa)
+
+outfile = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"], 
+    suffix="_{}.fits".format(toolname), delete=False)
+
+
+from ciao_contrib.runtool import make_tool
+tool = make_tool(toolname)
+
+if hasattr(tool, "infile"):
+    tool.infile=infile
+if hasattr(tool, "outfile"):
+    tool.outfile=outfile.name
+
+if toolname is None:
+    raise NotImplementedError("You shouldn't be here")
+elif "dmimgblob" == toolname:
+    tool.threshold=sys.argv[3]
+    tool.srconly=True
+elif "dmimgadapt" == toolname:  
+    #$function $minrad $maxrad $numrad $radstep $counts 
+    tool.function=sys.argv[3]
+    tool.minrad=sys.argv[4]
+    tool.maxrad=sys.argv[5]
+    tool.numrad=sys.argv[6]
+    tool.radscale=sys.argv[7]
+    tool.counts=sys.argv[8]
+elif "csmooth" == toolname:
+    # - none - none none conmeth=fft conkern=$kernel sigmin=$sigmin 
+    # sigmax=$sigmax sclmin=$sclmin sclmax=$sclmax mode=h
+    tool.sclmap="none"
+    tool.outsigfile="none"
+    tool.outsclfile="none"
+    tool.conmeth="fft"
+    tool.conkerneltype=sys.argv[3]
+    tool.sigmin=sys.argv[4]
+    tool.sigmax=sys.argv[5]
+    tool.sclmin=sys.argv[6]
+    tool.sclmax=sys.argv[7]
+    tool.sclmode="compute"
+elif "dmimgfilt" == toolname:
+    # $function $mask numiter=$niter | $image(new)    
+    tool.function = sys.argv[3]
+    tool.mask = sys.argv[4]
+    tool.numiter = sys.argv[5]
+elif "dmimgthresh" == toolname:
+    tool.cut=sys.argv[3]
+    tool.value = sys.argv[4]
+elif "dmimggrad" == toolname:
+    raise NotImplementedError("Not here yet")
+elif "dmnautilus" == toolname:
+    # $snr
+    tool.snr = sys.argv[3]
+elif "dmimgdist" == toolname:
+    pass
+elif "apowerspectrum" == toolname:
+    tool.infilereal = infile
+    tool.infileimag = "none"
+elif "acrosscorr" == toolname:
+    tool.infile1 = infile
+    tool.infile2 = "none"
+else:
+    raise ValueError("Unknown Tool")
+
+
+print("-------------")
+import datetime
+print(datetime.datetime.now())
+
+verb=tool(clobber=True)
+if verb:
+    print(verb)
+send_output_image_to_ds9( xpa, outfile.name )    
+
+
+print("Output file: {}".format(outfile.name))
+
+if os.path.exists(infile):
+    os.unlink(infile)
+
