@@ -143,13 +143,19 @@ def get_ciao_stack_from_ds9(xpa):
     ds9_file = NamedTemporaryFile(dir=ROOT, suffix="_ds9.reg")
     ciao_list = NamedTemporaryFile(dir=ROOT, suffix="_ciao.lis", delete=False)
 
-    cmd = [ 'xpaget', xpa, 'regions', '-format', 'ds9', '-system', 'physical' ]
+    cmd = [ 'xpaget', xpa, 'regions', '-format', 'ciao', '-system', 'physical', 'background', '-strip', 'yes' ]
+    ds9_reg = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    bkg=ds9_reg.decode() if len(ds9_reg) > 0 else ""
+
+
+    cmd = [ 'xpaget', xpa, 'regions', '-format', 'ds9', '-system', 'physical', 'source' ]
     ds9_reg = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
     open(ds9_file.name,"w").write(ds9_reg.decode())
     
     cmd = [ 'convert_ds9_region_to_ciao_stack', ds9_file.name, ciao_list.name, "clobber=yes", "verbose=0"]
     sp.run(cmd, check=True)    
-    return(ciao_list.name)
+
+    return(ciao_list.name, bkg)
     
 
 def check_unique(xpa):
@@ -181,7 +187,7 @@ def save_ds9_image(xpa):
     return(ds9_file.name)
     
 
-def run_dmextract( infile, stack, bgstack=None):    
+def run_dmextract( infile, stack, bkg):    
     from ciao_contrib.runtool import dmextract
 
     prof = NamedTemporaryFile(dir=ROOT, suffix="_radial.prof", delete=False)
@@ -190,6 +196,9 @@ def run_dmextract( infile, stack, bgstack=None):
     dmextract.clobber=True
     dmextract.verbose=0
     dmextract.opt="generic"
+
+    if len(bkg) > 0:
+        dmextract.bkg = "{}[bin (x,y)={}]".format(infile, bkg)
     
     vv = dmextract()
     if vv:
@@ -235,9 +244,10 @@ def doit():
     stk = fits = prof = None
 
     try:
-        stk = get_ciao_stack_from_ds9(pars["xpa"])
+        stk,bkg = get_ciao_stack_from_ds9(pars["xpa"])
         fits = save_ds9_image(pars["xpa"])
-        prof = run_dmextract( fits, stk )
+        prof = run_dmextract( fits, stk,bkg )
+        
         fit_profile(pars["xpa"], prof, my_model, xcol, pars["method"])
     finally:
         if stk is not None and os.path.exists(stk):
