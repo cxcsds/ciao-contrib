@@ -74,8 +74,16 @@ else
   echo ""
   echo "Output file: $DAX_OUTDIR/$$_fill.fits"
   echo "--------"
-
 fi
+
+tile=`pget dax tile`
+if test x$tile = xyes
+then
+  xpaset -p $ds9 tile
+fi
+
+
+
 
 \rm -f  $DAX_OUTDIR/$$_all.reg  $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg 
 
