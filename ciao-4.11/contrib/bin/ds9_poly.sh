@@ -21,6 +21,7 @@
 
 ds9=$1
 meth=$2
+plot=$3
 
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
@@ -56,8 +57,36 @@ dmimgpick $DAX_OUTDIR/$$_poly.fits"[cols x,y]" - - $meth | \
   tee $DAX_OUTDIR/$$_polypick.fits | \
   dmlist - data,clean,array
 
+python << EOM
+from pycrates import read_file
+import numpy as np
+from crates_contrib.utils import add_colvals
+
+tab = read_file("$DAX_OUTDIR/$$_polypick.fits", mode="rw")
+x = tab.get_column("x").values
+y = tab.get_column("y").values
+mx = np.average(x)
+my = np.average(y)
+rr = np.hypot(x-mx, y-my)
+aa = np.rad2deg(np.arctan2(y-my,x-mx))
+idx = np.ones_like(x).cumsum(axis=1)
+
+add_colvals(tab, "radius", rr, unit="pixels")
+add_colvals(tab, "angle", aa, unit="deg")
+add_colvals(tab, "rownum", idx )
+tab.write()
+
+EOM
+
+
+
+ds9_plot_blt "$DAX_OUTDIR/$$_polypick.fits[cols $plot,#2]" "${meth} pixel values" $ds9
+
+
 echo ""
 echo "Output file is $DAX_OUTDIR/$$_polypick.fits"
+
+
 
 \rm -f $DAX_OUTDIR/$$_poly.reg $DAX_OUTDIR/$$_poly.fits
 
