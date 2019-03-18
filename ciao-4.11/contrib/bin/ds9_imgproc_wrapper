@@ -181,8 +181,29 @@ elif "dmimglasso" == toolname:
     tool.low_value = sys.argv[3]
     tool.high_value = sys.argv[4] 
     output_fn = send_output_region_to_ds9
+elif "dmcontour" == toolname:
+    tool.levels=sys.argv[3]
+    output_fn = send_output_region_to_ds9
 elif "skyfov" == toolname:
     output_fn = send_output_region_to_ds9
+elif "dmellipse" == toolname:
+    output_fn = send_output_region_to_ds9
+
+    tool.fraction=sys.argv[3]
+    tool.shape=sys.argv[4]
+
+    freg = sys.argv[5]
+    if len(freg):
+        if freg.startswith("@"):
+            import stk
+            freg="+".join(stk.build(freg.replace("@","@-")))
+        else:
+            freg = freg.replace(";","+").replace("+-","-").rstrip("+")
+        ffilt="[(x,y)={}]".format(freg)
+    else:
+        ffilt=""
+    tool.infile=tool.infile+ffilt
+
 else:
     raise ValueError("Unknown Tool")
 

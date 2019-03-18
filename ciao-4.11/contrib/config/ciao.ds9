@@ -115,7 +115,7 @@ endparam
 # ellipse
 #
 param myell
-  frac entry {Fraction(s) to compute} 0.9
+  ellipse_frac entry {Fraction(s) to compute} 0.9
 endparam
 
 param regions
@@ -220,6 +220,12 @@ endparam
 param radial_profile
    rad_units menu {Units} physical|arcsec {Display radius in which units?}
 endparam
+
+param contour_lvs
+   c_levels entry {Contour Levels} {} {List of contour levels}
+endparam
+
+
 
 # ------------------------------------------------------
 
@@ -358,8 +364,6 @@ hmenu CIAO
     menu
     $param(time); ds9_time.sh pfold $filename $min_time $max_time "$regions(ciao,source,strip)" "" $xpa |& $text
 
-
-
     G-L Vary
     *evt* *EVT*
     menu
@@ -474,15 +478,23 @@ hmenu CIAO
     menu
     $param(lasso); $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmimglasso $min_pix $max_pix |& $text
     
+    Contour
+    *
+    menu
+    $param(contour_lvs); $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmcontour $c_levels |& $text
+
+    
+    ---
+    
     Ellipse
     *
     menu
-    $param(myell); $data | $env(ASCDS_CONTRIB)/bin/ds9_ellipse.sh $xpa "$frac" ellipse "$regions(ciao,strip)" |& $text
+    $param(myell); $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmellipse "$ellipse_frac" ellipse "$regions(ciao,strip)" |& $text
 
     Rotbox
     *
     menu
-    $param(myell); $data | $env(ASCDS_CONTRIB)/bin/ds9_ellipse.sh $xpa "$frac" rotbox "$regions(ciao,strip)" |& $text
+    $param(myell); $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmellipse "$ellipse_frac" rotbox "$regions(ciao,strip)" |& $text
     
     ---
 
