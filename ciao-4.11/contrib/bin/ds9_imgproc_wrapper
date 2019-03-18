@@ -17,14 +17,8 @@
 #  with this program; if not, write to the Free Software Foundation, Inc.,
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-
-
-
-
 import sys
 import os
-
-
 
 import subprocess as sp
 from tempfile import NamedTemporaryFile    
@@ -50,7 +44,8 @@ def check_unique(xpa):
 
 
 def save_ds9_image(xpa):
-    ds9_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"], suffix="_ds9.fits", delete=False)
+    ds9_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"], 
+         suffix="_ds9.fits", delete=False)
 
     cmd = [ 'xpaget', xpa, 'fits' ]
     fits = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
@@ -58,10 +53,25 @@ def save_ds9_image(xpa):
     
     return(ds9_file.name)
 
+
 def send_output_image_to_ds9(xpa, outfile):
     cmd = [ 'xpaset', '-p', xpa, 'fits', 'new', outfile ]
     fits = sp.run( cmd, check=True )
     
+    
+def send_output_region_to_ds9(xpa, outfile):
+    try:
+        import pycrates as pc
+        src_reg = "{}[src_region]".format(outfile)
+        pc.read_file(src_reg)
+        outfile = src_reg
+    except Exception as e:
+        pass
+
+    cmd = [ 'xpaset', '-p', xpa, 'regions', 'load', outfile ]
+    fits = sp.run( cmd, check=True )
+    
+
 
 xpa=sys.argv[1]
 toolname=sys.argv[2]
@@ -72,6 +82,7 @@ infile = save_ds9_image(xpa)
 outfile = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"], 
     suffix="_{}.fits".format(toolname), delete=False)
 
+output_fn = send_output_image_to_ds9
 
 from ciao_contrib.runtool import make_tool
 tool = make_tool(toolname)
@@ -134,7 +145,6 @@ elif "aconvolve" == toolname:
     yy=sys.argv[5]
     meth=sys.argv[6]
     nrad=4
-
     kernels = { 
         "gaus"   : "lib:{ker}(2,{nrad},1,{xx},{yy})",
         "mexhat" : "lib:{ker}(2,{nrad},1,{xx},{yy})",
@@ -151,7 +161,28 @@ elif "aconvolve" == toolname:
 
     tool.kernelspec = kernels[ker].format(ker=ker,xx=xx,yy=yy,nrad=nrad)
     tool.method=meth
-
+elif "celldetect" == toolname:
+    output_fn = send_output_region_to_ds9
+    tool.fixedcell=12
+elif "vtpdetect" == toolname:
+    output_fn = send_output_region_to_ds9
+elif "get_src_region" == toolname:
+    # gsr clobber doesn't work well
+    if os.path.exists( outfile.name ):
+            os.unlink(outfile.name)
+    output_fn = send_output_region_to_ds9
+    tool.invert=True
+elif "dmimglasso" == toolname:
+    cmd = [ 'xpaget', xpa, 'crosshair', 'physical' ]
+    phys = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    xpos, ypos = phys.decode().split()
+    tool.xpos = xpos
+    tool.ypos = ypos
+    tool.low_value = sys.argv[3]
+    tool.high_value = sys.argv[4] 
+    output_fn = send_output_region_to_ds9
+elif "skyfov" == toolname:
+    output_fn = send_output_region_to_ds9
 else:
     raise ValueError("Unknown Tool")
 
@@ -163,7 +194,7 @@ print(datetime.datetime.now())
 verb=tool(clobber=True)
 if verb:
     print(verb)
-send_output_image_to_ds9( xpa, outfile.name )    
+output_fn( xpa, outfile.name )    
 
 
 print("Output file: {}".format(outfile.name))
