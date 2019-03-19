@@ -73,8 +73,13 @@ def send_output_region_to_ds9(xpa, outfile):
     except Exception as e:
         pass
 
-    cmd = [ 'xpaset', '-p', xpa, 'regions', 'load', outfile ]
-    fits = sp.run( cmd, check=True )
+    cmd = ["dmlist", outfile, "counts"]
+    nrows = sp.run( cmd, check=True, stdout=sp.PIPE).stdout
+    if nrows.decode().strip() == '0':
+        print("\n\nNo sources detected\n")
+    else:
+        cmd = [ 'xpaset', '-p', xpa, 'regions', 'load', outfile ]
+        fits = sp.run( cmd, check=True )
     
 
 
@@ -170,6 +175,7 @@ elif "celldetect" == toolname:
     output_fn = send_output_region_to_ds9
     tool.fixedcell=12
 elif "vtpdetect" == toolname:
+    tool.infile = tool.infile+"[opt type=i4]" 
     output_fn = send_output_region_to_ds9
 elif "get_src_region" == toolname:
     # gsr clobber doesn't work well
@@ -178,9 +184,19 @@ elif "get_src_region" == toolname:
     output_fn = send_output_region_to_ds9
     tool.invert=True
 elif "dmimglasso" == toolname:
+
+    cmd = [ 'xpaget', xpa, 'mode']
+    ch = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    if ch.decode().strip() != "crosshair":
+        print("\n***\n*** You must be in crosshair mode to use this task \n***\n")
+        if os.path.exists(infile):
+            os.unlink(infile)
+        sys.exit()
+    
     cmd = [ 'xpaget', xpa, 'crosshair', 'physical' ]
     phys = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
     xpos, ypos = phys.decode().split()
+
     tool.xpos = xpos
     tool.ypos = ypos
     tool.low_value = sys.argv[3]
