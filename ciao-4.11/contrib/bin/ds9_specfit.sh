@@ -293,7 +293,7 @@ def blt_plot_model(access_point,x_vals, y_vals):
         pb = pair.encode()
         xpa.stdin.write(pb)        
     xpa.communicate()
-    xpa_plot_cmd(access_point, "shape none")
+    ###xpa_plot_cmd(access_point, "shape none")
     xpa_plot_cmd(access_point, "shape fill no")
     xpa_plot_cmd(access_point, "color orange")
     xpa_plot_cmd(access_point, "shape color orange")
