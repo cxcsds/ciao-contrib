@@ -294,14 +294,22 @@ hmenu CIAO
     ---
     
     help
+
+
+    Net Stats - [dmextract] computes simple net counts, and count-rates 
     
-    Computes some simple statistics for the drawn regions 
-    of the Image data.  See 
     
-        ahelp dmstat
-    
-    for more information on how the values are computed.
-    
+    Photometry - [srcflux]  computes photon and energy fluxes assuming 
+    a user specified spectral model.
+
+    dmstat (centroid) and (no centroid): compute various 
+    image pixel statistics: min, max, mean, median, standard deviation,
+    sum, and area.
+
+    moments - [imgmoment] computes the 2nd order image moments and some 
+    derived values such as ellipticity, major and minor axes, and rotation 
+    angle. 
+
     
     endhelp
     
@@ -399,6 +407,8 @@ hmenu CIAO
 
        Extract Along Polygon - [dmimgpick] get pixel values at polygon end points
 
+       Period Fold - [pfold] a simple period fold search
+
        G-L Vary - [glvary] Gregory-Laredo Bayesian Lightcurve
 
     endhelp
@@ -432,11 +442,14 @@ hmenu CIAO
   ---
     
     help
-    
-    Computes various Chandra coordinates at the location
-    of the crosshair.
 
-       See ahelp dmcoords
+    All - [dmcoords] computes various Chandra specific coordinates
+    (chip, det, tdet, off-axis-angles) at the location of the 
+    crosshair, or the 1st selected region.
+    
+    Chandra Field-of-View - [skyfov] computes a polygon enclosing
+    each CCD.
+
     
     endhelp
     
@@ -468,8 +481,15 @@ hmenu CIAO
     
     help
     
-    Runs a simple variable box-car source detection and overlays
-    the detected source regions.
+    celldetect - [celldetect] a simple sliding cell source detection.
+    Uses a fixed cellsize=12  pixels.
+    
+    vtpdetect - [vtpdetect] source detect using Voronoi Tesselation and 
+    Percolation; useful to find faint diffuse emission.
+    
+    get_src_region - [get_src_region] a fast algorithm to identify 
+    pixels above background.
+
     
     endhelp
    
@@ -542,13 +562,28 @@ hmenu CIAO
     
     help
     
-    Computes various regions
+    Lasso - [dmimglasso] (crosshair mode only) create a region that
+    encloses the current crosshair location with pixel in specified 
+    range of values.
     
-     - Lasso uses the current location of the cross hair to
-       identify pixels with similar intensity
-   
-     - Ellipse and Rotobox [dmellipse]  generates ellipes/rotbox
-       that contain a user supplied list of enclosed fractions.
+    Contour - [dmcontour] create contour regions at specified levels.  
+    Interior regions (ie holes) will be automatically excluded.
+    
+    Ellipse - [dmellipse] find ellipse that encloses a fraction 
+    of the total flux.
+    
+    Rotbox - [dmellipse] find a rotated box that encloses a fraction 
+    of the total flux.
+    
+    Convex Hull - [dmimghull] computes the convex hull around the
+    pixels in region above the threshold.
+    
+    PSF Size - [] Creates a circular region as the current location
+    that encloses the specified fraction at the specified energy.
+    
+    PSF Fraction - (circles only) computes the fraction of the PSF
+    inside the current circle at the specified energy.
+
     
     endhelp
    
@@ -589,6 +624,22 @@ hmenu CIAO
      *
      menu
      $param(rproffit); $env(ASCDS_CONTRIB)/bin/ds9_radial_fit $xpa $rprof_units $rprof_srcA $rprof_srcB $rprof_mthd |& $text
+
+
+     ---
+     
+      help
+      
+      Spectral Fit - [specextract, sherpa] extracts the source
+      and background spectra and then fits the spectra with sherpa.  
+      
+      2D Image Fit - [sherpa] fit the image data inside
+      the region with a 2D model
+      
+      Radial Profile Fit - [dmextract, sherpa] extract a 
+      radial profile from source and background region and fit.
+      
+      endhelp
 
 
   endhmenu
@@ -694,13 +745,16 @@ hmenu CIAO
       Adaptive Bin - [dmnautilus] quad-tree algorithm to group pixels together until
 	     the SNR of the group drops below threshold
 
+      Distance Transform - [dmimgdist] computes the distance from each pixel to 
+          the closest edge (where edge is pixels below threshold)
+      
       L-R Deconvoluiton - [arestore] Lucy Richardson deconvolution; draw a region around
 	     what is believed to be a point source and it is used as the PSF.
 
       Smoothing - [aconvolve] additional smoothing kernels and non circularly symetric smoothing.
 
       Source Fill - [dmfilth] draw regions for source and background; group them together
-   	and then will use background to replace pixels in the source region.
+     	and then will use background to replace pixels in the source region.
 
       Powerspectrum - [apowerspectrum] compute |FFT| of image
 
