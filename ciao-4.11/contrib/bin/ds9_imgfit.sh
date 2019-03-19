@@ -55,20 +55,20 @@ else
   conf=""
 fi
 
-TMPDIR=$DAX_OUTDIR/imgfit/$$/
-mkdir -p $TMPDIR
+DAX_OUTDIR=$DAX_OUTDIR/imgfit/$$/
+mkdir -p $DAX_OUTDIR
 
 echo "# -------------------"
 echo `date`
 
 echo "  (1/3) Getting data"
 
-xpaget $ds9 fits > ${TMPDIR}/img.fits 
+xpaget $ds9 fits > ${DAX_OUTDIR}/img.fits 
 
 echo "  (2/3) Getting moments to provide better guess"
 
 punlearn imgmoment
-imgmoment "${TMPDIR}/img.fits[(x,y)=$src]" 
+imgmoment "${DAX_OUTDIR}/img.fits[(x,y)=$src]" 
 xx=`pget imgmoment x_mu`
 yy=`pget imgmoment y_mu`
 mjr=`pget imgmoment xsig`
@@ -76,12 +76,12 @@ mnr=`pget imgmoment ysig`
 phi=`pget imgmoment phi | awk '{print (($1+360.0)%360)*3.141592/180.0}'`
 
 
-cat <<EOF > ${TMPDIR}/fit.cmd
+cat <<EOF > ${DAX_OUTDIR}/fit.cmd
 
 import sherpa.astro.ui as sherpa
 import numpy as np
 
-sherpa.load_data("${TMPDIR}/img.fits")
+sherpa.load_data("${DAX_OUTDIR}/img.fits")
 sherpa.set_coord("physical")
 sherpa.set_method("${method}")
 sherpa.set_stat("${stat}")
@@ -111,23 +111,23 @@ except:
 
 
 sherpa.notice()
-sherpa.save_source("${TMPDIR}/out.fits", clobber=True)
+sherpa.save_source("${DAX_OUTDIR}/out.fits", clobber=True)
 EOF
 
 echo "  (3/3) Doing fit"
 
-python ${TMPDIR}/fit.cmd
+python ${DAX_OUTDIR}/fit.cmd
 
 xpaset -p $ds9 tile
 
 xpaset -p $ds9 frame new
-cat ${TMPDIR}/out.fits | xpaset $ds9 fits
+cat ${DAX_OUTDIR}/out.fits | xpaset $ds9 fits
 
-dmimgcalc ${TMPDIR}/img.fits ${TMPDIR}/out.fits ${TMPDIR}/residual.fits op=sub look= clob+
+dmimgcalc ${DAX_OUTDIR}/img.fits ${DAX_OUTDIR}/out.fits ${DAX_OUTDIR}/residual.fits op=sub look= clob+
 xpaset -p $ds9 frame new
-cat ${TMPDIR}/residual.fits | xpaset $ds9 fits
+cat ${DAX_OUTDIR}/residual.fits | xpaset $ds9 fits
 
 echo ""
-echo "Data products and fitting script are in: ${TMPDIR}"
+echo "Data products and fitting script are in: ${DAX_OUTDIR}"
 
 
