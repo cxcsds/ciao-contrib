@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018
+#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019
 #            Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -76,16 +76,11 @@ ftp://anonymous:foo@bar.org@cda.cfa.harvard.edu/pub/.
 """
 
 toolname = "find_chandra_obsid"
-version = "06 Nov 2018"
+version = "08 Feb 2019"
 
 import sys
 import os
 import math
-
-from six.moves import urllib
-import six
-
-import socket
 
 import paramio as pio
 
@@ -113,6 +108,8 @@ from ciao_contrib.param_wrapper import open_param_file
 
 from ciao_contrib.cda import search
 from ciao_contrib.cda import data
+
+from ciao_contrib.downloadutils import retrieve_url
 
 import coords.format as coords
 from coords import resolver
@@ -336,7 +333,7 @@ def ask_download(nobsid):
 
     print("")
     while True:
-        resp = six.moves.input(prompt)
+        resp = input(prompt)
         ans = resp.strip().lower()
         if ans == "":
             continue
@@ -515,33 +512,8 @@ def find_obsid_position(obsid):
     # assuming no need to protect or sanitize the input
     url = 'https://cda.harvard.edu/srservices/ocatDetails.do?obsid={}&format=text'.format(obsid)
 
-    # error handling based on ciao_contrib.caldb.get_caldb_releases()
-    try:
-        v3("Trying to identify obsid={}".format(obsid))
-        v4(" using URL={}".format(url))
-        ans = urllib.request.urlopen(url)
-
-    except urllib.error.URLError as ue:
-        # There used to be a lot of code trying to provide a
-        # "nice" error message, but it was not well tested,
-        # so simplify
-        #
-        v3("Error opening URL: {}".format(ue))
-
-        if hasattr(ue, 'reason'):
-            v3("error.reason = {}".format(ue.reason))
-
-            if ue.reason == 'unknown url type: https':
-                ans = search._manual_download(url)
-            else:
-                raise
-        else:
-            raise
-
-    # Ugly code; what is the better way to do this
-    ans = ans.read()
-    if not isinstance(ans, six.string_types):
-        ans = ans.decode('utf8')
+    v3("Trying to identify obsid={}".format(obsid))
+    ans = retrieve_url(url).read().decode('utf8')
 
     v3("==> Response from CDA query for ObsId={} is:".format(obsid))
     v3(ans)
