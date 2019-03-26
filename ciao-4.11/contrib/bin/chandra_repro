@@ -2141,17 +2141,21 @@ def remake_fov1_file( pars ):
     skyfov.punlearn()
     skyfov.infile= pars["evt2_file"]
     skyfov.outfile = os.path.join(pars["outdir"], pars["root"] + '_repro_fov1.fits')
-    skyfov.aspect = "@{}[@{}]".format(pars["asol1_file"], pars["evt2_file"])
     skyfov.mskfile = pars["msk1_file"]
     skyfov.clobber = pars["clobber"]
     skyfov.verbose = pars["verbose"]
+
+    evt2file = get_keys_from_file( pars["evt2_file"] )
+    if 0.0 == evt2file["ONTIME"].value:
+        skyfov.aspect = "@"+pars["asol1_file"]
+        v0("\nWARNING: Level 2 event file has 0 good-time\n")
+    else:
+        skyfov.aspect = "@{}[@{}]".format(pars["asol1_file"], pars["evt2_file"])
+
     out = skyfov()
 
     v5("skyfov returned")
     v5(out)
-
-
-    pass
 
 
 
