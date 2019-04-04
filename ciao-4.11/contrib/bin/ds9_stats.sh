@@ -22,10 +22,23 @@
 
 stat=$1
 
-_r=`echo "$2" | egrep ^@`
+ds9=$2
+nxpa=`xpaaccess -n ${ds9}`
+if test $nxpa -ne 1
+then
+  echo "# -------------------"
+  echo "Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
+  exit 1
+fi
+
+
+
+
+
+_r=`echo "$3" | egrep ^@`
 if test x$_r = x
 then
-  reg=`echo "$2" | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+  reg=`echo "$3" | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
 else
   _r=`echo $_r | tr -d @`
   reg=`cat $_r | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
@@ -39,33 +52,13 @@ else
  regions="[(x,y)=${reg}][opt full]"
 fi
 
-#~ if test x$stat = xcntrd
-#~ then
-  #~ cen="cen+"
-#~ else
-  #~ cen="cen-"
-#~ fi
-
-#~ if test x$stat = xsig
-#~ then
-  #~ sig="sig+"
-#~ else
-  #~ sig="sig-"
-#~ fi
-
-#~ if test x$stat = xmedian
-#~ then
-  #~ med="med+"
-#~ else
-  #~ med="med-"
-#~ fi
 
 printf "`date`\n"
 
 
 if test x$stat = xmoments
 then
-  cat - | imgmoment  -"${regions}" 
+  xpaget $ds9 fits | imgmoment  -"${regions}" 
   #~ pdump imgmoment | egrep -v "infile|mode|EOF"
 
   printf "%20s : %s\n" "Total (0th)" "`pget imgmoment m_0_0`"
@@ -79,17 +72,12 @@ then
   printf "%22s %12.5g\t%12.5g\t%12.5g\n" " " `pget imgmoment m_2_0` `pget imgmoment m_2_1` `pget imgmoment m_2_2`
 
 else
-  if test x$stat = xallc
-  then
-    cat - | dmstat -"${regions}" sig+ med+ cen+ verb=0
-  else
-    if test x$stat = xallnoc
-    then
-      cat - | dmstat -"${regions}" sig+ med+ cen- verb=0
-    fi
-  fi
 
+  xpaget $ds9 fits | dmstat -"${regions}" sig+ med+ cen+ verb=0
   printf "%20s : %s\n" "Image Axes" "`pget dmstat out_columns`"
+  printf "%20s : %s\n" "Centroid (physical)" "`pget dmstat out_cntrd_phys`"
+
+  xpaget $ds9 fits | dmstat -"${regions}" sig+ med+ cen- verb=0
   printf "%20s : %s\n" "Minimum" "`pget dmstat out_min`"
   printf "%20s : %s\n" "Maximum" "`pget dmstat out_max`"
   printf "%20s : %s\n" "Average" "`pget dmstat out_mean`"
@@ -97,10 +85,9 @@ else
   printf "%20s : %s\n" "Median" "`pget dmstat out_median`"
   printf "%20s : %s\n" "Area (pixels)" "`pget dmstat out_good`"
   printf "%20s : %s\n" "NULL pixels" "`pget dmstat out_null`"
-  printf "%20s : %s\n" "Centroid (physical)" "`pget dmstat out_cntrd_phys`"
   printf "%20s : %s\n" "Coords min pix" "`pget dmstat out_min_loc`"
   printf "%20s : %s\n" "Coords max pix" "`pget dmstat out_max_loc`"
-
+  
 
 
 fi
