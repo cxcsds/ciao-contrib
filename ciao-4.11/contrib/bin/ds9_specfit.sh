@@ -254,7 +254,7 @@ def blt_plot_data(access_point,xx, ex, yy, ey, title, x_label, y_label):
     """Plot the data"""
     
     cmd = ["xpaset", access_point, "plot"]    
-    cmd.extend( ["new", "line", 
+    cmd.extend( ["new", "name", "dax", "line", 
         "{{{0}}}".format(title), 
         "{{{0}}}".format(x_label), 
         "{{{0}}}".format(y_label),
