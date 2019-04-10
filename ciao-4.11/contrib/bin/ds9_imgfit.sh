@@ -38,15 +38,20 @@ fi
 
 
 
-
 src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selected | tr -d ";"`
-
 if test "x${src}" = x
 then
-  echo "# -------------------"
-  echo "No sources **selected** "
-  exit 1
+    src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes | tr -d ";"`
+    if test "x${src}" = x
+    then
+      echo "# -------------------"
+      echo "No source region found "
+      exit 1
+    else
+      echo "No source regions **selected**.  Using data combined from all source regions : ${src}"
+    fi
 fi
+
 
 if test x$getconf = x1
 then

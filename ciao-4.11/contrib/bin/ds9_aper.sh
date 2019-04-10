@@ -38,14 +38,7 @@ then
 fi
 
 
-
-
-src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
-bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
-
-
 fmt=`xpaget ${ds9} fits type`
-
 if test x$fmt = xtable
 then
   :
@@ -55,11 +48,20 @@ else
   exit 1
 fi
 
+
+src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
 if test x$src = x
 then
-  echo "#-------"
-  echo "No source region found"
-  exit 1
+  src=`xpaget ${ds9} regions -format ciao source -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+  if test x$src = x
+  then  
+      echo "#-------"
+      echo "No source region found"
+      exit 1
+  else
+      echo "#-------"
+      echo "No source regions **selected**.  Using data combined from all source regions: ${src}"  
+  fi
 fi
 
 nsrc=`echo "${src}" | grep "^-" `
@@ -70,13 +72,21 @@ then
   exit 1
 fi
 
+
+bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
 if test x$bkg = x
 then
-  echo "#-------"
-  echo "No background region found"
-  exit 1
+  bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+  if test x$bkg = x
+  then
+      echo "#-------"
+      echo "No background region found"
+      exit 1
+  else
+      echo "#-------"
+      echo "No background regions **selected**.  Using data combined from all background regions: ${bkg}"
+  fi
 fi
-
 
 nbkg=`echo "${bkg}" | grep "^-"`
 if test x"${bkg}" = x"${nbkg}"

@@ -41,14 +41,18 @@ fi
 echo "--------------------------------------------------------"
 echo " (1/4) Parsing Regions" 
 
+
 src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr -d ";"`
-bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr -d ";" ` 
-
-
 if test "x$src" = x
 then
-  echo "Please **select** a source region"
-  exit 1
+  src=`xpaget ${ds9} regions -format ciao source -strip yes | tr -d ";"`
+  if test "x$src" = x
+  then  
+      echo "Please **select** a source region"
+      exit 1
+  else
+      echo "No source region **selected**.  Using combined data from all source regions: ${src}"
+  fi
 fi
 
 nsrc=`echo "${src}" | grep "^-" `
@@ -59,10 +63,21 @@ then
   exit 1
 fi
 
+bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr -d ";" ` 
+if test x"${bkg}" = x
+then
+  bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr -d ";" ` 
+  if test x"${bkg}" = x
+  then
+    echo "No background region found, ignoring background."
+  else
+    echo "No background region **selected**.  Using combined data from all background regions: ${bkg}"
+  fi
+fi
 
 if test x"${bkg}" = x
 then
-  echo "No background region **selected**, ignoring background."
+    :
 else
     nbkg=`echo "${bkg}" | grep "^-"`
     if test x"${bkg}" = x"${nbkg}"
@@ -72,7 +87,6 @@ else
       exit 1
     fi
 fi
-
 
 # strip off any filters
 file=`xpaget ${ds9} file | sed 's,\[.*,,'` 
@@ -305,7 +319,7 @@ _d = _f.dataplot
 _m = _f.modelplot
 
 blt_plot_data( "${ds9}", _d.x, _d.xerr/2.0, _d.y, _d.yerr, 
-    "${spi}", "Energy [keV]", "Count Rate [c/s]")
+    "${spi}", "Energy [keV]", "Count Rate [counts/sec/keV]")
 
 blt_plot_model( "${ds9}", _m.x, _m.y)
 
