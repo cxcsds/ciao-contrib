@@ -29,11 +29,19 @@ amdl="$5"
 amdlp="$6"
 psfmethod="$7"
 
+
+echo "# -------------------"
+echo ""
+echo `date`
+echo ""
+
+
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
 then
-  echo "# -------------------"
-  echo "Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
+  echo "***"
+  echo "*** Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
+  echo "***"
   exit 1
 fi
 
@@ -43,8 +51,9 @@ if test x$fmt = xtable
 then
   :
 else
-  echo "#-------"
-  echo "Must be using an event file"
+  echo "***"
+  echo "*** Must be using an event file"
+  echo "***"
   exit 1
 fi
 
@@ -55,20 +64,24 @@ then
   src=`xpaget ${ds9} regions -format ciao source -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
   if test x$src = x
   then  
-      echo "#-------"
-      echo "No source region found"
+      echo "***"
+      echo "*** No source region found. Please try again."
+      echo "***"
       exit 1
   else
-      echo "#-------"
-      echo "No source regions **selected**.  Using data combined from all source regions: ${src}"  
+      echo "***"
+      echo "*** No source regions **selected**.  Using data combined from all source regions: "
+      echo "***    ${src}"  
+      echo "***"
   fi
 fi
 
 nsrc=`echo "${src}" | grep "^-" `
 if test x"${src}" = x"${nsrc}"
 then
-  echo "#--------"
-  echo "Source region cannot begin with an excluded shape: ${src}"
+  echo "***"
+  echo "*** Source region cannot begin with an excluded shape: ${src}"
+  echo "***"
   exit 1
 fi
 
@@ -79,20 +92,24 @@ then
   bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
   if test x$bkg = x
   then
-      echo "#-------"
-      echo "No background region found"
+      echo "***"
+      echo "*** No background region found. Please specify background and try again."
+      echo "***"
       exit 1
   else
-      echo "#-------"
-      echo "No background regions **selected**.  Using data combined from all background regions: ${bkg}"
+      echo "***"
+      echo "*** No background regions **selected**.  Using data combined from all background regions: "
+      echo "***     ${bkg}"
+      echo "***"
   fi
 fi
 
 nbkg=`echo "${bkg}" | grep "^-"`
 if test x"${bkg}" = x"${nbkg}"
 then
-  echo "#--------"
-  echo "Background region cannot begin with an excluded shape: ${bkg}"
+  echo "***"
+  echo "*** Background region cannot begin with an excluded shape: ${bkg}"
+  echo "***"
   exit 1
 fi
 

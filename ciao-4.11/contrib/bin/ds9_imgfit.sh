@@ -26,29 +26,36 @@ getconf=$4
 method=$5
 stat=$6
 
+echo "# -------------------"
+echo ""
+echo `date`
+echo ""
 
 
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
 then
-  echo "# -------------------"
   echo "Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
   exit 1
 fi
 
 
 
-src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selected | tr -d ";"`
+src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'`
 if test "x${src}" = x
 then
-    src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes | tr -d ";"`
+    src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'`
     if test "x${src}" = x
     then
-      echo "# -------------------"
-      echo "No source region found "
+      echo "***"
+      echo "*** No source region found "
+      echo "***"
       exit 1
     else
-      echo "No source regions **selected**.  Using data combined from all source regions : ${src}"
+      echo "***"
+      echo "*** No source regions **selected**.  Using data combined from all source regions : "
+      echo "***   ${src}"
+      echo "***"
     fi
 fi
 
@@ -62,9 +69,6 @@ fi
 
 DAX_OUTDIR=$DAX_OUTDIR/imgfit/$$/
 mkdir -p $DAX_OUTDIR
-
-echo "# -------------------"
-echo `date`
 
 echo "  (1/3) Getting data"
 

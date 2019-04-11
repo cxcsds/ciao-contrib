@@ -23,10 +23,15 @@
 
 ds9=$1
 
+echo "# -------------------"
+echo ""
+echo `date`
+echo ""
+
+
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
 then
-  echo "# -------------------"
   echo "ERROR: Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
   exit 1
 fi
@@ -65,7 +70,6 @@ if test -e "${ff}"
 then
   :
 else
-  echo "# -------------------"
   echo "ERROR: This tasks only works with files on local disk"
   exit 1
 fi
@@ -75,7 +79,6 @@ fi
 tt=`dmkeypar "${f}" TELESCOP echo+ 2>&1 `
 if test "x${tt}" != "xCHANDRA"
 then
-  echo "# -------------------"
   echo "WARNING: Chandra specific coordinates may be inaccurate for this dataset"
 fi
 
@@ -84,7 +87,6 @@ fi
 punlearn dmcoords
 dmcoords "${f}" op=sky x=$x y=$y mode=hl verb=0
 plist dmcoords | egrep 'chip|tdet| det|ra =|dec =|logical| x =| y =|infile|theta|phi'
-echo "# -------------------"
 
 
 #~ case $coord in

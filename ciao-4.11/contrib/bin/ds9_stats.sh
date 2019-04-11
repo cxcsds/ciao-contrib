@@ -52,8 +52,10 @@ else
  regions="[(x,y)=${reg}][opt full]"
 fi
 
-
-printf "`date`\n"
+echo "# --------------------"
+echo ""
+echo `date`
+echo ""
 
 
 if test x$stat = xmoments
@@ -92,4 +94,3 @@ else
 
 fi
 
-echo "# --------------------"

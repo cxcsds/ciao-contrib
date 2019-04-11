@@ -23,10 +23,16 @@
 ds9=$1
 eng=$2
 
+
+echo "# -------------------"
+echo ""
+echo `date`
+echo ""
+
+
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
 then
-  echo "# -------------------"
   echo "Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
   exit 1
 fi

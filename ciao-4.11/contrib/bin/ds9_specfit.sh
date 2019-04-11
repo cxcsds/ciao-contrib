@@ -39,39 +39,53 @@ fi
 
 
 echo "--------------------------------------------------------"
+echo ""
+echo `date`
+echo ""
 echo " (1/4) Parsing Regions" 
 
 
-src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr -d ";"`
+src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'`
 if test "x$src" = x
 then
-  src=`xpaget ${ds9} regions -format ciao source -strip yes | tr -d ";"`
+  src=`xpaget ${ds9} regions -format ciao source -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
   if test "x$src" = x
   then  
-      echo "Please **select** a source region"
+      echo "***"
+      echo "*** No source regions found!"
+      echo "***"
       exit 1
   else
-      echo "No source region **selected**.  Using combined data from all source regions: ${src}"
+      echo "***"
+      echo "*** No source region **selected**.  Using combined data from all source regions: "
+      echo "***     ${src}"
+      echo "***"
   fi
 fi
 
 nsrc=`echo "${src}" | grep "^-" `
 if test x"${src}" = x"${nsrc}"
 then
-  echo "#--------"
-  echo "Source region cannot begin with an excluded shape: ${src}"
+  echo "***"
+  echo "*** Source region cannot begin with an excluded shape: ${src}"
+  echo "***"
   exit 1
 fi
 
-bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr -d ";" ` 
+bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
 if test x"${bkg}" = x
 then
-  bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr -d ";" ` 
+  bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
   if test x"${bkg}" = x
   then
-    echo "No background region found, ignoring background."
+    echo "***"
+    echo "*** No background region found, ignoring background."
+    echo "***"
   else
-    echo "No background region **selected**.  Using combined data from all background regions: ${bkg}"
+    echo "***"
+    echo "*** No background region **selected**.  Using combined data from all background regions: "
+    echo "***    ${bkg}"
+    echo "***"
   fi
 fi
 
@@ -82,8 +96,9 @@ else
     nbkg=`echo "${bkg}" | grep "^-"`
     if test x"${bkg}" = x"${nbkg}"
     then
-      echo "#--------"
-      echo "Background region cannot begin with an excluded shape: ${bkg}"
+      echo "***"
+      echo "*** Background region cannot begin with an excluded shape: ${bkg}"
+      echo "***"
       exit 1
     fi
 fi
@@ -98,7 +113,9 @@ if test x$fmt = xtable
 then
   :
 else
-  echo "Must be using an event file"
+    echo "***"
+    echo "*** Must be using an event file!"
+    echo "***"
   exit 1
 fi
 

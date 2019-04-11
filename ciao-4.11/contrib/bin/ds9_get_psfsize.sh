@@ -23,10 +23,17 @@ ds9=$1
 eng=$2
 frac=$3
 
+
+
+echo "# -------------------"
+echo ""
+echo `date`
+echo ""
+
+
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
 then
-  echo "# -------------------"
   echo "Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
   exit 1
 fi
@@ -111,6 +118,8 @@ EOF
 
 
 echo 'fk5; circle '$ra $dec $rad'" # tag={psfsize} tag={frac='${frac}'} tag={eng='${eng}'}' | xpaset $ds9 regions -format ds9
+
+echo 'fk5; circle '$ra $dec $rad'" # tag={psfsize} tag={frac='${frac}'} tag={eng='${eng}'}'
 
 exit 0
 
