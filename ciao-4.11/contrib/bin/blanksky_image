@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2017
+# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2017, 2019
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -22,9 +22,9 @@
 # 02110-1301 USA.
 #
 
-__version__ = "CIAO 4.9"
+__version__ = "CIAO 4.11"
 toolname = "blanksky_image"
-__revision__  = "8 August 2017"
+__revision__  = "23 April 2019"
 
 
 import os, sys, paramio, tempfile, numpy
@@ -42,7 +42,7 @@ import pycrates as pcr
 
 #         del _pathdir
 #         del _thisdir
-        
+
 # except KeyError:
 #     raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
 ########################################################
@@ -82,19 +82,19 @@ class ScriptError(RuntimeError):
 
 #########################################################################################
 #
-# suppress warnings printed to screen from fluximage.blanksky_hrci when probing for 
+# suppress warnings printed to screen from fluximage.blanksky_hrci when probing for
 # HRC-I background files
 # http://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
 #
 #########################################################################################
 class suppress_stdout_stderr(object):
     '''
-    A context manager for doing a "deep suppression" of stdout and stderr in 
-    Python, i.e. will suppress all print, even if the print originates in a 
+    A context manager for doing a "deep suppression" of stdout and stderr in
+    Python, i.e. will suppress all print, even if the print originates in a
     compiled C/Fortran sub-function.
        This will not suppress raised exceptions, since exceptions are printed
     to stderr just before a script exits, and after the context manager has
-    exited (at least, I think that is why it lets exceptions through).      
+    exited (at least, I think that is why it lets exceptions through).
 
     '''
     def __init__(self):
@@ -155,24 +155,31 @@ def combine_chips(args): # P3
 
 
 def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
-    
+
     get_sky_limits.punlearn()
     get_sky_limits.image = imgfile
     get_sky_limits.verbose = "0"
     get_sky_limits()
-    
-    xylimits = get_sky_limits.dmfilter 
+
+    xylimits = get_sky_limits.dmfilter
 
     bkg_kw = fileio.get_keys_from_file(bkg)
     bkgmethod = bkg_kw["BKGMETH"].lower()
 
-    # scale each chip before mosaicing them using the BKGSCALn keywords 
-    # in the background event file
-    bkg_scaled = []
-    dmimgcalc_op = "+".join(["img{}".format(n+1) for n in range(len(chips))])       
+    cr = pcr.read_file(imgfile)
+
+    # match chips available in blanksky events file and the reference image file
+    chips_img = []
+
+    for i in range(len(chips)):
+        try:
+            chips_img.extend(cr.get_subspace_data(i+1,dettype).range_min.tolist())
+        except IndexError:
+            continue
+
+    chips = set(chips_img).intersection(chips)
 
     # get energy filter that matches reference image file by using the file's subspace
-    cr = pcr.read_file(imgfile)
     component_info = []
 
     if dettype == "ccd_id":
@@ -187,8 +194,9 @@ def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
         except IndexError:
             break
 
-    # restructure list to remove lists; necessary for subspace components with more than one chip listed 
-    component_info = [[n[0],chip,n[2],n[3]] for n in component_info for chip in n[1]] 
+    # restructure list to remove lists; necessary for subspace components with
+    # more than one chip listed
+    component_info = [[n[0],chip,n[2],n[3]] for n in component_info for chip in n[1]]
 
     ### P3
     try:
@@ -214,13 +222,18 @@ def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
     else:
         crtype = "i4"
 
-    cr.__del__()
+    cr = None
+
+    # scale each chip before mosaicing them using the BKGSCALn keywords
+    # in the background event file
+    bkg_scaled = []
+    dmimgcalc_op = "+".join(["img{}".format(n+1) for n in range(len(chips))])
 
     try:
         bkg_scaled = [(tempfile.NamedTemporaryFile(suffix=".bkg{}".format(chip),dir=tmpdir),chip) for chip in chips]
 
         args = [(bkg_scaled[i][0].name,bkg_scaled[i][1],component_info,bkg_kw,bkg,dettype,dmfilter,xylimits,crtype,verbose) for i in range(len(bkg_scaled))]
-        
+
         parallel_map(combine_chips,args)
         #parallel_pool(combine_chips,args)
 
@@ -255,17 +268,17 @@ def get_par(argv):
         error_out("Input background event file must be specified.")
     elif params["bkgfile"].startswith("@"):
         error_out("Input event stacks not supported.")
-    else:        
+    else:
         params["infile_filter"] = fileio.get_filter(params["bkgfile"])
         params["bkgfile"] = fileio.get_file(params["bkgfile"])
-    
+
     # output file name
     pars["outroot"] = params["outroot"] = paramio.pgetstr(pfile,"outroot")
     if params["outroot"] == "":
         error_out("Please specify an output file name.")
     else:
         params["outdir"],outfile = utils.split_outroot(params["outroot"])
-        
+
         if outfile.endswith("_"):
             params["outroot"] = outfile
         else:
@@ -273,7 +286,7 @@ def get_par(argv):
 
         # check if output directory is writable
         fileio.validate_outdir(params["outdir"])
-        
+
     # reference image file to get xygrid and binning
     pars["imgfile"] = params["imgfile"] = paramio.pgetstr(pfile,"imgfile")
     if params["imgfile"] == "":
@@ -281,7 +294,7 @@ def get_par(argv):
     elif params["imgfile"].startswith("@"):
         error_out("Input image file stacks not supported.")
     else:
-        params["imgfile"] = fileio.get_file(params["imgfile"])    
+        params["imgfile"] = fileio.get_file(params["imgfile"])
 
     # set clobber of files
     pars["tmpdir"] = params["tmpdir"] = paramio.pgetstr(pfile,"tmpdir")
@@ -306,7 +319,7 @@ def get_par(argv):
 
 @handle_ciao_errors(toolname,__revision__)
 def doit():
- 
+
     params,pars = get_par(sys.argv)
 
     set_verbosity(params["verbose"])
@@ -322,7 +335,7 @@ def doit():
     verbose = params["verbose"]
 
     bkg_kw = fileio.get_keys_from_file(bkgfile)
-    instrument = bkg_kw["INSTRUME"] 
+    instrument = bkg_kw["INSTRUME"]
 
     # determine chips to be used for the image
     if instrument == "ACIS":
@@ -333,9 +346,9 @@ def doit():
         chips = fileio.get_chips(bkgfile+filters)
         det = "chip_id"
 
-    # get XY-grid; produce scaled image of the background file 
+    # get XY-grid; produce scaled image of the background file
     xylimits,bkgimg,bkgmethod = bkg_img(imgfile,bkgfile,outdir+outroot,
-                                        filters,det,chips,tmpdir,verbose) 
+                                        filters,det,chips,tmpdir,verbose)
 
     # create ACIS background subtracted image
     dmimgcalc.punlearn()
