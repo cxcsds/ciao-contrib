@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 #
-# Copyright (C) 2013-2018,2020 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2020 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -1579,7 +1579,7 @@ def get_nh_from_colden( myparams, token, at_energy, ii ):
     return nh
     
 
-def replace_nh_tokens( myparams, at_energy, ii ):
+def replace_nh_tokens( myparams, at_energy, ii, in_pi=None ):
     """
     Look for and replace any special %*_NH% tokens in the 
     model parameter strings.
@@ -1596,7 +1596,10 @@ def replace_nh_tokens( myparams, at_energy, ii ):
         if token not in modelparam:
             return modelparam
             
-        pi = myparams.outroot+"{:04d}.pi".format(ii)
+        if in_pi is None:
+            pi = myparams.outroot+"{:04d}.pi".format(ii)
+        else:
+            pi = in_pi
         if not os.path.exists(pi):
             verb1("Cannot locate spectrum file, will try to get from colden")
             nh = get_nh_from_colden( myparams, token, at_energy, ii )
@@ -1622,7 +1625,7 @@ def replace_nh_tokens( myparams, at_energy, ii ):
     return mparams, absparams
 
 
-def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf, inrmf ):
+def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf, inrmf, inpi=None ):
     """
     Run the modelflux script to get the conversion factor
     from a 1 c/s rate to the model flux in the
@@ -1672,7 +1675,7 @@ def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf,
         elo = 0.1
         ehi = 10.0
 
-    mparams, absparams = replace_nh_tokens( myparams, at_energy, ii )
+    mparams, absparams = replace_nh_tokens( myparams, at_energy, ii, inpi )
 
     modelflux = make_tool("modelflux")
     modelflux.arf = arf
@@ -1903,8 +1906,10 @@ def merge_modelflux( stk_params, myparams ):
 
         pi_files = [ p.outroot+"{:04d}.pi".format(snum+1) for p in stk_params ]
         arf_files = [ p.outroot+"{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
+        rmf_files = [ p.outroot+"{:04d}.rmf".format(snum+1) for p in stk_params ]
         combine_spectra.src_spectra=[x for x in pi_files if os.path.exists(x)]
         combine_spectra.src_arf=[x for x in arf_files if os.path.exists(x)]
+        combine_spectra.src_rmf=[x for x in rmf_files if os.path.exists(x)]
         combine_spectra.outroot = myparams.outroot+"{:04d}".format(snum+1)
         combine_spectra.clobber=True
         vv = combine_spectra()
@@ -1912,12 +1917,13 @@ def merge_modelflux( stk_params, myparams ):
             verb2(vv)
 
         verb2("Running model_flux")
-        out_arf = combine_spectra.outroot+"src.arf"
-        out_rmf = combine_spectra.outroot+"src.rmf"
+        out_arf = combine_spectra.outroot+"_src.arf"
+        out_rmf = combine_spectra.outroot+"_src.rmf"
+        out_pi = combine_spectra.outroot+"_src.pi"
         for at_energy in bands:
             myroot = get_root( myparams, at_energy )
             outroot = myroot+"_{:04d}.dat".format(snum+1)
-            run_modelflux( myparams, at_energy, outroot, None, None, snum+1, False, out_arf, out_rmf )
+            run_modelflux( myparams, at_energy, outroot, None, None, snum+1, False, out_arf, out_rmf, out_pi )
             tab = read_file( outroot )
             outfiles[at_energy]["mflux_cnv"].append( tab.get_column("MFLUX_CNV").values[0] )
             outfiles[at_energy]["umflux_cnv"].append( tab.get_column("UMFLUX_CNV").values[0] )
@@ -1944,6 +1950,8 @@ def counts_helper( ):
                'mean_bg_exp' : [],
                'exptime' : [],
                'inside_fov': [],
+               'net_photflux_aper' : [],
+               'net_photflux_aper_hi' : [],
                }
     return retval
 
@@ -1974,20 +1982,24 @@ def merge_aprates( cts, rate=False ):
     TODO:  CSC1 approach.  Take instead from xaprate/naprates/etc
     
     """
-    import aper as aper
-    good = ( np.array( cts["inside_fov"] ) == True )
+    #~ import aper as aper
+    from ciao_contrib.runtool import aprates
+    from tempfile import NamedTemporaryFile
+    outfile = NamedTemporaryFile(suffix=".par", delete=False)
 
+    good = ( np.array( cts["inside_fov"] ) == True )
 
     c      = np.array( cts["counts"] )[good]
     b      = np.array( cts["bg_counts"] )[good]
     alpha  = np.array(cts["psffrac"])[good]
     beta   = np.array(cts["bg_psffrac"] )[good]
+    exptime = np.array(cts["exptime"])[good]
     if True == rate:
-        exp_s  = np.array(cts["exptime"])[good]
-        exp_b  = np.array(cts["exptime"])[good]
+        exp_s  = exptime
+        exp_b  = exptime
     else:
-        exp_s  = np.array(cts["exptime"] )[good] * np.array(cts["mean_src_exp"])[good]
-        exp_b  = np.array(cts["exptime"] )[good] * np.array(cts["mean_bg_exp"])[good]
+        exp_s  = exptime * np.array(cts["mean_src_exp"])[good]
+        exp_b  = exptime * np.array(cts["mean_bg_exp"])[good]
     area_s = np.array(cts["area"])[good]
     area_b = np.array(cts["bg_area"])[good]
 
@@ -1995,7 +2007,6 @@ def merge_aprates( cts, rate=False ):
     C = int(np.sum(c))
     B = int(np.sum(b))
 
-    # sigma = exp_s / exp_b 
     f = alpha * exp_s
     g = beta *exp_b
 
@@ -2012,21 +2023,70 @@ def merge_aprates( cts, rate=False ):
 
     R = Q / M
 
-    photflux = aper.aper( C, B, R, F, G) 
+
+    Alpha = np.sum(alpha*exp_s)/np.sum(exp_s)
+    Beta = np.sum(beta*exp_b)/np.sum(exp_b)
+    E_S = np.sum(exp_s) 
+    E_B = np.sum(exp_b) 
+    A_S = 1.0
+    A_B = (E_S/E_B)*R
+    T_S = np.sum(exptime)
+    T_B = np.sum(exptime)
+
+    aprates.n = C
+    aprates.A_s = A_S
+    aprates.alpha = Alpha
+    aprates.T_s = T_S
+    aprates.E_s = E_S
+    aprates.eng_s = 1.0
+    aprates.flux_s = 1.0
+    aprates.m = B
+    aprates.A_b = A_B
+    aprates.beta = Beta
+    aprates.T_b = T_B
+    aprates.E_b = E_B
+    aprates.eng_b = 1.0
+    aprates.flux_b = 1.0
+    aprates(outfile=outfile.name, clobber=True, verbose=0)
+
+    from paramio import pget
+    pf = pget(outfile.name, "photflux_aper_mode")
+    pfl = pget(outfile.name, "photflux_aper_err_lo")
+    pfh = pget(outfile.name, "photflux_aper_err_up")
+    conf = pget(outfile.name, "photflux_aper_conf")
+    if os.path.exists(outfile.name):
+        os.unlink(outfile.name)
 
     retval = { 'src_cts' : C,
                'bkg_cts' : B,
                'backscl' : R,
                'srcwexp' : F,
                'bkgwexp' : G,
-               'value' : photflux[0],
-               'lolimit' : photflux[1],
-               'hilimit' : photflux[2],
-               'conf' : 0.68, # hard coded in aper module
+               'value' : float(pf),
+               'lolimit' : float(pfl),
+               'hilimit' : float(pfh),
+               'conf' : float(conf),
                'numobi': len(c) ,
                }
                
     return retval
+
+
+def merge_photfluxes(cts):
+    good = ( np.array( cts["inside_fov"] ) == True )
+
+    exptime = np.array(cts["exptime"])[good]    
+    photflux    = np.array(cts["net_photflux_aper"])[good]
+    photflux_hi = np.array(cts["net_photflux_aper_hi"])[good]
+    
+    for ii in range(len(photflux)):
+        if photflux[ii] == 0:
+            photflux[ii] = photflux_hi[ii] # Use the upper limit
+
+    P = np.sum( exptime * photflux ) / np.sum(exptime)
+    retval = { 'value' : P }
+    return retval
+
     
 
 def merge_eff2evt( cts ):
@@ -2059,6 +2119,7 @@ def merge_counts( stk_params, myparams):
         retvals[b] = { 'rates' : [],
                       'fluxes' : [],
                       'eff2evt' : [],
+                      'photfluxes' : [],
                       }
 
     verb1("Combining count rates")
@@ -2070,7 +2131,13 @@ def merge_counts( stk_params, myparams):
             srcfiles = [ "{}{}[#row={}]".format(get_root(src,at_energy), __osuf__, snum+1) for src in stk_params  ]
             cts = merge_get_counts( srcfiles )
             retvals[at_energy]['rates'].append( merge_aprates(cts, rate=True) )
+
+            # TODO: this is wrong for photon fluxes; inconsistent with how per-obi are computed
+            # from fluxed images.
             retvals[at_energy]['fluxes'].append( merge_aprates(cts, rate=False) )
+
+            retvals[at_energy]['photfluxes'].append( merge_photfluxes(cts) )
+
             retvals[at_energy]['eff2evt'].append( merge_eff2evt(cts) )
 
     return retvals
@@ -2112,16 +2179,27 @@ def merge_write_output( stk_params, myparams, modelflux_vals, merge_fluxes ):
         pick_and_write( "MERGED_RATE_AREASCAL", "Merged area scale used in rates", "", "backscl", "rates")
         pick_and_write( "PSF_WEIGHTED_TOTAL_EXPOSURE_TIME", "Sum(EXPOSURE) weighted by PSF fraction", "s", "srcwexp", "rates")
 
-        pick_and_write( "MERGED_NET_PHOTFLUX_APER", "Merged count rate", "photon/cm**2/s", "value", "fluxes" )
-        pick_and_write( "MERGED_NET_PHOTFLUX_APER_LO", "Merged count rate lower limit", "photon/cm**2/s", "lolimit", "fluxes" )
-        pick_and_write( "MERGED_NET_PHOTFLUX_APER_HI", "Merged count rate upper limit", "photon/cm**2/s", "hilimit", "fluxes" )        
         pick_and_write( "MERGED_PHOTFLUX_AREASCAL", "Merged area scale used in rates", "", "backscl", "fluxes")
         pick_and_write( "PSF_WEIGHTED_TOTAL_SRC_EXPOSURE", "Sum(EXPOSURE_MAP) weighted by PSF fraction", "cm**2 s", "srcwexp", "fluxes")
         pick_and_write( "PSF_WEIGHTED_TOTAL_BG_EXPOSURE", "Sum(EXPOSURE_MAP) weighted by PSF fraction", "cm**2 s", "bkgwexp", "fluxes")
 
-        total_net_rate = [ r['value'] for r in merge_fluxes[at_energy]['rates']]
-        total_net_rate_lolim = [ r['lolimit'] for r in merge_fluxes[at_energy]['rates']]
-        total_net_rate_hilim = [ r['hilimit'] for r in merge_fluxes[at_energy]['rates']]        
+
+        #pick_and_write( "MERGED_NET_PHOTFLUX_APER", "Merged count rate", "photon/cm**2/s", "value", "fluxes" )
+        #pick_and_write( "MERGED_NET_PHOTFLUX_APER_LO", "Merged count rate lower limit", "photon/cm**2/s", "lolimit", "fluxes" )
+        #pick_and_write( "MERGED_NET_PHOTFLUX_APER_HI", "Merged count rate upper limit", "photon/cm**2/s", "hilimit", "fluxes" )        
+
+        total_net_rate = [ float(r['value']) for r in merge_fluxes[at_energy]['rates']]
+        total_net_rate_lolim = [ float(r['lolimit']) for r in merge_fluxes[at_energy]['rates']]
+        total_net_rate_hilim = [ float(r['hilimit']) for r in merge_fluxes[at_energy]['rates']]        
+
+        total_photflux = [r['value'] for r in merge_fluxes[at_energy]['photfluxes']]
+        total_photflux_cnv = np.array(total_photflux) / np.array(total_net_rate)  # TODO upper limit
+        total_photflux_lolim = np.array(total_net_rate_lolim)*total_photflux_cnv
+        total_photflux_hilim = np.array(total_net_rate_hilim)*total_photflux_cnv
+        
+        add_array_to_crate( intab, "MERGED_NET_PHOTFLUX_APER", total_photflux, "Merged model scaled photflux", "photon/cm**2/s")
+        add_array_to_crate( intab, "MERGED_NET_PHOTFLUX_APER_LO", total_photflux_lolim, "Merged model scaled photflux lower limit", "photon/cm**2/s")
+        add_array_to_crate( intab, "MERGED_NET_PHOTFLUX_APER_HI", total_photflux_hilim, "Merged model scaled photflux upper limit", "photon/cm**2/s")
 
         total_mflux_cnv = modelflux_vals[at_energy]['mflux_cnv']
         total_umflux_cnv = modelflux_vals[at_energy]['umflux_cnv']
@@ -2590,7 +2668,7 @@ def obi_main(pars):
         obipars["dtffile"] = infile[5]
 
         if False == is_single_obi:
-            obipars["outroot"] = "{}_obi{:03d}".format( pars["outroot"], ii)
+            obipars["outroot"] = "{}obi{:03d}".format( pars["outroot"], ii)
 
         set_bands(obipars)        
         Params = namedtuple( 'Params', obipars.keys() )
@@ -2638,13 +2716,13 @@ def main():
         summarize_results( myparams, obi=None, single=True )
         return
 
-    #merged_fluxes = merge_counts( stk_pars, myparams) 
-    #modelflux_vals = merge_modelflux( stk_pars, myparams )
-    #merge_write_output( stk_pars, myparams, modelflux_vals, merged_fluxes)
+    merged_fluxes = merge_counts( stk_pars, myparams) 
+    modelflux_vals = merge_modelflux( stk_pars, myparams )
+    merge_write_output( stk_pars, myparams, modelflux_vals, merged_fluxes)
 
     for ii,ss in enumerate(stk_pars):
         summarize_results( ss, obi=ii, single=False )
-    #summarize_results( myparams, obi=None, single=False )
+    summarize_results( myparams, obi=None, single=False )
     
     
 
