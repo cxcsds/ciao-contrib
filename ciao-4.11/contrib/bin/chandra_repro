@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2017, 2018  Smithsonian Astrophysical Observatory
+# Copyright (C) 2010-2019  Smithsonian Astrophysical Observatory
 #
 #
 #
@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "19 November 2018"
+version = "13 May 2019"
 
 # import standard python modules as required
 #
@@ -1990,6 +1990,7 @@ def mktg_arfrmf(params):
 
     """
     from ciao_contrib.runtool import mktgresp
+    v1("Creating grating response files")
 
     outdir = os.path.join(params["outdir"], "tg" )
     make_dir( outdir )
@@ -1998,10 +1999,28 @@ def mktg_arfrmf(params):
     mktgresp.evtfile=params["evt2_file"]
     mktgresp.outroot=os.path.join(outdir, params["root"]+"_repro")
     mktgresp.clobber= params["clobber"]
-    mktgresp.orders="-1,1"
+
+
+    if "LETG" == params["grating"] and "HRC-S" == params["detnam"]:
+        mktgresp.orders="-8,-7,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,7,8"
+    else:
+        mktgresp.orders="-1,1"
+
     out = mktgresp()
 
     v5(out)
+
+
+    from ciao_contrib.runtool import tgsplit
+    
+    tgsplit.infile=params["pha2_file"]
+    tgsplit.arffile=mktgresp.outroot+"*.arf"
+    tgsplit.rmffile=mktgresp.outroot+"*.rmf"
+    tgsplit.outroot=mktgresp.outroot
+    tgsplit.clobber=params["clobber"]
+    out = tgsplit()
+    v5(out)
+
     return params
 
 
