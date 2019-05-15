@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2014, 2016 Smithsonian Astrophysical Observatory
+# Copyright (C) 2014, 2016, 2019 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@ from __future__ import print_function
 
 import sys
 import os
+import subprocess as sp
 
 
 def parse_infile( infile ):
@@ -32,17 +33,25 @@ def parse_infile( infile ):
     return tab
 
 
-def parse_src( srcreg ):
+def parse_src( ds9 ):
     """
     
     """    
     from tempfile import NamedTemporaryFile
         
+    srcreg = xpaget( ds9, "regions -format ciao source -strip yes selected").strip("\n")    
 
+    if 0 == len(srcreg):
+        srcreg = xpaget( ds9, "regions -format ciao source -strip yes").strip("\n")
+    
+    if 0 == len(srcreg):
+        raise RuntimeError("No source regions\n")
+    
+    
     if srcreg.startswith("@"):
         raise RuntimeError("Arrr... too many src regions!")
     
-    shapes = srcreg.split(";")
+    shapes = srcreg.strip(";").split(";")
 
     # separate into include and exclude
     xcld = list(filter( lambda x: x.startswith("-"), shapes ))
@@ -55,19 +64,26 @@ def parse_src( srcreg ):
 
     src = [ i+"\n" for i in src]
 
-    srcstk = NamedTemporaryFile( dir=os.environ["ASCDS_WORK_PATH"], mode="w", delete=False )
+
+    srcstk = NamedTemporaryFile( dir=os.environ["DAX_OUTDIR"], mode="w", delete=False )
     srcstk.writelines( src )
     srcstk.close()
     return srcstk.name
     
 
-def parse_bkg( bkgreg ):
+def parse_bkg( ds9 ):
     """
     """
+
+    bkgreg = xpaget( ds9, "regions -format ciao background -strip yes selected").strip("\n")
+    if 0 == len(bkgreg):
+        bkgreg = xpaget( ds9, "regions -format ciao background -strip yes").strip("\n")
+
+
     if bkgreg.startswith("@"):
         raise RuntimeError("Arrr... too many background regions!")
     
-    shapes = bkgreg.split(";")
+    shapes = bkgreg.strip(";").split(";")
 
     # separate into include and exclude
     xcld = list(filter( lambda x: x.startswith("-"), shapes ))
@@ -127,10 +143,6 @@ def pretty_print( infile, srcstk, bkg, _infile ):
 
     rows=list(zip(*vals))
     
-    from datetime import datetime
-    
-    print ("#===== {} =====".format(str(datetime.now()).split(".")[0]))
-    print ("#File: {}\n".format(_infile))
     
     print ("#Background subtracted data\n")
     print_tab( cols, units, rows )
@@ -156,7 +168,25 @@ def pretty_print( infile, srcstk, bkg, _infile ):
     print ("")
 
 
-def run_dme( infile, srcstk, bkg ):
+
+def save_ds9_image(xpa):
+    """Save currently displayed data to temp file"""
+
+    from tempfile import NamedTemporaryFile    
+    ds9_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"], 
+         suffix="_ds9.fits", delete=False)
+
+    cmd = [ 'xpaget', xpa, 'fits' ]
+    fits = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    open(ds9_file.name,"wb").write(fits)    
+    return(ds9_file.name)
+
+
+
+
+
+
+def run_dme( ds9, diskfile, srcstk, bkg ):
     """
     
     """
@@ -164,7 +194,9 @@ def run_dme( infile, srcstk, bkg ):
     from ciao_contrib.runtool import make_tool
     from tempfile import NamedTemporaryFile
 
-    tf = NamedTemporaryFile( dir=os.environ["ASCDS_WORK_PATH"] )
+    infile = save_ds9_image(ds9)
+
+    tf = NamedTemporaryFile( dir=os.environ["DAX_OUTDIR"] )
     
     dme = make_tool("dmextract")
     dme.infile = "{}[bin sky=@-{}]".format(infile, srcstk)
@@ -180,28 +212,52 @@ def run_dme( infile, srcstk, bkg ):
         dme.infile = "{}[bin pos=@-{}]".format(infile, srcstk)
         dme.bkg = "{}[bin pos={}]".format(infile,bkg) if bkg else ""
         dme()
+    finally:
+        if os.path.exists(infile):
+            os.unlink(infile)
     
-    pretty_print( tf.name, srcstk, bkg, infile )
+    pretty_print( tf.name, srcstk, bkg, diskfile )
+
+
+def xpaget(ds9, cmd):
+    
+    runcmd = [ "xpaget", ds9]
+    runcmd.extend(cmd.split(" "))
+    try:
+        out = sp.run( runcmd, check=False, stdout=sp.PIPE).stdout
+    except:
+        raise RuntimeError("Problem getting {}".format(runcmd))
+    
+    return out.decode().strip()
+        
+    
+
 
 
 def functs():
     """
     Main routine
     """
-    
-    infile = sys.argv[1]
-    src = sys.argv[2]
-    bkg = sys.argv[3]
-    
+
+    from datetime import datetime    
+    print ("#===== {} =====".format(str(datetime.now()).split(".")[0]))
+
+
+    ds9 = sys.argv[1]
+    infile = xpaget( ds9, "file")
     infile = parse_infile(infile)
-    srcstk = parse_src( src )
-    bkg = parse_bkg( bkg)
+
+    print ("#File: {}\n".format(infile))
+
+    srcstk = parse_src( ds9 )
+    bkg = parse_bkg( ds9 )
     
     try:
-        outfile = run_dme( infile, srcstk, bkg )
+        outfile = run_dme( ds9, infile, srcstk, bkg )
     finally:
         if os.path.exists( srcstk ):
             os.unlink( srcstk )
+
 
 if __name__ == "__main__":
     try:

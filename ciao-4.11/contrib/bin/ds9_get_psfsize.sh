@@ -23,10 +23,17 @@ ds9=$1
 eng=$2
 frac=$3
 
+
+
+echo "# -------------------"
+echo ""
+echo `date`
+echo ""
+
+
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
 then
-  echo "# -------------------"
   echo "Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
   exit 1
 fi
@@ -48,27 +55,41 @@ fi
 if test `xpaget $ds9 mode` = crosshair
 then
 
-  x=`xpaget $ds9 crosshair -system physical -skyformat degrees | awk '{print $1}'`
-  y=`xpaget $ds9 crosshair -system physical -skyformat degrees | awk '{print $2}'`
+    x=`xpaget $ds9 crosshair physical | awk '{print $1}'`
+    y=`xpaget $ds9 crosshair physical | awk '{print $2}'`
+
+    if test x$x = x
+    then
+      echo "ERROR getting coordinates"
+      exit 1
+    fi
+
+    if test x$y = x
+    then
+      echo "ERROR getting coordinates"
+      exit 1
+    fi
 
 else
 
-  x=`xpaget $ds9 regions selected -format ciao -system physical -strip | tr ";" "\012" | tail -1 | tr "()," " " | cut -d" " -f2`
-  y=`xpaget $ds9 regions selected -format ciao -system physical -strip | tr ";" "\012" | tail -1 | tr "()," " " | cut -d" " -f3`
+    x=`xpaget $ds9 regions selected -format ciao -system physical -strip | tr ";" "\012" | tail -1 | tr "()," " " | cut -d" " -f2`
+    y=`xpaget $ds9 regions selected -format ciao -system physical -strip | tr ";" "\012" | tail -1 | tr "()," " " | cut -d" " -f3`
+
+    if test x$x = x
+    then
+      echo "ERROR getting coordinates, make sure single region is selected"
+      exit 1
+    fi
+
+    if test x$y = x
+    then
+      echo "ERROR getting coordinates, make sure single region is selected"
+      exit 1
+    fi
+
 fi
 
 
-if test x$x = x
-then
-  echo "ERROR getting coordinates"
-  exit 1
-fi
-
-if test x$y = x
-then
-  echo "ERROR getting coordinates"
-  exit 1
-fi
 
 
 
@@ -97,6 +118,8 @@ EOF
 
 
 echo 'fk5; circle '$ra $dec $rad'" # tag={psfsize} tag={frac='${frac}'} tag={eng='${eng}'}' | xpaset $ds9 regions -format ds9
+
+echo 'fk5; circle '$ra $dec $rad'" # tag={psfsize} tag={frac='${frac}'} tag={eng='${eng}'}'
 
 exit 0
 

@@ -1,6 +1,6 @@
-#! /bin/sh
+#!/bin/bash
 # 
-#  Copyright (C) 2004-2008  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2008,2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -33,7 +33,19 @@ else
 fi
 
 cat - | dmimghist -"$regions" - 1 > \
- $ASCDS_WORK_PATH/$$_hist.fits
+ $DAX_OUTDIR/$$_pixelhist.fits
 
 
-ds9_plot.py "$ASCDS_WORK_PATH/$$_hist.fits[cols bin,counts]" "Pixel Histogram" $ds9
+ds9_plot_blt "$DAX_OUTDIR/$$_pixelhist.fits[cols bin,counts]" "Pixel Histogram $$_pixelhist.fits" $ds9
+
+file=`xpaget $ds9 file name `
+file=`basename "${file}"`
+file=`echo "${file}" | cut -d"[" -f1`
+
+echo "-----------------------------"
+echo `date`
+echo ""
+echo "infile: ${file}"
+echo "region: ${reg}"
+echo "outfile: $DAX_OUTDIR/$$_pixelhist.fits"
+echo ""

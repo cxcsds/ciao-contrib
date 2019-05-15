@@ -56,7 +56,7 @@ endparam
 # ---------------
 param threshold
   cut entry {cut} {} {Threshold cutoff}
-  value entry {value} {} {Replacement value}
+  thr_value entry {value} {} {Replacement value}
 endparam
 
 
@@ -65,7 +65,7 @@ endparam
 # ---------------
 param grad
   grad menu {gradient} laplace|roberts|prewitt|sobel|robison|kirsch  {Gradient estimator}
-  value menu {value} mag|x|y|angle {Gradient direction}
+  graddir menu {value} mag|x|y|angle {Gradient direction}
 endparam
 
 # ---------------
@@ -111,11 +111,17 @@ param project
   stat menu {which statistic to compute?} sum|number|mean|min|min_loc|max|max_loc|median|med_loc|range|stdev
 endparam
 
+param poly_params
+  poly_method menu {Weighting} closest|average|weight|minimum|maximum|furthest {Interpolation method} 
+  poly_plot menu {Plot X-axis} x|y|angle|radius|rownum {What to plot data versus}
+endparam
+
+
 #
 # ellipse
 #
 param myell
-  frac entry {Fraction(s) to compute} 0.9
+  ellipse_frac entry {Fraction(s) to compute} 0.9
 endparam
 
 param regions
@@ -172,12 +178,25 @@ param spectral
   elo entry {elo} 0.3 {[keV] Lower energy range to perform fit}
   ehi entry {ehi} 7.0 {[keV] Upper energy range to perform fit}
   extra entry {extra} {} {Additional commands, use mdl1 and abs1, eg mdl1.redshift=0.2}
+  specfit_method menu {Method} levmar|neldermead|moncar {Optimization method}
+  specfit_stat menu {Statistic} chi2gehrels|chi2xspecvar|cash|cstat|wstat {Goodness of fit statistic}
+  specfit_absmodel menu {Absorption model} xswabs|xsphabs {Absorption model}
 endparam
 
 param imagefit
   imgmodel menu {Source} gauss2d|beta2d|devaucouleurs2d|lorentz2d {Source model component}
   bkgmodel menu {Background} const2d|polynom2d {Background model component}
   getconf checkbox {Confidence} 0 {Compute confidence intervals (slow)}
+  imgfit_method menu {Method} levmar|neldermead|moncar {Optimization method}
+  imgfit_stat menu {Statistic} chi2gehrels|chi2xspecvar|cash|cstat|wstat {Goodness of fit statistic}
+endparam
+
+
+param rproffit
+   rprof_units menu {Units} physical|arcsec {Display radius in which units?}
+   rprof_srcA menu {Model1} gauss1d|beta1d|const1d|lorentz1d|polynom1d|powlaw1d {First model component}
+   rprof_srcB menu {Model2} none|gauss1d|beta1d|const1d|lorentz1d|polynom1d|powlaw1d {2nd additive model component}
+   rprof_mthd menu {Method} levmar|neldermead|moncar {Optimization method}
 endparam
 
 
@@ -204,22 +223,32 @@ param dl_csc
 endparam  
 
 
+param radial_profile
+   rad_units menu {Units} physical|arcsec {Display radius in which units?}
+endparam
+
+param contour_lvs
+   c_levels entry {Contour Levels} {} {List of contour levels}
+endparam
+
+
+
 # ------------------------------------------------------
 
 
-hmenu CIAO
+hmenu CIAO tools (DAX)
 
 #NEW#  hmenu Archive
 #NEW#
 #NEW#    Download Chandra OBS_ID
 #NEW#    *
 #NEW#    menu
-#NEW#    $param(dl_obsid); $env(ASCDS_CONTRIB)/bin/ds9_dl_obsid.sh $xpa $dlobi $dldir $dlview  | $text
+#NEW#    $param(dl_obsid); $env(ASCDS_CONTRIB)/bin/ds9_dl_obsid.sh $xpa $dlobi $dldir $dlview  |& $text
 #NEW#
 #NEW#    CSC By OBS_ID
 #NEW#    *
 #NEW#    menu
-#NEW#    $param(dl_csc); $env(ASCDS_CONTRIB)/bin/ds9_dl_csc.sh $xpa $dlobi $dldir $dlview  | $text
+#NEW#    $param(dl_csc); $env(ASCDS_CONTRIB)/bin/ds9_dl_csc.sh $xpa $dlobi $dldir $dlview  |& $text
 #NEW#
 #NEW#  endhmenu
   
@@ -230,97 +259,51 @@ hmenu CIAO
     Net Counts
     *
     menu
-    $env(ASCDS_CONTRIB)/bin/ds9_functs  "$filename" "$regions(ciao,source,strip)" "$regions(ciao,background,strip)"  | $text
+    $env(ASCDS_CONTRIB)/bin/ds9_functs  $xpa  |& $text
 
     Photometry (srcflux)
     *EVT* *evt*
     menu
-    $param(srcflux); $env(ASCDS_CONTRIB)/bin/ds9_aper.sh $xpa "$energy" "$model" "$pmvals" "$absmodel" "$apmvals" "$psfmethod" | $text
+    $param(srcflux); $env(ASCDS_CONTRIB)/bin/ds9_aper.sh $xpa "$energy" "$model" "$pmvals" "$absmodel" "$apmvals" "$psfmethod" |& $text
 
     ---
 
-    dmstat (centroid)
+    Statistics (dmstat)
     *
     menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh allc $regions(ciao,strip) | $text
+    $env(ASCDS_CONTRIB)/bin/ds9_stats.sh allc $xpa $regions(ciao,strip) |& $text
 
-    dmstat (no centroid)
-    *
-    menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh allnoc $regions(ciao,strip) | $text
-
-    ---
-
-    centroid
-    *
-    menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh cntrd $regions(ciao,strip) | $text
-    
-    counts
-    *
-    menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh sum $regions(ciao,strip) | $text
-    
-    min
-    *
-    menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh min $regions(ciao,strip) | $text
-    
-    max
-    *
-    menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh max $regions(ciao,strip) | $text
-    
-    mean
-    *
-    menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh mean $regions(ciao,strip) | $text
-    
-    median
-    *
-    menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh median $regions(ciao,strip) | $text
-    
-    stdev
-    *
-    menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh sig $regions(ciao,strip) | $text
-    
-    area
-    *
-    menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh good $regions(ciao,strip) | $text
-    
-    ---
-    
-    centroid snap selected
-    *
-    menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_snap2.sh $xpa | $text
 
     centroid snap selected
     *
     bind F1
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_snap2.sh $xpa | $text
+    $data | $env(ASCDS_CONTRIB)/bin/ds9_snap2.sh $xpa |& $text
     
     ---
     
     moments
     *
     menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_stats.sh moments $regions(ciao,strip) | $text
+    $env(ASCDS_CONTRIB)/bin/ds9_stats.sh moments $xpa $regions(ciao,strip) |& $text
     
     ---
     
     help
+
+
+    Net Coounts - [dmextract] computes simple net counts, and count-rates 
     
-    Computes some simple statistics for the drawn regions 
-    of the Image data.  See 
     
-        ahelp dmstat
-    
-    for more information on how the values are computed.
-    
+    Photometry - [srcflux]  computes photon and energy fluxes assuming 
+    a user specified spectral model.
+
+    Statistics - [dmstat]  compute various image pixel statistics: 
+    centroid, min, max, mean, median, standard deviation, sum, and area.
+
+    moments - [imgmoment] computes the 2nd order image moments and some 
+    derived values such as ellipticity, major and minor axes, and rotation 
+    angle. 
+
     
     endhelp
     
@@ -334,52 +317,52 @@ hmenu CIAO
     Generic Histogram
     *evt* *EVT*
     menu
-    $param(histogram); $env(ASCDS_CONTRIB)/bin/ds9_generic_hist.sh $xpa $bincol $binspec $ftype $grptype $grpval | $text
+    $param(histogram); $env(ASCDS_CONTRIB)/bin/ds9_generic_hist.sh $xpa $bincol $binspec $ftype $grptype $grpval |& $text
 
     --- 
 
     PHA 
     *evt* *EVT*
     menu
-    $env(ASCDS_CONTRIB)/bin/ds9_hist.sh pha 4 $filename "$regions(ciao,source,strip)" "$regions(ciao,background,strip)" $xpa | $text
+    $env(ASCDS_CONTRIB)/bin/ds9_hist.sh pha 4 $filename "$regions(ciao,source,strip)" "$regions(ciao,background,strip)" $xpa |& $text
 
     PI 
     *evt* *EVT*
     menu
-    $env(ASCDS_CONTRIB)/bin/ds9_hist.sh pi 1 $filename "$regions(ciao,source,strip)" "$regions(ciao,background,strip)" $xpa | $text
+    $env(ASCDS_CONTRIB)/bin/ds9_hist.sh pi 1 $filename "$regions(ciao,source,strip)" "$regions(ciao,background,strip)" $xpa |& $text
 
     TIME 
     *evt* *EVT*
     menu
-    $env(ASCDS_CONTRIB)/bin/ds9_hist.sh time "$entry(Bin size)" $filename "$regions(ciao,source,strip)" "$regions(ciao,background,strip)" $xpa | $text
+    $env(ASCDS_CONTRIB)/bin/ds9_hist.sh time "$entry(Bin size)" $filename "$regions(ciao,source,strip)" "$regions(ciao,background,strip)" $xpa |& $text
 
 
     EXPNO 
     *evt* *EVT*
     menu
-    $env(ASCDS_CONTRIB)/bin/ds9_hist.sh expno "$entry(Bin size)" $filename "$regions(ciao,source,strip)" "$regions(ciao,background,strip)" $xpa  | $text
+    $env(ASCDS_CONTRIB)/bin/ds9_hist.sh expno "$entry(Bin size)" $filename "$regions(ciao,source,strip)" "$regions(ciao,background,strip)" $xpa  |& $text
 
     ---
     
     Pixel
     *
     menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_imghist.sh "$regions(ciao,strip)" $xpa | $text
+    $data | $env(ASCDS_CONTRIB)/bin/ds9_imghist.sh "$regions(ciao,strip)" $xpa |& $text
 
     Project
     *
     menu
-    $param(project); $data | $env(ASCDS_CONTRIB)/bin/ds9_project.sh $stat $axis "$regions(ciao,strip)" $xpa | $text
+    $param(project); $data | $env(ASCDS_CONTRIB)/bin/ds9_project.sh $stat $axis "$regions(ciao,strip)" $xpa |& $text
 
     Radial Profile
     *
     menu
-    $env(ASCDS_CONTRIB)/bin/ds9_radial.sh $xpa "$filename" | $text
+    $param(radial_profile); $data | $env(ASCDS_CONTRIB)/bin/ds9_radial.sh $xpa $rad_units|& $text
 
     Extract Along Polygon
     *
     menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_poly.sh $xpa close | $text
+    $param(poly_params); $data | $env(ASCDS_CONTRIB)/bin/ds9_poly.sh $xpa $poly_method $poly_plot |& $text
     
     
     ---
@@ -387,14 +370,12 @@ hmenu CIAO
     Period Fold
     *evt* *EVT*
     menu
-    $param(time); ds9_time.sh pfold $filename $min_time $max_time "$regions(ciao,source,strip)" "" $xpa | $text
-
-
+    $param(time); ds9_time.sh pfold $filename $min_time $max_time "$regions(ciao,source,strip)" "" $xpa |& $text
 
     G-L Vary
     *evt* *EVT*
     menu
-    ds9_time.sh gl $filename INDEF INDEF "$regions(ciao,source,strip)" "" $xpa | $text
+    ds9_time.sh gl $filename INDEF INDEF "$regions(ciao,source,strip)" "" $xpa |& $text
 
 
     ---
@@ -420,6 +401,8 @@ hmenu CIAO
 
        Extract Along Polygon - [dmimgpick] get pixel values at polygon end points
 
+       Period Fold - [pfold] a simple period fold search
+
        G-L Vary - [glvary] Gregory-Laredo Bayesian Lightcurve
 
     endhelp
@@ -435,67 +418,32 @@ hmenu CIAO
     All
     *
     menu
-    $env(ASCDS_CONTRIB)/bin/ds9_coord.sh all $xpa | $text
+    $env(ASCDS_CONTRIB)/bin/ds9_coord.sh $xpa |& $text
 
-    ---
-    
-    Off Axis Angles
-    *
-    menu
-    $env(ASCDS_CONTRIB)/bin/ds9_coord.sh theta $xpa | $text
-    
-    Chip
-    *
-    menu
-    $env(ASCDS_CONTRIB)/bin/ds9_coord.sh chip $xpa | $text
-    
-    Logical
-    *
-    menu
-    $env(ASCDS_CONTRIB)/bin/ds9_coord.sh log $xpa | $text
-        
-    Physical
-    *
-    menu
-    $env(ASCDS_CONTRIB)/bin/ds9_coord.sh phys $xpa | $text
-        
-    Celestial
-    *
-    menu
-    $env(ASCDS_CONTRIB)/bin/ds9_coord.sh cel $xpa | $text
-    
-    Det
-    *
-    menu
-    $env(ASCDS_CONTRIB)/bin/ds9_coord.sh det $xpa | $text
-    
-    T-Det
-    *
-    menu
-    $env(ASCDS_CONTRIB)/bin/ds9_coord.sh tdet $xpa | $text
-    
-    ---
 
-    Field-of-View
+    Chandra Field-of-View
     *
     menu
-    $env(ASCDS_INSTALL)/bin/skyfov "$filename" - ker=ASCII | sed s,blue,green, | xpaset $xpa regions | $text
+    $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa skyfov |& $text
 
 #    ---
 
 ##    Colden
 ##    *
 ##    menu
-##    $param(colden); prop_colden data $miss eval $x(fk5,sexagesimal) $y(fk5,sexagesimal) | $text
+##    $param(colden); prop_colden data $miss eval $x(fk5,sexagesimal) $y(fk5,sexagesimal) |& $text
 
   ---
     
     help
-    
-    Computes various Chandra coordinates at the location
-    of the crosshair.
 
-       See ahelp dmcoords
+    All - [dmcoords] computes various Chandra specific coordinates
+    (chip, det, tdet, off-axis-angles) at the location of the 
+    crosshair, or the 1st selected region.
+    
+    Chandra Field-of-View - [skyfov] computes a polygon enclosing
+    each CCD.
+
     
     endhelp
     
@@ -506,29 +454,36 @@ hmenu CIAO
     
   ---
     
-  hmenu Detect (Images Only)
+  hmenu Detect
     
     celldetect
     *
     menu
-    $data | $env(ASCDS_INSTALL)/bin/celldetect - - | $env(ASCDS_INSTALL)/bin/dmmakereg region=region(-) outfile=- ker=ascii | sed s,blue,green,g | xpaset $xpa regions | $text
+    $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa celldetect  |& $text
 
     vtpdetect
     *
     menu
-    $data | $env(ASCDS_INSTALL)/bin/vtpdetect - none - mode=h | dmcopy -[src_region] - | $env(ASCDS_INSTALL)/bin/dmmakereg region=region(-) outfile=- ker=ascii | sed s,blue,green,g | xpaset $xpa regions | $text
+    $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa vtpdetect  |& $text
     
     get_src_region
     *
     menu
-    $data | $env(ASCDS_INSTALL)/bin/get_src_region - - mode=h invert+ | $env(ASCDS_INSTALL)/bin/dmmakereg region=region(-) outfile=- ker=ascii | sed s,blue,green,g | xpaset $xpa regions | $text
+    $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa get_src_region  |& $text
     
     ---
     
     help
     
-    Runs a simple variable box-car source detection and overlays
-    the detected source regions.
+    celldetect - [celldetect] a simple sliding cell source detection.
+    Uses a fixed cellsize=12  pixels.
+    
+    vtpdetect - [vtpdetect] source detect using Voronoi Tesselation and 
+    Percolation; useful to find faint diffuse emission.
+    
+    get_src_region - [get_src_region] a fast algorithm to identify 
+    pixels above background.
+
     
     endhelp
    
@@ -541,51 +496,59 @@ hmenu CIAO
     Lasso
     *
     menu
-    $param(lasso); $data | $env(ASCDS_INSTALL)/bin/dmimglasso - - "%xpa($xpa,x)" "%xpa($xpa,y)" $min_pix $max_pix | $env(ASCDS_INSTALL)/bin/dmmakereg region=region(-) outfile=- ker=ascii | sed s,blue,green,g | xpaset $xpa regions | $text
+    $param(lasso); $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmimglasso $min_pix $max_pix |& $text
+    
+    Contour
+    *
+    menu
+    $param(contour_lvs); $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmcontour $c_levels |& $text
+
+    
+    ---
     
     Ellipse
     *
     menu
-    $param(myell); $data | $env(ASCDS_CONTRIB)/bin/ds9_ellipse.sh $xpa "$frac" ellipse "$regions(ciao,strip)" | $text
+    $param(myell); $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmellipse "$ellipse_frac" ellipse "$regions(ciao,strip)" |& $text
 
     Rotbox
     *
     menu
-    $param(myell); $data | $env(ASCDS_CONTRIB)/bin/ds9_ellipse.sh $xpa "$frac" rotbox "$regions(ciao,strip)" | $text
+    $param(myell); $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmellipse "$ellipse_frac" rotbox "$regions(ciao,strip)" |& $text
     
     ---
 
     Convex Hull
     *
     menu
-    $param(regions); $data | $env(ASCDS_CONTRIB)/bin/ds9_hull_n_tess.sh hull $xpa "$minval" "$regions(ciao,strip)" | $text
+    $param(regions); $data | $env(ASCDS_CONTRIB)/bin/ds9_hull_n_tess.sh hull $xpa "$minval" "$regions(ciao,strip)" |& $text
 
 #    Voroni Tesselation
 #    *
 #    menu
-#    $param(regions); $data | $env(ASCDS_CONTRIB)/bin/ds9_hull_n_tess.sh tess $xpa "$minval" "$regions(ciao,strip)" | $text
+#    $param(regions); $data | $env(ASCDS_CONTRIB)/bin/ds9_hull_n_tess.sh tess $xpa "$minval" "$regions(ciao,strip)" |& $text
 
 #    Delaunay Triangulation
 #    *
 #    menu
-#    $param(regions); $data | $env(ASCDS_CONTRIB)/bin/ds9_hull_n_tess.sh tri $xpa "$minval" "$regions(ciao,strip)" | $text
+#    $param(regions); $data | $env(ASCDS_CONTRIB)/bin/ds9_hull_n_tess.sh tri $xpa "$minval" "$regions(ciao,strip)" |& $text
 
     ---
     
     PSF Size
     *
     menu
-    $param(psfsize); $env(ASCDS_CONTRIB)/bin/ds9_get_psfsize.sh $xpa $energy $frac | $text
+    $param(psfsize); $env(ASCDS_CONTRIB)/bin/ds9_get_psfsize.sh $xpa $energy $frac |& $text
 
     PSF Fraction
     *
     menu
-    $param(psffrac); $env(ASCDS_CONTRIB)/bin/ds9_get_psffrac.sh $xpa $fenergy | $text
+    $param(psffrac); $env(ASCDS_CONTRIB)/bin/ds9_get_psffrac.sh $xpa $fenergy |& $text
 
 ###    SAOTrace PSF Simulation
 ###    *EVT* *evt*
 ###    menu
-###    $env(ASCDS_CONTRIB)/bin/ds9_saotrace.sh $xpa | $text
+###    $env(ASCDS_CONTRIB)/bin/ds9_saotrace.sh $xpa |& $text
 
 
    
@@ -593,13 +556,28 @@ hmenu CIAO
     
     help
     
-    Computes various regions
+    Lasso - [dmimglasso] (crosshair mode only) create a region that
+    encloses the current crosshair location with pixel in specified 
+    range of values.
     
-     - Lasso uses the current location of the cross hair to
-       identify pixels with similar intensity
-   
-     - Ellipse and Rotobox [dmellipse]  generates ellipes/rotbox
-       that contain a user supplied list of enclosed fractions.
+    Contour - [dmcontour] create contour regions at specified levels.  
+    Interior regions (ie holes) will be automatically excluded.
+    
+    Ellipse - [dmellipse] find ellipse that encloses a fraction 
+    of the total flux.
+    
+    Rotbox - [dmellipse] find a rotated box that encloses a fraction 
+    of the total flux.
+    
+    Convex Hull - [dmimghull] computes the convex hull around the
+    pixels in region above the threshold.
+    
+    PSF Size - [] Creates a circular region as the current location
+    that encloses the specified fraction at the specified energy.
+    
+    PSF Fraction - (circles only) computes the fraction of the PSF
+    inside the current circle at the specified energy.
+
     
     endhelp
    
@@ -614,24 +592,48 @@ hmenu CIAO
     Spectral Fit
     *EVT* *evt*
     menu
-    $param(spectral); $env(ASCDS_CONTRIB)/bin/ds9_specfit.sh $xpa $model $grpcts $elo $ehi '$extra' |& $text
+    $param(spectral); $env(ASCDS_CONTRIB)/bin/ds9_specfit.sh $xpa $model $grpcts $elo $ehi $specfit_method $specfit_stat $specfit_absmodel '$extra' |& $text
 
-    Clean Cache
-    *
-    menu
-    $message(yesno,Are you sure you want to remove cached files?)| /bin/rm -rf $env(ASCDS_WORK_PATH)/ds9specfit.$env(USER) |& $text
+###    Clean Cache
+###    *
+###    menu
+###    $message(yesno,Are you sure you want to remove cached files?)| /bin/rm -rf $env(ASCDS_WORK_PATH)/ds9specfit.$env(USER) |& $text
  
     ---
 
     2D Image Fit
     *
     menu
-    $param(imagefit); $env(ASCDS_CONTRIB)/bin/ds9_imgfit.sh $xpa $imgmodel $bkgmodel $getconf |& $text
+    $param(imagefit); $env(ASCDS_CONTRIB)/bin/ds9_imgfit.sh $xpa $imgmodel $bkgmodel $getconf $imgfit_method $imgfit_stat |& $text
 
 #NEW#    Source Extent
 #NEW#    *
 #NEW#    menu
 #NEW#    $env(ASCDS_CONTRIB)/bin/ds9_extent "$filename" "$regions(ciao,strip)" |& $text
+
+
+     ---
+     
+     Radial Profile Fit
+     *
+     menu
+     $param(rproffit); $env(ASCDS_CONTRIB)/bin/ds9_radial_fit $xpa $rprof_units $rprof_srcA $rprof_srcB $rprof_mthd |& $text
+
+
+     ---
+     
+      help
+      
+      Spectral Fit - [specextract, sherpa] extracts the source
+      and background spectra and then fits the spectra with sherpa.  
+      
+      2D Image Fit - [sherpa] fit the image data inside
+      the region with a 2D model
+      
+      Radial Profile Fit - [dmextract, sherpa] extract a 
+      radial profile from source and background region and fit.
+      
+      endhelp
 
 
   endhmenu
@@ -646,48 +648,48 @@ hmenu CIAO
     Blob
     *
     menu
-    $param(blob); $data | $env(ASCDS_INSTALL)/bin/dmimgblob - - $threshold srconly+ | $image(new)
+    $param(blob); $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmimgblob $threshold |& $text
     
     Adaptive Smooth
     *
     menu
-    $param(ciaoadapt); $data | $env(ASCDS_INSTALL)/bin/dmimgadapt - - $function $minrad $maxrad $numrad $radstep $counts | $image(new)
+    $param(ciaoadapt); $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmimgadapt $function $minrad $maxrad $numrad $radstep $counts |& $text
 
     Csmooth
     *
     menu
-    $param(csmooth); $data |  $env(ASCDS_INSTALL)/bin/csmooth - none - none none conmeth=fft conkern=$kernel sigmin=$sigmin sigmax=$sigmax sclmin=$sclmin sclmax=$sclmax mode=h | $image(new)
+    $param(csmooth); $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa csmooth $kernel $sigmin $sigmax $sclmin $sclmax |& $text
     
     Filter
     *
     menu
-    $param(filt); $data | $env(ASCDS_INSTALL)/bin/dmimgfilt - - $function $mask numiter=$niter | $image(new)
+    $param(filt); $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmimgfilt $function $mask $niter |& $text
     
     
     Threshold
     *
     menu
-    $param(threshold); $data | $env(ASCDS_INSTALL)/bin/dmimgthresh - - cut=$cut value=$value | $image(new)
+    $param(threshold); $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmimgthresh $cut $thr_value |& $text
     
 #    Gradient
 #    *
 #    menu
-#    $param(grad); $data | $env(ASCDS_INSTALL)/bin/dmimggrad - - $grad $value | $image(new)
+#    $param(grad); $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmimggrad $grad $graddir |& $text
     
     Adaptive Bin
     *
     menu
-    $param(bin); $data | $env(ASCDS_INSTALL)/bin/dmnautilus - - $snr | $image(new)
+    $param(bin); $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmnautilus $snr |& $text
     
     Distrance Transform
     *
     menu
-    $data | $env(ASCDS_INSTALL)/bin/dmimgdist - - | $image(new)
+    $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmimgdist |& $text
 
     L-R Decovolution
     *
     menu
-    $env(ASCDS_CONTRIB)/bin/ds9_restore.sh $xpa $regions(ciao,strip) | $text
+    $env(ASCDS_CONTRIB)/bin/ds9_restore.sh $xpa $regions(ciao,strip) |& $text
 
     
     ---
@@ -695,26 +697,26 @@ hmenu CIAO
     Smoothing
     *
     menu
-    $param(convolve); $data | $env(ASCDS_CONTRIB)/bin/ds9_smooth.sh $smker $xxsig $zoobar $speed | $image(new)
+    $param(convolve); $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa aconvolve $smker $xxsig $zoobar $speed |& $text
     
     ---
     
     Source Fill
     *
     menu
-    $param(filth); $data | $env(ASCDS_CONTRIB)/bin/ds9_fill.sh $xpa $fillmeth | $text
+    $param(filth); $data | $env(ASCDS_CONTRIB)/bin/ds9_fill.sh $xpa $fillmeth |& $text
     
 
     ---
     Powerspectrum
     *
     menu
-    $data | $env(ASCDS_INSTALL)/bin/apowerspectrum - none - | $image(new)
+    $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa apowerspectrum |& $text
 
     Autocorrelate
     *
     menu
-    $data | $env(ASCDS_INSTALL)/bin/acrosscorr - none - | $image(new)
+    $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa acrosscorr |& $text
     
 
     ---
@@ -737,13 +739,16 @@ hmenu CIAO
       Adaptive Bin - [dmnautilus] quad-tree algorithm to group pixels together until
 	     the SNR of the group drops below threshold
 
+      Distance Transform - [dmimgdist] computes the distance from each pixel to 
+          the closest edge (where edge is pixels below threshold)
+      
       L-R Deconvoluiton - [arestore] Lucy Richardson deconvolution; draw a region around
 	     what is believed to be a point source and it is used as the PSF.
 
       Smoothing - [aconvolve] additional smoothing kernels and non circularly symetric smoothing.
 
       Source Fill - [dmfilth] draw regions for source and background; group them together
-   	and then will use background to replace pixels in the source region.
+     	and then will use background to replace pixels in the source region.
 
       Powerspectrum - [apowerspectrum] compute |FFT| of image
 
@@ -754,11 +759,16 @@ hmenu CIAO
     
     
   endhmenu
+
+  ---
+  Change DAX output directory
+  *
+  menu
+  xpaset -p $xpa tcl "{ChangeDaxOutdir}" | $text
     
   ---
 
-
-  CIAO Help
+  DAX Help
   *
   menu
   ahelp -n 80 dax | $text

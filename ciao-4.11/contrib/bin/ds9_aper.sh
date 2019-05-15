@@ -1,4 +1,25 @@
-#! /bin/sh
+#! /bin/bash
+# 
+#  Copyright (C) 2012-2019  Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+
+
 ds9=$1
 
 bands="$2"
@@ -8,60 +29,87 @@ amdl="$5"
 amdlp="$6"
 psfmethod="$7"
 
+
+echo "# -------------------"
+echo ""
+echo `date`
+echo ""
+
+
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
 then
-  echo "# -------------------"
-  echo "Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
+  echo "***"
+  echo "*** Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
+  echo "***"
   exit 1
 fi
 
 
-
-
-src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
-bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
-
-
 fmt=`xpaget ${ds9} fits type`
-
 if test x$fmt = xtable
 then
   :
 else
-  echo "#-------"
-  echo "Must be using an event file"
+  echo "***"
+  echo "*** Must be using an event file"
+  echo "***"
   exit 1
 fi
 
+
+src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
 if test x$src = x
 then
-  echo "#-------"
-  echo "No source region found"
-  exit 1
+  src=`xpaget ${ds9} regions -format ciao source -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+  if test x$src = x
+  then  
+      echo "***"
+      echo "*** No source region found. Please try again."
+      echo "***"
+      exit 1
+  else
+      echo "***"
+      echo "*** No source regions **selected**.  Using data combined from all source regions: "
+      echo "***    ${src}"  
+      echo "***"
+  fi
 fi
 
 nsrc=`echo "${src}" | grep "^-" `
 if test x"${src}" = x"${nsrc}"
 then
-  echo "#--------"
-  echo "Source region cannot begin with an excluded shape: ${src}"
+  echo "***"
+  echo "*** Source region cannot begin with an excluded shape: ${src}"
+  echo "***"
   exit 1
 fi
 
+
+bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
 if test x$bkg = x
 then
-  echo "#-------"
-  echo "No background region found"
-  exit 1
+  bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+  if test x$bkg = x
+  then
+      echo "***"
+      echo "*** No background region found. Please specify background and try again."
+      echo "***"
+      exit 1
+  else
+      echo "***"
+      echo "*** No background regions **selected**.  Using data combined from all background regions: "
+      echo "***     ${bkg}"
+      echo "***"
+  fi
 fi
-
 
 nbkg=`echo "${bkg}" | grep "^-"`
 if test x"${bkg}" = x"${nbkg}"
 then
-  echo "#--------"
-  echo "Background region cannot begin with an excluded shape: ${bkg}"
+  echo "***"
+  echo "*** Background region cannot begin with an excluded shape: ${bkg}"
+  echo "***"
   exit 1
 fi
 
@@ -69,7 +117,7 @@ fi
 # ds9 filters should not be used, remove them.
 file=`xpaget ${ds9} file | sed 's,\[.*,,'`
 
-rdir=$ASCDS_WORK_PATH/ds9aper.$USER/$$/
+rdir=$DAX_OUTDIR/aper/$$/
 root=${rdir}/out
 mkdir -p $rdir
 
