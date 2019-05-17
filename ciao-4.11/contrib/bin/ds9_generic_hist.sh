@@ -1,6 +1,6 @@
-#! /bin/sh
+#!/bin/bash
 # 
-#  Copyright (C) 2004-2008  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2008,2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -42,17 +42,17 @@ fi
 file=`xpaget $ds9 file`
 
 xpaget $ds9 regions -format ciao source | \
-  egrep -v "^#" > $ASCDS_WORK_PATH/$$_src.reg
+  egrep -v "^#" > $DAX_OUTDIR/$$_src.reg
 xpaget $ds9 regions -format ciao background | \
-  egrep -v "^#" > $ASCDS_WORK_PATH/$$_bkg.reg
+  egrep -v "^#" > $DAX_OUTDIR/$$_bkg.reg
 
-mm=`wc -m $ASCDS_WORK_PATH/$$_bkg.reg | awk '{print $1}'`
+mm=`wc -m $DAX_OUTDIR/$$_bkg.reg | awk '{print $1}'`
 
-src="${file}[sky=region($ASCDS_WORK_PATH/$$_src.reg)]"
+src="${file}[sky=region($DAX_OUTDIR/$$_src.reg)]"
 
 if test $mm -gt 5
 then
-  bkg="${file}[sky=region($ASCDS_WORK_PATH/$$_bkg.reg)]"
+  bkg="${file}[sky=region($DAX_OUTDIR/$$_bkg.reg)]"
   grpcol=net_counts
 else
   bkg=""
@@ -61,11 +61,24 @@ fi
 
 dmextract "${src}[bin ${bincol}=${binspec}]" - op=$ftype  bkg="${bkg}" | \
  dmgroup - -  $grptype grouptypeval=$grpval binspec="" xcolumn=$bincol ycol=$grpcol 2> /dev/null > \
-  $ASCDS_WORK_PATH/$$_hist.fits 
+  $DAX_OUTDIR/$$_hist.fits 
 
 
-ds9_plot.py "$ASCDS_WORK_PATH/$$_hist.fits[grouping=0:][cols ${bincol},counts=GRP_DATA]" "$ftype" $ds9
+ds9_plot_blt "$DAX_OUTDIR/$$_hist.fits[grouping=0:][cols ${bincol},counts=GRP_DATA]" "$ftype , $$_hist.fits" $ds9
 
-/bin/rm -f $ASCDS_WORK_PATH/$$_src.reg $ASCDS_WORK_PATH/$$_bkg.reg
+/bin/rm -f $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg
+
+
+
+
+echo "-----------------------------"
+echo `date`
+echo ""
+echo "infile: ${file}"
+echo "outfile: $DAX_OUTDIR/$$_hist.fits"
+echo ""
+
+
+
 
 exit 0

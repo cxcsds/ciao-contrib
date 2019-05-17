@@ -32,24 +32,23 @@ unix% ds9 -analysis $ASCDS_INSTALL/contrib/config/ciao.ds9 ...
       </VERBATIM>
 
       <PARA title="Using the Tools">
-	Under ds9's Analysis menu, at the bottom will be a "CIAO" 
-	option.   Selecting "CIAO" will display the category of CIAO tasks :
+	Under ds9's Analysis menu, at the bottom will be a "CIAO tools (DAX)" 
+	option.   Selecting "CIAO tools (DAX)" will display the category of CIAO tasks :
       </PARA>
 
       <LIST>
         <ITEM> 
-           Statistics: use the any defined regions to calculate
-           counts, centroid, min, max, etc. Also includes 
-           a 'snap-to-centroid' function.   
+           Statistics: use the defined regions to calculate
+           counts, centroid, min pixel value, max pixel value, etc. 
         </ITEM>
         <ITEM>
            Histograms: create spectra, lightcurves, and radial
 	   profiles, for example. 
         </ITEM>
         <ITEM>
-           Coords: use the ds9 crosshair to map coordinates from image
-           to chip, detector, off-axis angles, etc.   (Switch to
-           the crosshair cursor in the Edit menu.)
+           Coordinates: Obtain coordinates for a region center or crosshair 
+           in various Chandra coordinate systems:  chips, detector, 
+           sky, celestial.
         </ITEM>
         <ITEM>
            Detect: run source detection tools on images.
@@ -59,7 +58,7 @@ unix% ds9 -analysis $ASCDS_INSTALL/contrib/config/ciao.ds9 ...
 	   magic-wand style source selector (local contouring).
         </ITEM>
         <ITEM>
-           Sherpa: extract and fit spectra or fit 2D image.
+           Sherpa: extract and fit spectra, 2D images, or radial profiles.
         </ITEM>
 
         <ITEM>
@@ -75,61 +74,150 @@ unix% ds9 -analysis $ASCDS_INSTALL/contrib/config/ciao.ds9 ...
 	all defined regions to calculate the quantities.  To exclude
 	certain areas, define a region and use the "Region -&gt;
 	Properties" menu to set it to "exclude".  If no regions are
-	defined, the calculations are run on a 1024 x 1024 image
+	defined, the calculations are run on the entire image
 	created at the current binning value. 
       </PARA>
 
       <PARA title="Plotting">
-	A ChIPS server is started in the background when ds9 is
-	launched; this ChIPS session is then used for any plotting.
-	If ChIPS is not available, dax uses BLT to plot instead; the
-	user will see an informational message in the terminal in this
-	case. 
+    Plotting is done using the built in ds9 "BLT" plotting package.
+    User can use the menu bar on the plot window to change
+    the axes to log scale, change fonts and colors, etc.
+    
       </PARA>
-
-      <PARA>
-	Note that if you are have loaded the CIAO analysis file
-        manually, you will also need to 
-      </PARA>
-
-<VERBATIM>
-source $ASCDS_INSTALL/contrib/config/chips_startup.tk
-</VERBATIM>
-        
-      <PARA>
-        from the command line before starting ds9.
-      </PARA>
-
-      <PARA title="Modifying and Saving the Plots">
-	To modify a ChIPS plot, first connect to the ChIPS server with 
-	the 
-	<HREF link="http://cxc.harvard.edu/chips/ahelp/connect.html">connect() command</HREF>.  Then any ChIPS commands may be used to change the
-	appearance of the plot;  more information is available on the 
-        <HREF link="http://cxc.harvard.edu/chips/">ChIPS website</HREF>.
-      </PARA> 
-
-      <PARA>
-	Once connected to the server, the plot may be saved with the <HREF link="http://cxc.harvard.edu/chips/ahelp/make_script.html">make_script() command</HREF>.
-      </PARA>
-   </DESC>
-
-    <ADESC title="Known Limitations">
-      <LIST>
-        <ITEM>
-	  ds9 uses the funtools syntax to specify filters (spatial,
-	  energy) and block names.  dax does not convert this filter
-	  information to the CIAO format; users should do so to use
-	  the filters in CIAO analysis.
-	</ITEM>        
+</DESC>
 
 
 
-        <ITEM>
-	  The stacked shapes (panda, annulus, elliptical annulus, box
-	  annulus, etc.) only work with the radial profile task.
-	</ITEM>        
-      </LIST>
-   </ADESC>
+
+
+<ADESC title="Changes in the 4.11.3 (June 2019) release">
+  <PARA>
+  This release includes major changes to dax affecting most of the 
+  individual analysis tasks.
+  </PARA>
+
+  <PARA title="Output Files">
+  Users can now select the directory where they want the DAX output file
+  to be written.  There is a new dax.par parameter file where users 
+  can specify the default output directory, outdir. Alternatively,
+  user can set the DAX_OUTDIR environment variable, or they can 
+  change the output directory via the new 'Change DAX output directory' 
+  analysis task.
+  </PARA>
+  <PARA title="Statistics">
+  </PARA>
+<LIST>
+    <ITEM> Removed individual dmstat statistics</ITEM>
+    <ITEM> Reformatted dmstat output</ITEM>
+    <ITEM> Reformatted moments output</ITEM>
+    <ITEM> Removed centroid snap task from menu</ITEM>
+    <ITEM> Improved Help </ITEM>
+    <ITEM> Net counts are now computed for the selected regions (if any)
+    or all regions if none are selected.  Also now uses the
+    image as currently displayed rather (eg smoothed, filtered).</ITEM>
+</LIST>
+
+  <PARA title="Histograms">
+  All of the histogram plots are now created using ds9 built-in
+  "BLT" plotting package.  Users can use the options in the menu bar
+  to save (print) the figure and adjust the plot style (linear|log, 
+  fonts, colors).  All of the tasks also now save the output file 
+  in the DAX_OUTDIR (as discussed above).
+  </PARA>
+<LIST>
+    <ITEM> New `convert_ds9_region_to_ciao_stack` script replaces
+      old awk script to expand ds9 regions: panda, epanda, bpanda,
+      mutli-radii annulus, multi-radii ellipse, mutli-radii box.
+      Also handles excluded regions.</ITEM>
+    <ITEM> Radial profile task now uses image as displayed 
+      (eg smoothed/etc) instead of original file on disk.</ITEM>
+    <ITEM> User can now select pixels are arcsec for radial profile task</ITEM>
+    <ITEM> Extract along polygon now also plots data vs row-number,
+      x, y, radius, or angle.</ITEM>
+    <ITEM> Improved Help</ITEM>
+
+</LIST>  
+  
+  <PARA title="Coordinates">
+  </PARA>
+  <LIST>
+    <ITEM> Removed individual coordinates; now always display all coordinates.</ITEM>
+    <ITEM> Reformatted 'All' coordinates </ITEM>
+    <ITEM> Coordinates are now computed at:    
+        The location of the crosshair, if in crosshair mode;
+        Or, the center of the 1st selected circle|box|ellipse|annulus;
+        Or, the center of the 1st non-selected circle|box|ellipse|annulus.</ITEM>
+    <ITEM> Chandra Field-of-View task now run inside a wrapper script
+      so that any error messages/etc are shown.</ITEM>
+    <ITEM> Improved Help</ITEM>
+</LIST>
+  
+  
+  <PARA title="Detect"></PARA>
+<LIST>
+    <ITEM> All detect tasks are now run with data as displayed 
+      rather than going back to file on disk.</ITEM>
+    <ITEM> All detect tasks are now run inside a wrapper script so that
+      any error messages/etc are shown.</ITEM>
+    <ITEM> celldetect is now run with fixedcell=12 </ITEM>
+    <ITEM> Improved Help</ITEM>
+</LIST>
+
+
+
+  <PARA title="Region"></PARA>
+<LIST>
+    <ITEM> All region tasks are now run with data as displayed 
+      rather than going back to file on disk.</ITEM>
+    <ITEM> All region tasks are now run inside a wrapper script so that
+      any error messages/etc are shown.</ITEM>
+    <ITEM> New `contour` task runs `dmcontour` to create regions at specified
+      levels. Interior holes are automatically excluded.</ITEM>
+    <ITEM> Improved error checking in PSF Size task</ITEM>
+    <ITEM> Improved Help</ITEM>
+</LIST>
+
+<PARA title="Sherpa"></PARA>
+<LIST>
+    <ITEM> Replaced chips plots with native ds9 blt plots.    </ITEM>
+    <ITEM> Spectral fit now gives user the choice of      
+        statistic (chi2gehrels|chi2xspecvar|cash|cstat|wstat),
+        minimization method (levmar|neldermead|moncar),
+        absorption model(xswabs|xsphabs)
+    </ITEM>
+    <ITEM> Removed clean cache task</ITEM>
+    <ITEM> 2D Image fit now saves output model, residuals, and 
+      fitting commands.  Model and Residuals are now displayed 
+      in separate, tiled, frames.</ITEM>
+    <ITEM> New Radial Profile Fit task.  Computes and fits radial profile
+      with 1 or 2 additive model components from
+      gauss1d|beta1d|const1d|lorentz1d|polynom1d|powlaw1d</ITEM>
+    <ITEM> Improved Help</ITEM>
+</LIST>
+
+<PARA title="Image Processing"></PARA>
+<LIST>
+   <ITEM> All tasks are now run inside a wrapper script so that
+      any error messages/etc are shown.</ITEM>
+   <ITEM> Updated Source Fill task to no longer rely on user Grouping
+      source and background regions.  The script now requires 
+      1-to-1 src-to-background region matches.</ITEM>
+</LIST>
+
+<PARA title="Change DAX output directory">
+  New task to allow users to change DAX output directory during the current
+  analysis session. The directory selected is not saved.  Use 
+</PARA>
+<PARA>
+  <SYNTAX><LINE>pset dax outdir=directory</LINE></SYNTAX>
+</PARA>
+<PARA>
+  to permanently change the output directory.
+</PARA>  
+
+  
+</ADESC>
+
 
 
 <ADESC title="Changes in the 4.11.1 (December 2018) release">
@@ -181,10 +269,27 @@ clear which task is being run.
 </ADESC>
 
 
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
 
+
+    <ADESC title="Known Limitations">
+      <LIST>
+        <ITEM>
+	  The stacked shapes (panda, annulus, elliptical annulus, box
+	  annulus, etc.) only work with the radial profile task.
+	</ITEM>        
+      </LIST>
+   </ADESC>
 
    <BUGS>
-
       <PARA>
         See the
         <HREF link="http://cxc.harvard.edu/ciao/bugs/index.html">CIAO
@@ -192,6 +297,6 @@ clear which task is being run.
       </PARA>
    </BUGS>
 
-   <LASTMODIFIED>November 2018</LASTMODIFIED>
+   <LASTMODIFIED>June 2019</LASTMODIFIED>
 </ENTRY>
 </cxchelptopics>

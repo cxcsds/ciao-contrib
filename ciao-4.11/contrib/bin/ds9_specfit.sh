@@ -1,6 +1,6 @@
 #! /bin/sh
 
-#  Copyright (C) 2013,2015,2016,2018  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2013,2015,2016,2018-2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -23,7 +23,10 @@ model=$2
 grpcts=$3
 elo=$4
 ehi=$5
-xtra="$6"
+method=$6
+stat=$7
+absmodel=$8
+xtra="$9"
 
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
@@ -36,40 +39,69 @@ fi
 
 
 echo "--------------------------------------------------------"
+echo ""
+echo `date`
+echo ""
 echo " (1/4) Parsing Regions" 
 
-src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr -d ";"`
-bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr -d ";" ` 
 
-
+src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'`
 if test "x$src" = x
 then
-  echo "Please **select** a source region"
-  exit 1
+  src=`xpaget ${ds9} regions -format ciao source -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+  if test "x$src" = x
+  then  
+      echo "***"
+      echo "*** No source regions found!"
+      echo "***"
+      exit 1
+  else
+      echo "***"
+      echo "*** No source region **selected**.  Using combined data from all source regions: "
+      echo "***     ${src}"
+      echo "***"
+  fi
 fi
 
 nsrc=`echo "${src}" | grep "^-" `
 if test x"${src}" = x"${nsrc}"
 then
-  echo "#--------"
-  echo "Source region cannot begin with an excluded shape: ${src}"
+  echo "***"
+  echo "*** Source region cannot begin with an excluded shape: ${src}"
+  echo "***"
   exit 1
 fi
 
+bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+if test x"${bkg}" = x
+then
+  bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+  if test x"${bkg}" = x
+  then
+    echo "***"
+    echo "*** No background region found, ignoring background."
+    echo "***"
+  else
+    echo "***"
+    echo "*** No background region **selected**.  Using combined data from all background regions: "
+    echo "***    ${bkg}"
+    echo "***"
+  fi
+fi
 
 if test x"${bkg}" = x
 then
-  echo "No background region **selected**, ignoring background."
+    :
 else
     nbkg=`echo "${bkg}" | grep "^-"`
     if test x"${bkg}" = x"${nbkg}"
     then
-      echo "#--------"
-      echo "Background region cannot begin with an excluded shape: ${bkg}"
+      echo "***"
+      echo "*** Background region cannot begin with an excluded shape: ${bkg}"
+      echo "***"
       exit 1
     fi
 fi
-
 
 # strip off any filters
 file=`xpaget ${ds9} file | sed 's,\[.*,,'` 
@@ -81,7 +113,9 @@ if test x$fmt = xtable
 then
   :
 else
-  echo "Must be using an event file"
+    echo "***"
+    echo "*** Must be using an event file!"
+    echo "***"
   exit 1
 fi
 
@@ -96,15 +130,16 @@ checksum=`dmkeypar "${file}" checksum echo+`
 
 root=`echo "${file} $checksum ${src} ${bkg}" | python -c 'import hashlib;import sys;print(hashlib.md5(sys.stdin.readline().encode("ascii")).hexdigest())' `
 
+RUNDIR=$DAX_OUTDIR/specfit/${root}
 
-mkdir -p $ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/param
+mkdir -p $RUNDIR/param
 
-rmf=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/out.rmf
-arf=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/out.arf
-spi=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/out.pi
-bpi=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/out_bkg.pi
-sav=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/sav
-cmd=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/cmd
+rmf=$RUNDIR/out.rmf
+arf=$RUNDIR/out.arf
+spi=$RUNDIR/out.pi
+bpi=$RUNDIR/out_bkg.pi
+sav=$RUNDIR/sav
+cmd=$RUNDIR/cmd
 
 redo=0
 for d in $rmf $arf $spi
@@ -119,7 +154,7 @@ done
 
 
 
-PFILES=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/param\;$ASCDS_INSTALL/param:$ASCDS_INSTALL/contrib/param
+PFILES=$RUNDIR/param\;$ASCDS_INSTALL/param:$ASCDS_INSTALL/contrib/param
 punlearn ardlib mkarf asphist mkacisrmf dmextract dmcoords
 
 
@@ -168,7 +203,7 @@ then
   specextract \
     infile="${file}[sky=${src}]" \
     bkgfile="${bg}" \
-    outroot=$ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/out \
+    outroot=$RUNDIR/out \
     bkgresp=no \
     weight=no\
     refcoord="$ra_hms $dec_hms" \
@@ -188,8 +223,8 @@ else
 
 fi
 
-echo "$root ${file} ${src} ${bkg}" >> $ASCDS_WORK_PATH/ds9specfit.${USER}/inventory.lis
-echo "${file} ${src} ${bkg}" >> $ASCDS_WORK_PATH/ds9specfit.${USER}/${root}/info.txt
+echo "$root ${file} ${src} ${bkg}" >> $RUNDIR/../inventory.lis
+echo "${file} ${src} ${bkg}" >> $RUNDIR/info.txt
 
 
 if test x"${xtra}" = x
@@ -213,8 +248,12 @@ sherpa.load_data("$spi")
 sherpa.group_counts(${grpcts})
 sherpa.notice(${elo},${ehi})
 $subtract
-sherpa.set_source("${model}.mdl1 * xswabs.abs1")
+sherpa.set_source("${model}.mdl1 * ${absmodel}.abs1")
 abs1.nH = $nH
+
+sherpa.set_method("${method}")
+sherpa.set_stat("${stat}")
+
 $extra
 
 try:
@@ -226,16 +265,81 @@ except:
 print( "\nPhoton Flux = %s photon/cm^2/s\n" % sherpa.calc_photon_flux())
 print( "Energy Flux = %s ergs/cm^2/s\n" % sherpa.calc_energy_flux())
 
-
-try:
-  pychips.disconnect()
-  pychips.connect("${ds9}")
-  sherpa.plot_fit_delchi()
-except:
-  pass
-
-
 sherpa.save("$sav", clobber=True)
+
+
+# -- Emulate the 'plot_fit()' sherpa command, 
+
+import subprocess
+
+def xpa_plot_cmd( access_point, command ):
+    """Wrapper around xpaset for plot commands"""
+    
+    cc = ["xpaset", "-p", access_point, "plot" ]
+    cc.extend( command.split(' '))    
+    xpa = subprocess.Popen(cc)
+    xpa.communicate()
+
+
+def blt_plot_data(access_point,xx, ex, yy, ey, title, x_label, y_label):
+    """Plot the data"""
+    
+    cmd = ["xpaset", access_point, "plot"]    
+    cmd.extend( ["new", "name", "dax", "line", 
+        "{{{0}}}".format(title), 
+        "{{{0}}}".format(x_label), 
+        "{{{0}}}".format(y_label),
+        "xyey"
+        ] )
+
+    # Plot the data
+    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
+    for vv in zip(xx, yy, ey):
+        pair = " ".join( [str(x) for x in vv])+"\n"        
+        pb = pair.encode()
+        xpa.stdin.write(pb)        
+    xpa.communicate()
+
+    # Make pretty
+    xpa_plot_cmd(access_point, "shape circle")
+    xpa_plot_cmd(access_point, "shape fill yes")
+    xpa_plot_cmd(access_point, "shape color cornflowerblue")
+    xpa_plot_cmd(access_point, "error color cornflowerblue")
+    xpa_plot_cmd(access_point, "width 0")
+    xpa_plot_cmd(access_point, "legend yes")
+    xpa_plot_cmd(access_point, "legend position right")
+    xpa_plot_cmd(access_point, "name {Data }")    
+    xpa_plot_cmd(access_point, "axis x grid no")
+    xpa_plot_cmd(access_point, "axis y grid no")
+
+def blt_plot_model(access_point,x_vals, y_vals):
+    """Plot the model"""
+    
+    cmd = ["xpaset", access_point, "plot"]
+    cmd.extend( ["data", "xy"] )
+
+    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
+    for x,y in zip(x_vals, y_vals):
+        pair = "{} {}\n".format(x,y)
+        pb = pair.encode()
+        xpa.stdin.write(pb)        
+    xpa.communicate()
+    ###xpa_plot_cmd(access_point, "shape none")
+    xpa_plot_cmd(access_point, "shape fill no")
+    xpa_plot_cmd(access_point, "color orange")
+    xpa_plot_cmd(access_point, "shape color orange")
+    xpa_plot_cmd(access_point, "width 2")
+    xpa_plot_cmd(access_point, "name Model")
+
+_f = sherpa.get_fit_plot()
+_d = _f.dataplot
+_m = _f.modelplot
+
+blt_plot_data( "${ds9}", _d.x, _d.xerr/2.0, _d.y, _d.yerr, 
+    "${spi}", "Energy [keV]", "Count Rate [counts/sec/keV]")
+
+blt_plot_model( "${ds9}", _m.x, _m.y)
+
 
 EOF
 

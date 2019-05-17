@@ -1,6 +1,6 @@
 #! /bin/sh
 # 
-#  Copyright (C) 2004-2008, 2014  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2008, 2014, 2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -33,22 +33,31 @@ then
 fi
 
 
-xpaget $ds9 regions -format ds9 -system physical > $ASCDS_WORK_PATH/$$_all.reg
-grab=`xpaget $ds9 regions -format ds9 selected -system physical | tail -1 | cut -d# -f1`
+xpaget $ds9 regions -format ds9 -system physical > $DAX_OUTDIR/$$_all.reg
+grab=`xpaget $ds9 regions -format ds9 selected -system physical | tail -1 | grep -v ^global| cut -d# -f1`
+if test x"${grab}" = x
+then
+  /bin/rm $DAX_OUTDIR/$$_all.reg
+  exit 0
+fi
+
+
 old=`echo $grab | cut -d"(" -f2 | cut -d, -f1,2`
 
-dmstat "-[(x,y)=$grab]" cen+ sig- > /dev/null
+
+
+dmstat "-[(x,y)=$grab]" cen+ sig- clip+ nsig=10 > /dev/null
 if test $? -ne 0
 then
-  \rm -f  $ASCDS_WORK_PATH/$$_all.reg
+  \rm -f  $DAX_OUTDIR/$$_all.reg
   exit 1
 fi
 
 new=`pget dmstat out_cntrd_phys`
 
 xpaset -p $ds9 regions delete all
-cat $ASCDS_WORK_PATH/$$_all.reg | sed "s/$old/$new/" | xpaset $ds9 regions
-\rm -f  $ASCDS_WORK_PATH/$$_all.reg
+cat $DAX_OUTDIR/$$_all.reg | sed "s/$old/$new/" | xpaset $ds9 regions
+\rm -f  $DAX_OUTDIR/$$_all.reg
 
 
 exit 0

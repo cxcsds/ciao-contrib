@@ -1,0 +1,212 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY key="convert_ds9_region_to_ciao_stack" context="tools"
+         refkeywords="ds9 region panda epanda bpanda annulus stack convert"
+         seealsogroups="regiontools"
+         displayseealsogroups="stktools"
+         >
+
+    <SYNOPSIS>
+      Convert ds9 region file containing special shapes to CIAO stack.
+    </SYNOPSIS>
+
+  <DESC>
+    <PARA>
+      ds9 region files may contain single shapes with multiple radii or 
+      multiple annuli.  This includes the following shapes:
+      annulus, ellipse, box, panda (pie and annulus), epanda
+      (pie and elliptical annulus), and bpanda (pie and box annulus). 
+      These single shapes must be converted into a 
+      <HREF link="http://cxc.cfa.harvard.edu/ciao/ahelp/stack.html">stack</HREF>
+      of CIAO shapes.  For example a ds9 region file with an annulus with 
+      2 sets of radii must be converted to a CIAO stack of regions 
+      with 2 single radii annuli.  The more exotic panda-based shapes 
+      are converted into CIAO syntax using logical and (intersection)
+      and logical or (union) operations.
+    </PARA>
+    <PARA title="Limitations"></PARA>
+<LIST>
+<ITEM>The ds9 region files must be saved in physical coordinates.</ITEM>
+<ITEM>The output CIAO stack may not always be compatible with ds9; 
+in particular if any of the panda, bpanda, or epanda shapes were used.
+</ITEM>
+<ITEM>
+Only shapes compatible with CIAO are converted.  Lines, vectors, compasses,
+and text shapes are omitted from the output.
+</ITEM>
+<ITEM>
+CIAO regions do not support shape properties such as source|background,
+color, font, tags, widths, etc.  These are omitted from the output.
+</ITEM>
+<ITEM>
+Any excluded shapes are excluded from all previous shapes in the file.
+</ITEM>
+</LIST>
+      
+  </DESC>
+
+  <QEXAMPLELIST>
+  
+    <QEXAMPLE>
+        <SYNTAX>
+<LINE>% cat ds9.reg</LINE>
+<LINE># Region file format: DS9 version 4.1</LINE>
+<LINE>global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1</LINE>
+<LINE>physical</LINE>
+<LINE>annulus(5286.5,5638.5,0,60,120)</LINE>
+<LINE>% convert_ds9_region_to_ciao_stack ds9.reg ciao.lis</LINE>
+<LINE>% cat ciao.lis</LINE>
+<LINE>annulus(5286.5,5638.5,0,60)</LINE>
+<LINE>annulus(5286.5,5638.5,60,120)</LINE>
+        </SYNTAX>
+        <DESC><PARA>
+        Converts an annulus with 2 set of radii into a stack of 
+        CIAO regions. The stack can then be used with tools such as
+        dmextract to create a radial profile.
+        </PARA>
+<PARA>
+<SYNTAX>
+<LINE>% dmextract img.fits[bin sky=@ciao.lis] radial.prof op=generic</LINE>
+</SYNTAX>
+</PARA>
+        </DESC>
+    </QEXAMPLE>
+  
+    <QEXAMPLE>
+        <SYNTAX>
+<LINE>% cat ds9.reg</LINE>
+<LINE># Region file format: DS9 version 4.1</LINE>
+<LINE>global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1</LINE>
+<LINE>physical</LINE>
+<LINE>annulus(5286.5,5638.5,0,60,120)</LINE>
+<LINE>-circle(5200,5638,30) # tag={ptsrc}</LINE>
+<LINE>% convert_ds9_region_to_ciao_stack ds9.reg ciao.lis</LINE>
+<LINE>% cat ciao.lis</LINE>
+<LINE>annulus(5286.5,5638.5,0,60)*!circle(5200,5638,30)</LINE>
+<LINE>annulus(5286.5,5638.5,60,120)*!circle(5200,5638,30)</LINE>        
+        </SYNTAX>
+        <DESC><PARA>
+        Same as the previous example but includes an excluded circle. 
+        The output file shows the circle being excluded from each
+        individual annulus using the explicit "*!" syntax ("and not").  
+        The tag property attached to the circle shape has been 
+        dropped.
+        </PARA>
+        <PARA>
+        This file can be used with dmextract as before. However, this
+        file cannot be used with ds9 since ds9 does not support 
+        the CIAO logic operations: and (*), or (+), and negation (!).
+        </PARA>
+        
+        </DESC>
+    </QEXAMPLE>
+  
+    <QEXAMPLE>
+        <SYNTAX>
+<LINE>% cat ds9.reg</LINE>
+<LINE># Region file format: DS9 version 4.1</LINE>
+<LINE>global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1</LINE>
+<LINE>physical</LINE>
+<LINE>epanda(4222.5,3518.5,0,360,2,100,50,200,100,2,0)</LINE>
+<LINE>% convert_ds9_region_to_ciao_stack ds9.reg ciao.lis</LINE>
+<LINE>% cat ciao.lis</LINE>
+<LINE>ellipse(4222.5,3518.5,150,75,0)*sector(4222.5,3518.5,0,180)*!ellipse(4222.5,3518.5,100,50,0)</LINE>
+<LINE>ellipse(4222.5,3518.5,200,100,0)*sector(4222.5,3518.5,0,180)*!ellipse(4222.5,3518.5,150,75,0)</LINE>
+<LINE>ellipse(4222.5,3518.5,150,75,0)*sector(4222.5,3518.5,180,360)*!ellipse(4222.5,3518.5,100,50,0)</LINE>
+<LINE>ellipse(4222.5,3518.5,200,100,0)*sector(4222.5,3518.5,180,360)*!ellipse(4222.5,3518.5,150,75,0)</LINE>
+        </SYNTAX>
+        <DESC>
+            <PARA>
+This shows an example of the "epanda" shape.  It is converted into a
+series of outer-ellipses with an excluded interior ellipse and intersected
+with a sector.  The 4 elliptical sectors as shown
+below.
+            </PARA>
+
+<VERBATIM>
+               2 2 2 2 2 2 2 2 2 2 2 2               
+         2 2 2 2 2 2 2 1 1 1 1 2 2 2 2 2 2 2         
+       2 2 2 2 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2       
+     2 2 2 1 1 1 1                 1 1 1 1 2 2 2     
+   2 2 2 1 1 1 1                     1 1 1 1 2 2 2   
+   2 2 2 1 1 1                         1 1 1 2 2 2   
+   4 4 4 3 3 3                         3 3 3 4 4 4   
+   4 4 4 3 3 3                         3 3 3 4 4 4   
+   4 4 4 4 3 3 3 3                 3 3 3 3 4 4 4     
+       4 4 4 4 3 3 3 3 3 3 3 3 3 3 3 3 4 4 4 4       
+         4 4 4 4 4 4 3 3 3 3 3 3 4 4 4 4 4 4         
+               4 4 4 4 4 4 4 4 4 4 4 4               
+</VERBATIM>        
+
+ <PARA>
+ As before, this file can be used as a stack of regions with CIAO
+ tools, though it cannot be loaded directly into ds9.
+ </PARA>
+
+        </DESC>
+    </QEXAMPLE>
+  </QEXAMPLELIST>
+
+   <PARAMLIST>
+     <PARAM name="infile" type="file" filetype="input" reqd="yes">
+       <SYNOPSIS>
+         Input ds9 region file
+       </SYNOPSIS>
+       <DESC>
+         <PARA>
+        The infile must be a ds9 format region file which has been
+        saved using physical coordinates.
+         </PARA>
+       </DESC>     
+     </PARAM>
+
+    <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+      <SYNOPSIS>
+      The output file name
+      </SYNOPSIS>
+      <DESC>
+        <PARA>
+            The output file will be a stack of regions using 
+            CIAO syntax.
+        </PARA>
+      </DESC>
+    </PARAM>
+
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+        <SYNOPSIS>Amount of tool chatter</SYNOPSIS>
+      </PARAM>
+     <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>Overwrite existing files?</SYNOPSIS>
+      </PARAM>
+
+
+
+
+
+
+  </PARAMLIST>
+
+   <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="http://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+    
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="http://cxc.harvard.edu/ciao/bugs/convert_ds9_region_to_ciao_stack.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>December 2018</LASTMODIFIED>
+
+  </ENTRY>    
+</cxchelptopics>
