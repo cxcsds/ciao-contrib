@@ -1,0 +1,248 @@
+#!/usr/bin/env python
+# 
+#  Copyright (C) 2019  Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+import sys
+import os
+
+import subprocess as sp
+from tempfile import NamedTemporaryFile    
+
+ROOT=os.path.join( os.environ["DAX_OUTDIR"], str(os.getpid()))
+
+
+def check_unique(xpa):
+    cmd = [ 'xpaaccess','-n',xpa]
+    try:
+        # xpaaccess returns num proc as exit status
+        num = sp.run( cmd, check=False, stdout=sp.PIPE).stdout
+    except:
+        raise RuntimeError("Cannot access "+xpa)
+
+    if num == '' or num is None or 0 == int(num):
+        raise RuntimeError("What happened to ds9?")
+    
+    if int(num) != 1:
+        raise RuntimeError("Multiple ({}) ds9's are running using the "+
+            "same title: '{}'.  Please close the other windows "+
+            "and restart.".format(num,xpa))
+
+
+def save_ds9_image(xpa):
+    ds9_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"], 
+         suffix="_ds9.fits", delete=False)
+
+    cmd = [ 'xpaget', xpa, 'fits' ]
+    fits = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    open(ds9_file.name,"wb").write(fits)
+    
+    return(ds9_file.name)
+
+
+def send_output_image_to_ds9(xpa, outfile):
+    cmd = [ 'xpaset', '-p', xpa, 'fits', 'new', outfile ]
+    fits = sp.run( cmd, check=True )
+    
+    from paramio import pget
+    if "yes" == pget("dax", "tile"):
+        cmd = [ 'xpaset', '-p', xpa, 'tile' ]
+        sp.run( cmd, check=True )
+    
+    
+def send_output_region_to_ds9(xpa, outfile):
+    try:
+        import pycrates as pc
+        src_reg = "{}[src_region]".format(outfile)
+        pc.read_file(src_reg)
+        outfile = src_reg
+    except Exception as e:
+        pass
+
+    cmd = ["dmlist", outfile, "counts"]
+    nrows = sp.run( cmd, check=True, stdout=sp.PIPE).stdout
+    if nrows.decode().strip() == '0':
+        print("\n\nNo sources detected\n")
+    else:
+        cmd = [ 'xpaset', '-p', xpa, 'regions', 'load', outfile ]
+        fits = sp.run( cmd, check=True )
+    
+
+
+xpa=sys.argv[1]
+toolname=sys.argv[2]
+
+check_unique(xpa)
+infile = save_ds9_image(xpa)
+
+outfile = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"], 
+    suffix="_{}.fits".format(toolname), delete=False)
+
+output_fn = send_output_image_to_ds9
+
+from ciao_contrib.runtool import make_tool
+tool = make_tool(toolname)
+
+if hasattr(tool, "infile"):
+    tool.infile=infile
+if hasattr(tool, "outfile"):
+    tool.outfile=outfile.name
+
+if toolname is None:
+    raise NotImplementedError("You shouldn't be here")
+elif "dmimgblob" == toolname:
+    tool.threshold=sys.argv[3]
+    tool.srconly=True
+elif "dmimgadapt" == toolname:  
+    #$function $minrad $maxrad $numrad $radstep $counts 
+    tool.function=sys.argv[3]
+    tool.minrad=sys.argv[4]
+    tool.maxrad=sys.argv[5]
+    tool.numrad=sys.argv[6]
+    tool.radscale=sys.argv[7]
+    tool.counts=sys.argv[8]
+elif "csmooth" == toolname:
+    # - none - none none conmeth=fft conkern=$kernel sigmin=$sigmin 
+    # sigmax=$sigmax sclmin=$sclmin sclmax=$sclmax mode=h
+    tool.sclmap="none"
+    tool.outsigfile="none"
+    tool.outsclfile="none"
+    tool.conmeth="fft"
+    tool.conkerneltype=sys.argv[3]
+    tool.sigmin=sys.argv[4]
+    tool.sigmax=sys.argv[5]
+    tool.sclmin=sys.argv[6]
+    tool.sclmax=sys.argv[7]
+    tool.sclmode="compute"
+elif "dmimgfilt" == toolname:
+    # $function $mask numiter=$niter | $image(new)    
+    tool.function = sys.argv[3]
+    tool.mask = sys.argv[4]
+    tool.numiter = sys.argv[5]
+elif "dmimgthresh" == toolname:
+    tool.cut=sys.argv[3]
+    tool.value = sys.argv[4]
+elif "dmimggrad" == toolname:
+    raise NotImplementedError("Not here yet")
+elif "dmnautilus" == toolname:
+    # $snr
+    tool.snr = sys.argv[3]
+elif "dmimgdist" == toolname:
+    pass
+elif "apowerspectrum" == toolname:
+    tool.infilereal = infile
+    tool.infileimag = "none"
+elif "acrosscorr" == toolname:
+    tool.infile1 = infile
+    tool.infile2 = "none"
+elif "aconvolve" == toolname:
+    ker=sys.argv[3]
+    xx=sys.argv[4]
+    yy=sys.argv[5]
+    meth=sys.argv[6]
+    nrad=4
+    kernels = { 
+        "gaus"   : "lib:{ker}(2,{nrad},1,{xx},{yy})",
+        "mexhat" : "lib:{ker}(2,{nrad},1,{xx},{yy})",
+        "power"  : "lib:{ker}(2,{nrad},1,{xx},{yy})",
+        "exp"    : "lib:{ker}(2,{nrad},1,{xx},{yy})",
+        "tophat" : "lib:{ker}(2,1,{xx},{yy})",
+        "box"    : "lib:{ker}(2,1,{xx},{yy})",
+        "sinc"   : "lib:{ker}(2,{nrad},1,{xx})",
+        "beta"   : "lib:{ker}(2,{nrad},1,{xx})",
+        "cone"   : "lib:{ker}(2,1,{xx})",
+        "pyramid": "lib:{ker}(2,1,{xx})",
+        "sphere" : "lib:{ker}(2,{xx})",
+        }
+
+    tool.kernelspec = kernels[ker].format(ker=ker,xx=xx,yy=yy,nrad=nrad)
+    tool.method=meth
+elif "celldetect" == toolname:
+    output_fn = send_output_region_to_ds9
+    tool.fixedcell=12
+elif "vtpdetect" == toolname:
+    tool.infile = tool.infile+"[opt type=i4]" 
+    output_fn = send_output_region_to_ds9
+elif "get_src_region" == toolname:
+    # gsr clobber doesn't work well
+    if os.path.exists( outfile.name ):
+            os.unlink(outfile.name)
+    output_fn = send_output_region_to_ds9
+    tool.invert=True
+elif "dmimglasso" == toolname:
+
+    cmd = [ 'xpaget', xpa, 'mode']
+    ch = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    if ch.decode().strip() != "crosshair":
+        print("\n***\n*** You must be in crosshair mode to use this task \n***\n")
+        if os.path.exists(infile):
+            os.unlink(infile)
+        sys.exit()
+    
+    cmd = [ 'xpaget', xpa, 'crosshair', 'physical' ]
+    phys = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    xpos, ypos = phys.decode().split()
+
+    tool.xpos = xpos
+    tool.ypos = ypos
+    tool.low_value = sys.argv[3]
+    tool.high_value = sys.argv[4] 
+    output_fn = send_output_region_to_ds9
+elif "dmcontour" == toolname:
+    tool.levels=sys.argv[3]
+    output_fn = send_output_region_to_ds9
+elif "skyfov" == toolname:
+    output_fn = send_output_region_to_ds9
+elif "dmellipse" == toolname:
+    output_fn = send_output_region_to_ds9
+
+    tool.fraction=sys.argv[3]
+    tool.shape=sys.argv[4]
+
+    freg = sys.argv[5]
+    if len(freg):
+        if freg.startswith("@"):
+            import stk
+            freg="+".join(stk.build(freg.replace("@","@-")))
+        else:
+            freg = freg.replace(";","+").replace("+-","-").rstrip("+")
+        ffilt="[(x,y)={}]".format(freg)
+    else:
+        ffilt=""
+    tool.infile=tool.infile+ffilt
+
+else:
+    raise ValueError("Unknown Tool")
+
+
+print("-------------")
+import datetime
+print(datetime.datetime.now())
+
+
+try:
+    verb=tool(clobber=True)
+    if verb:
+        print(verb)
+    output_fn( xpa, outfile.name )    
+    print("Output file: {}".format(outfile.name))
+
+finally:
+
+    if os.path.exists(infile):
+        os.unlink(infile)
+

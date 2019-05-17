@@ -1,6 +1,6 @@
-#! /bin/sh
+#!/bin/bash
 # 
-#  Copyright (C) 2004-2008,2015  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2008,2015,2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -20,7 +20,8 @@
 
 
 xpa=$1
-file=$2
+#####file=$2
+units=$2
 
 nxpa=`xpaaccess -n ${xpa}`
 if test $nxpa -ne 1
@@ -31,18 +32,37 @@ then
 fi
 
 
+if test x$units = xphysical
+then
+    outcol=rmid
+else if test x$units = xarcsec
+then
+    outcol=cel_rmid
+else
+    echo "ERROR: Unexpected value for units: ${units}"
+    exit 1
+fi
+fi
 
-\rm -f $ASCDS_WORK_PATH/$$_ds9.reg
-xpaget $xpa regions -format ds9 -system physical | cut -d"#" -f1 | sed 's, *$,,' | \
-  awk -f $ASCDS_CONTRIB/config/ds9_region_expand.awk > $ASCDS_WORK_PATH/$$_ds9.reg
 
-dmextract "${file}[bin sky=@$ASCDS_WORK_PATH/$$_ds9.reg]" - op=generic | \
-  dmtcalc - - expr="radius=r[0]" > \
-  $ASCDS_WORK_PATH/$$_radial.fits
+xpaget $xpa regions -format ds9 -system physical > $DAX_OUTDIR/$$_ds9.reg 
+convert_ds9_region_to_ciao_stack $DAX_OUTDIR/$$_ds9.reg $DAX_OUTDIR/$$_ciao.lis clob+ verb=0
 
-ds9_plot.py "$ASCDS_WORK_PATH/$$_radial.fits[cols radius,sur_bri]" "Radial Profile" $xpa
+# dmextract can't take pipe'd images :(  Make temp file
+cat - > $DAX_OUTDIR/$$_ds9.fits
 
+dmextract "$DAX_OUTDIR/$$_ds9.fits[bin (x,y)=@-$DAX_OUTDIR/$$_ciao.lis]" op=generic \
+  outfile=$DAX_OUTDIR/$$_radial.fits
 
-\rm -f $ASCDS_WORK_PATH/$$_ds9.reg
+ds9_plot_blt "$DAX_OUTDIR/$$_radial.fits[cols ${outcol},sur_bri]" "Radial Profile $$_radial.fits" $xpa
+
+\rm -f $DAX_OUTDIR/$$_ds9.reg $DAX_OUTDIR/$$_ciao.lis $DAX_OUTDIR/$$_ds9.fits
+
+echo "-----------------------------"
+echo `date`
+echo ""
+echo "outfile: $DAX_OUTDIR/$$_radial.fits"
+echo ""
+
 
 exit 0

@@ -1,6 +1,6 @@
 #! /bin/sh
 # 
-#  Copyright (C) 2004-2008,2015  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2008,2015,2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -21,6 +21,7 @@
 
 ds9=$1
 meth=$2
+plot=$3
 
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
@@ -33,9 +34,9 @@ fi
 
 
 xpaget $ds9 regions -format ciao -system physical | egrep -v "^#" | \
-  egrep polygon > $ASCDS_WORK_PATH/$$_poly.reg
+  egrep polygon > $DAX_OUTDIR/$$_poly.reg
 
-np=`wc -l  $ASCDS_WORK_PATH/$$_poly.reg | awk '{print $1}'`
+np=`wc -l  $DAX_OUTDIR/$$_poly.reg | awk '{print $1}'`
 if test "$np" -eq 0
 then
   echo "# ---------------------"
@@ -44,13 +45,49 @@ then
 fi
 
 
-dmmakereg region="region($ASCDS_WORK_PATH/$$_poly.reg)" \
-  outfile=$ASCDS_WORK_PATH/$$_poly.fits ker=fits
+dmmakereg region="region($DAX_OUTDIR/$$_poly.reg)" \
+  outfile=$DAX_OUTDIR/$$_poly.fits ker=fits
 
-dmimgpick $ASCDS_WORK_PATH/$$_poly.fits"[cols x,y]" - - $meth | \
+
+echo "#--------------------"
+echo `date`
+echo ""
+
+dmimgpick $DAX_OUTDIR/$$_poly.fits"[cols x,y]" - - $meth | \
+  tee $DAX_OUTDIR/$$_polypick.fits | \
   dmlist - data,clean,array
 
+python << EOM
+from pycrates import read_file
+import numpy as np
+from crates_contrib.utils import add_colvals
 
-\rm -f $ASCDS_WORK_PATH/$$_poly.fits $ASCDS_WORK_PATH/$$_poly.reg
+tab = read_file("$DAX_OUTDIR/$$_polypick.fits", mode="rw")
+x = tab.get_column("x").values
+y = tab.get_column("y").values
+mx = np.average(x)
+my = np.average(y)
+rr = np.hypot(x-mx, y-my)
+aa = np.rad2deg(np.arctan2(y-my,x-mx))
+idx = np.ones_like(x).cumsum(axis=1)
+
+add_colvals(tab, "radius", rr, unit="pixels")
+add_colvals(tab, "angle", aa, unit="deg")
+add_colvals(tab, "rownum", idx )
+tab.write()
+
+EOM
+
+
+
+ds9_plot_blt "$DAX_OUTDIR/$$_polypick.fits[cols $plot,#2]" "${meth} pixel values" $ds9
+
+
+echo ""
+echo "Output file is $DAX_OUTDIR/$$_polypick.fits"
+
+
+
+\rm -f $DAX_OUTDIR/$$_poly.reg $DAX_OUTDIR/$$_poly.fits
 
 exit 0

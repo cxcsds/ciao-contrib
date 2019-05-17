@@ -1,6 +1,6 @@
-#! /bin/sh
+#! /bin/bash
 # 
-#  Copyright (C) 2004-2008  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2008,2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -54,25 +54,32 @@ case $hist in
     pfold)
     punlearn pfold
     pfold "${file}${src}" - "${min}:${max}:1" > \
-	${ASCDS_WORK_PATH}/$$_period.fits
+	${DAX_OUTDIR}/$$_period.fits
 
-    ds9_plot.py "$ASCDS_WORK_PATH/$$_period.fits[cols period,sigma_rate]" "Period Fold" $ds9 2>&1 > /dev/null 
-
-    /bin/rm -f $ASCDS_WORK_PATH/$$_period.fits
+    ds9_plot_blt "$DAX_OUTDIR/$$_period.fits[cols period,sigma_rate]" "Period Fold $$_period.fits" $ds9
+    outfile=$DAX_OUTDIR/$$_period.fits
 
     ;;
     
     gl)	
     punlearn glvary
-    glvary "${file}${src}" $ASCDS_WORK_PATH/$$_foo.fits \
-	$ASCDS_WORK_PATH/$$_lc.fits none mmin=$min mmax=$max clob+ 
+    glvary "${file}${src}" $DAX_OUTDIR/$$_foo.fits \
+	$DAX_OUTDIR/$$_lc.fits none mmin=$min mmax=$max clob+ 
 
-    /bin/rm -f  $ASCDS_WORK_PATH/$$_foo.fits
+    /bin/rm -f  $DAX_OUTDIR/$$_foo.fits
 
-    ds9_plot.py "$ASCDS_WORK_PATH/$$_lc.fits[cols time,count_rate]" "GL Lightcurve" $ds9 2>&1 > /dev/null
-
-    /bin/rm -f $ASCDS_WORK_PATH/$$_lc.fits
-
+    ds9_plot_blt "$DAX_OUTDIR/$$_lc.fits[cols time,count_rate]" "GL Lightcurve $$_lc.fits" $ds9 
+    outfile=$DAX_OUTDIR/$$_lc.fits
         ;;
 esac
+
+
+echo "-----------------------------"
+echo `date`
+echo ""
+echo "infile: ${file}"
+echo "srcreg: ${srcreg}"
+echo "outfile: ${outfile}"
+echo ""
+
 

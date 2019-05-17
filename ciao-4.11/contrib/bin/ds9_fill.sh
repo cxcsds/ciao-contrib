@@ -1,6 +1,6 @@
-#! /bin/sh
+#! /bin/bash
 # 
-#  Copyright (C) 2004-2008  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2008,2019 Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -36,23 +36,55 @@ fi
 
 if test x$meth = xPOLY
 then
-  ex=no
+  exclude=no
 else
-  ex=yes
+  exclude=yes
+fi
+
+# Get source and background regions.  Tag them.
+xpaget $ds9 regions source -format ds9 -system physical -strip |  \
+  tr ";" "\012" | egrep -v 'physical' | cat - | \
+  awk '{print $0" # tag={"NR"}"}' > $DAX_OUTDIR/$$_src.reg
+xpaget $ds9 regions background -format ds9 -system physical -strip | \
+  tr ";" "\012" | egrep -v 'physical' | cat - |\
+  awk '{print $0" # background tag={"NR"}"}' > $DAX_OUTDIR/$$_bkg.reg
+
+
+cat $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg > $DAX_OUTDIR/$$_all.reg
+
+# Groupreg to match groups -- maybe not necessary
+dmgroupreg $DAX_OUTDIR/$$_all.reg  $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg clob+ exclude=$exclude
+
+# doesn't set non-zero exit status
+dmfilth - - $meth @-$DAX_OUTDIR/$$_src.reg @-$DAX_OUTDIR/$$_bkg.reg > $DAX_OUTDIR/$$_fill.fits 2>&1 
+
+# Check if this is a FITS file
+cat $DAX_OUTDIR/$$_fill.fits | fold -80 | grep ^SIMPLE > /dev/null 2>&1
+if test $? -ne 0
+then
+  # Display error message
+  echo `date`
+  echo ""
+  cat $DAX_OUTDIR/$$_fill.fits
+  echo "--------"
+else
+  # Display image
+  cat $DAX_OUTDIR/$$_fill.fits | xpaset $ds9 fits new
+  echo `date`
+  echo ""
+  echo "Output file: $DAX_OUTDIR/$$_fill.fits"
+  echo "--------"
+fi
+
+tile=`pget dax tile`
+if test x$tile = xyes
+then
+  xpaset -p $ds9 tile
 fi
 
 
 
-xpaget $ds9 regions source | awk ' NR <5 {print $0; next} 0 == index($0,"tag=") { if ( 0==index($0,"#")) {s=" # "  } else {s=" "}  print $0""s"tag={dummy "NR"}"; next } {print $0}' > $ASCDS_WORK_PATH/$$_src.reg
-xpaget $ds9 regions background | awk ' NR <5 { print $0; next} 0 == index($0,"tag=") { if ( 0==index($0,"#")) {s=" # "  } else {s=" "}  print $0""s"tag={dummy "NR"}"; next } {print $0}' > $ASCDS_WORK_PATH/$$_bkg.reg
 
-cat $ASCDS_WORK_PATH/$$_src.reg $ASCDS_WORK_PATH/$$_bkg.reg > $ASCDS_WORK_PATH/$$_all.reg
-
-dmgroupreg $ASCDS_WORK_PATH/$$_all.reg  $ASCDS_WORK_PATH/$$_src.reg $ASCDS_WORK_PATH/$$_bkg.reg clob+ exclude=$ex
-
-
-dmfilth - - $meth @-$ASCDS_WORK_PATH/$$_src.reg @-$ASCDS_WORK_PATH/$$_bkg.reg 2>&1 | xpaset $ds9 fits new
-
-\rm -f  $ASCDS_WORK_PATH/$$_all.reg  $ASCDS_WORK_PATH/$$_src.reg $ASCDS_WORK_PATH/$$_bkg.reg 
+\rm -f  $DAX_OUTDIR/$$_all.reg  $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg 
 
 exit 0
