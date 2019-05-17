@@ -21,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "srcflux"
-__revision__ = "02 August 2018"
+__revision__ = "13 May 2019"
 
 import os
 
@@ -1336,6 +1336,27 @@ def add_effevt_to_outfile( myparams, at_energy, srcfiles, bkgfiles ):
 def scale_eff2evt_fluxes( myparams, at_energy):
     """
     """
+
+    """
+    S = a*F + N
+    B = b*F + r*N
+
+    where S = counts in src region, B = counts in bkg region, 
+    a = psf frac in src, b = fraction of src psf in bkg, 
+    F = source flux, N = background, r = aperature area scale.
+
+    Solve for N.
+
+    N = (B - b*F)/r
+
+    and plug that in to find F.
+
+    S = a*F + (B-b*F)/r
+    r*S = r*a*F + B - b*F
+    r*S-B = F*(r*a-b)
+    F = (r*S-B) / ( r*a-b)
+    """
+
     myroot = get_root( myparams, at_energy)
 
     verb1("Computing Net fluxes")
@@ -1356,7 +1377,7 @@ def scale_eff2evt_fluxes( myparams, at_energy):
     net_rate_hi = intab.get_column("net_rate_aper_hi").values
 
     backscale = bkg_area / src_area
-    net_flux = ( backscale * src_flx - bkg_flx ) / ( backscale * (src_frac - bkg_frac))
+    net_flux = ( backscale * src_flx - bkg_flx ) / ( backscale*src_frac - bkg_frac)
     # if net_flux < 0 then can't do anything
     net_flux = np.array([ x if x >= 0 else np.nan for x in net_flux])
 
@@ -1376,7 +1397,7 @@ def scale_eff2evt_fluxes( myparams, at_energy):
 
     src_photflx = intab.get_column("src_photflux").values
     bkg_photflx = intab.get_column("bg_photflux").values
-    net_photflux = ( backscale * src_photflx - bkg_photflx ) / ( backscale * (src_frac - bkg_frac))
+    net_photflux = ( backscale * src_photflx - bkg_photflx ) / ( backscale*src_frac - bkg_frac)
 
     # if net_photflux < 0 then can't do anything
     net_photflux = np.array([ x if x >= 0 else np.nan for x in net_photflux])
