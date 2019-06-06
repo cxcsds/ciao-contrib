@@ -241,7 +241,6 @@ echo " (4/4) Fitting spectrum"
 cat <<EOF > $cmd
 
 import sherpa.astro.ui as sherpa
-import pychips
 
 sherpa.load_data("$spi")
 
