@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-# 
-#  Copyright (C) 2010-2011  Smithsonian Astrophysical Observatory
+#
+#  Copyright (C) 2010-2011, 2016, 2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -31,21 +31,9 @@ Script:
 Example syntax:
 
    make_instmap_weights outfile="weights.txt" model="xsphabs.abs1*powlaw1d.p1" \
-   paramvals="abs1.nh=1.3;p1.gamma=1.7" emin=0.2 emax=8.0 ewidth=0.25 
-
-
-02/24/2010    NL - initial script
-03/01/2010    NL - simplified script
-03/03/2010    NL - added checks on parameters emin, emax, and ewidth
-03/09/2010    NL - added verbosity
-03/15/2010    NL - added XSpec solar abundances and photoelectric cross-section
-03/31/2010    NL - added more warning and error messages
-10/27/2016    NL - use Sherpa's set_par instead of Python exec to set parameter values
+   paramvals="abs1.nh=1.3;p1.gamma=1.7" emin=0.2 emax=8.0 ewidth=0.25
 
 """
-
-toolname = "make_instmap_weights"
-__revision__ = "27 October 2016"
 
 import sys
 import os
@@ -55,80 +43,85 @@ import paramio
 import sherpa.astro.ui as sherpa
 from sherpa_contrib.utils import save_instmap_weights
 
-from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, get_verbosity, handle_ciao_errors
+from ciao_contrib.logger_wrapper import initialize_logger, \
+    make_verbose_level, set_verbosity, get_verbosity, handle_ciao_errors
 from ciao_contrib.param_wrapper import open_param_file
+
+toolname = "make_instmap_weights"
+__revision__ = "06 June 2019"
 
 initialize_logger(toolname)
 
 v3 = make_verbose_level(toolname, 3)
 v5 = make_verbose_level(toolname, 5)
 
+
 def get_par(args):
     """ Get make_instmap_weights parameters from parameter file """
 
     pinfo = open_param_file(args, toolname=toolname)
     pfile = pinfo["fp"]
-    
+
     # Common parameters:
     params = {}
 
     # ascii file containing columns of energy and weighting
-    params["outfile"] = paramio.pgetstr(pfile,"outfile")
+    params["outfile"] = paramio.pgetstr(pfile, "outfile")
 
     # sherpa spectral model
     params["mdl"] = None
-    params["mdl"] = paramio.pgetstr(pfile,"model")
+    params["mdl"] = paramio.pgetstr(pfile, "model")
     params["mdl"] = params["mdl"].strip("\"' ")
     if params["mdl"] == "":
         raise ValueError("Sherpa model definition is required")
 
     # spectral model parameters
     params["pvals"] = None
-    params["pvals"] = paramio.pgetstr(pfile,"paramvals")
+    params["pvals"] = paramio.pgetstr(pfile, "paramvals")
     params["pvals"] = params["pvals"].strip("\"'; ")
     if params["pvals"] == "":
         raise ValueError("Model parameters must be defined")
 
     # for XSpec models that depend on photoelectric cross-section
     # and solar abundances
-    params["xsect"] = paramio.pgetstr(pfile,"xsect")
-    params["abund"] = paramio.pgetstr(pfile,"abund")
-    
+    params["xsect"] = paramio.pgetstr(pfile, "xsect")
+    params["abund"] = paramio.pgetstr(pfile, "abund")
+
     # load emin, emax, and bin width
     params["emin"] = None
-    if paramio.pgetstr(pfile,"emin").upper() != "INDEF":
-        params["emin"] = paramio.pgetd(pfile,"emin")
+    if paramio.pgetstr(pfile, "emin").upper() != "INDEF":
+        params["emin"] = paramio.pgetd(pfile, "emin")
 
     params["emax"] = None
-    if paramio.pgetstr(pfile,"emax") != "INDEF":
-        params["emax"] = paramio.pgetd(pfile,"emax")
+    if paramio.pgetstr(pfile, "emax") != "INDEF":
+        params["emax"] = paramio.pgetd(pfile, "emax")
 
     params["de"] = None
-    if paramio.pgetstr(pfile,"ewidth") != "INDEF":
-        params["de"] = paramio.pgetd(pfile,"ewidth")
+    if paramio.pgetstr(pfile, "ewidth") != "INDEF":
+        params["de"] = paramio.pgetd(pfile, "ewidth")
 
     # set clobber of ascii file
-    params["clobber"] = paramio.pgetstr(pfile,"clobber") == "yes"
+    params["clobber"] = paramio.pgetstr(pfile, "clobber") == "yes"
 
     # set verbosity
-    params["verbose"] = paramio.pgeti(pfile,"verbose")
+    params["verbose"] = paramio.pgeti(pfile, "verbose")
 
     # validate emin
-    if params["emin"] == None:
+    if params["emin"] is None:
         raise ValueError("emin cannot be set to 'INDEF'")
     elif params["emin"] >= params["emax"]:
         raise ValueError("emin cannot be greater than or equal to emax")
 
     # validate emax
-    if params["emax"] == None:
+    if params["emax"] is None:
         raise ValueError("emax cannot be set to 'INDEF'")
     elif params["emax"] <= params["emin"]:
         raise ValueError("emax cannot be less than or equal to emin")
 
     # validate ewidth
-    if params["de"] == None:
+    if params["de"] is None:
         raise ValueError("ewidth cannot be set to 'INDEF'")
-    elif params["de"] > abs(params["emax"]-params["emin"]):
+    elif params["de"] > abs(params["emax"] - params["emin"]):
         raise ValueError("ewidth cannot be greater than emax-emin")
     elif params["de"] == 0.:
         raise ValueError("ewidth cannot be equal to zero")
@@ -139,13 +132,13 @@ def get_par(args):
 
 def printverbose():
     """Produce output for verbosity levels"""
-    
+
     if get_verbosity() == 0:
         logging.getLogger("sherpa").setLevel(logging.ERROR)
 
     v3("Model used: ")
     v3(sherpa.get_model())
-    
+
     v5("Dataspace produced: ")
     v5(sherpa.get_data())
     v5("XSpec solar abundances")
@@ -153,7 +146,7 @@ def printverbose():
     v5("XSpec photoelectric cross-section")
     v5(sherpa.get_xsxsect())
 
-        
+
 @handle_ciao_errors(toolname, __revision__)
 def make_instmap_weights(args):
     """Do the work"""
@@ -161,28 +154,28 @@ def make_instmap_weights(args):
     params = get_par(args)
     set_verbosity(params["verbose"])
 
-    # set xspec solar abundances, photoelectric cross-section, and cosmology if different than Sherpa default
-    if params["abund"] != "angr":
-        sherpa.set_xsabund(params["abund"])
-    if params["xsect"] != "bcmc":
-        sherpa.set_xsxsect(params["xsect"])
+    # Since the XSPEC settings may change over time, always set the
+    # values to the user's settings.
+    #
+    # There was a comment about changing the XSPEC cosmology settings,
+    # but no attempt to actually do so. Should there be? (DJB can not
+    # think of a case where it would matter here, but admits to not
+    # having thought about it too much).
+    #
+    sherpa.set_xsabund(params["abund"])
+    sherpa.set_xsxsect(params["xsect"])
 
-    # create a synthetic data ID to appropriately bin a model 
-    sherpa.dataspace1d(params["emin"],params["emax"],params["de"])
+    # create a synthetic data ID to appropriately bin a model
+    sherpa.dataspace1d(params["emin"], params["emax"], params["de"])
     sherpa.set_model(params["mdl"])
 
-    # use sherpa's set_par instead of the python's exec for future-proofing
     for par in params["pvals"].split(";"):
         par = par.split("=")
-        sherpa.set_par(par[0],val=par[1])
+        sherpa.set_par(par[0], val=par[1])
 
-#    exec(params["pvals"])
-
-    printverbose() 
-    
-    save_instmap_weights(params["outfile"],params["clobber"])
+    printverbose()
+    save_instmap_weights(params["outfile"], params["clobber"])
 
 
 if __name__ == "__main__":
     make_instmap_weights(sys.argv)
-
