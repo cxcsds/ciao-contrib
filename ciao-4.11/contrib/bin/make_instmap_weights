@@ -154,14 +154,16 @@ def make_instmap_weights(args):
     params = get_par(args)
     set_verbosity(params["verbose"])
 
-    # set xspec solar abundances, photoelectric cross-section, and
-    # cosmology if different than Sherpa default (althogh don't actually
-    # change the cosmology)
+    # Since the XSPEC settings may change over time, always set the
+    # values to the user's settings.
     #
-    if params["abund"] != "angr":
-        sherpa.set_xsabund(params["abund"])
-    if params["xsect"] != "bcmc":
-        sherpa.set_xsxsect(params["xsect"])
+    # There was a comment about changing the XSPEC cosmology settings,
+    # but no attempt to actually do so. Should there be? (DJB can not
+    # think of a case where it would matter here, but admits to not
+    # having thought about it too much).
+    #
+    sherpa.set_xsabund(params["abund"])
+    sherpa.set_xsxsect(params["xsect"])
 
     # create a synthetic data ID to appropriately bin a model
     sherpa.dataspace1d(params["emin"], params["emax"], params["de"])
