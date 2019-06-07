@@ -18,9 +18,9 @@ Usage:
 
 """
 
-__version__ = "CIAO 4.9"
+__version__ = "CIAO 4.11"
 toolname = "ecf_calc"
-__revision__ = "22 May 2017"
+__revision__ = "07 June 2019"
 
 import numpy, tempfile, sys, os, paramio, cxcdm
 
@@ -31,7 +31,6 @@ import pycrates as pcr
 from ciao_contrib.logger_wrapper import handle_ciao_errors
 from ciao_contrib.param_wrapper import open_param_file
 from ciao_contrib.stacklib import expand_stack
-from chips_contrib.decorators import hide_chips_commands
 from ciao_contrib.cxcdm_wrapper import get_block_info_from_file
 from ciao_contrib.runtool import dmhistory, dmellipse, new_pfiles_environment, add_tool_history
 
@@ -365,10 +364,15 @@ def get_ecf(infile,reg,outfile,x,y,radius,binsize,fraction,clobber):
     ecf.close()
 
 
-@hide_chips_commands()
 def plot_ecf(rad_file):
 
-    import pychips
+    import matplotlib
+    from matplotlib import pyplot as plt
+    from matplotlib.ticker import ScalarFormatter
+
+    matplotlib.use("TkAgg")
+    matplotlib.interactive(True)
+    matplotlib.rcParams["toolbar"] = "None"    
 
     try:
         detector = get_detnam(rad_file)
@@ -379,19 +383,25 @@ def plot_ecf(rad_file):
     r_mid = pcr.get_colvals(file,"r_mid")
     ecf = pcr.get_colvals(file,"fraction")
 
-    pychips.add_window()
-    pychips.add_curve(r_mid,ecf,["line.style","solid","symbol.style","diamond","symbol.fill","false","symbol.size",3.5])
+    ecf[ecf <= 0 ] = numpy.nan # remove vertical dropline from the zero-values that would be plotted by matplotlib
 
-    pychips.log_scale(pychips.ChipsId(),pychips.XY_AXIS)
-
-    pychips.set_plot_ylabel("Encircled Counts Fraction")
-
+    fig,axs = plt.subplots()
+    axs.plot(r_mid,ecf,linestyle="solid",marker="D",
+             markersize=3.5,fillstyle="none")
+    axs.loglog()
+    axs.set_ylabel("Encircled Counts Fraction")
+    
     if "HRC" in detector:
-        pychips.set_plot_xlabel("HRC Pixels")
+        axs.set_xlabel("HRC Pixels")
     elif "ACIS" in detector:
-        pychips.set_plot_xlabel("ACIS Pixels")
+        axs.set_xlabel("ACIS Pixels")
     else:
-        pychips.set_plot_xlabel("Pixels")
+        axs.set_xlabel("Pixels")
+
+    for axis in [axs.xaxis, axs.yaxis]:
+        formatter = ScalarFormatter()
+        formatter.set_scientific(False)
+        axis.set_major_formatter(formatter)
 
 
 ############# Run Script #############
