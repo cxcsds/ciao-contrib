@@ -16,7 +16,7 @@
       rstep=None, rmin=None, rmax=None, rlo=None, rhi=None,
       xpos=None, ypos=None, ellip=None, theta=None,
       group_counts=None, group_snr=None,
-      label=True, recalc=True, overplot=False] )</LINE>
+      label=True, recalc=True, overplot=False, clearwindow=True] )</LINE>
     </SYNTAX>
 
     <DESC>
@@ -264,10 +264,15 @@ from sherpa_contrib.profiles import *
         </ITEM>
 
         <ITEM>
-          overplot  - should the new plot be overlaid in the plotting window?
+          overplot - should the new plot be overlaid in the plotting window?
 	  A value of False
 	  (default) means clear the window, and True
 	  means add the new data to any existing plots.
+	</ITEM>
+
+        <ITEM>
+          clearwindow - should the plot area be cleared before creating the
+	  plot? This is only used if overplot is False.
 	</ITEM>
 
       </LIST>
@@ -291,21 +296,6 @@ from sherpa_contrib.profiles import *
 	bin - used when group_snr is given - is therefore calculated as
 	<EQUATION>N / (1 + sqrt(N+0.75))</EQUATION>
 	(there is no support for including a background level).
-      </PARA>
-
-      <PARA title="Modifying existing plots">
-        The plot is displayed in a ChIPS plotting window. If there is
-        no plotting window open, one is created.  If a plotting window
-        exists, the overplot parameter value determines whether the
-        new plot is overlaid on any existing plots in the window or if
-        the window is cleared before the plot is drawn.  
-      </PARA>
-
-      <PARA>
-        ChIPS commands may be used within Sherpa to modify plot
-        characteristics and create hardcopies; refer to the
-	<HREF link="http://cxc.harvard.edu/chips/">ChIPS website</HREF> for
-        information. 
       </PARA>
 
       <PARA title="Changing the plot defaults">
@@ -336,7 +326,6 @@ from sherpa_contrib.profiles import *
 	  <LINE>&pr; set_coord("physical")</LINE>
           <LINE>&pr; set_source(beta2d.src + const2d.bgnd)</LINE>
           <LINE>&pr; prof_data()</LINE>
-          <LINE>&pr; log_scale()</LINE>
 	</SYNTAX>
 	<DESC>
           <PARA>
@@ -345,8 +334,6 @@ from sherpa_contrib.profiles import *
 	    and height of 2 units due to the use of 'bin sky=2'), set a source
 	    model consisting of a beta2d component (src) and a constant (bgnd).
 	    The use the prof_data call creates a plot a profile of the data.
-	    The X and Y axes of the plot are then changed to use logarithmic
-	    scaling.
 	  </PARA>
 	  <PARA>
 	    Since no arguments were given to prof_data, the profile covers
@@ -376,8 +363,8 @@ from sherpa_contrib.profiles import *
 	  <PARA>
 	    The preferences are set so that both the x and y axes should be drawn
 	    using log scaling. Setting the get_data_prof_prefs values only
-	    affects plots made after the change; to change an existing plot
-	    you need to use ChIPS commands such as log_scale() and linear_scale().
+	    affects new plots (i.e. those made after the setting was
+	    changed).
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
@@ -454,13 +441,11 @@ from sherpa_contrib.profiles import *
         <SYNTAX>
 	  <LINE>&pr; prof_data("src1")</LINE>
 	  <LINE>&pr; prof_data("src2", overplot=True)</LINE>
-	  <LINE>&pr; set_histogram(["symbol.color", "red"])</LINE>
 	</SYNTAX>
 	<DESC>
           <PARA>
 	    Plots the profile for the dataset called "src1" and then overplots the 
-	    profile from the dataset "src2" (the second data set is changed to use a
-	    red symbol).
+	    profile from the dataset "src2".
 	  </PARA>
         </DESC>
       </QEXAMPLE>
@@ -544,6 +529,14 @@ from sherpa_contrib.profiles import *
       </PARA>
     </ADESC>
 
+    <ADESC title="Changes in the scripts 4.11.4 (2019) release">
+      <PARA title="Plotting can now use matplotlib">
+	The radial-profile plots will now be created in Matplotlib
+	if the plot_pkg setting of your ~/.sherpa.rc file is set
+	to pylab.
+      </PARA>
+    </ADESC>
+
     <ADESC title="CHANGES IN THE DECEMBER 2010 RELEASE">
       <PARA title="Support for set_full_model">
 	The routines in the module have been updated to support source
@@ -564,6 +557,6 @@ from sherpa_contrib.profiles import *
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>December 2010</LASTMODIFIED>
+    <LASTMODIFIED>June 2019</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
