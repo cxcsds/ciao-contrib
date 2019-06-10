@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
+# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -36,8 +36,8 @@ function with the name of the tool: for example
   dmcopy("in.fits", "out.fits", clobber=True, option="all")
   print(dmstat(infile="img.fits", centroid=False, verbose=0))
 
-If using ChIPS, Sherpa, or IPython then the output will be displayed
-on-screen, so you can just say
+If using an interactive Python session - such as IPython or Sherpa - the
+output will be displayed on-screen, so you can just say
 
   dmstat(infile="img.fits", centroid=False, verbose=0)
 
@@ -333,7 +333,7 @@ An IOError is raised if the tool returns a non-zero exit
 status. Unfortunately some CIAO tools still return a zero exit status
 when they error out; for such cases it will appear as if the tool ran
 successfully. The full screen output is included in the error, with
-each line indented for readability at the ChIPS/Sherpa/IPython prompt.
+each line indented for readability at the IPython/Sherpa prompt.
 
 As an example,
 
@@ -706,9 +706,11 @@ def _log_par_file_contents(parfile):
 
 
 class CIAOPrintableString(str):
-    """Wraps strings so that they are formatted nicely when
-    'auto-displayed' by ipython. Essentially the same as
-    pychips.utils.ChipsPrintableString."""
+    """Wraps strings for "nice" formatting.
+
+    This is intended for interactive use, such as IPython and
+    notebooks. Is it still needed?
+    """
 
     def __init__(self, string):
         self.str = string
@@ -1575,8 +1577,8 @@ class CIAOTool(CIAOParameter):
 
     The call returns the screen output of the tool (both the stdout
     and stderr channels). This can be stored in a variable or - if
-    called from an interactive Python session such as ChIPS, Sherpa or
-    IPython - it can be automatically displayed, e.g.
+    called from an interactive Python session such as IPython or
+    Sherpa - it can be automatically displayed, e.g.
 
      dmstat("sources.dat[z=0.3:0.8][cols z,lx,kt]", median=True)
 
