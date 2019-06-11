@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "13 May 2019"
+version = "11 Jun 2019"
 
 # import standard python modules as required
 #
@@ -1929,10 +1929,16 @@ def l2_hrc_events(params):
     dtfstats = os.path.join(outdir, root + '_repro_dtfstats.fits')
     # this is *not* a replacement for the dtf1 file
 
+    gtifile = evt2+"[GTI]"
+    ontime = pyc.read_file(flt1).get_key_value("ONTIME")
+    if 0 == ontime:
+        # Warning is generated elsewhere
+        gtifile = flt1+"[FILTER]"
+
     hrc_dtfstats.punlearn()
     hrc_dtfstats.infile=dtf1
     hrc_dtfstats.outfile=dtfstats
-    hrc_dtfstats.gtifile=evt2+"[GTI]"
+    hrc_dtfstats.gtifile=gtifile
     hrc_dtfstats.clobber=clobber
     out=hrc_dtfstats()
     v5("hrc_dtfstats returned")
