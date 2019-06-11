@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
- <!ENTITY pr "chips>">
+ <!ENTITY pr ">>>">
 ]>
 <cxchelptopics>
   <ENTRY key="lc_clean" context="contrib"
@@ -35,7 +35,7 @@
 
       <PARA title="Loading the routine">
         The routine can be loaded into a Python
-	interpreter - such as chips, sherpa, or ipython
+	interpreter - such as Sherpa or ipython
 	- by saying:
       </PARA>
 
@@ -85,10 +85,11 @@ from lightcurves import *
 	  <DATA>solid</DATA>
 	  <DATA>
 	    If a GTI file is created as well as a plot, then we indicate the
-	    excluded times using regions filled with this pattern. Valid values
-	    are the same as those for region and histograms - see the "Fill Patterns"
-	    section of "ahelp chipsopt".
-	    A value of "none" means no regions will be drawn.
+	    excluded times using regions filled with this pattern. A value
+	    of "none" means that the excluded regions will not be
+	    shown, otherwise it should be one of:
+	    solid, nofill, updiagonal, downdiagonal, horizontal,
+	    vertical, crisscross, grid, or polkadot.
 	  </DATA>
 	</ROW>
 	<ROW>
@@ -226,17 +227,17 @@ unix% dmcopy "evt2.fits[@evt.gti]" evt2_filt.fits
 	    printed to the screen.
 	  </PARA>
 	  <PARA>
-	    The plot can be printed using the ChIPS print_window command,
-	    for example
+	    The plot can be printed using the Matplotlib
+	    savefig command: for example
 	  </PARA>
 	  <PARA>
 	    <SYNTAX>
-	      <LINE>&pr; print_window("bg.lc.ps", ["fittopage", True, "orientation", "landscape"])</LINE>
+	      <LINE>&pr; import matplotlib.pyplot as plt</LINE>
+	      <LINE>&pr; plt.savefig("bg.lc.ps")</LINE>
 	    </SYNTAX>
 	  </PARA>
 	  <PARA>
-	    will create a postscript plot which is drawn
-	    in landscape format and fills the page.
+	    will create a postscript plot.
 	  </PARA>
 	</DESC>
 
@@ -254,7 +255,7 @@ unix% dmcopy "evt2.fits[@evt.gti]" evt2_filt.fits
 	    a GTI file (clip.gti)
 	    that represents the "good" times calculated by the algorithm.
 	    After writing out the file the filtered-out times will be displayed
-	    on the plot using red cross-hatched regions.
+	    on the plot using solid red regions.
 	  </PARA>
 	  <PARA>
 	    The output file (clean.gti)
@@ -287,13 +288,13 @@ unix% dmcopy "evt2.fits[@clean.gti]" evt2_filt.fits
       <QEXAMPLE>
 
 	<SYNTAX>
-	  <LINE>&pr; lc_clean("bg.lc", outfile="bg.gti", pattern="crosshatch", pcol="orange")</LINE>
+	  <LINE>&pr; lc_clean("bg.lc", outfile="bg.gti", pattern="grid", pcol="orange")</LINE>
 	</SYNTAX>
 
 	<DESC>
 	  <PARA>
 	    Create a GTI file (bg.gti) and use
-	    an orange cross-hatch fill to indicate the excluded times in the
+	    an orange grid fill to indicate the excluded times in the
 	    count-rate plot.
 	  </PARA>
 	</DESC>
@@ -336,6 +337,12 @@ unix% dmcopy "evt2.fits[@clean.gti]" evt2_filt.fits
       </PARA>
     </ADESC>
 
+    <ADESC title="Changes in the 4.11.2 (April 2019) release">
+      <PARA title="Switch to Matplotlib">
+	The plots are now created with Matplotlib rather than ChIPS.
+      </PARA>
+    </ADESC>
+
     <ADESC title="About Contributed Software">
       <PARA>
         This script is not an official part of the CIAO release but is
@@ -354,7 +361,7 @@ unix% dmcopy "evt2.fits[@clean.gti]" evt2_filt.fits
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>December 2018</LASTMODIFIED>
+    <LASTMODIFIED>June 2019</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>
