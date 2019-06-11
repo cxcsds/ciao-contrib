@@ -53,13 +53,15 @@ def _find_pathname():
     else:
         raise IOError("Found {} matches to ciao-*.*/!".format(nmatches))
 
+
 # A lot of this code should probably go in the 'if __name__' section below!
 
 ciao_head = _find_pathname()
 
 ascds_install = os.getenv("ASCDS_INSTALL")
 if ascds_install is None:
-    raise IOError("ASCDS_INSTALL environment variable is not set; has CIAO been started?")
+    raise IOError("ASCDS_INSTALL environment variable is not set; " +
+                  "has CIAO been started?")
 
 ascds_contrib = "{}contrib".format(ciao_head)
 
@@ -169,14 +171,14 @@ class Param:
         elif nt < 7:
             toks.extend(["" for i in range(nt, 7)])
 
-        self.name   = toks[0]
-        self.type   = toks[1]
+        self.name = toks[0]
+        self.type = toks[1]
         self.python_type = self.python_type_map[self.type]
-        self.mode   = toks[2]
-        self.value  = toks[3]
+        self.mode = toks[2]
+        self.value = toks[3]
         self.minval = toks[4]
         self.maxval = toks[5]
-        self.info   = toks[6].strip()
+        self.info = toks[6].strip()
 
         # Use a case-insensitive check
         if self.name.lower() in language_keywords_lower:
@@ -360,7 +362,7 @@ def create_output(dirname, toolname, istool=True):
     (req_params, opt_params) = get_param_list(dirname, toolname)
 
     # create the parameter object
-    out  = "parinfo['{}'] = {{\n".format(toolname)
+    out = "parinfo['{}'] = {{\n".format(toolname)
     out += "\t'istool': {},\n".format(istool)
 
     rpars = [p.describe("") for p in req_params]
