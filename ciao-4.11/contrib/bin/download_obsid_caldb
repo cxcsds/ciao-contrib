@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 #
-# Copyright (C) 2013-2018 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2018, 2019 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,18 +20,19 @@
 
 from __future__ import print_function
 
-toolname = "download_obsid_caldb"
-__revision__ = "01 August 2018"
-
 import os
 import sys
 
-CDA_SERVER = "ftp://cda.cfa.harvard.edu/pub/arcftp/ChandraCalDB"
-CDA_ENV = "CALDB_MIRROR_SITE" 
-
+from urllib.parse import urlparse
 
 import ciao_contrib.logger_wrapper as lw
+
+
+toolname = "download_obsid_caldb"
+__revision__ = "11 June 2019"
+
 lw.initialize_logger(toolname)
+
 lgr = lw.get_logger(toolname)
 verb0 = lgr.verbose0
 verb1 = lgr.verbose1
@@ -39,8 +40,8 @@ verb2 = lgr.verbose2
 verb3 = lgr.verbose3
 verb5 = lgr.verbose5
 
-
-import six
+CDA_SERVER = "ftp://cda.cfa.harvard.edu/pub/arcftp/ChandraCalDB"
+CDA_ENV = "CALDB_MIRROR_SITE"
 
 
 #
@@ -63,7 +64,7 @@ class LoggingFile:
         if nhash < 1:
             raise ValueError("nhash must be >= 1, sent {}".format(nhash))
         self.fp = fp
-        if startfrom == None:
+        if startfrom is None:
             self.bytes = 0
         else:
             if startfrom > filesize:
@@ -83,7 +84,7 @@ class LoggingFile:
                 self.outfp.write(self.hashchr)
                 self.outfp.flush()
                 self.hashes = self.hashes + 1
-                
+
         self.fp.write(data)
 
     def close(self):
@@ -114,9 +115,8 @@ class FtpFile():
             self.filesize = int(toks[4])
 
         self.ftp.retrlines("LIST " + self.path, parse_size)
-        
-        return( self.filesize )
 
+        return( self.filesize )
 
 
 def parse_url():
@@ -124,39 +124,38 @@ def parse_url():
     Allow user to override CALDB location via env variable similar to
     how download_chandra_obsid works.  Also ripped off from Doug's
     stuff.
-    
+
     setenv CALDB_MIRROR_SITE "ftp://user:password@host:port/dir"
 
     Only FTP protocol is supported.
-        
+
     """
 
     def get_id():
         """
         DEPRECATED ---
-        get a real user name if there is one.  
+        get a real user name if there is one.
         """
         u = "anonymous"
         for o in ["USER", "USERNAME"]:
             if o in os.environ:
-                u=os.environ[o]
+                u = os.environ[o]
 
         from socket import getfqdn
         mybox = getfqdn()
         if not mybox:
             mybox = toolname
-        
-        return "{}@{}".format(u, mybox)  
 
+        return "{}@{}".format(u, mybox)
 
-    try: 
+    try:
         if CDA_ENV not in os.environ:
-            url = six.moves.urllib.parse.urlparse( CDA_SERVER )
+            url = urlparse(CDA_SERVER)
         else:
-            url = six.moves.urllib.parse.urlparse( os.environ[CDA_ENV])
-    except:
+            url = urlparse(os.environ[CDA_ENV])
+    except Exception:
         raise ValueError("Bad {} setting".format(CDA_ENV))
-        
+
     if url.scheme != "ftp":
         raise ValueError('The mirror site must begin with ftp://')
 
@@ -173,7 +172,7 @@ def init_ftp():
     """
     Connect to ftp site
     """
-    
+
     from ftplib import FTP
 
     host, path, user, pswd = parse_url()
@@ -195,18 +194,17 @@ def retrieve_config_files(ftp, newver, rootdir, outdir):
     Retrieve the instrument specific CALDB caldb.indx and key.config files.
 
     In classic mode, the caldb.indx and key.config files will be stored
-    under data/chandra/{instrume}.  
-    
+    under data/chandra/{instrume}.
+
     In the non-classic mode, the caldb.indx and key.config files
     will be stored in
-    
+
     config/{instrume}-{version}.indx and .config
-    
+
     which allows the user to change versions without having to manipulate
     symbolic links.
 
     """
-
 
     verb1( "Retrieving CALDB index files")
 
@@ -214,15 +212,15 @@ def retrieve_config_files(ftp, newver, rootdir, outdir):
     ftp.retrbinary( "RETR caldb.config", open("{}/caldb.config".format(outdir),"wb").write)
 
     ftp.cwd("/{}/data/chandra/".format(rootdir))
-    for dd in ftp.nlst():            
-        if dd in [ 'ephin', 'sim', 'pcad', 'pimms' ]:  
+    for dd in ftp.nlst():
+        if dd in [ 'ephin', 'sim', 'pcad', 'pimms' ]:
             continue
         ftp.cwd("/{}/data/chandra/{}".format(rootdir,dd))
 
         #
         # We store both the chandra/$inst/caldb.indx file to make
         # old-school caldb happy, but then we also store versioned
-        # copies of the index and key.config files in the config/ 
+        # copies of the index and key.config files in the config/
         # directory.
         #
 
@@ -254,39 +252,38 @@ def filter_config(newver, outdir):
     """
     Rename/replace the generic CALDB config files with version specific
     files.
-    
+
     The Chandra caldb uses a generic configuration files
-    
+
         root/software/tools/caldb.config
-    
+
     that points to each of the instrument specific index files and
     key config files:
-    
+
         root/data/chandra/instrument/caldb.indx
         root/data/chandra/instrument/key.config
-    
+
     Where these are symbolic links to "version" specific files.
-    
+
         caldb.indx -> ./index/caldbN0400.indx
-    
+
     This makes keeping track of versions, and if desired using multiple
     versions a real headache.
-    
+
     Instead, this script will download the generic index and config
     files, and tweak them to be version specific.
-    
+
         caldb.config -> CHANDRA-${version}.config
         caldb.indx -> INSTRUMENT-${version}.indx
         key.config -> INSTRUMENT-${version}.config
 
-    This makes keeping old version of the CALDB a lot easier.    
+    This makes keeping old version of the CALDB a lot easier.
 
-    In classic mode the caldb.config file is copied to the 
+    In classic mode the caldb.config file is copied to the
     traditional software/tools/caldb.config location.   How boring is
     that.
     """
 
-        
     with open("{}/caldb.config".format(outdir), "r") as fp:
         cfg = fp.readlines()
     os.unlink( "{}/caldb.config".format(outdir) )
@@ -296,7 +293,7 @@ def filter_config(newver, outdir):
     orig_config = "{}/software/tools/caldb.config".format(outdir)
     with open( orig_config, "w") as fp:
         fp.writelines( cfg )
-    
+
     # Generic caldb.config is setup for all HEASARC mission, just get chandra.
     chandra = [x for x in cfg if x.startswith("CHANDRA")]
 
@@ -324,7 +321,7 @@ def get_version_file(ftp, rootdir, outdir):
     """
     Read the Chandra caldb version file.  Get the old version if
     it exists then download the new file.
-    
+
     """
     from pycrates import read_file
 
@@ -334,12 +331,12 @@ def get_version_file(ftp, rootdir, outdir):
 
     try:
         tab = read_file( outfile )
-        _oldver = tab.get_column("CALDB_VER").values[-1] #last row
+        _oldver = tab.get_column("CALDB_VER").values[-1]  # last row
         try:
             oldver = _oldver.decode("ascii")
-        except:
+        except Exception:
             oldver = _oldver
-    except: 
+    except Exception:
         oldver = None
 
     if ftp:
@@ -352,19 +349,17 @@ def get_version_file(ftp, rootdir, outdir):
 
     tab = read_file( outfile )
     _newver = tab.get_column("CALDB_VER").values[-1] #last row
-    
+
     try:
         newver = _newver.decode("ascii")
-    except:
+    except Exception:
         newver = _newver
 
-    
     if oldver and oldver != newver:
         verb0( "Old CALDB version '{}', New version will be '{}'".format(oldver,newver))
 
     verb1( "Retrieving files for CALDB_VER = {}".format(newver))
     return newver
-
 
 
 def init_output_dir(outdir):
@@ -381,7 +376,7 @@ def retrieve_caldb_file( ftp, rootdir, looking_for, outdir, clobber, missing ):
     """
     Retrieve the CALDB data files
     """
-    if looking_for == None or 0 == len(looking_for):
+    if looking_for is None or 0 == len(looking_for):
         return
 
     # strip off the extension numbers, we want the whole file
@@ -403,13 +398,13 @@ def retrieve_caldb_file( ftp, rootdir, looking_for, outdir, clobber, missing ):
         outfile = "{}/{}".format(hasdir,hasnam)
         updated = os.path.exists( outfile )
         outfile_size = os.path.getsize(outfile) if updated else 0
-        
+
         sys.stderr.write("    {:<40s}".format(hasnam))
 
         if missing:
             sys.stderr.write( "."*20)
             good = "online" if updated else "* MISSING *"
-            sys.stderr.write( " {}".format(good))            
+            sys.stderr.write( " {}".format(good))
         else:
             #
             # Note to future self:  Since FITS files are stored in 2880
@@ -441,14 +436,13 @@ def retrieve_caldb_file( ftp, rootdir, looking_for, outdir, clobber, missing ):
             if updated:
                 sys.stderr.write( ' (updated)')
 
-
         sys.stderr.write("\n")
-        
+
 
 def retrieve_files_by_tool( ftp, rootdir, tool, infile, outdir, clobber, missing ):
     """
     Use the CALDB to query for each of the files to know which to
-    retrieve. 
+    retrieve.
     """
     from caldb4 import Caldb
 
@@ -456,7 +450,7 @@ def retrieve_files_by_tool( ftp, rootdir, tool, infile, outdir, clobber, missing
         verb3("Looking up CAL_CNAM={}".format(prod) )
 
         # Ideally, this would only be done once (per-infile) but there
-        # look to be some memory wackiness when the same Caldb object 
+        # look to be some memory wackiness when the same Caldb object
         # has the .product changed -- it doesn't reset/reinit cleanly.
         cc = Caldb( infile=infile )
         cc.product = prod
@@ -467,6 +461,8 @@ def retrieve_files_by_tool( ftp, rootdir, tool, infile, outdir, clobber, missing
 
         products = cc.search
         retrieve_caldb_file( ftp, rootdir, products, outdir, clobber, missing )
+
+        # What does the following line do?
         cc.close
 
 
@@ -476,8 +472,8 @@ def get_all_products():
 
     This is a different way to find the caldb products -- it looks for
     all the index files and gets the unique set of CAL_CNAM values.
-    
-    The problem with this is that the same single fits file can have 
+
+    The problem with this is that the same single fits file can have
     multiple extensions, and each extension may have a different
     CAL_CNAM (eg ACIS CTI file p2_resp files).  This then makes the retreival
     look more messy since the file will be 'skipped' even in a clean caldb tree.
@@ -485,55 +481,57 @@ def get_all_products():
     complicated then the get_by_tool method below
     """
     from pycrates import read_file
-        
+
     cidx = os.environ["CALDBCONFIG"]
     cdir = os.environ["CALDB"]
-    with open( cidx, "r+") as fp:
+    with open(cidx, "r+") as fp:
         lines = fp.readlines()
-    
+
     chandra = [x for x in lines if x.startswith("CHANDRA")]
-    ciao = [x for x in chandra if x.split()[1] not in  ['EPHIN', 'PCAD', 'SIM' ]]
+    ciao = [x for x in chandra if x.split()[1] not in ['EPHIN', 'PCAD', 'SIM']]
     ciao = [x for x in ciao if 'pimms' not in x.lower()]
-    ciao = [ x.replace(" CALDB ", " {} ".format(cdir)) for x in ciao]
-    idxfiles = [ os.path.join( x.split()[2], os.path.join( x.split()[3],x.split()[4] )) for x in ciao ]
+    ciao = [x.replace(" CALDB ", " {} ".format(cdir)) for x in ciao]
+    idxfiles = [os.path.join(x.split()[2],
+                             os.path.join(x.split()[3], x.split()[4]))
+                for x in ciao]
 
     retval = {}
-    for idx in idxfiles:        
+    for idx in idxfiles:
         # Quality of 5 is bad, not retrieved
         tab = read_file(idx+"[cal_qual=:4.9]")
         # get list of unique code-names
-        _prods = list(set(tab.get_column("cal_cnam").values)) 
+        _prods = list(set(tab.get_column("cal_cnam").values))
         try:
-            prods = [x.decode("ascii") for x in _prods ]
-        except:
+            prods = [x.decode("ascii") for x in _prods]
+        except Exception:
             prods = _prods
- 
+
         for p in prods:
             retval[p] = None
-        
+
     return [retval]
-        
+
 
 def get_tools(infile):
     """
     Identify the CALDB data product codes by tool.
-    
+
     This list is not complete.  Duplicates are not included or they
     would be retrieve twice.
-    
+
     So while OSIP is needed by mkgarf and tg_resolve_events, it
     only should up in tg_resolve_events.  Same thing with badpixel
     and gain files.
 
     TODO:  HRC RMF, others?
-    
+
     """
 
     acis_process_events = { 'grade' : None,        # 'gradefile'
                             'grdimg' : None,       # 'grade_image_file'
                             'det_gain' : None,     # 'gainfile'
                             'evtsplt' : None,      # 'threshfile'
-                            'cti' : None,          # 'ctifile' 
+                            'cti' : None,          # 'ctifile'
                             't_gain' : None,      # 'tgainfile'
                             'subpix' :None         # 'subpixfile'
                             }
@@ -543,7 +541,7 @@ def get_tools(infile):
                 "sky" : None,                 # 'sky' : None,
                 "sgeom" : None                # 'shell' : None,
               }
-    #acis_build_badpix = { 'badpix' : None }   # 'infile' 
+    #acis_build_badpix = { 'badpix' : None }   # 'infile'
     ardlib = { 'axeffa' :  None,        # 'effarea_file'
                'vignet' : None,         # 'vignet_file'
                'qe' : None,             # 'qe'
@@ -556,7 +554,7 @@ def get_tools(infile):
                ### 'gain_file' : None # ???
                }
     mkacisrmf = {'sc_matrix' : None, } #infile
-    mkarf = { 'dead_area' :   None  } # 'dafile'  
+    mkarf = { 'dead_area' :   None  } # 'dafile'
     mkwarf = { 'fef_pha' : None } # + dead_area
     mkpsfmap = {'reef' : None }
     tg_create_mask = {'wpsf' : None  }  # input_pos_tab
@@ -573,18 +571,16 @@ def get_tools(infile):
             'TAPRINGTEST' : None,
             'EFTEST' : None,
             'SATTEST' : None,
-            'AMP_SF_COR' : None,        
+            'AMP_SF_COR' : None,
         }
     misc = {
         'GTI_LIM' : None,  # dmgti (mtl_build_gti)
-        'MATRIX' : None,    # HRC RMF files    
+        'MATRIX' : None,    # HRC RMF files
         'lsfparm' : { 'grattype' : 'HEG' },
         'TGPIMASK2' : None
         }
 
-    
     return [ pixlib , ardlib, acis_process_events, mkwarf, mkarf, mkpsfmap, mkacisrmf , tg_create_mask, tg_resolve_events, tgextract, tgextract2, hrc_process_events, misc]
-
 
 
 def create_config_files( ftp, rootdir, outdir  ):
@@ -592,7 +588,7 @@ def create_config_files( ftp, rootdir, outdir  ):
     Setup the config and index files for the partial CALDB directory.
     """
     init_output_dir( outdir )
-    
+
     newver = get_version_file(ftp, rootdir, outdir)
     retrieve_config_files(ftp, newver, rootdir, outdir)
     newconfig = filter_config(newver, outdir)
@@ -610,9 +606,9 @@ def setup_caldb_environment( outdir, newconfig ):
         oldcaldb = os.environ["CALDB"]
     else:
         oldcaldb = None
-        
+
     os.environ["CALDB"]=outdir
-    os.environ["CALDBCONFIG"] = "{}/software/tools/caldb.config".format(outdir) #newconfig    
+    os.environ["CALDBCONFIG"] = "{}/software/tools/caldb.config".format(outdir) #newconfig
 
     return oldcaldb
 
@@ -620,7 +616,7 @@ def setup_caldb_environment( outdir, newconfig ):
 def get_background_files( ftp, rootdir, infile, outdir, clobber, background_files, missing):
     """
     """
-    
+
     import stk as stk
     from pycrates import read_file
     tab = read_file(infile)
@@ -643,27 +639,26 @@ def get_background_files( ftp, rootdir, infile, outdir, clobber, background_file
         try:
             hrc_bkgrnd_lookup(infile, "event")
             bkgfiles = stk.build( hrc_bkgrnd_lookup.outfile)
-            retrieve_caldb_file( ftp, rootdir, bkgfiles, outdir, clobber, missing )                
-        except:
+            retrieve_caldb_file( ftp, rootdir, bkgfiles, outdir, clobber, missing )
+        except Exception:
             pass
-        
+
         try:
             hrc_bkgrnd_lookup(infile, "spectrum")
             bkgfiles = stk.build( hrc_bkgrnd_lookup.outfile)
-            retrieve_caldb_file( ftp, rootdir, bkgfiles, outdir, clobber, missing )                
+            retrieve_caldb_file( ftp, rootdir, bkgfiles, outdir, clobber, missing )
         except Exception as e:
             # print e
-            pass            
+            pass
     else:
         # Should have failed much sooner than now!
         raise RuntimeError("Unknown instrument")
 
 
-
 def get_caldb_files( ftp, rootdir, infile, outdir, clobber, background_files, missing):
     """
     Get all possible CALDB files needed for this observation.
-    
+
     """
 
     verb1( "Retrieving CALDB data files")
@@ -709,12 +704,12 @@ def locate_infile(infile):
 
     if os.path.isfile(infile):
         return infile
-    
+
     if os.path.isfile(infile+".gz"):
         return infile+".gz"
-    
+
     if os.path.isdir(infile):
-        
+
         for dd in [ infile, infile+"/repro", infile+"/primary", infile+"/secondary" ]:
             gg = glob.glob( dd+"/*evt*" )
             if len(gg) == 0:
@@ -724,20 +719,20 @@ def locate_infile(infile):
                 return gg[0]
             verb2("Using event file {}".format(gg[0]))
             return gg[0]
-    
+
     raise IOError("Cannot locate event file in '{}'".format(infile))
 
-    
+
 def setup_check_missing( outdir ):
     """
     setup CALDB environment variable for new output dir
     """
     if not os.path.exists( outdir ):
         raise ValueError("ERROR: The output directory must already exist in missing mode.")
-    
+
     if not os.path.exists( outdir+"/software/tools/caldb.config"):
         raise ValueError("ERROR: The CALDB configuration file must already exist in missing mode.")
-        
+
     os.environ["CALDB"] = os.path.abspath(outdir)
     os.environ["CALDBCONFIG"] = os.environ["CALDB"]+"/software/tools/caldb.config"
     return os.environ["CALDB"]
@@ -752,40 +747,37 @@ def main():
     from ciao_contrib.param_soaker import get_params
 
     # Load parameters
-    pars = get_params(toolname, "rw", sys.argv, 
-        verbose={"set":lw.set_verbosity, "cmd":verb1} )
+    pars = get_params(toolname, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": verb1})
 
-    infiles= pars["infile"]   
-    outdir = pars["outdir"]   
-    missing = ( "yes" == pars["missing"] )
-    background_files = ("yes" == pars["background"] ) 
-    clobber = ("yes" == pars["clobber"]) 
-        
+    infiles= pars["infile"]
+    outdir = pars["outdir"]
+    missing = "yes" == pars["missing"]
+    background_files = "yes" == pars["background"]
+    clobber = "yes" == pars["clobber"]
 
     if missing:
         ftp = None
         rootdir = None
-        oldcaldb = setup_check_missing( outdir )    
+        oldcaldb = setup_check_missing( outdir )
         get_version_file( ftp, rootdir, outdir )
     else:
         ftp, rootdir = init_ftp()
         oldcaldb = create_config_files( ftp, rootdir, outdir )
 
-
-    import stk as stk    
+    import stk as stk
     for infile in stk.build( infiles ):
         try:
             infile = locate_infile( infile )
             verb1("Processing infile={}".format(infile))
-        except:
+        except Exception:
             verb0("WARNING: Unable to locate evt2 file in '{}'.  Skipping it.".format(infile))
             continue
-            
+
         get_caldb_files(ftp, rootdir, infile, outdir, clobber, background_files, missing)
 
     close_ftp(ftp)
     print_new_setup( oldcaldb )
-
 
 
 if __name__ == "__main__":
@@ -795,4 +787,3 @@ if __name__ == "__main__":
         print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
-  
