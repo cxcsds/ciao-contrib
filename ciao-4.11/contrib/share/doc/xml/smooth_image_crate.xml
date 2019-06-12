@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
-  <!ENTITY pr  'chips>'>
+  <!ENTITY pr  '>>>'>
 ]>
 <cxchelptopics>
   <ENTRY key="smooth_image_crate" context="contrib"
@@ -8,7 +8,7 @@
          seealsogroups="cr.io ">
 
     <SYNOPSIS>
-      Smooth the pixel values in an IMAGE crate (useful for add_image)
+      Smooth the pixel values in an IMAGE crate.
     </SYNOPSIS>
 
     <SYNTAX>
@@ -18,8 +18,7 @@
     <DESC>
       <PARA>
 	This routines smoothes the pixel values stored in 
-	an image crate. It is useful if you want to display the Crate using
-	add_crate or make_figure, so that the WCS information is retained.
+	an image crate.
 	If you want to smooth an image and save it to disk it is suggested
 	that the aconvolve tool be used rather than this one.
       </PARA>
@@ -86,7 +85,7 @@
       </PARA>
 
       <PARA title="Loading the routine">
-	The routine can be loaded into a ChIPS, Sherpa or a Python script by saying:
+	The routine can be loaded into Python by saying:
       </PARA>
 <VERBATIM>
 from crates_contrib.utils import *
@@ -105,13 +104,10 @@ from crates_contrib.utils import *
 	  <LINE>&pr; from crates_contrib.utils import *</LINE>
 	  <LINE>&pr; cr = read_file("img.fits")</LINE>
 	  <LINE>&pr; smooth_image_crate(cr, "gauss", 5)</LINE>
-	  <LINE>&pr; add_image(cr)</LINE>
-	  <LINE>&pr; set_plot_title(r"gaussian smoothing (\sigma=5)")</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
-	    The gaussian-smoothed version of the data in img.fits is
-	    displayed using the ChIPS add_image() command.
+	    The data in img.fits is smoothed with a gaussian.
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
@@ -120,11 +116,12 @@ from crates_contrib.utils import *
 	<SYNTAX>
 	  <LINE>&pr; cr = read_file("img.fits")</LINE>
 	  <LINE>&pr; smooth_image_crate(cr, "tophat", 3)</LINE>
-	  <LINE>&pr; add_image(cr)</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
 	    Here the image is smoothed with a 3-pixel radius top-hat kernel.
+	    Note that the data is re-loaded from the file (otherwise
+	    the previously-smoothed image would have been used).
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
@@ -166,12 +163,11 @@ from crates_contrib.utils import *
 	  <LINE>&pr; cr = read_file("img.fits")</LINE>
 	  <LINE>&pr; smooth_image_crate(cr, "gauss", 3)</LINE>
 	  <LINE>&pr; scale_image_crate(cr, "arcsinh")</LINE>
-	  <LINE>&pr; make_figure(cr, "image")</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
 	    Here we smooth an image and then apply an arcsinh transform
-	    before displaying it in ChIPS.
+	    to the smoothed data.
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
@@ -192,18 +188,6 @@ from crates_contrib.utils import *
            return cr
 
 </VERBATIM>
-	  <PARA>
-	    This routine can then be used to create a three-color
-	    image using the following set of commands:
-	  </PARA>
-	  <PARA>
-	    <SYNTAX>
-	      <LINE>&pr; r = getfile("evt2.fits[energy=500:1500][bin sky=::4]")</LINE>
-	      <LINE>&pr; g = getfile("evt2.fits[energy=1500:3500][bin sky=::4]")</LINE>
-	      <LINE>&pr; b = getfile("evt2.fits[energy=3500:700][bin sky=::4]")</LINE>
-	      <LINE>&pr; add_image(r, g, b)</LINE>
-	    </SYNTAX>
-	  </PARA>
 	</DESC>
       </QEXAMPLE>
 
@@ -218,7 +202,7 @@ from crates_contrib.utils import *
       </PARA>
     </BUGS>
  
-    <LASTMODIFIED>September 2011</LASTMODIFIED>
+    <LASTMODIFIED>June 2019</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
-  <!ENTITY pr  'chips>'>
+  <!ENTITY pr  '>>>'>
 ]>
 <cxchelptopics>
   <ENTRY key="imextent" context="contrib"
@@ -20,45 +20,27 @@
     <SYNTAX>
       <LINE>tr = imextent(img, xlo, xhi, ylo, yhi, limits='center')</LINE>
       <LINE/>
-      <LINE>The limits argument canbe either 'center' or 'edge'.</LINE>
-      <LINE>
-	The image is available from both the crates_contrib.images and chips_contrib.images modules, so
-	either of the following will load in the routine:
-      </LINE>
+      <LINE>The limits argument can be either 'center' or 'edge'.</LINE>
       <LINE/>
       <LINE>from crates_contrib.images import imextent</LINE>
-      <LINE>from chips_contrib.images import imextent</LINE>
     </SYNTAX>
 
     <DESC>
       <PARA>
 	The imextent routine creates a 2D linear transform object
-	- offset and scale changes only - that can be used to:
+	- offset and scale changes only - that can be used to
+	convert between logical and physical coordinate systems
+	(the SimpleCoordTransform class in the crates_contrib.utils
+	module may also be of use for this).
       </PARA>
 
-      <LIST>
-	<ITEM>
-	  label an image axes with the physical rather than
-	  pixel coordinates (analagous to the extent argument of matplotlib's
-	  imshow command).
-	</ITEM>
-	<ITEM>
-	  convert between logical and physical coordinate systems
-	  (the SimpleCoordTransform class in the crates_contrib.utils
-	  module may also be of use for this).
-	</ITEM>
-      </LIST>
-
-      <PARA title="Loading the routine">
-	Since the routine is useful to both Crates and ChIPS users it
-	is exported by both the crates_contrib and chips_contrib modules;
-	so either of the following commands will load the routine:
+      <PARA>
+	It is similar to the extent argument of Matplotlib's
+	<HREF link="https://matplotlib.org/2.2.3/api/_as_gen/matplotlib.pyplot.imshow.html">imshow</HREF>
+	function, in that it defines the physical extent of an
+	image, but returns a transform object that can be used
+	to calculate coordinates.
       </PARA>
-
-<VERBATIM>
-from crates_contrib.images import imextent
-from chips_contrib.images import imextent
-</VERBATIM>
 
       <PARA title="Arguments">
 	The imextent routine has 5 required arguments - img, xlo,
@@ -111,10 +93,7 @@ from chips_contrib.images import imextent
 	<SYNTAX>
 	  <LINE>&pr; yi, xi = np.mgrid[10:20:20j, 40:60:40j]</LINE>
 	  <LINE>&pr; zi = 100.0 / np.sqrt((xi-45.62)**2 + (yi- 14.7)**2)</LINE>
-	  <LINE>&pr; add_image(np.log10(zi), imextent(zi, 40, 60, 10, 20))</LINE>
-	  <LINE>&pr; set_image(['depth', 50])</LINE>
-	  <LINE>&pr; set_plot_aspect_ratio('fit')</LINE>
-	  <LINE>&pr; add_point(45.62, 14.7, ['color', 'red'])</LINE>
+	  <LINE>&pr; tr = imextent(zi, 40, 60, 10, 20)</LINE>
 	</SYNTAX>
 
 	<DESC>
@@ -125,41 +104,8 @@ from chips_contrib.images import imextent
 	    along y=10 to 20 (see
 	    <HREF link="http://docs.scipy.org/doc/numpy-1.7.0/reference/generated/numpy.mgrid.html">the NumPy documentation
 	    for mgrid</HREF> for more information).
-	    We use imextent in the add_image call to
-	    ensure that the axes are displayed using the
-	    physical scale of the data (i.e. x=40 to 60)
-	    rather than the pixel scale (i.e. x=1 to 40).
-	    The set_plot_aspect_ratio() call ensures that the
-	    plot just covers the image data and no more.
-	    We decorate the image with a point located at the
-	    peak coordinate of the image.
 	  </PARA>
-	  <PARA>
-	    The output can be compared to the version without the
-	    imextent call, namely:
-	  </PARA>
-	  <PARA>
-	    <SYNTAX>
-	      <LINE>&pr; add_window()</LINE>
-	      <LINE>&pr; add_image(np.log10(zi))</LINE>
-	      <LINE>&pr; set_image(['depth', 50])</LINE>
-	      <LINE>&pr; set_plot_aspect_ratio('fit')</LINE>
-	    </SYNTAX>
-	  </PARA>
-	</DESC>
-      </QEXAMPLE>
 
-      <QEXAMPLE>
-	<SYNTAX>
-	  <LINE>&pr; tr = imextent(zi, 40, 60, 10, 20)</LINE>
-	  <LINE>&pr; print(tr.apply([[1,1], [40,20]]))</LINE>
-	  <LINE>[[40 10]</LINE>
-	  <LINE>[60 20]]</LINE>
-	  <LINE>&pr; pix = tr.invert([[45.62, 14.7]])</LINE>
-	  <LINE>&pr; print(pix[0])</LINE>
-	  <LINE>[ 11.959   9.93 ]</LINE>
-	</SYNTAX>
-	<DESC>
 	  <PARA>
 	    Here we use the transform object returned by imextent to
 	    convert between physical and logical (i.e. pixel) coordinates.
@@ -172,87 +118,37 @@ from chips_contrib.images import imextent
 	    coordinate system: (1,1) refers to the center of the
 	    bottom-left pixel.
 	  </PARA>
+<VERBATIM>
+&pr; print(tr.apply([[1,1], [40,20]]))
+[[40 10]
+ [60 20]]
+</VERBATIM>
+
 	  <PARA>
 	    We can also use the transform object to convert from
 	    physical to pixel coortinates by using the invert() method;
 	    here we use it to find the pixel location of the
 	    peak of the image, which has physical coordinates of
 	    (45.62,14.7).
-	    Given these limits we can mark the peak position on the
-	    image when using logical coordinates:
 	  </PARA>
+	  
 	  <PARA>
 	    <SYNTAX>
-	      <LINE>&pr; add_window()</LINE>
-	      <LINE>&pr; add_image(np.log10(zi), ['depth', 50])</LINE>
-	      <LINE>&pr; set_plot_aspect_ratio('fit')</LINE>
-	      <LINE>&pr; add_point(pix[0][0], pix[0][1], ['color', 'red'])</LINE>
+	      <LINE>&pr; pix = tr.invert([[45.62, 14.7]])</LINE>
+	      <LINE>&pr; print(pix[0])</LINE>
+	      <LINE>[ 11.959   9.93 ]</LINE>
 	    </SYNTAX>
 	  </PARA>
-	  <PARA>
+
+	  <PARA title="Lists of lists">
 	    Note that the transform object expects a list of lists as input,
 	    and returns the same, hence the use of "[[45.62, 14.7]]" and
 	    pix[0][0]/pix[0][1] above.
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
-
-      <QEXAMPLE>
-	<SYNTAX>
-	  <LINE>&pr; img = np.arange(0, 12).reshape(3, 4)</LINE>
-	  <LINE>&pr; print(img)</LINE>
-	  <LINE>[[ 0  1  2  3]</LINE>
-	  <LINE> [ 4  5  6  7]</LINE>
-	  <LINE> [ 8  9 10 11]]</LINE>
-	  <LINE>&pr; add_window()</LINE>
-	  <LINE>&pr; add_image(img, imextent(img, 10, 13, -10, -6))</LINE>
-	  <LINE>&pr; set_image(['depth', 50])</LINE>
-	  <LINE>&pr; set_plot_aspect_ratio('fit')</LINE>
-	  <LINE>&pr; print(get_plot_xrange())</LINE>
-	  <LINE>[9.5, 13.5]</LINE>
-	  <LINE>&pr; print(get_plot_yrange())</LINE>
-	  <LINE>[-11.0, -5.0]</LINE>
-	</SYNTAX>
-	<DESC>
-	  <PARA>
-	    Here we create a 4 by 3 pixel image (4 pixels along the
-	    x direction) and display it so that the centers of the
-	    pixels have
-	    <EQUATION>x = 10, 11, 12, 13</EQUATION>
-	    and
-	    <EQUATION>y = -10, -8, -6</EQUATION>
-	    Since the width of each pixel is 1 and it's height is 2
-	    then the axes span from x=10-0.5 to 13+0.5
-	    and y=-10-1 to -6+1.
-	  </PARA>
-	</DESC>
-      </QEXAMPLE>
-
-      <QEXAMPLE>
-	<SYNTAX>
-	  <LINE>&pr; add_window()</LINE>
-	  <LINE>&pr; add_image(img, imextent(img, 10, 13, -10, -6, limits='edge'))</LINE>
-	  <LINE>&pr; set_image(['depth', 50])</LINE>
-	  <LINE>&pr; set_plot_aspect_ratio('fit')</LINE>
-	  <LINE>&pr; print(get_plot_xrange())</LINE>
-	  <LINE>[10.0, 13.0]</LINE>
-	  <LINE>&pr; print(get_plot_yrange())</LINE>
-	  <LINE>[-10.0, -6.0]</LINE>
-	</SYNTAX>
-	<DESC>
-	  <PARA>
-	    Here we repeat the previous example but this time set the limits
-	    option of imextent to 'edge', which means that this time the
-	    axes span from x=10 to 13 and x=-10 to -6, so that 
-	    the pixel width is 3/4 and height is 4/3.
-	    The pixel centers are therefore located at
-	    <EQUATION>x = 10 + 3.0/8, 10 + 9.0/8, 10 + 15.0/8, 10 + 21.0/8</EQUATION>
-	    <EQUATION>y = -10 + 2.0/3, -10 + 6.0/3, -10 + 10.0/3</EQUATION>
-	  </PARA>
-	</DESC>
-      </QEXAMPLE>
     </QEXAMPLELIST>
-
+    
     <ADESC title="Changes in the June 2012 Release">
       <PARA>
 	The imextent routine is new in this release.
@@ -267,6 +163,6 @@ from chips_contrib.images import imextent
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>June 2012</LASTMODIFIED>
+    <LASTMODIFIED>June 2019</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
