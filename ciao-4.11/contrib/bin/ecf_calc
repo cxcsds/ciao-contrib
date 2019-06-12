@@ -18,20 +18,17 @@ Usage:
 
 """
 
-__version__ = "CIAO 4.9"
+__version__ = "CIAO 4.11"
 toolname = "ecf_calc"
-__revision__ = "22 May 2017"
+__revision__ = "12 June 2019"
 
-import numpy, tempfile, sys, os, paramio, cxcdm
-
-import six
+import numpy, tempfile, sys, os, paramio
 
 import pycrates as pcr
 
 from ciao_contrib.logger_wrapper import handle_ciao_errors
 from ciao_contrib.param_wrapper import open_param_file
 from ciao_contrib.stacklib import expand_stack
-from chips_contrib.decorators import hide_chips_commands
 from ciao_contrib.cxcdm_wrapper import get_block_info_from_file
 from ciao_contrib.runtool import dmhistory, dmellipse, new_pfiles_environment, add_tool_history
 
@@ -63,67 +60,6 @@ def get_detnam(fname):
 
 ################################################################
 
-class HistoryCrate():
-    def get_history(self, filename ):
-        """
-        Use CXCDM to get history records
-        """
-        self.history = []
-        tab = cxcdm.dmBlockOpen( filename )
-        for ii in range(1, cxcdm.dmBlockGetNoKeys(tab)+1):
-            cxcdm.dmBlockMoveToKey(tab,ii)
-            while True:
-                hist = cxcdm.dmBlockReadComment(tab)
-                if hist is None:
-                    break
-                elif 2 != len(hist):
-                    break
-                elif not any(hist):
-                    break
-                else:
-                    self.history.append(hist)
-        cxcdm.dmBlockClose(tab)
-
-
-    def put_history(self, infile):
-        """
-        """
-        tab = cxcdm.dmBlockOpen(infile, update=True)
-        cxcdm.dmBlockMoveToKey(tab, cxcdm.dmBlockGetNoKeys(tab))
-        for t,v in self.history:
-            cxcdm.dmBlockWriteComment(tab, t, v)
-
-        cxcdm.dmBlockClose(tab)
-
-
-class HistoryIMAGECrate(pcr.IMAGECrate, HistoryCrate):
-    def __init__(self, filename, mode="r"):
-        pcr.IMAGECrate.__init__(self,filename, mode=mode)
-        self.get_history(filename)
-
-    def write(self, outfile, *args, **kwargs):
-        """
-        Overide crates write to include history
-        """
-        pcr.IMAGECrate.write(self, outfile, *args, **kwargs)
-        self.put_history(outfile)
-
-
-class HistoryTABLECrate(pcr.TABLECrate, HistoryCrate):
-    def __init__(self, filename, mode="r"):
-        pcr.TABLECrate.__init__(self,filename, mode=mode)
-        self.get_history( filename)
-
-    def write(self, outfile, *args, **kwargs):
-        """
-        Overide crates write to include history
-        """
-        pcr.TABLECrate.write(self, outfile, *args, **kwargs)
-        self.put_history( outfile )
-
-
-################################################
-
 def radii_set(radius,bin):
     """return an array or radii"""
 
@@ -134,7 +70,7 @@ def radii_set(radius,bin):
 
 
 def pause():
-    six.moves.input("Press ENTER to close the ChIPS window and exit:")
+    input("Press ENTER to close the ChIPS window and exit:")
 
 
 def get_par(argv):
@@ -266,11 +202,6 @@ def get_ecf(infile,reg,outfile,x,y,radius,binsize,fraction,clobber):
 
     file = pcr.read_file(ecf.name)
 
-    if file.__class__.__name__ == "TABLECrate":
-        file = HistoryTABLECrate(ecf.name)
-    else:
-        file = HistoryIMAGECrate(ecf.name)
-
     rad = file.get_column("r").values
 
     colnames = file.get_colnames(vectors=True)
@@ -365,11 +296,15 @@ def get_ecf(infile,reg,outfile,x,y,radius,binsize,fraction,clobber):
     ecf.close()
 
 
-@hide_chips_commands()
 def plot_ecf(rad_file):
 
-    import pychips
+    import matplotlib
+    from matplotlib import pyplot as plt
+    from matplotlib.ticker import ScalarFormatter
 
+    matplotlib.use("TkAgg")
+    matplotlib.interactive(True)
+    
     try:
         detector = get_detnam(rad_file)
     except KeyError:
@@ -379,19 +314,25 @@ def plot_ecf(rad_file):
     r_mid = pcr.get_colvals(file,"r_mid")
     ecf = pcr.get_colvals(file,"fraction")
 
-    pychips.add_window()
-    pychips.add_curve(r_mid,ecf,["line.style","solid","symbol.style","diamond","symbol.fill","false","symbol.size",3.5])
+    ecf[ecf <= 0 ] = numpy.nan # remove vertical dropline from the zero-values that would be plotted by matplotlib
 
-    pychips.log_scale(pychips.ChipsId(),pychips.XY_AXIS)
-
-    pychips.set_plot_ylabel("Encircled Counts Fraction")
-
+    fig,axs = plt.subplots()
+    axs.plot(r_mid,ecf,linestyle="solid",marker="D",
+             markersize=3.5,fillstyle="none")
+    axs.loglog()
+    axs.set_ylabel("Encircled Counts Fraction")
+    
     if "HRC" in detector:
-        pychips.set_plot_xlabel("HRC Pixels")
+        axs.set_xlabel("HRC Pixels")
     elif "ACIS" in detector:
-        pychips.set_plot_xlabel("ACIS Pixels")
+        axs.set_xlabel("ACIS Pixels")
     else:
-        pychips.set_plot_xlabel("Pixels")
+        axs.set_xlabel("Pixels")
+
+    for axis in [axs.xaxis, axs.yaxis]:
+        formatter = ScalarFormatter()
+        formatter.set_scientific(False)
+        axis.set_major_formatter(formatter)
 
 
 ############# Run Script #############
