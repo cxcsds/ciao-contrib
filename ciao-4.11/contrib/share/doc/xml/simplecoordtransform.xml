@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
-  <!ENTITY pr  'chips>'>
+  <!ENTITY pr  '>>>'>
 ]>
 <cxchelptopics>
   <ENTRY key="simplecoordtransform" context="contrib"
@@ -24,7 +24,7 @@
       </PARA>
 
       <PARA title="Loading the routine">
-	The routine can be loaded into a ChIPS or Sherpa session by saying:
+	The routine can be loaded into a Python session by saying:
       </PARA>
 <VERBATIM>
 from crates_contrib.utils import *
@@ -71,21 +71,29 @@ from crates_contrib.utils import *
 
       <QEXAMPLE>
 	<SYNTAX>
-	  <LINE>&pr; tcr = read_file("sources.fits[cols ra,dec]")</LINE>
-	  <LINE>&pr; ra = copy_colvals(tcr, "ra")</LINE>
-	  <LINE>&pr; dec = copy_colvals(tcr, "dec")</LINE>
-	  <LINE>&pr; icr = read_file("img.fits")</LINE>
-	  <LINE>&pr; tr = SimpleCoordTransform("img.fits")</LINE>
-	  <LINE>&pr; (x, y) = tr.convert("world", "image", ra, dec)</LINE>
-	  <LINE>&pr; add_image(icr, ["wcs", "logical"])</LINE>
-	  <LINE>&pr; add_points(x, y, ["symbol", "square", "fill", False])</LINE>
+	  <LINE>&pr; tcr = read_file('sources.fits[cols ra,dec]')</LINE>
+	  <LINE>&pr; ra = tcr.get_column('ra').values</LINE>
+	  <LINE>&pr; dec = tcr.get_column('dec').values</LINE>
+	  <LINE>&pr; icr = read_file('img.fits')</LINE>
+	  <LINE>&pr; tr = SimpleCoordTransform('img.fits')</LINE>
+	  <LINE>&pr; (x, y) = tr.convert('world', 'image', ra, dec)</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
 	    Here Ra and Dec coordiantes from the file "sources.fits" are
 	    converted into image (a.k.a. logical) coordinates of the
-	    image stored in img.fits. They are then drawn, as open squares, on
-	    top of the image using ChIPS.
+	    image stored in img.fits.
+	  </PARA>
+	  <PARA>
+	    The points can then be overlaid on the iage using the following
+	    Matplotlib code:
+	  </PARA>
+	  <PARA>
+	    <SYNTAX>
+	      <LINE>&pr; import matplotlib.pyplot as plt</LINE>
+	      <LINE>&pr; plt.imshow(icr.get_image().values, origin='lower')</LINE>
+	      <LINE>&pr; plt.scatter(x, y, color='orange')</LINE>
+	    </SYNTAX>
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
@@ -118,7 +126,7 @@ from crates_contrib.utils import *
       </PARA>
     </BUGS>
  
-    <LASTMODIFIED>April 2014</LASTMODIFIED>
+    <LASTMODIFIED>June 2019</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>
