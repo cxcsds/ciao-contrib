@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010, 2016  Smithsonian Astrophysical Observatory
+# Copyright (C) 2010, 2016, 2019  Smithsonian Astrophysical Observatory
 #
 #
 #
@@ -24,35 +24,25 @@
 
 """
 
-TOOLNAME = "correct_periscope_drift"
-VERSION = "0.2"
-
-# import standard python modules as required
 import os
 import sys
 import logging
 import numpy as np
 
-
-# Import the CIAO contributed modules.
-# 
-# Here I explicitly name what is imported for documentation
-# purposes. You can use the 'from foo import *' syntax but
-# in general it is better to either be explicit or load
-# into a separate namespace, so that you can find out
-# where a routine or symbol is defined
-#
-
-
-from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
+from ciao_contrib.logger_wrapper import initialize_logger, \
+    make_verbose_level, set_verbosity, handle_ciao_errors
 from ciao_contrib.param_wrapper import open_param_file
 from ciao_contrib.runtool import add_tool_history
 from ciao_contrib._tools.fileio import outfile_clobber_checks
 import pycrates
-from pychips import (add_curve, print_window, set_plot_xlabel, set_plot_ylabel, clear_plot,
-                     add_window, set_plot_title, limits, Y_AXIS)
-from sherpa import ui
 import paramio as pio
+
+from sherpa import ui
+from sherpa import plot
+
+
+TOOLNAME = "correct_periscope_drift"
+VERSION = "0.3"
 
 # Set up the logging/verbose code
 initialize_logger(TOOLNAME)
@@ -332,6 +322,143 @@ def write_key(crate, name, value, comment, units=""):
     crate.add_key(kw)
 
 
+def make_fit_plot(evt_times, fit_data, mp, ax):
+    """Create the plot of the binned data and fit."""
+
+    bin_centers, bin_mean, bin_std = time_bins(evt_times, fit_data)
+    dx = (bin_centers - evt_times[0]) / 1000.
+
+    # set minimum limit on fit plot in arcsecs and set this explicitly
+    # as a symmetric limit
+    fit_ymax = max(0.3,
+                   np.max(np.abs(bin_mean - bin_std)),
+                   np.max(np.abs(bin_mean + bin_std)))
+
+    # Rather than create a data object to pass to .prepare, set the
+    # attributes manually.
+    #
+    dplot = plot.DataPlot()
+    dplot.x = dx
+    dplot.y = bin_mean
+    dplot.yerr = bin_std
+    dplot.xlabel = 'Observation elapsed/delta time (ks)'
+    dplot.ylabel = 'Position offset from mean, {} (arcsec)'.format(ax)
+    dplot.title = 'Fit of {} data (with time-binned event offsets)'.format(ax)
+
+    # Backend-specific customization
+    #
+    if 'errstyle' in dplot.plot_prefs:
+        dplot.plot_prefs['errstyle'] = 'cap'
+
+    if 'capsize' in dplot.plot_prefs:
+        dplot.plot_prefs['capsize'] = 5
+
+    mplot = plot.ModelPlot()
+    mplot.x = mp.x / 1000
+    mplot.y = mp.y
+
+    try:
+        plot.begin()
+        dplot.plot()
+        mplot.plot(overplot=True)
+        ylimits(-1 * fit_ymax, fit_ymax)
+    except Exception:
+        plot.exceptions()
+        raise
+    else:
+        plot.end()
+
+
+def make_data_plot(data_id, fit_data, ax):
+
+    # set minimum limit on data plot in arcsecs and set this explicitly
+    # as a symmetric limit
+    data_ymax = max(2.0, np.max(np.abs(fit_data)) + .2)
+
+    # Adjust the default look of the plot
+    fplot = ui.get_fit_plot(data_id)
+    dplot = fplot.dataplot
+    dplot.plot_prefs['yerrorbars'] = False
+    dplot.xlabel = 'Observation elapsed/delta time (s)'
+    dplot.ylabel = 'Position offset from mean, {} (arcsec)'.format(ax)
+    dplot.title = 'Raw data and fit in {}'.format(ax)
+
+    try:
+        plot.begin()
+        fplot.plot()
+        ylimits(-1 * data_ymax, data_ymax)
+    except Exception:
+        plot.exceptions()
+        raise
+    else:
+        plot.end()
+
+
+def ylimits(ymin, ymax):
+    """Force the Y axis to cover the given range.
+
+    Parameters
+    ----------
+    ymin, ymax : number
+
+    Notes
+    -----
+    Sherpa doesn't provide a back-end agnostic interface for this
+    functionality.
+    """
+
+    if plot.backend.name == 'pylab':
+        from matplotlib import pyplot as plt
+        plt.ylim(ymin, ymax)
+
+    elif plot.backend.name == 'chips':
+        import pychips
+        pychips.limits(pychips.Y_AXIS, ymin, ymax)
+
+    else:
+        # unlike hardcoopy, we do not tell the user if the backend
+        # is unknown, as this is a cosmetic change.
+        #
+        pass
+
+
+def hardcopy(filename):
+    """Save the current plot to filename.
+
+    The output file is overwritten if it already exists. It is assumed
+    that any "clobber" checks have already been made, which does mean
+    there is a potential for a "race condition" (the file to be created
+    by an external process between teh check and this call), but live
+    with that possibility.
+
+    Parameters
+    ----------
+    filename : str
+        The file to create, including any suffix.
+
+    Notes
+    -----
+    Sherpa doesn't provide a back-end agnostic interface for this
+    functionality.
+    """
+
+    if plot.backend.name == 'pylab':
+        from matplotlib import pyplot as plt
+        plt.savefig(filename)
+
+    elif plot.backend.name == 'chips':
+        import pychips
+        pychips.print_window(filename, ['clobber', True])
+
+    else:
+        # could check if this has already been created, but if this
+        # does happen we want the user to know, so a repeated message
+        # is not a bad thing.
+        #
+        print('WARNING: No hardcopy - unrecognized Sherpa setting: ' +
+              'plot_pkg={}'.format(plot.backend.name))
+
+
 # The '@handle_ciao_errors' decorator will catch any error thrown and
 # display it in a format like that of a CIAO tool, then exit with a
 # non-zero status. So, if at any point in your code you need to exit just
@@ -403,38 +530,17 @@ def main(opt):
         fit_data = ax_data[ax] - np.mean(ax_data[ax])
         mp, model = _fit_poly(fit_data, evt_times, opt['corr_poly_degree'], data_id=data_id)
 
-        bin_centers, bin_mean, bin_std = time_bins(evt_times, fit_data)
+        make_fit_plot(evt_times, fit_data, mp, ax)
 
-        add_window(6, 4, "inches")
-        add_curve((bin_centers - evt_times[0]) / 1000., bin_mean, [bin_std, +bin_std],
-                  ["line.style", "none", "symbol.style", "none", "err.style", "cap"])
-        add_curve(mp.x / 1000., mp.y, ["symbol.style", "none"])
-        # set minimum limit on fit plot in arcsecs and set this explicitly as a symmetric limit
-        fit_ymax = max(0.3, np.max(np.abs(bin_mean - bin_std)), np.max(np.abs(bin_mean + bin_std)))
-        limits(Y_AXIS, -1 * fit_ymax, fit_ymax)
-        set_plot_xlabel("Observation elapsed/delta time (ks)")
-        set_plot_ylabel("Position offset from mean, {} (arcsec)".format(ax))
-        set_plot_title("Fit of {} data (with time-binned event offsets)".format(ax))
         fit_plot = "{}_fit_{}.png".format(opt['corr_plot_root'], ax)
-        if os.path.exists(fit_plot) and opt['clobber'] == 'yes':
-            os.unlink(fit_plot)
+        hardcopy(fit_plot)
         plot_list.append(fit_plot)
-        print_window(fit_plot)
 
-        add_window(6, 4, "inches")
+        make_data_plot(data_id, fit_data, ax)
+
         data_plot = "{}_data_{}.png".format(opt['corr_plot_root'], ax)
-        ui.get_data_plot_prefs()['yerrorbars'] = False
-        ui.plot_fit(data_id)
-        if os.path.exists(data_plot) and opt['clobber'] == 'yes':
-            os.unlink(data_plot)
-        # set minimum limit on data plot in arcsecs and set this explicitly as a symmetric limit
-        data_ymax = max(2.0, np.max(np.abs(fit_data)) + .2)
-        limits(Y_AXIS, -1 * data_ymax, data_ymax)
-        set_plot_xlabel("Observation elapsed/delta time (s)")
-        set_plot_ylabel("Position offset from mean, {} (arcsec)".format(ax))
-        set_plot_title("Raw data and fit in {}".format(ax))
+        hardcopy(data_plot)
         plot_list.append(data_plot)
-        print_window(data_plot)
 
         asol_corr = np.interp(asol_times, mp.x + evt_times[0], mp.y)
         asol_col_to_fix = asol.get_column(ax_map[ax])
@@ -475,15 +581,18 @@ def main(opt):
         v2("\t{}".format(c))
     v2("-" * 60)
     v2("Writing out corrected aspect solution file to {}".format(opt['outfile']))
-    v2("\tTo review fit see correction plots in:")
+    v2("\nYou *must* review the following plots before using this correction:")
     for p in plot_list:
-        v2("\t\t{}".format(p))
+        v2("\t{}".format(p))
+
+    v2("")
 
     # Actually write out the new aspect solution file
     asol.write(opt['outfile'], clobber=opt['clobber'])
 
     # Add history
-    add_tool_history(opt['outfile'], TOOLNAME, params=opt, toolversion=VERSION)
+    add_tool_history(opt['outfile'], TOOLNAME, params=opt,
+                     toolversion=VERSION)
 
 
 if __name__ == "__main__":
