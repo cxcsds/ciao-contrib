@@ -29,7 +29,7 @@ import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "download_obsid_caldb"
-__revision__ = "11 June 2019"
+__revision__ = "18 June 2019"
 
 lw.initialize_logger(toolname)
 
@@ -487,18 +487,23 @@ def get_all_products():
     with open(cidx, "r+") as fp:
         lines = fp.readlines()
 
-    chandra = [x for x in lines if x.startswith("CHANDRA")]
-    ciao = [x for x in chandra if x.split()[1] not in ['EPHIN', 'PCAD', 'SIM']]
-    ciao = [x for x in ciao if 'pimms' not in x.lower()]
-    ciao = [x.replace(" CALDB ", " {} ".format(cdir)) for x in ciao]
-    idxfiles = [os.path.join(x.split()[2],
-                             os.path.join(x.split()[3], x.split()[4]))
-                for x in ciao]
+    idxfiles = []
+    for line in lines:
+        if not line.startswith('CHANDRA'):
+            continue
+        if line.split()[1] in ['EPHIN', 'PCAD', 'SIM']:
+            continue
+        if 'pimms' in line.lower():
+            continue
+
+        paths = line.replace(' CALDB ', ' {} '.format(cdir)).split()
+        path = os.path.join(paths[2], paths[3], paths[4])
+        idxfiles.append(path)
 
     retval = {}
     for idx in idxfiles:
         # Quality of 5 is bad, not retrieved
-        tab = read_file(idx+"[cal_qual=:4.9]")
+        tab = read_file(idx + "[cal_qual=:4.9]")
         # get list of unique code-names
         _prods = list(set(tab.get_column("cal_cnam").values))
         try:
