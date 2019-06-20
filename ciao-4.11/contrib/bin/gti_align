@@ -1,7 +1,8 @@
 #! /usr/bin/env python
 
 #
-# Copyright (C) 2015-2016, 2018 Smithsonian Astrophysical Observatory
+# Copyright (C) 2015-2016, 2018, 2019
+#               Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,9 +21,6 @@
 
 from __future__ import print_function
 
-
-toolname = "gti_align"
-__revision__ = "06 March 2018"
 
 import os
 import sys
@@ -47,6 +45,11 @@ except KeyError:
     raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
 
 import ciao_contrib.logger_wrapper as lw
+
+
+toolname = "gti_align"
+__revision__ = "11 June 2019"
+
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
 verb0 = lgr.verbose0
@@ -58,7 +61,7 @@ verb5 = lgr.verbose5
 
 import numpy as np
 from pycrates import read_file
-from six.moves import zip
+
 
 class ExposureStatsFile():
 
@@ -88,7 +91,6 @@ class ExposureStatsFile():
 
         self.flushtime = tab.get_key_value("flshtime")
 
-
     def get_per_chip_exposure_time_boundaries( self, ccd_id ):
         """
         The stat1 file has the mid-time for each exposure number that is sent.
@@ -111,7 +113,6 @@ class ExposureStatsFile():
         if len(ee) ==  0:
             raise RuntimeError("CCD_ID={} is not in exposure stats file {}".format(ccd_id, infile))
 
-
         # setup output arrays
         self.tlo[ccd_id] = np.zeros_like(tt)
         self.thi[ccd_id] = np.zeros_like(tt)
@@ -132,14 +133,12 @@ class ExposureStatsFile():
         for xx in range(len(tt)):
             verb5( "{}\t{}\t{}\t{}".format(ee[xx], self.tlo[ccd_id][xx], tt[xx], self.thi[ccd_id][xx]))
 
-
     def get_exposure_time_boundaries( self ):
         """
         Wrapper around above for each chip
         """
         for ccd_id in self.ccds:
             self.get_per_chip_exposure_time_boundaries(ccd_id)
-
 
     def _align_boundary( self, ss, tt, ccd_id ):
         """
@@ -169,7 +168,6 @@ class ExposureStatsFile():
         else:
             return None, None
 
-
     def align_boundary( self, gti ):
         """
         Loop over ccd_id's found in the stat1 file and match to
@@ -196,11 +194,9 @@ class ExposureStatsFile():
             nt = np.array([x[1] for x in new_limits if x[1]])
             self.per_chip_output[ccd_id] = ( ns, nt )
 
-
         # Preserve the order of GTIs in infile (if any)
         if gti.ccd_order:
             self.ccds = [ x for x in gti.ccd_order if x in self.ccds ]
-
 
     def write_output( self, outfile ):
         """Write the output file using cxcdm routines"""
@@ -238,7 +234,8 @@ class ExposureStatsFile():
                 dmBlockCreateSubspaceCpt(tab)
                 if verbstr:  verbstr += "||"
 
-        if verbstr:  verb1(verbstr)
+        if verbstr:
+            verb1(verbstr)
         dmTableClose(tab)
 
 
@@ -247,9 +244,9 @@ class GTI():
 
     """
     sentinal = "no_ccd_dss"  # if input gti has no ccd_id subspace
+
     def __init__(self):
         pass
-
 
 
 class GTIString(GTI):
@@ -288,7 +285,6 @@ class GTIString(GTI):
         self.cpts[self.sentinal] = ( lo_vals, hi_vals )
 
 
-
 class GTIFile(GTI):
     """
     Hold multi component gti.  It only keys off the ccd_id being
@@ -321,7 +317,7 @@ class GTIFile(GTI):
                         self.cpts[ccd] = ( start, stop )
                         self.ccd_order.append(ccd)
 
-            except:
+            except Exception:
                 self.cpts[self.sentinal] = ( start, stop )
 
 
@@ -332,11 +328,10 @@ def load_gti( infile ):
 
     try:
         gti = GTIFile( infile )
-    except:
+    except Exception:
         gti = GTIString( infile )
 
     return gti
-
 
 
 #
@@ -362,7 +357,7 @@ def main():
 
     try:
         gti = load_gti( infile )
-    except:
+    except Exception:
         raise ValueError("ERROR: could not open times value as either a file nor parse as a string.")
 
     if evtfile and len(evtfile) and "none" != evtfile.lower():
@@ -378,8 +373,6 @@ def main():
     stats.write_output( outfile )
 
     add_tool_history( outfile, toolname, pars, toolversion=__revision__)
-
-
 
 
 if __name__ == "__main__":

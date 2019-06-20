@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2019
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -21,7 +21,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-"""
+r"""
 Reproject observations to a common tangent point and (optionally)
 merge the event files.
 
@@ -36,16 +36,10 @@ can be broken down into
 
 """
 
-toolname = 'reproject_obs'
-__revision__  = '31 March 2017'
-
 import os
 import sys
 import shutil
 import tempfile
-
-import six
-import six.moves
 
 import paramio
 
@@ -79,6 +73,9 @@ import ciao_contrib._tools.run as run
 import ciao_contrib._tools.utils as utils
 
 from ciao_contrib._tools.taskrunner import TaskRunner
+
+toolname = 'reproject_obs'
+__revision__ = '11 June 2019'
 
 lgr = lw.initialize_logger(toolname)
 v1 = lgr.verbose1
@@ -204,7 +201,7 @@ def _link_or_copy_file(infile, outfile, linkfile=True):
         v3("Soft linking {} to {}".format(outfile, infile))
         try:
             os.symlink(ifile, ofile)
-        except:
+        except Exception:
             v3("Soft link failed; copying file to {}".format(ofile))
             shutil.copyfile(ifile, ofile)
 
@@ -227,7 +224,7 @@ def dmhedit_line(key, value):
         else:
             out += "F"
 
-    elif isinstance(value, six.string_types):
+    elif isinstance(value, str):
         if '/' in value:
             out += "'{}'".format(value)
         else:
@@ -255,7 +252,7 @@ def update_ancillary_header(infile, adict, tmpdir="/tmp/"):
                                         suffix=".dmhedit")
     try:
         tfile.write("#add\n")
-        for (k, v) in six.iteritems(adict):
+        for (k, v) in adict.items():
             tfile.write(dmhedit_line("{}FILE".format(k), v))
 
         tfile.flush()
@@ -369,8 +366,7 @@ def link_ancillary_files(taskrunner,
 
             else:
                 newnames = []
-                zs = zip(six.moves.xrange(0, nfiles), afiles)
-                for (idx, afile) in zs:
+                for (idx, afile) in enumerate(afiles):
                     idval = chr(97 + idx)
                     newname = "{}{}{}.asol".format(outroot, label, idval)
                     newnames.append(os.path.basename(newname))
@@ -469,7 +465,7 @@ def link_ancillary_files(taskrunner,
 
     # Let the user know about missing files
     nmiss = 0
-    for (filetype, mobsids) in six.iteritems(missing):
+    for (filetype, mobsids) in missing.items():
         nmiss += len(mobsids)
         if len(mobsids) == 1:
             v1("Unable to find {} file for ObsId ".format(filetype) +

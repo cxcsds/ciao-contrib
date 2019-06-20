@@ -459,8 +459,6 @@ import shutil
 import glob
 import re
 
-import six
-
 from collections import namedtuple
 from contextlib import contextmanager
 
@@ -478,7 +476,7 @@ from ciao_contrib.logger_wrapper import initialize_module_logger
 # (e.g. since we know the first digit of month must be 0 or 1) but
 # leave that for now.
 #
-dtime = re.compile("_\d{8}\.\d{2}:\d{2}:\d{2}\.par$")
+dtime = re.compile(r"_\d{8}\.\d{2}:\d{2}:\d{2}\.par$")
 
 logger = initialize_module_logger("runtool")
 
@@ -489,8 +487,8 @@ v5 = logger.verbose5
 
 ParValue = namedtuple("ParValue",
                       ["name", "type", "help", "default"])
-ParSet   = namedtuple("ParSet",
-                      ["name", "type", "help", "default", "options"])
+ParSet = namedtuple("ParSet",
+                    ["name", "type", "help", "default", "options"])
 ParRange = namedtuple("ParRange",
                       ["name", "type", "help", "default", "lo", "hi"])
 
@@ -729,10 +727,12 @@ def is_an_iterable(val):
     conversion, since in 2.7 strings did not have an __iter__
     method but they do now. Ideally the code would be rewritten
     to avoid this logic.
+
+    Currently unclear what needs to be changed now we have dropped
+    Python 2.7 support, so leave in.
     """
 
-    return not isinstance(val, six.string_types) \
-        and hasattr(val, "__iter__")
+    return not isinstance(val, str) and hasattr(val, "__iter__")
 
 
 # See
@@ -809,19 +809,19 @@ class CIAOParameter(object):
         self._optional = [p.name.replace('-', '_') for p in opts]
         self._parnames = self._required + self._optional
 
-        z1 = list(six.moves.zip(self._required, reqs))
-        z2 = list(six.moves.zip(self._optional, opts))
+        z1 = list(zip(self._required, reqs))
+        z2 = list(zip(self._optional, opts))
         self._store = dict(z1 + z2)
 
         # we include names that are not mapped just to make it easier
-        z1 = list(six.moves.zip(self._required,
-                                [p.name for p in reqs]))
-        z2 = list(six.moves.zip(self._optional,
-                                [p.name for p in opts]))
+        z1 = list(zip(self._required,
+                      [p.name for p in reqs]))
+        z2 = list(zip(self._optional,
+                      [p.name for p in opts]))
         self._orig_parnames = dict(z1 + z2)
 
-        self._defaults = dict([(pname, self._store[pname].default)
-                               for pname in self._parnames])
+        self._defaults = {pname: self._store[pname].default
+                          for pname in self._parnames}
         # should only be accessed via _set/get_param_value
         self._settings = {}
         self._index = 0
@@ -1149,7 +1149,7 @@ class CIAOParameter(object):
 
             pfh.close()
 
-        except:
+        except Exception:
             v5("Deleting par file due to error: {0}".format(parfile))
             os.unlink(parfile)
             raise
@@ -1364,10 +1364,10 @@ class CIAOParameter(object):
             self._update_parfile_write(parfile, stackfiles)
             self._update_parfile_verify(parfile, stackfiles)
 
-        except:
+        except Exception:
 
             # ensure any temporary stack files are cleaned up
-            for sname in six.itervalues(stackfiles):
+            for sname in stackfiles.values():
                 try:
                     v5("Deleting temporary stack file due to error: {0}".format(sname))
                     os.unlink(sname)
@@ -1504,8 +1504,7 @@ class CIAOParameter(object):
             return None
         else:
             v3("Parameters contain temporary stacks:")
-            for (k, v) in six.iteritems(stackfiles):
-                # v3("   {0}.{1} -> @{2}".format(self._toolname, k, v))
+            for (k, v) in stackfiles.items():
                 v3("   {0}.{1} -> @-{2}".format(self._toolname, k, v))
 
             return stackfiles
@@ -1695,7 +1694,7 @@ class CIAOTool(CIAOParameter):
         store.update(kwargs)
 
         nstore = {}
-        for (pname, pval) in six.iteritems(store):
+        for (pname, pval) in store.items():
             parname = self._expand_parname(pname)
             nstore[parname] = pval
 
@@ -1734,7 +1733,7 @@ class CIAOTool(CIAOParameter):
 
         rval = {}
         if self._runtimes is not None:
-            for (k, v) in six.iteritems(self._runtimes):
+            for (k, v) in self._runtimes.items():
                 rval[k] = v
 
         return rval
@@ -1786,14 +1785,7 @@ class CIAOToolParFile(CIAOTool):
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT)
         out = proc.communicate()
-        sout = out[0]
-
-        # Python 2.7 returns a string for sout, Python 3.5 returns
-        # bytes.
-        #
-        # Question: is this the best approach?
-        if not six.PY2:
-            sout = sout.decode()
+        sout = out[0].decode()
 
         etime = time.localtime()
         rval = proc.returncode
@@ -1827,7 +1819,9 @@ class CIAOToolParFile(CIAOTool):
                     oval = self._get_param_value(pname)
                     v5("Replacing {0}.{1} = {2}".format(self._toolname, pname, oval))
                     nval = stk.build(oval)
-                    if len(nval) == 1: nval = nval[0]
+                    if len(nval) == 1:
+                        nval = nval[0]
+
                     v5("  by {0}".format(nval))
                     self._set_param_value(pname, nval)
 
@@ -1898,14 +1892,7 @@ class CIAOToolDirect(CIAOTool):
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT)
         out = proc.communicate()
-        sout = out[0]
-
-        # Python 2.7 returns a string for sout, Python 3.5 returns
-        # bytes.
-        #
-        # Question: is this the best approach?
-        if not six.PY2:
-            sout = sout.decode()
+        sout = out[0].decode()
 
         etime = time.localtime()
         rval = proc.returncode
@@ -2335,7 +2322,7 @@ def add_comment_lines(infile, comments):
     but comments=[""] will add a blank comment line)
     """
 
-    if isinstance(comments, six.string_types):
+    if isinstance(comments, str):
         cs = [comments]
     else:
         cs = comments
@@ -2381,7 +2368,7 @@ def add_tool_history(infiles, toolname, params,
     v3("Params: {}".format(params))
 
     # special case a single file
-    if isinstance(infiles, six.string_types):
+    if isinstance(infiles, str):
         infiles = [infiles]
 
     tool = make_tool('dmhistory')
@@ -2392,7 +2379,7 @@ def add_tool_history(infiles, toolname, params,
         #
         pio.punlearn(toolname)
         fp = pio.paramopen(toolname, "wL")
-        for (k, v) in six.iteritems(params):
+        for (k, v) in params.items():
             v3("Checking parameter <{}> value <{}> type={}".format(k, v,
                                                                    type(v)))
             if isinstance(v, bool):
@@ -2445,7 +2432,7 @@ def list_tools(tools=True, params=True):
     if params:
         allowed.append(False)
 
-    out = [pname for (pname, pi) in six.iteritems(parinfo)
+    out = [pname for (pname, pi) in parinfo.items()
            if pi["istool"] in allowed]
     out.sort()
     return out
