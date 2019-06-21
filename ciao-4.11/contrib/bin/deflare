@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 #
-#  Copyright (C) 2014, 2015, 2016, 2017, 2018, 2019  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2014, 2015, 2016, 2017, 2018, 2019
+#                Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -35,9 +36,6 @@ ciao% deflare method=clean infile=lc.fits outfile=gti.fits
 
 """
 
-toolname = "deflare"
-__revision__ = "31 January 2019"
-
 import os
 import sys
 
@@ -45,8 +43,6 @@ import paramio
 
 import matplotlib
 matplotlib.interactive(True)
-
-import six
 
 # This is only needed for development.
 try:
@@ -69,8 +65,13 @@ except KeyError:
 
 from lightcurves import lc_clean, lc_sigma_clip, lc_sigma_uclip
 
-from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
+from ciao_contrib.logger_wrapper import initialize_logger, \
+    make_verbose_level, set_verbosity, handle_ciao_errors
 from ciao_contrib.param_wrapper import open_param_file
+
+
+toolname = "deflare"
+__revision__ = "11 June 2019"
 
 initialize_logger(toolname)
 
@@ -86,17 +87,17 @@ def get_par(args):
     # Common parameters:
     params = {}
 
-    params["infile"]   = paramio.pgetstr(pfile, "infile")
-    params["outfile"]  = paramio.pgetstr(pfile, "outfile")
-    params["method"]   = paramio.pgetstr(pfile, "method")
-    params["nsigma"]   = paramio.pgetd(pfile, "nsigma")
-    plot_stat = params["plot"]     = paramio.pgetb(pfile, "plot") == 1
-    params["save"]     = paramio.pgetstr(pfile, "save")
+    params["infile"] = paramio.pgetstr(pfile, "infile")
+    params["outfile"] = paramio.pgetstr(pfile, "outfile")
+    params["method"] = paramio.pgetstr(pfile, "method")
+    params["nsigma"] = paramio.pgetd(pfile, "nsigma")
+    plot_stat = params["plot"] = paramio.pgetb(pfile, "plot") == 1
+    params["save"] = paramio.pgetstr(pfile, "save")
     params["rateaxis"] = paramio.pgetstr(pfile, "rateaxis")
-    params["pattern"]       = paramio.pgetstr(pfile, "pattern")
-    params["good_color"]    = paramio.pgetstr(pfile, "good_color")
+    params["pattern"] = paramio.pgetstr(pfile, "pattern")
+    params["good_color"] = paramio.pgetstr(pfile, "good_color")
     params["exclude_color"] = paramio.pgetstr(pfile, "exclude_color")
-    params["verbose"]       = paramio.pgeti(pfile, "verbose")
+    params["verbose"] = paramio.pgeti(pfile, "verbose")
 
     if params["save"].strip() == "":
         params["save"] = None
@@ -121,9 +122,9 @@ def get_par(args):
 
     elif params["method"] == 'clean':
         # lc_clean parameters:
-        params["mean"]    = paramio.pgetd(pfile, "mean")
-        params["stddev"]  = paramio.pgetd(pfile, "stddev")
-        params["scale"]   = paramio.pgetd(pfile, "scale")
+        params["mean"] = paramio.pgetd(pfile, "mean")
+        params["stddev"] = paramio.pgetd(pfile, "stddev")
+        params["scale"] = paramio.pgetd(pfile, "scale")
         params["minfrac"] = paramio.pgetd(pfile, "minfrac")
 
     else:
@@ -132,14 +133,14 @@ def get_par(args):
         raise ValueError("Invalid method parameter: expected clean,sigma,usigma sent '{0}'".format(params["method"]))
 
     paramio.paramclose(pfile)
-    return params,plot_stat
+    return params, plot_stat
 
 
 def pause():
-    six.moves.input("Press ENTER to close the plot window and exit:")
+    input("Press ENTER to close the plot window and exit:")
 
 
-def wrapup(params,plot_stat):
+def wrapup(params, plot_stat):
     "Let the user know what has happened."
 
     labels = {"clean": "lc_clean", "sigma": "lc_sigma_clip",
@@ -168,7 +169,7 @@ def wrapup(params,plot_stat):
 #        if not oplot.endswith(".pdf"):
 #            oplot += ".pdf"
 
-        plt.savefig(oplot,format=format,frameon=True)
+        plt.savefig(oplot, format=format, frameon=True)
 
         v1("Created: {0}".format(oplot))
 
@@ -183,7 +184,7 @@ def wrapup(params,plot_stat):
 def deflare(arglist):
     "Do the work"
 
-    params,plot_stat = get_par(arglist)
+    params, plot_stat = get_par(arglist)
     set_verbosity(params["verbose"])
 
     # Set up the common arguments
@@ -210,9 +211,9 @@ def deflare(arglist):
         else:
             meanc = None
 
-        kwargs["mean"]  = meanc
+        kwargs["mean"] = meanc
         kwargs["sigma"] = sigmac
-        kwargs["clip"]  = params["nsigma"]
+        kwargs["clip"] = params["nsigma"]
         kwargs["scale"] = params["scale"]
         kwargs["minfrac"] = params["minfrac"]
         func = lc_clean
@@ -228,13 +229,13 @@ def deflare(arglist):
     # if plot_stat:
     #     matplotlib.use("TkAgg")
     #     matplotlib.interactive(True)
-        
+
     # else:
     #     matplotlib.use("PS")
     #     matplotlib.interactive(True)
 
     func(*args, **kwargs)
-    wrapup(params,plot_stat)
+    wrapup(params, plot_stat)
 
 
 if __name__ == "__main__":
