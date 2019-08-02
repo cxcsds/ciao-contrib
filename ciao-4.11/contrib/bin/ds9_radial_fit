@@ -57,8 +57,30 @@ def blt_plot_fit(sherpa_plot_fit_obj, xpa="ds9",
             pb = pair.encode()
             xpa.stdin.write(pb)        
         xpa.communicate()
+        make_pretty(access_point)
 
 
+    def blt_plot_delchisqr(access_point,xx, ex, yy, ey, y_label):
+        """Plot the residuals""" 
+
+        # This requires ds9 v8.1    
+        xpa_plot_cmd( "ds9", "add graph line")
+        xpa_plot_cmd( "ds9", "layout strip")
+        
+        cmd = ["xpaset", access_point, "plot", "data", "xyey"]    
+
+        # Plot the data
+        xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
+        for vv in zip(xx, yy, ey):
+            pair = " ".join( [str(x) for x in vv])+"\n"        
+            pb = pair.encode()
+            xpa.stdin.write(pb)        
+        xpa.communicate()
+
+        make_pretty(access_point)
+        xpa_plot_cmd( access_point, "title y {delta chisqr}")
+
+    def make_pretty(access_point):
         # Make pretty
         xpa_plot_cmd(access_point, "shape circle")
         xpa_plot_cmd(access_point, "shape fill yes")
@@ -95,9 +117,13 @@ def blt_plot_fit(sherpa_plot_fit_obj, xpa="ds9",
     _d = sherpa_plot_fit_obj.dataplot
     _m = sherpa_plot_fit_obj.modelplot
 
+    _dchi = (_d.y-_m.y)/_d.yerr
+    _ones = _dchi*0+1.0
+
     blt_plot_data( xpa, _d.x, None, _d.y, _d.yerr, 
         tle, xlb, ylb)
     blt_plot_model( xpa, _m.x, _m.y)
+    blt_plot_delchisqr(xpa, _d.x, _d.x, _dchi, _ones, "")
 
 
 # -----------------------------------------
