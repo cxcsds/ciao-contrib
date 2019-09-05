@@ -104,6 +104,7 @@ echo `date`
 echo ""
 echo "infile: ${file}"
 echo "srcreg: ${srcreg}"
+echo "bkgreg: ${bkgreg}"
 echo "outfile: $DAX_OUTDIR/$$_${hist}.fits"
 echo ""
 
