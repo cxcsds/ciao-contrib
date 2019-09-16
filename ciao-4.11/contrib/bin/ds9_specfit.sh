@@ -189,14 +189,27 @@ nH=`prop_colden d nrao eval $ra $dec 2>&1 | grep "Hydrogen" | awk '{x=$NF*1.0; p
 # 
 echo " (3/4) Extracting spectrum and making responses"
 
+subtract=""
 if test "x$bkg" = x
 then
   bg=""
-  subtract=""
 else
   bg="${file}[sky=${bkg}]"
-  subtract="sherpa.subtract()"
+
+  if test ${stat} = "cash" || test ${stat} = "cstat" || test ${stat} = "wstat"
+  then
+    echo ""
+    echo "*****"
+    echo "WARNING: Background will not be subtracted when using ${stat} statistic."
+    echo ""
+  else
+    subtract="sherpa.subtract()"
+  fi
+  
 fi
+
+
+
 
 if test $redo -eq 1
 then
