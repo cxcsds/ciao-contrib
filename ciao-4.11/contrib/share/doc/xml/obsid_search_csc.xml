@@ -47,7 +47,7 @@
     <QEXAMPLELIST>
         <QEXAMPLE>
             <SYNTAX>
-<LINE> unix% obsid_search_csc obsid=635 outfile=635.tsv download=none mode=h</LINE>
+<LINE> unix% obsid_search_csc obsid=635 outfile=635.tsv download=none mode=h catalog=csc1</LINE>
             </SYNTAX>
 <DESC>
 <PARA>
@@ -106,7 +106,7 @@ ColNo  Name                 Unit        Type             Range
 <QEXAMPLE>
   <SYNTAX>
      <LINE>
-     unix% obsid_search_csc 635,637 outfile=none download=ask filetype=evt columns=o.cnts_aper_b
+     unix% obsid_search_csc 635,637 outfile=none download=ask filetype=evt columns=o.cnts_aper_b catalog=csc1
      </LINE>
   </SYNTAX>
   <DESC>
@@ -169,7 +169,7 @@ Download data for CXO J162541.3-242138 in 00637_001 [y,n,a,q]: a
 
 <QEXAMPLE>
   <SYNTAX>
-    <LINE>unix% obsid_search_csc @bootes.lis</LINE>
+    <LINE>unix% obsid_search_csc @bootes.lis catalog=csc1</LINE>
   </SYNTAX>
   <DESC>
     <PARA>
@@ -355,7 +355,7 @@ unix% search_csc ... columns="SOS,a.match_type,o.livetime" ...
         <DESC>
             <PARA>
             List of files to retrieve.  The following list gives the 
-            valid options.
+            valid options for catalog=csc1
             </PARA>
         
           <LIST>
@@ -377,6 +377,61 @@ unix% search_csc ... columns="SOS,a.match_type,o.livetime" ...
             <ITEM>psf - Point Spread Function (per energy band)</ITEM>
             <ITEM>lc - Light curve (per energy band)</ITEM>            
           </LIST>
+
+        <PARA>
+        For catalog=csc2 the list of filetype's is        
+        </PARA>
+
+    <LIST>
+    <ITEM>evt - per observation event file</ITEM>
+    <ITEM>asol - per observation aspect solution with astrometric corrections applied</ITEM>
+    <ITEM>ahst - aspect histograms</ITEM>
+    <ITEM>bpix - bad pixel file</ITEM>
+    <ITEM>fov - field of view file</ITEM>
+    <ITEM>pixmask - pixel mask file</ITEM>
+
+    <ITEM>img - exposure corrected and background subtracted full field image</ITEM>
+    <ITEM>bkgimg - background image</ITEM>
+    <ITEM>exp - exposure maps</ITEM>
+    <ITEM>poly - convex hull polygon regions</ITEM>
+
+    <!--# Per obi, per region,     HRC does not have pha nor rmf files-->
+    <ITEM>regevt - per region, per observation event file</ITEM>
+    <ITEM>pha - spectrum</ITEM>
+    <ITEM>arf - Auxillary response file</ITEM>
+    <ITEM>rmf - Response matrix</ITEM>
+    <ITEM>reg - source region definitions</ITEM>
+
+    <ITEM>regimg - image around source region</ITEM>
+    <ITEM>psf - simulated PSF image</ITEM>
+    <ITEM>regexp - exposure map around source region</ITEM>
+    <ITEM>lc - lightcurve </ITEM>
+    <ITEM>draws - MCMC random sample draws</ITEM>
+    <ITEM>aperphot - aperture photometry results</ITEM>
+
+    <!--# Stack -->
+    <ITEM>stkevt - merged event file for observations in detect stack</ITEM>
+    <ITEM>stkfov - merged FOV file for detect stack</ITEM>
+    <ITEM>stkecorrimg - detect stack exposure corrected image</ITEM>
+    <ITEM>stkbkgimg - detect stack background image</ITEM>
+    <ITEM>stkexpmap - exposure map for detect stack</ITEM>
+    <ITEM>sensity - limiting sensitivity for detect stack</ITEM>
+
+    <!--# These are per region too -->
+    <ITEM>stkregevt - merged detect stack event file around source region</ITEM>
+    <ITEM>stksrcreg - source region for detect stack</ITEM>
+    <ITEM>stkregimg - merged detect stack image around source region</ITEM>
+    <ITEM>stkregexp - combined detect stack exposure map</ITEM>
+    <ITEM>stkdraws - MCMC draws from combined detect stack photometry</ITEM>
+    <ITEM>stkaperphot - photometry results for detect stack</ITEM>
+
+    <!--# master -->
+    <ITEM>mrgsrc - master source properties tables</ITEM>
+    <ITEM>bayesblks - Bayesian blocks definitions</ITEM>
+    <ITEM>srcaperphot - master source aperture photometry</ITEM>
+
+   </LIST>
+
 
             <PARA>
                 It is possible that the same file may be queued for
@@ -404,9 +459,10 @@ unix% search_csc ... columns="SOS,a.match_type,o.livetime" ...
         </DESC>
       
       </PARAM>
-      <PARAM name="catalog" type="string" def="csc1">
-        <SYNOPSIS>Fixed at 'csc1'.  Added for future expansion.</SYNOPSIS>
+      <PARAM name="catalog" type="string" def="csc2">
+        <SYNOPSIS>Select which version of CSC catalog: csc1|csc2</SYNOPSIS>
       </PARAM>
+      
 
       <PARAM name="verbose" type="integer" def="1" min="0" max="5">
         <SYNOPSIS>
@@ -430,6 +486,17 @@ unix% search_csc ... columns="SOS,a.match_type,o.livetime" ...
 
     
     </PARAMLIST>
+
+    <ADESC title="Changes in the script 4.11.5 (October 2019) release">
+      <PARA>
+        Version 2 of the Chandra Source Catalog has been officially 
+        released.  The script has been updated to access 
+        csc2 by default.  Users can access the previous version
+        using catalog=csc1.
+      
+      </PARA>
+    
+    </ADESC>
 
     <ADESC title="Changes in the scripts 4.11.2 (April 2019) release">
       <PARA>
