@@ -247,12 +247,15 @@ class Source():
 
         if bkg and not is_none( bkg.infile ):
             self.background = Spectrum( bkg.infile, bkg.arffile, bkg.rmffile, exppref )
-        elif not is_none( bb ):
+        elif bkg.infile is None and not is_none( bb ):
+            # If bkg_spectra is blank, and BACKFILE exists in src pha
+            # then use it.
             if bkg:
                 self.background = Spectrum( bb, bkg.arffile, bkg.rmffile, exppref )
             else:
                 self.background = Spectrum( bb, None, None, exppref )
         else:
+            # BACKFILE is blank|none or bkg_spectra parameter is "none"
             self.background = None
 
 
