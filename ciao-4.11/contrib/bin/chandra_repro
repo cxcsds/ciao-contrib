@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "11 Jun 2019"
+version = "24 September 2019"
 
 # import standard python modules as required
 #
@@ -54,39 +54,11 @@ import paramio as pio # for standard ciao parameter interface
 import pycrates as pyc          # to access header keyword values
 from collections import namedtuple # used in accessing header keyword values
 
-# This is only needed for development.
-try:
-    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
-        _thisdir = os.path.dirname(__file__)
-        _libname = "python{}.{}".format(sys.version_info.major,
-                                        sys.version_info.minor)
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
-        if os.path.isdir(_pathdir):
-            os.sys.path.insert(1, _pathdir)
-        else:
-            print("*** WARNING: no {}".format(_pathdir))
-
-        del _libname
-        del _pathdir
-        del _thisdir
-
-except KeyError:
-    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
-
-
 
 # Import the CIAO contributed modules.
 #
-import ciao_contrib.logger_wrapper as lw
-import ciao_contrib.cxcdm_wrapper as cdw
 
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
-from ciao_contrib.param_wrapper import open_param_file
-
-from ciao_contrib.runtool import acis_build_badpix, acis_find_afterglow, dmkeypar, dmmakepar, hrc_build_badpix, destreak, acis_process_events, dmhedit, hrc_process_events, hrc_dtfstats, tgdetect, tg_create_mask, celldetect, tgidselectsrc, tgmatchsrc, tg_resolve_events, tgextract, dmcopy, dmappend, set_pfiles, dmhistory, acis_set_ardlib, skyfov
-from ciao_contrib.caldb import get_caldb_dir, get_caldb_installed
-import stk
-
 # Set up the logging/verbose code
 initialize_logger(toolname)
 
@@ -97,6 +69,15 @@ v1 = make_verbose_level(toolname, 1)
 v2 = make_verbose_level(toolname, 2)
 v3 = make_verbose_level(toolname, 3)
 v5 = make_verbose_level(toolname, 5)
+
+import ciao_contrib.cxcdm_wrapper as cdw
+
+from ciao_contrib.param_wrapper import open_param_file
+
+from ciao_contrib.runtool import acis_build_badpix, acis_find_afterglow, dmkeypar, dmmakepar, hrc_build_badpix, destreak, acis_process_events, dmhedit, hrc_process_events, hrc_dtfstats, tgdetect, tg_create_mask, celldetect, tgidselectsrc, tgmatchsrc, tg_resolve_events, tgextract, dmcopy, dmappend, set_pfiles, dmhistory, acis_set_ardlib, skyfov
+from ciao_contrib.caldb import get_caldb_dir, get_caldb_installed
+import stk
+
 
 class InterleaveMode( Exception ):
     def __init__( self, value):
@@ -443,8 +424,9 @@ def process_command_line(argv):
     pio.paramclose(fp)
 
     # Set tool and module verbosity
-    set_verbosity(verbose)
-
+    set_verbosity(verbose)    
+    print_version(None)
+    
     iodirs = match_indir_and_outdir_stacks( indir, outdir )
     if set_ardlib & ( len(iodirs) > 1 ) :
         set_ardlib = False
@@ -2259,7 +2241,6 @@ def main_body( pars):
 def chandra_repro(args):
     'Run the tool'
     #!### Load our parameter file and process command line ###
-    print_version(None)
     all_pars = process_command_line(args)
 
     # Loop over all parameter sets
