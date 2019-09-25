@@ -245,14 +245,15 @@ class Source():
             except:
                 raise IOError("Source and background file names are the same {}".format(src.infile))
 
-        if bkg and not is_none( bkg.infile ):
+        # bkg is a FileSet NamedTuple          
+        if not is_none( bkg.infile ): 
+            # If bkg.infile is set, then use it.
             self.background = Spectrum( bkg.infile, bkg.arffile, bkg.rmffile, exppref )
-        elif not is_none( bb ):
-            if bkg:
-                self.background = Spectrum( bb, bkg.arffile, bkg.rmffile, exppref )
-            else:
-                self.background = Spectrum( bb, None, None, exppref )
+        elif bkg.infile is None and not is_none( bb ):
+            # If bkg.infile is None, then parameter was blank, use BACKFILE keyword
+            self.background = Spectrum( bb, bkg.arffile, bkg.rmffile, exppref )
         else:
+            # BACKFILE is blank|'none' or bkg_spectra parameter is "none"
             self.background = None
 
 
