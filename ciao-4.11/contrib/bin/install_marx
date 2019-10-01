@@ -1,5 +1,5 @@
 #! /bin/bash
-#  Copyright (C) 2014,2017,2018  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2014,2017-2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 
 
 tool="install_marx"
-ver="17 Jan 2018"
+ver="01 Oct 2019"
 
 #
 # Version setup, paths, filenames
@@ -37,6 +37,10 @@ fi
 
 
 # Find the newest marx version on server
+
+# TODO: why not just go ahead and use python to download it instead
+# of playing the wget|curl|lwp-download game?
+
 read -d '' pythonscript << EOF
 from ftplib import FTP
 from distutils.version import LooseVersion
@@ -112,16 +116,16 @@ fi
 #
 
 cd "$top"
-wget http://cxc.harvard.edu/ciao/index.html > /dev/null 2>&1 
+wget -O index.html ftp://space.mit.edu/pub/cxc/marx/ > /dev/null 2>&1 
 if test $? -eq 0
 then
   /bin/rm index.html
   WGET="wget"
 else
-  lwp-download http://cxc.harvard.edu/ciao/index.html > /dev/null 2>&1 
+  lwp-download ftp://space.mit.edu/pub/cxc/marx/ > /dev/null 2>&1 
   if test $? -eq 0
   then
-    /bin/rm index.html
+    /bin/rm index
     WGET="lwp-download"    
   else
     echo "# $tool ($ver): ERROR: Please install wget or lwp-download" 1>&2
@@ -185,7 +189,7 @@ EOM
 cat << EOM
 setenv MARX_ROOT $top/marx-${marx_ver}
 setenv MARX_DATA_DIR \${MARX_ROOT}/share/marx/data
-setenv PATH \${PATH}:\${MARX_ROOT}/bin
+set path = ( \$path \${MARX_ROOT}/bin )
 setenv PFILES \${PFILES}:\$MARX_ROOT/share/marx/pfiles
 EOM
 
