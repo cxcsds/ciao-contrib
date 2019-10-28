@@ -1076,9 +1076,8 @@ def validate_obsinfo(infiles, colcheck=True):
         # Sort primary second, secondary (longer) first, HRC is None.
         sort_order = { 'P' : 2, 'S' : 1, None: 0 } 
 
-        # leading zero pad to preserve numeric sort order.
         sort_tag = sort_order[obs.obsid.cycle]
-        time_tag= "{:020.3f}_{}".format(obs.tstart,sort_tag)
+        time_tag= (obs.tstart,sort_tag) # tuples sort too
         obsinfos.append((time_tag, obs))
 
     ninfiles = len(obsinfos)
