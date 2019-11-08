@@ -189,14 +189,27 @@ nH=`prop_colden d nrao eval $ra $dec 2>&1 | grep "Hydrogen" | awk '{x=$NF*1.0; p
 # 
 echo " (3/4) Extracting spectrum and making responses"
 
+subtract=""
 if test "x$bkg" = x
 then
   bg=""
-  subtract=""
 else
   bg="${file}[sky=${bkg}]"
-  subtract="sherpa.subtract()"
+
+  if test ${stat} = "cash" || test ${stat} = "cstat" || test ${stat} = "wstat"
+  then
+    echo ""
+    echo "*****"
+    echo "WARNING: Background will not be subtracted when using ${stat} statistic."
+    echo ""
+  else
+    subtract="sherpa.subtract()"
+  fi
+  
 fi
+
+
+
 
 if test $redo -eq 1
 then
@@ -299,17 +312,43 @@ def blt_plot_data(access_point,xx, ex, yy, ey, title, x_label, y_label):
         xpa.stdin.write(pb)        
     xpa.communicate()
 
-    # Make pretty
+    make_pretty(access_point)
+    xpa_plot_cmd(access_point, "legend yes")
+    xpa_plot_cmd(access_point, "legend position right")
+
+
+def blt_plot_delchisqr(access_point,xx, ex, yy, ey, y_label):
+    """Plot the residuals""" 
+
+    # This requires ds9 v8.1    
+    xpa_plot_cmd( "ds9", "add graph line")
+    xpa_plot_cmd( "ds9", "layout strip")
+    
+    cmd = ["xpaset", access_point, "plot", "data", "xyey"]    
+
+    # Plot the data
+    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
+    for vv in zip(xx, yy, ey):
+        pair = " ".join( [str(x) for x in vv])+"\n"        
+        pb = pair.encode()
+        xpa.stdin.write(pb)        
+    xpa.communicate()
+
+    make_pretty(access_point)
+    xpa_plot_cmd( access_point, "title y {delta chisqr}")
+
+
+def make_pretty(access_point):
+    """make pretty plots"""
     xpa_plot_cmd(access_point, "shape circle")
     xpa_plot_cmd(access_point, "shape fill yes")
     xpa_plot_cmd(access_point, "shape color cornflowerblue")
     xpa_plot_cmd(access_point, "error color cornflowerblue")
     xpa_plot_cmd(access_point, "width 0")
-    xpa_plot_cmd(access_point, "legend yes")
-    xpa_plot_cmd(access_point, "legend position right")
     xpa_plot_cmd(access_point, "name {Data }")    
     xpa_plot_cmd(access_point, "axis x grid no")
     xpa_plot_cmd(access_point, "axis y grid no")
+
 
 def blt_plot_model(access_point,x_vals, y_vals):
     """Plot the model"""
@@ -323,7 +362,7 @@ def blt_plot_model(access_point,x_vals, y_vals):
         pb = pair.encode()
         xpa.stdin.write(pb)        
     xpa.communicate()
-    ###xpa_plot_cmd(access_point, "shape none")
+    xpa_plot_cmd(access_point, "shape none")
     xpa_plot_cmd(access_point, "shape fill no")
     xpa_plot_cmd(access_point, "color orange")
     xpa_plot_cmd(access_point, "shape color orange")
@@ -338,6 +377,11 @@ blt_plot_data( "${ds9}", _d.x, _d.xerr/2.0, _d.y, _d.yerr,
     "${spi}", "Energy [keV]", "Count Rate [counts/sec/keV]")
 
 blt_plot_model( "${ds9}", _m.x, _m.y)
+
+delta = (_d.y-_m.y)/_d.yerr
+ones = _d.yerr*0.0+1.0
+
+blt_plot_delchisqr( "ds9", _d.x, _d.x, delta, ones, "")
 
 
 EOF
