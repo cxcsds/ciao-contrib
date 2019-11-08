@@ -1,286 +1,40 @@
-## 4.11.5 - October 2019 ##
+## 4.12.1 - December 2019 ##
 
 Updated scripts
-
-  search_csc, obsid_search_csc
-
-    These scripts now default to the Chandra Source Catalog 2.0 release.
-    Use version=csc1 if you need to search version 1.1 of the CSC.  
-
-  deflare
-
-    The script can now be used to create plots for XMM data files
-    again (or any file without some of the keywords that are only
-    used to label the plots).
-
-  flux_obs, merge_obs
-
-    Observations with different ACIS chip arrangements can now be
-    handled when using the exptime and expmap options for the
-    psfmerge parameter.
-
-  combine_spectra
-  
-    When using bkg_spectra=NONE, it should have ignored the BACKFILE 
-    keywords and skipped combining the background spectra. This has 
-    been fixed.
-
-
-Python modules
-
-  ciao_contrib.runtool
-
-    The module has been updated to add the catalog parameter to the
-    search_csc and obsid_search_csc functions. The default is to
-    use version 2.0 of the Chandra Source Catalog.
-
-  lightcurves
-
-    The same fix for the plotting routines as seen with deflare.
-
-
-## 4.11.4 - August 2019 ##
-
-This release updates the Sherpa plotting functionality to use Matplotlib
-rather than ChIPS when the plot_pkg setting is pylab in your ~/.sherpa.rc
-file. The updated routines are
-
-  sherpa_contrib.chart.plot_chart_spectrum
-  sherpa_contrib.marx.plot_marx_spectrum
-  sherpa_contrib.profiles.prof_data
-  sherpa_contrib.profiles.prof_delchi
-  sherpa_contrib.profiles.prof_fit
-  sherpa_contrib.profiles.prof_fit_delchi
-  sherpa_contrib.profiles.prof_fit_resid
-  sherpa_contrib.profiles.prof_model
-  sherpa_contrib.profiles.prof_resid
-  sherpa_contrib.profiles.prof_source
-  sherpa_contrib.utils.plot_instmap_weights
-
-The plots may have changed slightly in this update (for instance, the
-labelling is slightly different in some of the plots), and support for
-the overplot and clearwindow arguments has been added where necessary.
-
-Updated scripts
-
-  correct_periscope_drift
-
-    The script now uses the same plotting backend (ChIPS or Matplotlib)
-    as Sherpa does. Switching to Matplotlib will allow the script to
-    work when there is no X Display, is run over a remote connection, or
-    when run on recent macOS systems.
-
-  chandra_repro
-  
-    Added support for HRC observations with 0 ontime.
-
-  ecf_calc
-
-    replaced ChIPS with matplotlib for plotting and removed
-    specialized history class needed before crates bug fix introduced
-    in CIAO 4.11.
-
-  make_instmap_weights
-
-    explicitly sets solar abundances and photoelectric cross-section
-    table for XSpec models, since the XSpec defaults may change over time.
-
-  check_ciao_version, dax, deflare, download_obsid_caldb, gti_align,
-  monitor_photom, reproject_obs
-
-    internal clean up
-
-Updated python modules
-
-  coords.chandra
-  
-    Improved error checking on input keyword dictionary and
-    improved docstrings.
-
-
-## 4.11.3 - May 2019 ##
-
-This update includes an imporant bugfix to srcflux, which had been
-over-estimating the net_photflux and net_flux values by ~5 to 15%
-for typical cases.
-
-There has also been a major update to the CIAO Data Analysis in DS9
-system (dax), with the following highlights:
-
- - files created by the tools can now be saved to a user-specified
-   directory, so users can access the data products
-
- - plots are now created with DS9 rather than using ChIPS
-
- - a number of new tasks have been added, as well as improvements made
-   to existing tasks, such as: users can now choose which statistic to use
-   in spectral its with Sherpa; there has been improvements to supporting
-   DS9 regions in CIAO tools; and a number of tools will now use the
-   data as shown in DS9 (e.g. smoothing) rather than the input file.
-
-Please see "ahelp dax" for a full list.
-
-Updated scripts
-
-  blanksky
-
-    The aimpoint chip of the observation is now calculated using the
-    RA_PNT and DEC_PNT keywords rather than the RA_NOM and DEC_NOM ones.
-    This is to better support reprojected data sets.
 
   chandra_repro
 
-    When reprocessing a gratings observation, individual (type I ratehr
-    than type II) source and background files are created, with the
-    correct ANCRFILE, RESPFILE, BACKFILE, and BACKSCAL keywords.
-
-    For LETG datasets using HRC-S, grating responses for orders -8 to
-    +8 are now created (previously only -1 and +1 were created).
-
-  convert_ds9_region_to_ciao_stack
-
-    This cunningly-named script is used in dax to convert from DS9
-    regions to CIAO format. This may be useful for other users, but
-    please be aware that interpreting a DS9 region file can be a
-    surprisingly complex task.
+    The script has been updated to include the correction for the
+    frame-store shadow (new to CIAO 4.12), which adds the bottom
+    rows of each ACIS CCD to the bad-pixel maps to account for the
+    "shadow" caused by the frame-store cover.
 
   dax
 
-    The dax suite of tasks have been updated: see "ahelp dax" for more
-    information.
-
-  srcflux
-
-    The net_phoflux and net_flux values have been corrected for an error
-    in calculating the source contribution to the background area via
-    the PSF. If you set the psfmethod parameter to file, marx, or arfcorr,
-    then the fluxes were being over-estimated by ~5 to 15% (typical).
-    The over-estimate was proportional to the ratio of the area of the
-    background to source area and to the background PSF fraction.
-
-Updated python modules
-
-  ciao_contrib.runtool
-
-    Added support for the convert_ds9_region_to_ciao_stack script and
-    the dax, deflare, and ximage_lut parameter files.
-
-Updated parameter files
-
-  The bb.lut parameter file has been renamed ximage_bb.lut to avoid
-  conflicting with the bb.lut file packaged with CIAO.
-
-
-## 4.11.2 - April 2019 ##
-
-Updated scripts
-
-  blanksky
-
-    The script no-longer copies over *_PNT and *_AVG header keywords as
-    this is now handled by reproject_events.
-
-  blanksky_image
-
-    The script now uses the Data Model subspace to recognize any chip
-    filters that have been applied to the input file.
-
-  chandra_repro
-
-    Updates to support level-2 event files with no exposure time: the
-    FOV file will be created using the time ranges from the asol1 file
-    or files.
+    When performing a spectral or radial fit, the resulting visualization
+    now contains both the fit (data and best-fit model) and the
+    residuals about the best-fit model.
 
   deflare
 
-    The deflare script has been updated to use matplotlib rather than
-    ChIPS for its plotting. The output is similar but will not match
-    exactly. This change should improve support for running the script
-    remotely or on a system with no X display.
-
-  find_chandra_obsid
-
-    Work around CERTIFICATE_VERIFY_FAILED errors seen on some macOS/openSSL
-    systems, falling through to curl or wget to download the data.
-
-  install_marx
-
-    Now runs 'make clean' after a successful installation.
-
-  obsid_search_csc, search_csc
-  
-    Corrects logic error when an invalid user query (ie invalid column
-    names) triggers an unhelpful error message.
-
-Updated Python modules
-
-  sherpa_contrib.marx
-
-    The save_marx_spectrum function now normalizes the output by the bin
-    width, as expected by MARX.
-
-## 4.11.1 - December 2018 ##
-
-Updated scripts
-
-  chandra_repro
-  
-    The script has been updated for HRC to keep all the standard 
-    columns defined in the hrc_process_events stdlev1 event-definition 
-    parameter.  In CIAO 4.11 this now also includes the SAMP values.
-
-  fluximage, flux_obs, merge_obs
-
-    Can now create a PSF map (an image showing the PSF size at each
-    pixel) using the psfecf parameter (the image is not created by
-    default). This parameter is also supported by flux_obs and merge_obs,
-    which also add the psfmerge parameter for chosing how the
-    per-observation PSF maps are combined.
-
-  fullgarf
-
-    The script has a new parameter, ardlibqual, that allows users to pass
-    ardlib qualifiers to the calls to mkgarf. This is useful for handling
-    spectra simulated with MARX.
-
-  dax
-  
-    Clarified error messages to indicate that users must have regions
-    selected to perform spectral or spatial fits.  Additional
-    internal changes to use python scripts to perform sherpa fits
-    rather than using sherpa IPython wrapper.  
-
-  splitroi
-  
-    Updated to use "point(0,0)" when it finds a blank source
-    or background region.   This restores the behavior of the script
-    to what is was before changes that were made in CIAO 4.10.
+    The script has been updated to work with matplotlib 3.1.
 
 Updated Python modules
 
   ciao_contrib.runtool
 
     The runtool module has been updated to reflect changes to the
-    tools in the CIAO 4.11 release.
+    tools in the CIAO 4.12 release.
 
-  sherpa_contrib.xspec.xsconvolve
+  lightcurves
 
-    Updated the experimental support for XSPEC convolution models to
-    add support for the following XSPEC models:
-
-      lumin, cpflux, rfxconv, rgsxsrc, vashift, vmshift, xilconv
+    The module has been updated to work with matplotlib 3.1.
 
 Removed
 
-  convert_xspec_user_model script
+  chips_contrib modules   TBD
 
-    The script has been removed as it has not been updated to support
-    XSPEC 12.10.0e (which is provided with CIAO 4.11). Please contact
-    the CXC Helpdesk if you find this script useful and would like to
-    see it added back to the contributed package.
-
-  chips_contrib.pyplot Python module
-
-    As CIAO 4.11 provides Matplotlib, the experimental API for providing
-    a Matplotlib-like API for ChIPS users has been removed.
-
+    The chip_contrib.decorators, chips_contrib.helix,
+    chips_contrib.images, chips_contrib.regions, chips_contrib.scatter,
+    and chips_contrib.utils modules have been removed, as ChIPS is
+    no longer distributed as part of CIAO.
