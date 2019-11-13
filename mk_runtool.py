@@ -5,12 +5,21 @@ Usage:
 
   ./mk_runtool.py
 
-  Will use the contents of $ASCDS_INSTALL/[bin|param]/ and
-  ciao-<version>/contrib/[bin|param]/ to determine what API
-  to create (i.e. what tools to support).
+  Will use the contents of
+
+      $ASCDS_INSTALL/[bin|param]/ and
+      [bin|param]/
+
+  to determine what API to create (i.e. what tools to support).
+  To support running with the conda environment, we allow files
+  in $ASCDS_INSTALL to be "over-written" by those in the current
+  working directory (since conda removes the distinction between
+  ASCDS_INSTALL and ASCDS_CONTRIB, installing all scripts into the
+  same directory).
 
   Output is to
-  ciao-<version>/contrib/lib/python3.5/site-packages/ciao_contrib/runtool.py
+
+      ciao_contrib/runtool.py
 
   Note that this file is *not* checked into the repository to
   allow you to check for changes (this could be added once the
@@ -42,47 +51,9 @@ import sys
 import glob
 
 
-def _find_pathname():
-    "Return value includes trailing slash"
-    matches = glob.glob("ciao-*.*/")
-    nmatches = len(matches)
-    if nmatches == 1:
-        return matches[0]
-    elif nmatches == 0:
-        raise IOError("Unable to find ciao-*.*/ subdirectory!")
-    else:
-        raise IOError("Found {} matches to ciao-*.*/!".format(nmatches))
+MODULE_HEADER = "mk_runtool.header"
+MODULE_FOOTER = "mk_runtool.footer"
 
-
-# A lot of this code should probably go in the 'if __name__' section below!
-
-ciao_head = _find_pathname()
-
-ascds_install = os.getenv("ASCDS_INSTALL")
-if ascds_install is None:
-    raise IOError("ASCDS_INSTALL environment variable is not set; " +
-                  "has CIAO been started?")
-
-ascds_contrib = "{}contrib".format(ciao_head)
-
-for pathname in [ascds_install, ascds_contrib]:
-    if not os.path.isdir(pathname):
-        raise IOError("Unable to find directory: {}".format(pathname))
-
-module_header = "mk_runtool.header"
-module_footer = "mk_runtool.footer"
-
-for filename in [module_header, module_footer]:
-    if not os.path.isfile(filename):
-        raise IOError("Unable to find the file: {}".format(filename))
-
-# TODO: how best to handle the Python version here?
-#
-contrib_path = "contrib/lib/python3.5/site-packages/ciao_contrib/"
-odir = os.path.join(ciao_head, contrib_path)
-if not os.path.isdir(odir):
-    raise IOError("Unable to find output directory:\n{}".format(odir))
-oname = os.path.join(odir, "runtool.py")
 
 # Identifier information from
 # http://docs.python.org/reference/lexical_analysis.html#identifiers
@@ -182,7 +153,7 @@ class Param:
 
         # Use a case-insensitive check
         if self.name.lower() in language_keywords_lower:
-            print("WARNING: parameter name clashes with Python reserved word:\n  {}".format(txt))
+            print("WARNING: [{}] parameter name clashes with Python reserved word:\n  {}".format(self.toolname, txt))
 
         # This is just a warning as the ParameterInfo object does the
         # remapping.
@@ -193,7 +164,7 @@ class Param:
         if re.match(identifier, self.name) is None:
             nname = self.name.replace("-", "_")
             if re.match(identifier, nname) is None:
-                print("WARNING: parameter name is not a valid Python identifier and does not transform '-' -> '_': {}".format(txt))
+                print("WARNING: [{}] parameter name is not a valid Python identifier and does not transform '-' -> '_': {}".format(self.toolname, txt))
                 self.skip = True
                 return  # will this work?
 
@@ -376,7 +347,12 @@ def create_output(dirname, toolname, istool=True):
 
 
 def add_output(funcinfo, parname):
-    """Store information on the tool for later use."""
+    """Store information on the tool for later use.
+
+    It is assumed that the "installed" version is processed
+    before the developmetn version, so the latter will "win out"
+    when both are present.
+    """
 
     dirname, toolname = os.path.split(parname)
     if dirname is '':
@@ -387,10 +363,13 @@ def add_output(funcinfo, parname):
     toolname = toolname[:-4]
 
     # This could be just a warning, or quietly ignored, but leave as
-    # an error for now as it should not happen.
+    # an error for now as it should not happen. Actually, now it
+    # can happen (with the conda build), so silently over-write.
     #
+    """
     if toolname in funcinfo:
         raise ValueError("The tool {} has already been added!".format(toolname))
+    """
 
     epath = os.path.normpath(os.path.join(dirname, '../bin'))
 
@@ -451,13 +430,35 @@ def add_par_files(parinfo, dirname, pardir='param'):
         add_output(parinfo, fname)
 
 
-if __name__ == "__main__":
+def doit():
+
+    ascds_install = os.getenv("ASCDS_INSTALL")
+    if ascds_install is None:
+        raise IOError("ASCDS_INSTALL environment variable is not set; " +
+                      "has CIAO been started?")
+
+    # Assume to be run from the top level of the directory structure
+    ascds_contrib = os.getcwd()
+
+    for pathname in [ascds_install, ascds_contrib]:
+        if not os.path.isdir(pathname):
+            raise IOError("Unable to find directory: {}".format(pathname))
+
+    for filename in [MODULE_HEADER, MODULE_FOOTER]:
+        if not os.path.isfile(filename):
+            raise IOError("Unable to find the file: {}".format(filename))
+
+    contrib_path = "ciao_contrib/"
+    odir = os.path.join(ascds_contrib, contrib_path)
+    if not os.path.isdir(odir):
+        raise IOError("Unable to find output directory:\n{}".format(odir))
+    oname = os.path.join(odir, "runtool.py")
 
     print("Input directores:\n  {}\n  {}\n".format(ascds_install,
                                                    ascds_contrib))
 
     with open(oname, "w") as ofh:
-        print_module_section(ofh, module_header)
+        print_module_section(ofh, MODULE_HEADER)
         tools = {}
 
         add_par_files(tools, ascds_install)
@@ -474,7 +475,7 @@ if __name__ == "__main__":
             ofh.write("\n")
             ofh.flush()
 
-        print_module_section(ofh, module_footer)
+        print_module_section(ofh, MODULE_FOOTER)
 
     print("")
     print("Created: {}".format(oname))
@@ -494,10 +495,19 @@ if __name__ == "__main__":
         print("---")
         sys.exit(1)
 
-    if rval == '':
+    if rval == b'':
         print("The module has not changed.")
     else:
         print("*** The runtool module has changed!")
         print("*** Review the differences with:")
         print("*** {}".format(" ".join(gitargs)))
         print("***")
+
+
+if __name__ == "__main__":
+
+    if len(sys.argv) != 1:
+        sys.stderr.write("Usage: python {}\n".format(sys.argv[0]))
+        sys.exit(1)
+
+    doit()
