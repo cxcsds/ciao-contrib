@@ -33,7 +33,8 @@ setup( name='ciao-contrib',
         data_files = [ ("param", params ), 
                        ("share/doc/xml", docs ), 
                        ("config", configs),
-                       ("data", datum)
+                       ("data", datum),
+                       (".", ["Changes.CIAO_scripts", "README_CIAO_scripts"]),
                        ],
         packages=mods,
         py_modules=["lightcurves",]
