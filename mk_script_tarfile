@@ -63,25 +63,21 @@ def get_ciao_version():
              "version_dotted": "%s.%s" % (majver, minver),
              "root": dnames[0] }
 
-if __name__ == "__main__":
+def build_dist( rel_num, prefix ):
+    """Build contrib scripts package into a separate temp dir"""
+    
+    install_dir = "{}/ciao-{}/contrib".format(prefix,rel_num)
+    
+    build_cmd = ["python", "setup.py", 
+        "build", "--executable", "/usr/bin/env python",
+        "install", "--prefix", install_dir]
+    sbp.check_call( build_cmd)
+    
 
-    nargs = len(sys.argv)
-    if nargs != 2:
-        sys.stderr.write("Usage: %s <number or dev>\n" % sys.argv[0])
-        sys.exit(1)
 
-    ver = sys.argv[1]
-    if ver != "dev":
-        try:
-            ver = int(ver)
-            if ver <= 0:
-                sys.stderr.write("Error: version number must be >= 1, not %d\n" % ver)
-                sys.exit(1)
-
-        except ValueError:
-            sys.stderr.write("ERROR: version must be an integer or the string dev, not %s\n" % ver)
-            sys.exit(1)
-
+def make_tarfile(ver, cwd):
+    """Create versioned tar file"""
+    
     cver = get_ciao_version()
 
     if ver == "dev":
@@ -91,7 +87,9 @@ if __name__ == "__main__":
 
     verstr = "%s.%s.%s" % (cver["majver"], cver["minver"], ver)
 
+
     tarfile = "%s-contrib-%s.tar" % (cver["root"], ver)
+    tarfile = os.path.join( cwd, tarfile )
     tarfilegz = tarfile + ".gz"
     print("Tar file: {}".format(tarfile))
 
@@ -136,3 +134,40 @@ if __name__ == "__main__":
     sbp.check_call(["gzip", "-f", tarfile])
 
     print("\nCreated: {}".format(tarfilegz))
+
+
+
+if __name__ == "__main__":
+
+    nargs = len(sys.argv)
+    if nargs != 3:
+        sys.stderr.write("Usage: %s <release> <number or dev>\n" % sys.argv[0])
+        sys.stderr.write("Example: %s 4.12 1\n" % sys.argv[0])
+        sys.exit(1)
+
+    rel_num = sys.argv[1]
+    try:
+        release_number = float(rel_num)    
+    except ValueError:
+        sys.stderr.write("ERROR: CIAO release must be a real number not %s\n" % rel_num)
+        sys.exit(1)
+
+
+    ver = sys.argv[2]
+    if ver != "dev":
+        try:
+            ver = int(ver)
+            if ver <= 0:
+                sys.stderr.write("Error: version number must be >= 1, not %d\n" % ver)
+                sys.exit(1)
+
+        except ValueError:
+            sys.stderr.write("ERROR: version must be an integer or the string dev, not %s\n" % ver)
+            sys.exit(1)
+
+    from tempfile import TemporaryDirectory
+    with TemporaryDirectory( prefix="ciao-"+rel_num ) as tmpdir:
+        build_dist(rel_num, tmpdir)
+        cwd = os.getcwd()
+        os.chdir(tmpdir)
+        make_tarfile(ver, cwd)
