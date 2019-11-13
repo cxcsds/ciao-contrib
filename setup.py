@@ -25,17 +25,17 @@ mods = [ "chips_contrib",
 from distutils.core import setup
 setup( name='ciao-contrib',
         version='4.12.0',
+        license='GNU GPL v3',
         description='CIAO Contributed scripts',
         author='CXCSDS and Friends',
         author_email='cxchelp@cfa.harvard.edu',
-        url='http://github.com/cxcsds/ciao-contrib/',
+        url='https://github.com/cxcsds/ciao-contrib/',
         scripts = scripts,
-        data_files = [ ("param", params ), 
-                       ("share/doc/xml", docs ), 
+        data_files = [ ("param", params ),
+                       ("share/doc/xml", docs ),
                        ("config", configs),
                        ("data", datum)
                        ],
         packages=mods,
         py_modules=["lightcurves",]
         )
-
