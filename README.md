@@ -45,29 +45,29 @@ a lot of data, and may rely on unreleased versions of CIAO).
 
 A) a development release
 
-    % ./mk_script_tarfile dev
+    % ./mk_script_tarfile 4.12 dev
 
 will create the file
 
-    ciao-<version>-contrib-DEV.tar.gz
+    ciao-4.12-contrib-DEV.tar.gz
 
 with a version file that looks like
 
-    % cat ciao-4.7/contrib/VERSION.CIAO_scripts 
-    scripts 4.7.DEV Friday, December 12, 2014
+    % cat ciao-4.12/contrib/VERSION.CIAO_scripts 
+    scripts 4.12.DEV Friday, December 12, 2014
 
 B) a release candidate
 
-    % ./mk_script_tarfile 2
+    % ./mk_script_tarfile 4.12 2
 
 will create the file
 
-    ciao-4.7-contrib-2.tar.gz
+    ciao-4.12-contrib-2.tar.gz
 
 with a version file that looks like
 
-    % cat ciao-4.7/contrib/VERSION.CIAO_scripts 
-    scripts 4.7.2 Friday, December 12, 2014
+    % cat ciao-4.12/contrib/VERSION.CIAO_scripts 
+    scripts 4.12.2 Friday, December 12, 2014
 
 At present there is no system to automatically look up the version
 number.
