@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2017, 2018
+# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -22,38 +22,16 @@
 # 02110-1301 USA.
 #
 
-__version__ = "CIAO 4.10"
 toolname = "blanksky_sample"
-__revision__  = "23 October 2018"
+__revision__  = "13 November 2019"
 
 import os, sys, paramio, tempfile
+
+import stk
 import pycrates as pcr
-
-#######################################################################
-# This is only needed for development.
-try:
-    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
-        _thisdir = os.path.dirname(__file__)
-        _libname = "python{}.{}".format(sys.version_info.major,sys.version_info.minor)
-
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib',_libname, 'site-packages'))
-        
-        if os.path.isdir(_pathdir):
-            os.sys.path.insert(1, _pathdir)
-        else:
-            print("*** WARNING: no {}".format(_pathdir))
-            
-        del _libname
-        del _pathdir
-        del _thisdir
-
-except KeyError:
-    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
-#######################################################################
 
 from ciao_contrib.param_wrapper import open_param_file
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
-from ciao_contrib.stacklib import expand_stack
 
 from ciao_contrib._tools import fileio, utils
 
@@ -146,7 +124,7 @@ def get_par(argv):
     if params["regionfile"] != "":
         if params["fill_out"] == "":
             error_out("input 'regionfile' specified, an output 'fill_out' file must be specified")
-            
+
     else:
         if params["fill_out"] != "":
             error_out("'fill_out' output file specified, an input 'regionfile' must also be specified")
@@ -168,13 +146,13 @@ def get_par(argv):
     else:
         params["bkgfile_filter"] = fileio.get_filter(params["bkgfile"])
         params["bkgfile"] = fileio.get_file(params["bkgfile"])
-    
+
     # output blanksky sampled file name
     if params["bkgout"] == "":
         error_out("Please specify an output background file name.")
     else:
         params["bkgoutdir"],bkgoutfile = utils.split_outroot(params["bkgout"])
-        
+
         if params["bkgout"].endswith("_"):
             params["bkgout"] = bkgoutfile
         else:
@@ -186,7 +164,7 @@ def get_par(argv):
     # output PSF+bkg file name
     if params["psf_bkg_out"] != "":
         psf_bkg_outdir,psf_bkg_outfile = utils.split_outroot(params["psf_bkg_out"])
-        
+
         if params["psf_bkg_out"].endswith("_"):
             params["psf_bkg_out"] = psf_bkg_outfile
         else:
@@ -199,11 +177,11 @@ def get_par(argv):
     # input region file
     if params["regionfile"] != "":
         params["regionfile"] = fileio.get_file(params["regionfile"])
-    
+
     # output fill_out file name
     if params["fill_out"] != "":
         params["fill_outdir"],fill_outfile = utils.split_outroot(params["fill_out"])
-        
+
         if params["fill_out"].endswith("_"):
             params["fill_out"] = fill_outfile
         else:
@@ -212,9 +190,9 @@ def get_par(argv):
         # check if output directory is writable
         fileio.validate_outdir(params["fill_outdir"])
 
-    # aspect solution files, listed in quotes.    
+    # aspect solution files, listed in quotes.
     if params["asol"] != "":
-        params["asol"] = ",".join(expand_stack(params["asol"]))
+        params["asol"] = ",".join(stk.build(params["asol"]))
 
 
     # close parameters block after validation
@@ -227,9 +205,9 @@ def get_par(argv):
 
 def _get_nevt(fn):
     """get number of events"""
-    
+
     cr = pcr.read_file(fn)
-    
+
     nevt = cr.get_nrows()
 
     cr.__del__()
@@ -272,7 +250,7 @@ def _cols2int4(fn,tmpdir):
                 tmpcol_del = "[cols -tmppha]"
 
         dmtcalc.punlearn()
-        dmtcalc.infile = fn 
+        dmtcalc.infile = fn
         dmtcalc.outfile = tmp1.name
         dmtcalc.expression = convert_col
         dmtcalc.verbose = "0"
@@ -294,7 +272,7 @@ def _cols2int4(fn,tmpdir):
         dmcopy.outfile = fn
         dmcopy.verbose = "0"
         dmcopy.clobber = "yes"
-        dmcopy()   
+        dmcopy()
 
         tmp2.close()
 
@@ -307,7 +285,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
     dmtcalc.punlearn()
     dmtcalc.infile = infile
     dmtcalc.outfile = tmp1.name
-    dmtcalc.expression = "tmpx=(float)x,tmpy=(float)y,tmpdetx=(float)detx,tmpdety=(float)dety,tmpchipx=(short)chipx,tmpchipy=(short)chipy" 
+    dmtcalc.expression = "tmpx=(float)x,tmpy=(float)y,tmpdetx=(float)detx,tmpdety=(float)dety,tmpchipx=(short)chipx,tmpchipy=(short)chipy"
     dmtcalc.verbose = "0"
     dmtcalc.clobber= "yes"
     dmtcalc()
@@ -321,7 +299,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
     dmtcalc()
 
     dmhedit.punlearn()
-    dmhedit.infile = tmp2.name 
+    dmhedit.infile = tmp2.name
     dmhedit.operation = "add"
     dmhedit.key = "MTYPE1"
     dmhedit.value = "chip"
@@ -329,7 +307,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
     dmhedit()
 
     dmhedit.punlearn()
-    dmhedit.infile = tmp2.name 
+    dmhedit.infile = tmp2.name
     dmhedit.operation = "add"
     dmhedit.key = "MFORM1"
     dmhedit.value = "chipx,chipy"
@@ -337,7 +315,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
     dmhedit()
 
     dmhedit.punlearn()
-    dmhedit.infile = tmp2.name 
+    dmhedit.infile = tmp2.name
     dmhedit.operation = "add"
     dmhedit.key = "MTYPE2"
     dmhedit.value = "det"
@@ -345,7 +323,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
     dmhedit()
 
     dmhedit.punlearn()
-    dmhedit.infile = tmp2.name 
+    dmhedit.infile = tmp2.name
     dmhedit.operation = "add"
     dmhedit.key = "MFORM2"
     dmhedit.value = "detx,dety"
@@ -353,7 +331,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
     dmhedit()
 
     dmhedit.punlearn()
-    dmhedit.infile = tmp2.name 
+    dmhedit.infile = tmp2.name
     dmhedit.operation = "add"
     dmhedit.key = "MTYPE3"
     dmhedit.value = "sky"
@@ -361,7 +339,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
     dmhedit()
 
     dmhedit.punlearn()
-    dmhedit.infile = tmp2.name 
+    dmhedit.infile = tmp2.name
     dmhedit.operation = "add"
     dmhedit.key = "MFORM3"
     dmhedit.value = "x,y"
@@ -373,7 +351,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
 
         if keynum != None:
             dmhedit.punlearn()
-            dmhedit.infile = tmp2.name 
+            dmhedit.infile = tmp2.name
             dmhedit.operation = "add"
             dmhedit.key = "TLMIN{}".format(keynum)
             dmhedit.value = "0.5"
@@ -381,7 +359,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
             dmhedit()
 
             dmhedit.punlearn()
-            dmhedit.infile = tmp2.name 
+            dmhedit.infile = tmp2.name
             dmhedit.operation = "add"
             dmhedit.key = "TLMAX{}".format(keynum)
             dmhedit.value = "8192.5"
@@ -402,7 +380,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
 
         dmcopy.punlearn()
         dmcopy.infile = "{}[cols -ccd_id]".format(tmp1.name)
-        dmcopy.outfile = outfile 
+        dmcopy.outfile = outfile
         dmcopy.verbose = "0"
         dmcopy.clobber = "yes"
         dmcopy()
@@ -410,7 +388,7 @@ def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
     else:
         dmcopy.punlearn()
         dmcopy.infile = "{}".format(tmp2.name)
-        dmcopy.outfile = outfile 
+        dmcopy.outfile = outfile
         dmcopy.verbose = "0"
         dmcopy.clobber = "yes"
         dmcopy()
@@ -443,7 +421,7 @@ def _structural_kw(fn,keyval,tmpdir):
     #             shutil.copyfileobj(fd,wfd)
 
     # tmp1.close()
-    # tmp2.close()  
+    # tmp2.close()
 
     # ## strip empty lines
     # #open(filename_out, "w").write(open(filename_in).read().strip())
@@ -485,14 +463,14 @@ def _structural_kw(fn,keyval,tmpdir):
 
 def _evt_type(fn):
     """
-    ID infile input type. 
+    ID infile input type.
     # MARX: HDUNAME=EVENTS, DATACLAS=SIMULATED
     # PPR: HDUNAME=RAYEVENTS, DATACLAS=OBSERVED
     # Obs: HDUNAME=EVENTS, DATACLAS=OBSERVED
     """
-    
+
     kw = fileio.get_keys_from_file(fn)
-    
+
     hduclass = kw["HDUNAME"]
     dataclass = kw["DATACLAS"]
 
@@ -515,10 +493,10 @@ def _num_pick(args): # P3
     """Pick number of photons to add to the simulation"""
 
     (bkg,outfile,bkgscale,randomseed,tmpdir,verbose) = args # P3
-    
+
     with new_pfiles_environment(ardlib=True):
-    
-        ## get total number of events; the NAXIS2/__NROWS keyword aren't updated if 
+
+        ## get total number of events; the NAXIS2/__NROWS keyword aren't updated if
         ## evt file is filtered
         # n = kw["__NROWS"]
         # n = _get_nevt(bkg)
@@ -535,7 +513,7 @@ def _num_pick(args): # P3
         dmtcalc.punlearn()
         dmtcalc.infile = bkg
         dmtcalc.outfile = def_rand.name
-        #dmtcalc.expression = "randnum={0}/{1}*#trand".format(n,cts) 
+        #dmtcalc.expression = "randnum={0}/{1}*#trand".format(n,cts)
         dmtcalc.expression = "randnum={0}/{1}".format(randseed,bkgscale)
         dmtcalc.verbose = verbose
         dmtcalc.clobber = "yes"
@@ -550,7 +528,7 @@ def _num_pick(args): # P3
         dmcopy()
 
         def_rand.close()
-    
+
 
 def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
     """Assign some random time during the observation to each photon"""
@@ -577,7 +555,7 @@ def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
 
     dmsort.punlearn()
 
-    dmsort.infile = time_rand.name 
+    dmsort.infile = time_rand.name
     dmsort.outfile = time_sorted_outfile
     dmsort.keys = "TIME"
     dmsort.clobber = "yes"
@@ -595,24 +573,24 @@ def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
     for tkey in ["ONTIME","LIVETIME","EXPOSURE","TSTART","TSTOP"]:
         dmhedit.key = tkey
         dmhedit.value = kw[tkey]
-        dmhedit()    
+        dmhedit()
 
     if kw["INSTRUME"] == "ACIS":
         chips = fileio.get_ccds(bkg_rand)
-   
+
         for chip in chips:
             dmhedit.key = "ONTIME{}".format(chip)
             dmhedit.value = kw["ONTIME{}".format(chip)]
-            dmhedit()                
+            dmhedit()
 
             dmhedit.key = "LIVTIME{}".format(chip)
             dmhedit.value = kw["LIVTIME{}".format(chip)]
-            dmhedit()                
+            dmhedit()
 
             dmhedit.key = "EXPOSUR{}".format(chip)
             dmhedit.value = kw["EXPOSUR{}".format(chip)]
-            dmhedit()     
-    
+            dmhedit()
+
 
 def sample_chip(bkg,outfile,kw,randomseed,tmpdir,verbose):
     instrument = kw["INSTRUME"]
@@ -627,7 +605,7 @@ def sample_chip(bkg,outfile,kw,randomseed,tmpdir,verbose):
         chips = fileio.get_ccds(bkg)
 
         bkg_sample = []
-        bkg_tmp = [] 
+        bkg_tmp = []
 
         try:
             for chip in chips:
@@ -676,7 +654,7 @@ def doit():
     seed = params["randomseed"]
     clobber = params["clobber"]
     verbose = params["verbose"]
-   
+
     ############
 
     get_rand = tempfile.NamedTemporaryFile(dir=tmpdir)
@@ -696,7 +674,7 @@ def doit():
 
             tmpin = tempfile.NamedTemporaryFile(dir=tmpdir)
             tmpbkg = tempfile.NamedTemporaryFile(dir=tmpdir)
-            
+
             ccd_psf = fileio.get_ccds(infile)
             ccd_bkg = fileio.get_ccds(bkgfile)
 
@@ -719,9 +697,9 @@ def doit():
 
             infile = tmpin.name
             bkgfile = tmpbkg.name
-            
-    # check for background CALDB version; any ACIS background before 4.7.5.1 
-    # will need to convert the PHA and PI datatype which were short integers 
+
+    # check for background CALDB version; any ACIS background before 4.7.5.1
+    # will need to convert the PHA and PI datatype which were short integers
     # (Int16/Int2) and match the event files with long integers (Int64/Int4)
     cr_bkg = pcr.read_file("{}[#row=1]".format(bkgfile))
 
@@ -751,7 +729,7 @@ def doit():
     if reproject == "yes":
         # Reproject the blank sky fields to the same position on the sky as the marx simulation.
         reproject_events.punlearn()
-        
+
         if instrument == "ACIS":
             reproject_events.infile = "{}[cols ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status,time]".format(time_sorted.name)
         else:
@@ -765,7 +743,7 @@ def doit():
         reproject_events.verbose = verbose
 
         reproject_events()
-        
+
     else:
         # if the blank sky file is already reprojected or if the blanksky script was used
         dmcopy.punlearn()
@@ -773,19 +751,19 @@ def doit():
         if instrument == "ACIS":
             dmcopy.infile = "{}[cols ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status,time]".format(time_sorted.name)
         else:
-            dmcopy.infile = "{}[cols chip_id,chip,det,sky,pha,pi,status,time]".format(time_sorted.name) 
+            dmcopy.infile = "{}[cols chip_id,chip,det,sky,pha,pi,status,time]".format(time_sorted.name)
 
         dmcopy.outfile = bkgoutdir+bkgout
         dmcopy.clobber = clobber
         dmcopy()
 
     time_sorted.close()
-    
+
     try:
         add_tool_history(bkgoutdir+bkgout,toolname,pars)
     except OSError:
         pass
-        
+
     ## Merge marx simulation and blank sky fields into a single fits table.
     if psf_bkg_out != "":
 
@@ -807,7 +785,7 @@ def doit():
                 # first need to convert data type for PI and PHA columns
                 dmcopy.punlearn()
                 dmcopy.infile = infile
-                dmcopy.outfile = tmppsf.name 
+                dmcopy.outfile = tmppsf.name
                 dmcopy.verbose = "0"
                 dmcopy.clobber = "yes"
                 dmcopy()
@@ -827,16 +805,16 @@ def doit():
 
         else:
             if instrument == "ACIS":
-                dmmerge.columnList = "time,ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status"    
+                dmmerge.columnList = "time,ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status"
             else:
-                dmmerge.columnList = "time,chip_id,chip,det,sky,pha,status"    
+                dmmerge.columnList = "time,chip_id,chip,det,sky,pha,status"
 
         dmmerge.outfile = psf_bkg_outdir+psf_bkg_out
         dmmerge.clobber = clobber
         dmmerge.verbose = verbose
 
         dmmerge()
-        
+
         try:
             add_tool_history(psf_bkg_outdir+psf_bkg_out,toolname,pars)
         except OSError:
@@ -904,6 +882,3 @@ def doit():
 
 if __name__  == "__main__":
     doit()
-
-
-
