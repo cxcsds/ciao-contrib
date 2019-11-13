@@ -2,7 +2,7 @@
 # Python35Support
 
 #
-#  Copyright (C) 2011, 2012, 2016  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2011, 2012, 2016, 2019  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -23,9 +23,8 @@
 """Helper routines for using the stack module (see "ahelp stack"
 for information on how stacks are used in CIAO tools).
 
-The expand_stack() routine is deprecated; please use the build routine
-from the stk module instead (in fact, expand_stack just calls this
-routine for you).
+The expand_stack() routine was removed in CIAO 4.12 since it was
+just a renamed version of the build routine from the CIAO stk module.
 
 The make_stackfile() is somewhat experimental, and may be removed.
 
@@ -33,50 +32,9 @@ The make_stackfile() is somewhat experimental, and may be removed.
 
 import os
 import tempfile
-import warnings
-
-import stk
-
-__all__ = ("expand_stack", "make_stackfile")
 
 
-def expand_stack(pval):
-    """***DEPRECATED*** use stk.build() instead.
-
-    Expand out the contents of the parameter value
-    treating it as a stack. So pval="@foo.lis" will
-    examine the contents of the file foo.lis but
-    pval="foo.lis" just has a single value (i.e.
-    "foo.lis"). The input should be a string.
-
-    The return value is an array of values, even if the input is not a
-    stack.
-
-    Examples of use:
-
-        pval='foo.lis'
-        return=['foo.lis']
-
-        pval='foo.lis,bar.lis'
-        return=['foo.lis', 'bar.lis']
-
-        pval='foo.lis bar.lis'
-        return=['foo.lis', 'bar.lis']
-
-        pval='foo.lis[cols x,y]'
-        return=['foo.lis[cols x,y]']
-
-        pval='@foo.lis'
-        return=[array of the contents of foo.lis]
-
-        pval='@foo.lis[cols x,y]'
-        return=[array of the contents of foo.lis with
-                '[cols x,y]' appended to the end of each line]
-
-    """
-
-    warnings.warn("Use stk.build instead", DeprecationWarning)
-    return stk.build(pval)
+__all__ = ("make_stackfile", )
 
 
 def make_stackfile(infiles, dir="/tmp/", suffix='', delete=True):
@@ -98,7 +56,8 @@ def make_stackfile(infiles, dir="/tmp/", suffix='', delete=True):
 
     # Change the mode, since the default is 'wb+' which makes
     # Python 3.5 use byte strings. I could set the encoding, but
-    # this argument isn't available in Python 2.7
+    # this used to be used with Python 2.7 so leave as is.
+    #
     tfh = tempfile.NamedTemporaryFile(mode='w+', dir=dir,
                                       suffix=suffix,
                                       delete=delete)
