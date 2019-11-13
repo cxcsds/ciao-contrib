@@ -770,17 +770,21 @@ def event1_inputs(params):
             params["dec_targ"] = keys["DEC_TARG"].value
 
             # Only standard datasets taken in KALMAN lock are supported.
-            # Other modes such as OBC use the on-board-computer
+            # Other modes such as OBC use the on-board-computer 
             # aspect solution and don't have *_asol1.fits files. They
             # only have the *_osol1.fits files.  We can't handle that
             # right now.
-
+            
             if 'KALMAN' != keys["ASPTYPE"].value:
-                msg = "ASPTYPE='{}' mode data is not currently supported."
-                raise NotImplementedError(msg.format(keys["ASPTYPE"].value))
+                #msg = "ASPTYPE='{}' mode data is not currently supported."
+                #raise NotImplementedError(msg.format(keys["ASPTYPE"].value))
+                params["__obc_mode__"] = True
+                v0("\nThis observation did not use any guide-stars; the on-board-computer determined aspect solution will be used\n")
 
+            else:
+                params["__obc_mode__"] = False
 
-            if params["instrume"] == 'ACIS':
+            if params["instrume"] == 'ACIS':  
                 params["readmode"] = keys["READMODE"].value
             if params["instrume"] == 'HRC':
                 try:
@@ -987,7 +991,11 @@ def get_inputs(params):
     #!### Now check for secondary data products to use ###
     try:
         secondary_products=os.listdir(params["secondarydir"])
-    except:
+        if params["__obc_mode__"] is True:
+            asp_sec = os.path.join( params["secondarydir"],"aspect")
+            asp_sec_dir = os.listdir( asp_sec )
+            secondary_products.extend( asp_sec_dir)
+    except Exception as e:
         error_out(params,"Could not read input directory '%s'" % params["secondarydir"], 'read error')
 
     v2("Using products found in secondary data directory: " + params["secondarydir"])
@@ -1112,7 +1120,7 @@ def get_inputs(params):
 
                 path=os.path.join(params["outdir"], os.path.basename(newbias))
                 link_or_copy(newbias, path)
-
+  
                 uff=ff.split(".gz")[0]
                 params["cleanup_files"].append(os.path.join(params["outdir"], uff))
 
@@ -1134,6 +1142,44 @@ def get_inputs(params):
             biaslist.write(newbias + '\n')
             biaslist.close()
 
+        elif params["__obc_mode__"] is True and re.search(".*osol1.fits.*",ff) is not None:
+            #
+            # For OBC mode, we look for the osol files and use them for the asol
+            #
+            params["asol1_file"] = os.path.join(params["outdir"], params["root"] + '_asol1.lis')
+
+            if reset_asol_list:
+                datestamp_existing_file(params["asol1_file"])
+                reset_asol_list=0
+
+            sec_asp_dir = os.path.join( params["secondarydir"], "aspect")
+            if indir_is_outdir:
+                newasol = os.path.basename(gunzip(ff))
+            else:
+                newasol = gunzip(os.path.join( sec_asp_dir,ff))
+
+                path=os.path.join(params["outdir"], os.path.basename(newasol))
+                link_or_copy(newasol, path)
+                
+            #!### always make sorted asol list ###
+            if os.path.isfile(params["asol1_file"]):
+                #!### Just append to existing list ###
+                try:
+                    asollist = open(params["asol1_file"],'a')
+                except:
+                    error_out(params,"Could not open list file '%s'" % params["asol1_file"], 'read error')
+            else:
+                #!### Create list ###
+                try:
+                    asollist = open(params["asol1_file"], 'w')
+                except:
+                    error_out(params,"Could not create list file '%s'" % params["asol1_file"], 'write error')
+                        
+            #!### In both cases above we write current file to list ###
+            asollist.write(newasol + '\n')
+            asollist.close() 
+
+            check_name_in_hdr( "asol1", newasol, params["hdr_asolfile"] )
 
     # Look for the V&V report in the top level indir
 
@@ -2082,8 +2128,20 @@ def get_asol_times( params ):
 
     outroot = os.path.join( params["outdir"], params["root"])
 
-    dmtcalc( params["flt1_file"], outroot+"_addcol_flt1.fits", "time=0", clobber=params["clobber"])
-    dmcopy( dmtcalc.outfile+"[time={}:{}]".format(min_a,max_a), outroot+"_repro_flt1.fits", clobber=params["clobber"] )
+
+    if params["__obc_mode__"] is True:
+        new_limits = outroot+"_obc_lim1.fits"
+        new_gti = outroot+"_repro_flt1.fits"
+
+        filter_obc_gti_limit( params["mtl1_file"], new_limits, clobber=params["clobber"])
+        make_new_obc_gti( params["mtl1_file"], new_limits, new_gti, clobber=params["clobber"])
+        params["cleanup_files"].append(new_limits)
+
+    else:
+        dmtcalc( params["flt1_file"], outroot+"_addcol_flt1.fits", "time=0", clobber=params["clobber"])    
+        dmcopy( dmtcalc.outfile+"[time={}:{}]".format(min_a,max_a), outroot+"_repro_flt1.fits", clobber=params["clobber"] )
+
+
 
     # CC times cannot be fixed with the gti_align script since times are
     # affected by _TARG coordinates.
@@ -2098,6 +2156,120 @@ def get_asol_times( params ):
 
 
     return outroot+"_repro_flt2.fits"
+
+
+
+
+def filter_obc_gti_limit( mtlfile, outlimfile, clobber=True ):
+    """Filters the LIMITS block of the mission time line file
+    to remove the limits associated with OBC (on-board-computer)
+    mode.
+    
+    The LIMITS extension is just a single string column in the mtl1.fits
+    file.  Each row is a separate limit.  The 'limit_status' column
+    in the MTL_S extension of the mtl1.fits file maps to the LIMITS block.
+    Each bit in the limit_status maps to a row.  Here we count
+    bits left-to-right starting at 1. [Ugh!]
+    
+    So if we have
+    
+    % dmlist "acisf02469_001N004_mtl1.fits[mtl_s][cols limit_status][#row=1]" data,clean
+    #  limit_status[3]
+                                                     01000000000000000010000
+
+    we see that bits #2 and bits #19 are set.  Looking at the LIMITS blocks we see
+
+    % dmlist "acisf02469_001N004_mtl1.fits[limits][#row=2,19]" data,clean
+    #  gti_limits
+    (fabs(Point_MoonLimbAng:1)>=6.0)
+    (ASPTYPE:1!="OBC") 
+
+    We want to remove these limits -- but we can't rely on the row numbers.
+    We need to check (regex) the contents of each line to look for the lines
+    to remove.    
+    """
+
+    from re import search
+    from pycrates import read_file
+
+    def is_point_limbang( limit ):
+        """Remove the Earth, Sun, Moon limb angle pointing limits.
+        We could try to be clever here and pick the right one, 
+        but its just as easy to remove them all"""
+        if search('point_.*limbang', limit) is None:
+            return False
+        return True
+
+
+    def is_asptype( limit ):
+        """Remove the check on ASPTYPE"""
+        if search( 'asptype.*=.*obc.*', limit) is None:
+            return False
+        return True
+
+
+    def obc_limits( limit ):
+        """Combine the two limit checks above"""
+        ul = limit.lower()
+        return (is_point_limbang(ul) or is_asptype(ul))
+
+
+    limits = read_file(mtlfile+"[limits]").get_column("gti_limits").values
+    mod_limits = [ l for l in limits if obc_limits(l) is False]
+
+    write_new_limits( mod_limits, outlimfile, clobber)
+
+    
+
+def write_new_limits( mod_limits, outlimfile, clobber=True ):
+    """Write the output limits file.  We don't need all the
+    header meta data, just the single column with the 
+    subset of the filter strings"""
+
+    from crates_contrib.utils import write_columns
+    write_columns( outlimfile, mod_limits, format="fits", clobber=clobber, colnames=["gti_limits"])
+
+
+def make_new_obc_gti( mtlfile, outlimfile, outgtifile, clobber=True):
+    """Compute the new GTI; write out new filter 
+    """
+    from ciao_contrib.runtool import make_tool
+    dmgti = make_tool("dmgti")
+    dmgti.infile=mtlfile
+    dmgti.outfile=outgtifile
+    dmgti.mtlfile=""
+    dmgti.userlimit=""  # The limits are input via the lkupfile parameter
+    dmgti.lkupfile=outlimfile
+    vv = dmgti( clobber=clobber)
+    if (vv): v3(vv)
+
+    summarize_results( outgtifile)
+
+
+    
+def summarize_results(outgtifile):
+    """Show a summary of the GTI information"""
+    from pycrates import read_file
+    gti=read_file(outgtifile)
+    ontime = gti.get_key_value("ONTIME")
+    dss = gti.get_subspace_data(1, "TIME")
+    num_gti = len( dss.range_max)
+    msg="Total recovered OBC ONTIME={:.2f}ks in {} time interval(s)"
+    v1(msg.format( ontime/1000.0, num_gti))
+    
+
+    
+
+
+
+
+
+
+
+
+
+
+
 
 
 
