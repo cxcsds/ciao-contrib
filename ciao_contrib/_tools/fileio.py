@@ -953,36 +953,52 @@ def expand_evtfiles_stack(instack, pattern="*evt*"):
 # Do we need to use MJD; can we not just use TSTART?
 #
 def sort_mjd(filenames):
-    "Return filenames, sorted by MJD_OBS, as a list"
+    """Return filenames, sorted by MJD_OBS or MJD-OBS, as a list
+
+    The keyword used to be MJD_OBS but was changed to MJD-OBS
+    circa CIAO 4.12.
+    """
 
     if len(filenames) < 2:
         return list(filenames)
 
     vals = []
-    dmkeypar = runtool.make_tool('dmkeypar')
+
+    # This used to use dmkeypar to get the keyword, but with the
+    # need to support multiple keywords it was changed to
+    # access the keywords directly in CIAO 4.12.
+    #
     for filename in filenames:
-        v3("Looking for MJD_OBS keyword in {}".format(filename))
+        v3("Looking for MJD-OBS keyword in {}".format(filename))
+
+        hdr = get_keys_from_file(filename)
         try:
-            dmkeypar.punlearn()
-            dmkeypar(infile=filename, keyword='MJD_OBS', echo=False)
-            mjdobs = dmkeypar.rval
+            mjdobs = hdr['MJD-OBS']
+        except KeyError:
+            v3("Not found, looking for MJD_OBS")
+            try:
+                mjdobs = hdr['MJD_OBS']
+            except KeyError:
+                v3("Also not found, so calculating MJD_OBS value.")
 
-        except IOError:
-            v3("MJD_OBS keyword missing, so calculating MJD_OBS value.".format(filename))
+                # MJD(TT) = MJDREF(TT) + ( TIMEZERO + TIME ) / 86400
+                try:
+                    time_obs = hdr["TSTART"]
+                    mjdref = hdr["MJDREF"]
+                    timezero = hdr["TIMEZERO"]
+                except KeyError as ke:
+                    raise IOError("Unable to find keyword " +
+                                  "{} in {}".format(ke, filename))
 
-            # MJD(TT) = MJDREF(TT) + ( TIMEZERO + TIME ) / 86400
-            hdr = get_keys_from_file(filename)
-            time_obs = hdr["TSTART"]
-            mjdref = hdr["MJDREF"]
-            timezero = hdr["TIMEZERO"]
-            v4("TSTART/MJDREF/TIMEZERO = {} / {} / {}".format(time_obs, mjdref, timezero))
+                v4("TSTART/MJDREF/TIMEZERO = " +
+                   "{} / {} / {}".format(time_obs, mjdref, timezero))
 
-            mjdobs = mjdref + (timezero + time_obs) / 86400.0
+                mjdobs = mjdref + (timezero + time_obs) / 86400.0
 
-        v3(" MJD_OBS={} ({})".format(mjdobs, type(mjdobs)))
+        v3(" MJD-OBS={} ({})".format(mjdobs, type(mjdobs)))
         vals.append((mjdobs, filename))
 
-    # sort on MJD_OBS (first term) and extract the filename (second term)
+    # sort on MJD-OBS (first term) and extract the filename (second term)
     vals.sort()
     return [v[1] for v in vals]
 
