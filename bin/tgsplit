@@ -20,7 +20,7 @@
 from __future__ import print_function
 
 toolname = "tgsplit"
-__revision__ = "01 August 2018"
+__revision__ = "04 November 2019"
 
 from ciao_contrib.runtool import make_tool
 from pycrates import read_file, write_file
@@ -232,10 +232,11 @@ def split_bkg_tge2( infile, clobber ):
 
     # Hack to delete columns from the source spectrum.
     tab = read_file(infile,"r")
-    tab.delete_column( "bg_counts")
-    tab.delete_column( "bg_area")
-    tab.delete_column( "bg_err")
-    #write_file( tab, infile+".tmp", clobber=True)
+    for cc in [ "bg_counts", "bg_area", "bg_err"]:
+        if tab.column_exists( cc ):
+            tab.delete_column(cc)
+
+    # use dataset write to copy region block
     tab.get_dataset().write(infile+".tmp", clobber=True)
     os.rename( infile+".tmp", infile )
 
