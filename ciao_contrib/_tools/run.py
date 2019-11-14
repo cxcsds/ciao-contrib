@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2010, 2011, 2012, 2014, 2015, 2018
+#  Copyright (C) 2010, 2011, 2012, 2014, 2015, 2018, 2019
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -337,9 +337,9 @@ def get_lookup_table(toolname, pathfrom=None):
     reproject_image and dmimgcalc. We look for
        data/<toolname>_header_lookup.txt
     in:
-        <dir>/../data/   [for testing]
-        <dir>/           [for testing]
-        $ASCDS_CONTRIB/
+        <dir>/../data/
+        <dir>/           [for testing / conda]
+        $ASCDS_CONTRIB/  [optional, non-conda build]
 
     otherwise we default to $ASCDS_CALIB/dmmerge_header_lookup.txt.
 
@@ -358,17 +358,35 @@ def get_lookup_table(toolname, pathfrom=None):
     fname = "{}_header_lookup.txt".format(toolname)
 
     v3("Looking for the lookup table for: " + toolname)
-    for f in [dirpath + "/../data/" + fname,
-              dirpath + "/" + fname,
-              os.getenv("ASCDS_CONTRIB") + "/data/" + fname,
-              os.getenv("ASCDS_CALIB") + "/dmmerge_header_lookup.txt"]:
 
+    # The assumption is that the first of these is going to match
+    # most use cases (conda and non-conda builds).
+    #
+    infiles = [dirpath + "/../data/" + fname,
+               dirpath + "/" + fname]
+
+    # The conda build does not have ASCDS_CONTRIB, but
+    # does have ASCDS_CALIB. We do not error out on the missing
+    # environment variable, but on whether we find the file or not.
+    #
+    try:
+        infiles.append(os.getenv("ASCDS_CONTRIB") + "/data/" + fname)
+    except TypeError:
+        pass
+
+    try:
+        infiles.append(os.getenv("ASCDS_CALIB") + "/dmmerge_header_lookup.txt")
+    except TypeError:
+        pass
+
+    for f in infiles:
         f = os.path.normpath(f)
         v3("Looking for: " + f)
         if os.path.exists(f):
             return f
 
-    raise IOError("Unable to find the merging rules for {}".format(toolname))
+    raise IOError("Unable to find the merging rules " +
+                  "for {} in\n{}".format(toolname, infiles))
 
 
 def fix_bunit(infile, outfile, verbose=0):

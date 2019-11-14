@@ -2728,7 +2728,7 @@ def expmap_weight(infiles, expmaps, outfile, lookupTable,
     # It should not be needed here (only in the exptime weight) but
     # left in just to make sure.
     #
-    res = np.seterr(invalid='ignore')
+    res = np.seterr(invalid='ignore', divide='ignore')
     try:
         newvals = numerator / denominator
         newvals = newvals.astype(np.float32)
