@@ -321,8 +321,8 @@ def blt_plot_delchisqr(access_point,xx, ex, yy, ey, y_label):
     """Plot the residuals""" 
 
     # This requires ds9 v8.1    
-    xpa_plot_cmd( "ds9", "add graph line")
-    xpa_plot_cmd( "ds9", "layout strip")
+    xpa_plot_cmd( "${ds9}", "add graph line")
+    xpa_plot_cmd( "${ds9}", "layout strip")
     
     cmd = ["xpaset", access_point, "plot", "data", "xyey"]    
 
@@ -381,7 +381,7 @@ blt_plot_model( "${ds9}", _m.x, _m.y)
 delta = (_d.y-_m.y)/_d.yerr
 ones = _d.yerr*0.0+1.0
 
-blt_plot_delchisqr( "ds9", _d.x, _d.x, delta, ones, "")
+blt_plot_delchisqr( "${ds9}", _d.x, _d.x, delta, ones, "")
 
 
 EOF
