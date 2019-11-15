@@ -7,7 +7,7 @@ reserve the right to stop using it at any time.
 
 The CIAO contributed script package provides additional scripts,
 Python modules, and helper files to extend the capabilities of the
-CIAO software system available at http://cxc.harvard.edu/ciao/. The
+CIAO software system available at https://cxc.harvard.edu/ciao/. The
 script package is distributed as part of the CIAO installation and
 is derived from the code in this repository. This repository is
 intended for development of the CIAO contrib package, and it
@@ -25,7 +25,7 @@ or of this repository.
 The contributed script package also contains code released by the
 High Energy Astrophysics Science Archive Research Center (HEASARC)
 of NASA as part of the HEASoft software package, available from
-http://heasarc.nasa.gov/lheasoft/ These files are located in
+https://heasarc.nasa.gov/lheasoft/ These files are located in
 `ciao-<version>/contrib/share/xspec/` and are released with the
 same conditions as HEASoft (which we believe to be the Public Domain).
 
