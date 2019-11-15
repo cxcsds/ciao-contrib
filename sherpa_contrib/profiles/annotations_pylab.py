@@ -20,7 +20,8 @@
 
 """Add annotations to a plot using matplotlib.
 
-This is specific to the sherpa_contrib.profiles routines.
+This is specific to the sherpa_contrib.profiles routines, and is a
+remnant of when we supported both matplotlib and chips in CIAO.
 """
 
 from matplotlib import pyplot as plt

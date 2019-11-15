@@ -100,9 +100,6 @@ __all__ = (
 # Apparently the xxx.get_yyy_defaults() routines already return
 # a copy of the structure so no need to here.
 #
-# This has been adjusted to try and get similar plots for both
-# ChIPS and Matplotlib.
-#
 def get_data_prof_defaults():
     d = plot.backend.get_histo_defaults()
 
@@ -110,13 +107,7 @@ def get_data_prof_defaults():
 
     # Try to support backend-specific settings
     #
-    if plot.backend.name == 'chips':
-        newopts = [('errstyle', 'line'),
-                   ('linestyle', 0),
-                   ('symbolfill', False),
-                   ('symbolsize', 3),
-                   ('symbolstyle', 4)]  # circle
-    elif plot.backend.name == 'pylab':
+    if plot.backend.name == 'pylab':
         newopts = [('marker', 'o'),
                    ('markerfacecolor', 'none'),
                    ('markersize', 4),
