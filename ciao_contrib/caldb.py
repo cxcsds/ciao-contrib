@@ -41,7 +41,7 @@ __all__ = (
     "get_caldb_installed_date"
 )
 
-release_notes_url = "http://cxc.harvard.edu/caldb/downloads/releasenotes.html"
+release_notes_url = "https://cxc.harvard.edu/caldb/downloads/releasenotes.html"
 
 
 def todate(txt):
@@ -246,7 +246,7 @@ def get_caldb_releases(timeout=None):
     This routine will only work if the computer is on-line and able to
     access the Chandra CALDB pages at
 
-      http://cxc.harvard.edu/caldb/
+      https://cxc.harvard.edu/caldb/
 
     """
 
@@ -433,13 +433,13 @@ def check_caldb_version(version=None):
     """Is the locally-installed Chandra CALDB installation up-to-date?
 
     The routine requires that the computer is on-line and able to
-    access the Chandra CALDB web site: http://cxc.harvard.edu/caldb/
+    access the Chandra CALDB web site: https://cxc.harvard.edu/caldb/
 
     Parameters
     ----------
     version : str, optional
         The version to compare to the latest released Chandra CALDB
-        (as obtained from http://cxc.harvard.edu/caldb/). If not
+        (as obtained from https://cxc.harvard.edu/caldb/). If not
         set then the version from the locally-installed Chandra CALDB
         is used. The format for the string is integer values separated
         by ".", such as "4.7.2".

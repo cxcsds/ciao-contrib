@@ -1,8 +1,5 @@
-
-# Python35Support
-
 #
-#  Copyright (C) 2012, 2013, 2015, 2016
+#  Copyright (C) 2012, 2013, 2015, 2016, 2019
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -404,7 +401,7 @@ def find_ancillary_files(filename, filetypes,
     References
     ----------
 
-    .. [1] http://cxc.harvard.edu/ciao/data_products_guide/
+    .. [1] https://cxc.harvard.edu/ciao/data_products_guide/
 
     Examples
     --------
