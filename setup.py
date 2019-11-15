@@ -8,8 +8,7 @@ params = sorted(glob.glob("param/*.par"))
 docs = sorted(glob.glob("share/doc/xml/*.xml"))
 datum = sorted(glob.glob("data/*"))
 configs = sorted(glob.glob("config/*"))
-mods = [ "chips_contrib",
-    "ciao_contrib",
+mods = [ "ciao_contrib",
     "ciao_contrib/region",
     "ciao_contrib/_tools",
     "ciao_contrib/cda",
