@@ -1,4 +1,4 @@
-#!/bin/sh 
+#!/bin/sh
 #
 #  Copyright (C) 2007-2011,2013,2018,2019
 #       Smithsonian Astrophysical Observatory
@@ -22,10 +22,10 @@
 # fullgarf
 #
 # A list of threads is available at:
-#   http://cxc.harvard.edu/ciao/threads/
+#   https://cxc.harvard.edu/ciao/threads/
 #
 # This script requires its parameter file (fullgarf.par) be available
-# to the parameter system. 
+# to the parameter system.
 #
 # version string is a.b.c, where a.b is the CIAO release, and c
 # the version of the script
@@ -45,7 +45,7 @@
 #   (for v2.2.3) Fixed bug that prevented overwriting existing output ARF
 #                even with clobber set to 'yes'
 #   (for v2.2.2) Renamed from "fullgarf.sh" to "fullgarf".
-#   (for v2.2.1) Rewritten, to include the "parameter-file" structure. 
+#   (for v2.2.1) Rewritten, to include the "parameter-file" structure.
 #
 #
 version_str="4.11.1"
@@ -105,7 +105,7 @@ checkKey ()
    fi
 
 }
- 
+
 ####################################################################
 # This routine grabs the value of a specified keyword
 # from the header of an input .fits/.qpoe file.
@@ -225,7 +225,7 @@ getPhaPars ()
         echo "    "
         exit 1
       fi
-      
+
       garm=`dmlist ${phafile}"[SPECTRUM][cols tg_part]" opt=raw,data rows=${prow}:${prow} | sed -e '/#/d' -e 's/1/HEG/' -e 's/2/MEG/' -e 's/3/LEG/' -e 's/ //g' `
       ord=`dmlist ${phafile}"[SPECTRUM][cols tg_m]" opt=raw,data rows=${prow}:${prow} | sed -e '/#/d' -e 's/ //g' `
 
@@ -234,7 +234,7 @@ getPhaPars ()
       dmkeypar "${phafile}[SPECTRUM][#row=${prow}]" y echo- > /dev/null 2>&1
       srcy=`pget dmkeypar value`
 
-  
+
    fi
 
    echo "Grating arm is $garm, order=$ord  "
@@ -271,7 +271,7 @@ getautopars()
 	    nauto=`expr $nauto + 1`
 	    auto_param_list=`echo $auto_param_list $param`
 	else
-	    hidden_param_list=`echo $hidden_param_list $param`  
+	    hidden_param_list=`echo $hidden_param_list $param`
 	fi
 	nc=`expr $nc + 2`
     done
@@ -288,21 +288,21 @@ getparams()
 	counter=`expr $counter + 1`
 
 	with_param=`echo $1 | grep '\[.*='`
-	if [ "$with_param" = "$1" ]; then  
+	if [ "$with_param" = "$1" ]; then
 	    # a parameter with DM filter present
 	    with_params=`echo $1 | grep '=.*\['`
 
-	    if [ "$with_params" = "$1" ]; then 
+	    if [ "$with_params" = "$1" ]; then
 		# param name was specified
 		param=`echo $1 | awk -F= '{print $1}'`
 		value=`echo $1 | cut -f2- -d'='`
-	    else     
+	    else
 		# param name not specified
 		param=`echo $auto_param_list | cut -f$counter -d' '`
 		value="$1"
 	    fi
 
-	else    
+	else
 	    # no DM filter present
 	    with_params=`echo $1 | grep =`
 
@@ -311,7 +311,7 @@ getparams()
 		param=`echo $1 | awk -F= '{print $1}'`
 		value=`echo $1 | cut -f2- -d'='`
 
-	    else     
+	    else
 		# param name not specified
 		param=`echo $auto_param_list | cut -f$counter -d' '`
 		value="$1"
@@ -327,7 +327,7 @@ getparams()
 	fi
 
 	is_auto_par=`echo $auto_param_list | grep $param`
-	if [ "$is_auto_par" = "" ]; then 
+	if [ "$is_auto_par" = "" ]; then
 	    #not an auto parameter
 	    counter=`expr $counter - 1`
 	else
@@ -338,7 +338,7 @@ getparams()
 		    entered_param_list=`echo $entered_param_list $test_param`
 		fi
 	    done
-	fi 
+	fi
 
 	#  echo pset $prog ${param}="${value}"
 	pset $prog ${param}="${value}"
@@ -405,7 +405,7 @@ runAsphist ()
      if [ ! -f ${root}_ah$chip.fits  -a ! -f ${root}_ah$chip.fits.gz ]; then
         echo asphist infile=$asol  \
                 outfile=${root}_ah$chip.fits \
-                evtfile=$evt"[$chiptag=$chip]" dtffile=$dtf mode=$MODE 
+                evtfile=$evt"[$chiptag=$chip]" dtffile=$dtf mode=$MODE
 
         asphist infile=$asol  \
                 outfile=${root}_ah$chip.fits \
@@ -463,7 +463,7 @@ runMkgarf ()
    for idet in $detlist
    do
      thischipid=`expr $idet + $add_to_det`
-     out=${root}_S${idet}_${garm}_${ord}.fits    
+     out=${root}_S${idet}_${garm}_${ord}.fits
      asp=${root}_ah${thischipid}
 
      mydet="${det}$idet"
@@ -528,7 +528,7 @@ runMkgarf ()
                    sourcepixely=$srcy \
 		   mode="hl" \
 		   verb=0 \
-		   clobber=$clobber 
+		   clobber=$clobber
 
           mkgarf detsubsys="$mydet$ardlibqual" \
 	           order=$ord \
@@ -546,7 +546,7 @@ runMkgarf ()
                    sourcepixely=$srcy \
 		   mode="hl" \
 		   verb=0 \
-                   clobber=$clobber 
+                   clobber=$clobber
         else
           echo "File ${out}.gz already exists. "
           echo "Cannot clobber. . . skipping."
@@ -558,14 +558,14 @@ runMkgarf ()
    done
 }
 
-### This routine makes use of previously set variables, 
+### This routine makes use of previously set variables,
 ### viz. $garm, $root, $ord
 
 runDmarfadd ()
 {
    grat=$garm
    holdfile=thisfile.istemporary
- 
+
    type=${grat}_${ord}_garf.fits
    ls -1 ${root}*${grat}_${ord}.fits > $holdfile
    if [ `wc -l $holdfile | awk '{print $1}'` = 0 ]; then
@@ -691,14 +691,14 @@ if [ "$pacc" = "" ]; then
    verbose=$10
 
 else
- 
+
     if [ ! -f $pacc ]; then
       echo "   "
       echo "Cannot find the \"$pacc\" paramater file. "
       echo "   "
       echo "   "
       exit 1
-    fi 
+    fi
 
     echo "Will use $pacc for the parameter file."
     # parse the command line for parameters
@@ -784,7 +784,7 @@ if [ "$det_test" = "HRC" ]; then
   chip_name=chip_id
 
 ######
-#### We only need to run asphist/mkgarf for some of the 
+#### We only need to run asphist/mkgarf for some of the
 #### chips/ccds -- those corresponding to positive or
 #### negative orders. The chips for which asphist/mkgarf
 #### will be run are determined by the detlist variable
@@ -803,13 +803,13 @@ if [ "$det_test" = "HRC" ]; then
     detlist=0
     detsubsys=HRC-I
   fi
-  
+
   chiplist=$detlist
 
 else
   echo "Detector is ACIS "
 
-  # large y offsets may mean ZO not on acis-7, typically 
+  # large y offsets may mean ZO not on acis-7, typically
   # on acis-6.  Need to make arfs for other chips/orders.
   chip_name=ccd_id
 
@@ -849,7 +849,7 @@ echo "  "
 echo "$0 finished. "
 echo "  "
 
-### See the note above regarding the redundancy 
+### See the note above regarding the redundancy
 ### that results when the user sets mode="ql"
 if [ "$mode_orig" = "ql" ]; then
  pset $pacc mode="ql"
