@@ -22,7 +22,7 @@
 """Create a spectrum file for use in ChART2.
 
 Helper routines for creating a spectrum file for use with
-`ChART version 2 <http://cxc.harvard.edu/ciao/PSFs/chart2/>`_.
+`ChART version 2 <https://cxc.harvard.edu/ciao/PSFs/chart2/>`_.
 
 Examples
 --------

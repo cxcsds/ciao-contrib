@@ -31,8 +31,8 @@ Aim:
   and a simple sigma-clipped algorithm
 
 Threads:
-  http://cxc.harvard.edu/ciao/threads/acisbackground/
-  http://cxc.harvard.edu/ciao/threads/filter_ltcrv/
+  https://cxc.harvard.edu/ciao/threads/acisbackground/
+  https://cxc.harvard.edu/ciao/threads/filter_ltcrv/
 
 """
 
@@ -569,8 +569,8 @@ class LightCurve:
             from matplotlib import tight_layout
 
             fig, axs = plt.subplots(2, 1, tight_layout=False)
-            hpad = tight_layout.get_tight_layout_figure(fig, 
-                                                        axs, 
+            hpad = tight_layout.get_tight_layout_figure(fig,
+                                                        axs,
                                                         tight_layout.get_subplotspec_list(axs),
                                                         tight_layout.get_renderer(fig))["hspace"]
 
@@ -739,7 +739,7 @@ class LightCurve:
 
             axs[1].set_xlim(auto=True)
             axs[1].set_ylim(bottom=0, auto=True)
-            
+
             if rateaxis == "x":
                 y_minor_ticks = axs[1].yaxis.get_minorticklocs()
                 dytick = y_minor_ticks[1] - y_minor_ticks[0]

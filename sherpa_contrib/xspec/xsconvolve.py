@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2012, 2013, 2014, 2015, 2017, 2018
+#  Copyright (C) 2012, 2013, 2014, 2015, 2017, 2018, 2019
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -24,7 +24,7 @@ models.
 
 Note that these models have seen little to no testing so please take
 care and report any issues to the CXC HelpDesk at
-http://cxc.harvard.edu/helpdesk/
+https://cxc.harvard.edu/helpdesk/
 
 The convolution models follow the load_conv and load_psf commands,
 so that you use load_xxx to create an instance, which can then

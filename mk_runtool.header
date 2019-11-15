@@ -357,7 +357,7 @@ However, some tools make use of other parameter files - e.g. many of
 the instrument tools such as mkinstmap or mkrmf - and these are
 accessed using the standard CIAO parameter system. For standard CIAO
 installations this means that the PFILES environment (see "ahelp
-parameter" or http://cxc.harvard.edu/ciao/ahelp/parameter.html for
+parameter" or https://cxc.harvard.edu/ciao/ahelp/parameter.html for
 more information) is used.
 
 The module provides a set_pfiles() routine which changes the location

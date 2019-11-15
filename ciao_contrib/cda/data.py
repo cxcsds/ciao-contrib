@@ -21,7 +21,7 @@
 Download publically-available data from the Chandra Data Archive (CDA).
 
 Routines that wrap up FTP access to the Chandra Data Archive -
-http://cxc.harvard.edu/cda/ - supporting mirror sites under the
+https://cxc.harvard.edu/cda/ - supporting mirror sites under the
 assumption that they have the same directory structure and login
 support as the CDA.
 
@@ -652,7 +652,7 @@ def download_chandra_obsids(obsids,
                             userpass=None
                             ):
     """Download the obsids from the Chandra Data Archive -
-    http://chandra.harvard.edu/cda/ - or a mirror site.
+    https://cxc.harvard.edu/cda/ - or a mirror site.
 
     obsids should be a list of obsid values - e.g. [1843, 1557]
 

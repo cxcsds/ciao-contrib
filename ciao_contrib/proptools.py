@@ -32,8 +32,8 @@ There is no interface to PIMMS; for this it is suggested that the
 modelflux command-line tool is used, or the ciao_contrib.runtool
 Python wrapper for it - for more details see
 
-  http://cxc.harvard.edu/ciao/ahelp/modelflux.html
-  http://cxc.harvard.edu/ciao/ahelp/ciao_runtool.html
+  https://cxc.harvard.edu/ciao/ahelp/modelflux.html
+  https://cxc.harvard.edu/ciao/ahelp/ciao_runtool.html
 
 This is an *experimental* interface and may change in the future.
 
@@ -215,7 +215,7 @@ def colden(ra, dec, dataset='NRAO'):
     Stark et al data (dataset='Bell') or for indicating whether
     the result is interpolated or not.
 
-    See http://cxc.harvard.edu/ciao/ahelp/colden.html for more information
+    See https://cxc.harvard.edu/ciao/ahelp/colden.html for more information
     on the colden proposal tool.
 
     The precess routine and the coords.format module can be used for converting
@@ -388,9 +388,9 @@ def precess(x, y, fromsys="B", tosys="J", fromfmt="DEG", tofmt="DEG"):
     whereas sexagesimal are assumed to be strings. The return value is
     always a numpy array when there are multiple positions and tofmt='DEG'.
 
-    See http://cxc.harvard.edu/ciao/ahelp/precess.html for more information
+    See https://cxc.harvard.edu/ciao/ahelp/precess.html for more information
     on the precess proposal tool and
-    http://cxc.harvard.edu/ciao/ahelp/prop-coords.html for coordinate systems.
+    https://cxc.harvard.edu/ciao/ahelp/prop-coords.html for coordinate systems.
 
     Unlike the command-line version, there is no support for constellations
     or the Ecliptic coordinate system (Bessalian epoch).
@@ -735,9 +735,9 @@ def dates(date, fromcal="CHANDRA", tocal="GREG"):
     is requested then a datetime object is returned (as a "naive" object, with
     no time zone information set).
 
-    See http://cxc.harvard.edu/ciao/ahelp/dates.html for more information
+    See https://cxc.harvard.edu/ciao/ahelp/dates.html for more information
     on the dates proposal tool and
-    http://cxc.harvard.edu/ciao/ahelp/prop-time.html for the calendars.
+    https://cxc.harvard.edu/ciao/ahelp/prop-time.html for the calendars.
 
     Only a small subset of the functionality of the command-line tool is provided
     by this function.
