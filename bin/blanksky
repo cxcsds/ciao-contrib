@@ -18,37 +18,17 @@
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-__version__ = "CIAO 4.11"
 toolname = "blanksky"
-__revision__  = "01 May 2019"
+__revision__  = "13 November 2019"
 
 import os, sys, paramio, tempfile, shutil, stat
+
+import stk
 import pycrates as pcr
-
-# This is only needed for development.
-try:
-    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
-        _thisdir = os.path.dirname(__file__)
-        _libname = "python{}.{}".format(sys.version_info.major,
-                                        sys.version_info.minor)
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
-        if os.path.isdir(_pathdir):
-            os.sys.path.insert(1, _pathdir)
-        else:
-            print("*** WARNING: no {}".format(_pathdir))
-
-        del _libname
-        del _pathdir
-        del _thisdir
-
-except KeyError:
-    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
-########################################################
 
 from crates_contrib.utils import *
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
 from ciao_contrib.param_wrapper import open_param_file
-from ciao_contrib.stacklib import expand_stack
 
 from ciao_contrib._tools import fluximage, utils, fileio, obsinfo, bands
 
@@ -318,7 +298,7 @@ def get_par(argv):
     elif params["evtfile"].startswith("@"):
         error_out("Input event stacks not supported.")
     else:
-        #params["evtfile"] = expand_stack(params["evtfile"])
+        #params["evtfile"] = stk.build(params["evtfile"])
         params["infile_filter"] = fileio.get_filter(params["evtfile"])
         params["evtfile"] = fileio.get_file(params["evtfile"])
 
@@ -341,7 +321,7 @@ def get_par(argv):
         if params["asol"].lower() == "none":
             error_out("Aspect solutions are required to run {}.".format(toolname))
         else:
-            params["asol"] = ",".join(expand_stack(params["asol"]))
+            params["asol"] = ",".join(stk.build(params["asol"]))
     else:
         fobs = obsinfo.ObsInfo(params["evtfile"])
 
@@ -490,7 +470,7 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
             ccds.remove(9)
 
         if [0 in ccds, set([4,5,6,7,8,9]).isdisjoint(set(ccds))] == [True,False]:
-            # check location of aimpoint with dmcoords using the 
+            # check location of aimpoint with dmcoords using the
             # time-averaged optical-axis coordinates
             ra_pnt = keywords["RA_PNT"]
             dec_pnt = keywords["DEC_PNT"]

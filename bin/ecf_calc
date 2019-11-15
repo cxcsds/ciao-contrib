@@ -18,17 +18,16 @@ Usage:
 
 """
 
-__version__ = "CIAO 4.11"
 toolname = "ecf_calc"
-__revision__ = "05 September 2019"
+__revision__ = "13 November 2019"
 
 import numpy, tempfile, sys, os, paramio
 
+import stk
 import pycrates as pcr
 
 from ciao_contrib.logger_wrapper import handle_ciao_errors
 from ciao_contrib.param_wrapper import open_param_file
-from ciao_contrib.stacklib import expand_stack
 from ciao_contrib.cxcdm_wrapper import get_block_info_from_file
 from ciao_contrib.runtool import dmhistory, dmellipse, new_pfiles_environment, add_tool_history
 
@@ -174,7 +173,7 @@ def get_ecf(infile,reg,outfile,x,y,radius,binsize,fraction,clobber):
     if fraction.lower() in ["","none","indef"]:
         frac = "lgrid(0.01:1.0:0.01)" #",".join([str(i*0.01) for i in range(1,100)])
     else:
-        frac = ",".join(expand_stack(fraction))
+        frac = ",".join(stk.build(fraction))
 
     # run dmellipse to obtain a radii for a given set of ECFs
     with new_pfiles_environment(ardlib=False, copyuser=False):
@@ -304,7 +303,7 @@ def plot_ecf(rad_file):
 
     matplotlib.use("TkAgg")
     matplotlib.interactive(True)
-    
+
     try:
         detector = get_detnam(rad_file)
     except KeyError:
@@ -321,7 +320,7 @@ def plot_ecf(rad_file):
              markersize=3.5,fillstyle="none")
     axs.loglog()
     axs.set_ylabel("Encircled Counts Fraction")
-    
+
     if "HRC" in detector:
         axs.set_xlabel("HRC Pixels")
     elif "ACIS" in detector:
