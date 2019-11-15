@@ -38,7 +38,7 @@ weights file used by mkinstmap when making a weighted instrument map::
     estimate_weighted_expmap()
 
 See the `Calculating Spectral Weights
-<http://cxc.harvard.edu/ciao/threads/spectral_weights/>`_ thread
+<https://cxc.harvard.edu/ciao/threads/spectral_weights/>`_ thread
 for more information.
 
 """

@@ -22,7 +22,7 @@
 """Create a spectrum file for use in MARX.
 
 Helper routines for creating a spectrum file for use with
-`MARX <http://space.mit.edu/cxc/marx/>`_.
+`MARX <https://space.mit.edu/cxc/marx/>`_.
 
 Examples
 --------

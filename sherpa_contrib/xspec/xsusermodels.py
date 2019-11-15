@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2019
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -36,7 +36,7 @@ used with other models that follow the same interface.
 
 This interface has seen limited testing, so please check the
 documentation and then the CXC HelpDesk -
-http://cxc.harvard.edu/helpdesk/ - if you have problems.
+https://cxc.harvard.edu/helpdesk/ - if you have problems.
 
 Note that the convolution interface has seen very limited testing,
 so please take care when using it!
