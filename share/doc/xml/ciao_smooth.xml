@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
-  <!ENTITY pr  'chips>'>
+  <!ENTITY pr  'sherpa>'>
 ]>
 <cxchelptopics>
   <ENTRY key="ciao_smooth" context="contrib"
@@ -37,7 +37,7 @@
       </PARA>
 
       <PARA title="Loading the routines">
-        The module can be loaded into ChIPS, Sherpa or a Python
+        The module can be loaded into Sherpa or a Python
 	program by saying:
       </PARA>
 
@@ -94,14 +94,17 @@ from ciao_contrib.smooth import *
 	  <LINE>&pr; cr = read_file("img.fits")</LINE>
 	  <LINE>&pr; img = copy_piximgvals(cr)</LINE>
 	  <LINE>&pr; simg = gsmooth(img, 3)</LINE>
-	  <LINE>&pr; add_image(simg)</LINE>
+	  <LINE>&pr; import maplotlib.pyplot as plt</LINE>
+	  <LINE>&pr; plt.imshow(simg, origin='lower')</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
 	    Here we smooth the data in img.fits with a gaussian using a sigma of
-	    3 pixels before displaying it using the ChIPS add_image() routine.
+	    3 pixels before displaying it using the Matplotlib imshow routine.
+	    <!--
 	    See the following example for how the WCS information can be retained
 	    in the output plot.
+	    -->
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
@@ -111,14 +114,19 @@ from ciao_contrib.smooth import *
 	  <LINE>&pr; cr = read_file("img.fits")</LINE>
 	  <LINE>&pr; img = copy_piximgvals(cr)</LINE>
 	  <LINE>&pr; set_piximgvals(cr, gsmooth(img, 3))</LINE>
-	  <LINE>&pr; add_image(cr)</LINE>
+	  <!--
+	      <LINE>&pr; add_image(cr)</LINE>
+	  -->
 	</SYNTAX>
 	<DESC>
 	  <PARA>
 	    This is the same as the previous example except that we 
-	    store the smoothed image back into the Crate. By passing this
+	    store the smoothed image back into the Crate.
+	    <!--
+	    By passing this
 	    crate (the varable cr) to the add_image() call we can display
 	    the smoothed image using any WCS information read in with the file.
+	    -->
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
@@ -129,13 +137,15 @@ from ciao_contrib.smooth import *
 	  <LINE>&pr; img = copy_piximgvals(cr)</LINE>
 	  <LINE>&pr; simg = gsmooth(img, 3)</LINE>
 	  <LINE>&pr; set_piximgvals(cr, np.arcsinh(simg))</LINE>
-	  <LINE>&pr; add_image(cr)</LINE>
+	  <!--
+	      <LINE>&pr; add_image(cr)</LINE>
+	  -->
 	</SYNTAX>
 	<DESC>
 	  <PARA>
 	    Here the smoothed image is scaled using the "arcsinh" function
-	    before it is displayed. See "ahelp scale_image_crate" for more
-	    information on this scaling.
+	    before it is added back to the Crate. See the scale_image_crate
+	    routine for more information on this scaling.
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
@@ -144,15 +154,19 @@ from ciao_contrib.smooth import *
 	<SYNTAX>
 	  <LINE>&pr; cr = read_file("img.fits")</LINE>
 	  <LINE>&pr; img = copy_piximgvals(cr)</LINE>
-	  <LINE>&pr; clear()</LINE>
-	  <LINE>&pr; split(2,2)</LINE>
-	  <LINE>&pr; add_image(img)</LINE>
-	  <LINE>&pr; current_plot("plot2")</LINE>
-	  <LINE>&pr; add_image(gsmooth(img, 5))</LINE>
-	  <LINE>&pr; current_plot("plot3")</LINE>
-	  <LINE>&pr; add_image(bsmooth(img, 5))</LINE>
-	  <LINE>&pr; current_plot("plot4")</LINE>
-	  <LINE>&pr; add_image(tsmooth(img, 5))</LINE>
+	  <LINE>&pr; import matplotlib.pyplot as plt</LINE>
+
+	  <LINE>&pr; plt.subplot(2, 2, 1)</LINE>
+	  <LINE>&pr; plt.imshow(img, origin='lower')</LINE>
+	  
+	  <LINE>&pr; plt.subplot(2, 2, 2)</LINE>
+	  <LINE>&pr; plt.imshow(gsmooth(img, 5), origin='lower')</LINE>
+	  
+	  <LINE>&pr; plt.subplot(2, 2, 3)</LINE>
+	  <LINE>&pr; plt.imshow(bsmooth(img, 5), origin='lower')</LINE>
+	  
+	  <LINE>&pr; plt.subplot(2, 2, 4)</LINE>
+	  <LINE>&pr; plt.imshow(tsmooth(img, 5), origin='lower')</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
@@ -334,6 +348,6 @@ from ciao_contrib.smooth import *
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>August 2010</LASTMODIFIED>
+    <LASTMODIFIED>December 2019</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
