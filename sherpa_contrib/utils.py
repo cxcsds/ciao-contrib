@@ -118,7 +118,7 @@ class InstMapWeights:
 
         names = ["id", "modelexpr", "xlo", "xhi", "xmid", "weight",
                  "fluxtype"]
-        vals  = [getattr(self, n) for n in names]
+        vals = [getattr(self, n) for n in names]
         return print_fields(names, dict(zip(names, vals)))
 
     def __init__(self, id=None, fluxtype="photon"):
@@ -175,9 +175,9 @@ class InstMapWeights:
         self.weight = src / norm
 
         self.weight = self.weight.astype(dtype)
-        self.xlo    = self.xlo.astype(dtype)
-        self.xhi    = self.xhi.astype(dtype)
-        self.xmid   = self.xmid.astype(dtype)
+        self.xlo = self.xlo.astype(dtype)
+        self.xhi = self.xhi.astype(dtype)
+        self.xmid = self.xmid.astype(dtype)
 
     def _calc_bins(self, data):
         "Calculate the bin edges"
@@ -302,8 +302,9 @@ class InstMapWeights:
 
             ``xlog``
             ``ylog``
-            ``linethickness``  (ChIPS only)
-            ``linecolor``      (ChIPS only)
+            ``linestyle``
+            ``linecolor``
+
         """
 
         # Create a Sherpa histogram plot. Unlike other plot
@@ -335,7 +336,7 @@ class InstMapWeights:
         # There is no validation of the preference values
         #
         prefs = ui.get_data_plot_prefs()
-        for name in ['xlog', 'ylog', 'linethickness', 'linecolor']:
+        for name in ['xlog', 'ylog', 'linestyle', 'linecolor']:
             value = prefs.get(name, None)
             if value is not None:
                 hplot.histo_prefs[name] = value
@@ -684,13 +685,13 @@ def save_instmap_weights(*args, **kwargs):
         user["filename"] = args[0]
 
     elif nargs == 3:
-        user["id"]       = args[0]
+        user["id"] = args[0]
         user["filename"] = args[1]
-        user["clobber"]  = args[2]
+        user["clobber"] = args[2]
 
     elif _is_boolean(args[1]):
         user["filename"] = args[0]
-        user["clobber"]  = args[1]
+        user["clobber"] = args[1]
 
     elif isinstance(args[1], int):
         # This was needed in CIAO 4.2 and earlier since S-Lang would
@@ -701,10 +702,10 @@ def save_instmap_weights(*args, **kwargs):
         # clobber=2 will not map to True).
         #
         user["filename"] = args[0]
-        user["clobber"]  = args[1] == 1
+        user["clobber"] = args[1] == 1
 
     else:
-        user["id"]       = args[0]
+        user["id"] = args[0]
         user["filename"] = args[1]
 
     for (n, v) in kwargs.items():
@@ -751,8 +752,8 @@ def plot_instmap_weights(id=None, fluxtype="photon",
 
         ``xlog``
         ``ylog``
-        ``linethickness``  (ChIPS only)
-        ``linecolor``      (ChIPS only)
+        ``linestyle``
+        ``linecolor``
 
     Examples
     --------
@@ -765,13 +766,11 @@ def plot_instmap_weights(id=None, fluxtype="photon",
     >>> pl.phoindex = 1.7
     >>> plot_instmap_weights()
 
-    Change the model to an absorbed APEC model and overplot it
-    (in orange).
+    Change the model to an absorbed APEC model and overplot it.
 
     >>> set_source(gal * xsapec.gal)
     >>> gal.kt = 1.2
     >>> plot_instmap_weights(overplot=True)
-    >>> set_histogram(['*.color', 'orange'])
 
     Compare the weights when using the photon and erg weighting
     schemes (the normalization is significantly different).
