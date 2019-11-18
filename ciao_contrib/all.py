@@ -1,9 +1,6 @@
-from __future__ import absolute_import
-
-# Python35Support
-
 #
-#  Copyright (C) 2009-2010, 2011, 2016  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2009-2010, 2011, 2016, 2019
+#        Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -27,7 +24,6 @@ Contributed CIAO routines from the CXC.
 This module loads in the following packages
 
   crates_contrib
-  chips_contrib
   sherpa_contrib
 
 as well as
@@ -42,8 +38,9 @@ Note that the ciao_contrib.runtool module is not loaded
 by this module.
 """
 
+from __future__ import absolute_import
+
 from crates_contrib.all import *
-from chips_contrib.all import *
 from sherpa_contrib.all import *
 
 from .caldb import *
