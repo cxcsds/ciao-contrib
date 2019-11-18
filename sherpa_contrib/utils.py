@@ -302,11 +302,9 @@ class InstMapWeights:
 
             ``xlog``
             ``ylog``
-            ``linethickness``  (ChIPS only)
-            ``linecolor``      (ChIPS only)
+            ``linestyle``
+            ``linecolor``
 
-        This has *not* been updated to support the Matplotlib
-        backend yet.
         """
 
         # Create a Sherpa histogram plot. Unlike other plot
@@ -338,7 +336,7 @@ class InstMapWeights:
         # There is no validation of the preference values
         #
         prefs = ui.get_data_plot_prefs()
-        for name in ['xlog', 'ylog', 'linethickness', 'linecolor']:
+        for name in ['xlog', 'ylog', 'linestyle', 'linecolor']:
             value = prefs.get(name, None)
             if value is not None:
                 hplot.histo_prefs[name] = value
@@ -754,8 +752,8 @@ def plot_instmap_weights(id=None, fluxtype="photon",
 
         ``xlog``
         ``ylog``
-        ``linethickness``  (ChIPS only)
-        ``linecolor``      (ChIPS only)
+        ``linestyle``
+        ``linecolor``
 
     Examples
     --------
@@ -768,13 +766,11 @@ def plot_instmap_weights(id=None, fluxtype="photon",
     >>> pl.phoindex = 1.7
     >>> plot_instmap_weights()
 
-    Change the model to an absorbed APEC model and overplot it
-    (in orange).
+    Change the model to an absorbed APEC model and overplot it.
 
     >>> set_source(gal * xsapec.gal)
     >>> gal.kt = 1.2
     >>> plot_instmap_weights(overplot=True)
-    >>> set_histogram(['*.color', 'orange'])
 
     Compare the weights when using the photon and erg weighting
     schemes (the normalization is significantly different).
