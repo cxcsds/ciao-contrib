@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # 
-# Copyright (C) 2013,2014,2016,2018 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013,2014,2016,2018,2019 
+# Smithsonian Astrophysical Observatory
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "combine_grating_spectra"
-__revision__ = "01 August 2018"
+__revision__ = "18 November 2019"
 
 from pycrates import read_file, write_file
 import numpy as np
@@ -426,6 +427,12 @@ def update_metadata( outfile, pars ):
     
     if tab.key_exists("OBJECT") and not is_none( pars["object"] ):
         tab.get_key("OBJECT").value = pars["object"]
+    
+    # These keywords are merged and should be deleted
+    for kw in ["TG_M", "SPEC_NUM"]:
+        if tab.key_exists(kw):
+            tab.delete_key(kw)
+    
     
     tab.write()
 
