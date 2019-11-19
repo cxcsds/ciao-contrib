@@ -136,7 +136,7 @@ class XSConvolutionModel(models.CompositeModel, models.ArithmeticModel):
             return models.ArithmeticFunctionModel(obj)
 
     def __init__(self, model, wrapper):
-        self.model  = self.wrapobj(model)
+        self.model = self.wrapobj(model)
         self.wrapper = wrapper
         models.CompositeModel.__init__(self,
                                        "{}({})".format(self.wrapper.name,
