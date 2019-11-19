@@ -50,26 +50,27 @@ The supported convolution models are listed below, prepend
 "load_xs" to the name to find the command used to create
 an instance of the model:
 
-  cflux
-  clumin
-  cpflux
-  gsmooth
-  ireflect
-  kdblur
-  kdblur2
-  kerrconv
-  lsmooth
-  partcov
-  rdblur
-  reflect
-  rfxconv
-  rgsxsrc
-  simpl
-  vashift
-  vmshift
-  xilconv
-  zashift
-  zmshift
+  cflux: calculate flux
+  clumin: calculate luminosity
+  cpflux: calculate photon flux
+  gsmooth: gaussian smoothing
+  ireflect: reflection from ionized material
+  kdblur: convolve with the laor model shape
+  kdblur2: convolve with the laor2 model shape
+  kerrconv: accretion disk line shape with BH spin as free parameter
+  kyconv: convolution using a relativistic line from axisymmetric accretion disk
+  lsmooth: lorentzian smoothing
+  partcov: partial covering
+  rdblur: convolve with the diskline model shape
+  reflect: reflection from neutral material
+  rfxconv: angle-dependent reflection from an ionized disk
+  rgsxsrc: convolve an RGS spectrum for extended emission
+  simpl: comptonization of a seed spectrum
+  vashift: velocity shift an additive model
+  vmshift: velocity shift a multiplicative model
+  xilconv: angle-dependent reflection from an ionized disk
+  zashift: redshift an additive model
+  zmshift: redshift a multiplicative model
 
 """
 
@@ -88,6 +89,7 @@ __all__ = (
     'load_xskdblur',
     'load_xskdblur2',
     'load_xskerrconv',
+    'load_xskyconv',
     'load_xslsmooth',
     'load_xspartcov',
     'load_xsrdblur',
@@ -284,6 +286,46 @@ class XSkerrconv(XSConvolutionKernel):
                                                   ))
 
 
+class XSkyconv(XSConvolutionKernel):
+    _calc = _xspec.kyconv
+
+    def __init__(self, name='xskyconv'):
+        self.a = Parameter(name, 'a', 0.9982, min=0.0, max=1.0,
+                           hard_min=0.0, hard_max=1.0, frozen=False,
+                           units='GM/c')
+        self.theta_o = Parameter(name, 'theta_o', 30.0, min=0.0, max=89.0,
+                                 hard_min=0.0, hard_max=89.0, frozen=False,
+                                 units='deg')
+        self.rin = Parameter(name, 'rin', 1.0, min=1.0, max=1000.0,
+                             hard_min=1.0, hard_max=1000.0, frozen=True,
+                             units='GM/c^2')
+        self.ms = Parameter(name, 'ms', 1.0, min=0.0, max=1.0,
+                            hard_min=0.0, hard_max=1.0, frozen=True)
+        self.rout = Parameter(name, 'rout', 400.0, min=1.0, max=1000.0,
+                              hard_min=1.0, hard_max=1000.0, frozen=True,
+                              units='GM/c^2')
+        self.alpha = Parameter(name, 'alpha', 3.0, min=-20.0, max=20.0,
+                               hard_min=-20.0, hard_max=20.0, frozen=True)
+        self.beta = Parameter(name, 'beta', 3.0, min=-20.0, max=20.0,
+                              hard_min=-20.0, hard_max=20.0, frozen=True)
+        self.rb = Parameter(name, 'rb', 400.0, min=1.0, max=1000.0,
+                            hard_min=1.0, hard_max=1000.0, frozen=True,
+                            units='GM/c^2')
+        self.zshift = Parameter(name, 'zshift', 0.0, min=-0.999, max=10.0,
+                                hard_min=-0.999, hard_max=10.0, frozen=True)
+        self.limb = Parameter(name, 'limb', 0.0, min=0.0, max=2.0,
+                              hard_min=0.0, hard_max=2.0, frozen=True)
+        self.ne_loc = Parameter(name, 'ne_loc', 100.0, min=3.0, max=5000.0,
+                                hard_min=3.0, hard_max=5000.0, frozen=True)
+        self.normal = Parameter(name, 'normal', 1.0, min=-1.0, max=100.0,
+                                hard_min=-1.0, hard_max=100.0, frozen=True)
+
+        pars = (self.a, self.theta_o, self.rin, self.ms, self.rout,
+                self.alpha, self.beta, self.rb, self.zshift, self.limb,
+                self.ne_loc, self.normal)
+        XSConvolutionKernel.__init__(self, name, pars)
+
+
 class XSlsmooth(XSConvolutionKernel):
     _calc = _xspec.C_lsmooth
 
@@ -361,7 +403,7 @@ class XSrfxconv(XSConvolutionKernel):
         self.cosIncl = Parameter(name, 'cosIncl', 0.5, min=0.05, max=0.95,
                                  hard_min=0.05, hard_max=0.95, frozen=True)
         self.log_xi = Parameter(name, 'log_xi', 1.0, min=1.0, max=6.0,
-                                 hard_min=1.0, hard_max=6.0)
+                                hard_min=1.0, hard_max=6.0)
         XSConvolutionKernel.__init__(self, name, (self.rel_refl,
                                                   self.redshift,
                                                   self.Fe_abund,
@@ -375,7 +417,7 @@ class XSrgsxsrc(XSConvolutionKernel):
 
     def __init__(self, name='xsrgsxsrc'):
         self.order = Parameter(name, 'order', -1.0, min=-3.0, max=-1,
-                                  hard_min=-3.0, hard_max=-1, frozen=True)
+                               hard_min=-3.0, hard_max=-1, frozen=True)
         XSConvolutionKernel.__init__(self, name, (self.order,))
 
 
@@ -509,6 +551,12 @@ def load_xskerrconv(name):
     """Create an instance of the X-Spec kerrconv convolution model.
     """
     load_xsconvolve(XSkerrconv, name)
+
+
+def load_xskyconv(name):
+    """Create an instance of the X-Spec kyconv convolution model.
+    """
+    load_xsconvolve(XSkyconv, name)
 
 
 def load_xslsmooth(name):
