@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2013,2016,2018 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013,2016,2018-2019 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@ from __future__ import print_function
 
 
 toolname = "obsid_search_csc"
-__revision__ = "6 March 2018"
+__revision__ = "18 November 2019"
 
 import sys
 # This is only needed for development.
@@ -129,6 +129,10 @@ def main():
     pars = get_params(toolname, "rw", sys.argv, 
       verbose={"set":lw.set_verbosity, "cmd":verb1} )
     pp = parse_inputs( pars )
+
+    # check clobber before query
+    from ciao_contrib._tools.fileio import outfile_clobber_checks
+    outfile_clobber_checks( pars["clobber"], pars["outfile"] )
 
     #
     # Query catalog by position

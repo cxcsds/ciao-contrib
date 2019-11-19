@@ -929,7 +929,7 @@ def discover_filename_by_force( filetype, obsid, obi, region, band, instrume):
     """
     global __filename_version_db__
     if 0 == len(__filename_version_db__):
-        tab = make_URL_request( "http://cxc.harvard.edu/ciao/threads/csccli/cscrel1_version_info.txt", {} )
+        tab = make_URL_request( "https://cxc.harvard.edu/ciao/threads/csccli/cscrel1_version_info.txt", {} )
         tab = tab.decode("ascii")
         __filename_version_db__ = {}
         for row in tab.split("\n"):
@@ -1417,7 +1417,7 @@ def check_required_names( cols, cat_version=None ):
 def query_csc1_limsens( ra, dec ):
     """
     """
-    resource = "http://cxc.cfa.harvard.edu/csc1/sens/sensmap.php"
+    resource = "https://cxc.cfa.harvard.edu/csc1/sens/sensmap.php"
     vals = {
       "ra" : str(ra),
       "dec" : str(dec),
