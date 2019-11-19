@@ -52,37 +52,31 @@ xpaget $ds9 regions background -format ds9 -system physical -strip | \
 
 cat $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg > $DAX_OUTDIR/$$_all.reg
 
+echo "--------"
+echo `date`
+echo ""
+
 # Groupreg to match groups -- maybe not necessary
 dmgroupreg $DAX_OUTDIR/$$_all.reg  $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg clob+ exclude=$exclude
-
-# doesn't set non-zero exit status
-dmfilth - - $meth @-$DAX_OUTDIR/$$_src.reg @-$DAX_OUTDIR/$$_bkg.reg > $DAX_OUTDIR/$$_fill.fits 2>&1 
-
-# Check if this is a FITS file
-cat $DAX_OUTDIR/$$_fill.fits | fold -80 | grep ^SIMPLE > /dev/null 2>&1
 if test $? -ne 0
 then
-  # Display error message
-  echo `date`
-  echo ""
-  cat $DAX_OUTDIR/$$_fill.fits
-  echo "--------"
-else
-  # Display image
-  cat $DAX_OUTDIR/$$_fill.fits | xpaset $ds9 fits new
-  echo `date`
-  echo ""
-  echo "Output file: $DAX_OUTDIR/$$_fill.fits"
-  echo "--------"
+  exit 1
 fi
 
-tile=`pget dax tile`
-if test x$tile = xyes
+# doesn't set non-zero exit status
+dmfilth - $DAX_OUTDIR/$$_fill.fits $meth @-$DAX_OUTDIR/$$_src.reg @-$DAX_OUTDIR/$$_bkg.reg clob+ 2>&1 
+
+# Check if this is a FITS file
+if test -e $DAX_OUTDIR/$$_fill.fits
 then
-  xpaset -p $ds9 tile
+    cat $DAX_OUTDIR/$$_fill.fits | xpaset $ds9 fits new
+    echo "Output file: $DAX_OUTDIR/$$_fill.fits"
+    tile=`pget dax tile`
+    if test x$tile = xyes
+    then
+      xpaset -p $ds9 tile
+    fi
 fi
-
-
 
 
 \rm -f  $DAX_OUTDIR/$$_all.reg  $DAX_OUTDIR/$$_src.reg $DAX_OUTDIR/$$_bkg.reg 
