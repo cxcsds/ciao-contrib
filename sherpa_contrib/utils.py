@@ -281,7 +281,7 @@ class InstMapWeights:
 
         info("Created: {}".format(filename))
 
-    def plot(self, overplot=False, clearwindow=True):
+    def plot(self, overplot=False, clearwindow=True, **kwargs):
         """Plot the weights values.
 
         Parameters
@@ -293,6 +293,9 @@ class InstMapWeights:
             If ``True`` then clear out the current plot area of
             all existing plots. This is not used if ``overplot`` is
             set.
+        **kwargs
+            Assumed to be plot preferences that override the
+            HistogramPlot.histo_plot preferences.
 
         Notes
         -----
@@ -302,8 +305,14 @@ class InstMapWeights:
 
             ``xlog``
             ``ylog``
-            ``linestyle``
-            ``linecolor``
+            ``color``
+
+        Examples
+        --------
+
+        >>> hplot.plot()
+
+        >>> hplot.plot(ylog=True, color='orange', linestyle='dotted')
 
         """
 
@@ -333,15 +342,22 @@ class InstMapWeights:
         hplot.title = 'Weights for {}: '.format(self.id) + \
                       ' {}'.format(self.modelexpr)
 
-        # There is no validation of the preference values
+        # There is no validation of the preference values.
         #
+        # I have removed linestyle from this list since the pylab
+        # backend default is 'None', which ends up meaning nothing
+        # appears to get drawn. Which is less-than helpful.
+        # linecolor also doen't appear to be used, but color is.
+        #
+        # names = ['xlog', 'ylog', 'linestyle', 'linecolor']
+        names = ['xlog', 'ylog', 'color']
         prefs = ui.get_data_plot_prefs()
-        for name in ['xlog', 'ylog', 'linestyle', 'linecolor']:
+        for name in names:
             value = prefs.get(name, None)
             if value is not None:
                 hplot.histo_prefs[name] = value
 
-        hplot.plot(overplot=overplot, clearwindow=clearwindow)
+        hplot.plot(overplot=overplot, clearwindow=clearwindow, **kwargs)
 
     def _estimate_expmap(self, *args):
         """Estimate the exposure map given an ARF.
@@ -720,7 +736,7 @@ def save_instmap_weights(*args, **kwargs):
 
 
 def plot_instmap_weights(id=None, fluxtype="photon",
-                         overplot=False, clearwindow=True):
+                         overplot=False, clearwindow=True, **kwargs):
     """Plot the weights values.
 
     Parameters
@@ -737,6 +753,8 @@ def plot_instmap_weights(id=None, fluxtype="photon",
     clearwindow: bool, optional
         If ``True`` then clear out the current plot area of all
         existing plots. This is not used if ``overplot`` is set.
+    **kwargs
+        Override the histogram plot preferences
 
     See Also
     --------
@@ -752,8 +770,7 @@ def plot_instmap_weights(id=None, fluxtype="photon",
 
         ``xlog``
         ``ylog``
-        ``linestyle``
-        ``linecolor``
+        ``color``
 
     Examples
     --------
@@ -778,13 +795,19 @@ def plot_instmap_weights(id=None, fluxtype="photon",
     >>> plot_instmap_weights()
     >>> plot_instmap_weights(fluxtype='erg')
 
+    Plot the weights with a log scale on the y axis, and then overplot
+    the weights using erg weighting and drawn with a dotted line:
+
+    >>> plot_instmap_weights(ylog=True)
+    >>> plot_instmap_weights(fluxtype='erg', overplot=True, linestyle='dotted')
+
     """
 
     if id is None:
         id = ui.get_default_id()
 
     wgts = get_instmap_weights(id, fluxtype=fluxtype)
-    wgts.plot(overplot=overplot, clearwindow=clearwindow)
+    wgts.plot(overplot=overplot, clearwindow=clearwindow, **kwargs)
 
 
 def estimate_weighted_expmap(id=None, arf=None, elo=None, ehi=None,
