@@ -29,8 +29,8 @@ the CXC website.
 import glob
 import os
 
+from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
-from ciao_contrib.downloadutils import retrieve_url
 
 from ciao_contrib import logger_wrapper as lw
 
@@ -39,9 +39,6 @@ __all__ = ('get_installed_versions', 'get_latest_versions',
            'read_latest_versions')
 
 
-# Note: at the moment the check_ciao_version tool does not
-#       set up a logger or its verbosity.
-#
 lgr = lw.initialize_module_logger('_tools.versioninfo')
 v3 = lgr.verbose3
 v4 = lgr.verbose4
@@ -213,6 +210,11 @@ def get_latest_versions(timeout=None, system=None):
 
     Notes
     -----
+    This call turns off certificate validation for the requests since
+    there are issues with getting this working on all supported platforms.
+    It *only* does it for the calls it makes (i.e. it does not turn
+    off validation of any other requests).
+
     The package names are those returned by the ciaover tool when
     run with the -v option, but in lower case, and the version
     strings have the form:
@@ -221,6 +223,8 @@ def get_latest_versions(timeout=None, system=None):
 
     where <version> has the form "a.b" or "a.b.c".
     """
+
+    import ssl
 
     if system is None:
         system = find_ciao_system()
@@ -235,24 +239,46 @@ def get_latest_versions(timeout=None, system=None):
     system_url = base_url + "ciao_versions.{}.dat".format(system)
     simple_url = base_url + "ciao_versions.dat"
 
-    try:
-        cts = retrieve_url(system_url, timeout).read()
-    except HTTPError as he1:
-        v3("Caught HTTP error {} downloading {}".format(he1, system_url))
+    # Which URL to use? Note that the SSL context is explicitly
+    # set to stop verification, because the CIAO 4.12 release has
+    # seen some issues with certificate validation (in particular
+    # on Ubuntu and macOS systems).
+    #
+    context = ssl._create_unverified_context()
+    def download(url):
+        v3(" - trying to download {}".format(url))
         try:
-            cts = retrieve_url(simple_url, timeout)
-        except HTTPError as he2:
-            v3("Caught HTTP error {} downloading {}".format(he2,
-                                                            simple_url))
-            raise IOError("Unable to download the CIAO version file")
+            if timeout is None:
+                res = urlopen(url, context=context)
+            else:
+                res = urlopen(url, timeout=timeout, context=context)
+        except HTTPError as he:
+            v3(" - caught HTTP error {} for {}".format(he, url))
+            if he.code == 404:
+                return None
 
-        except URLError as ue2:
-            v3("Caught URLError {} downloading {}".format(ue2,
-                                                          simple_url))
-            raise IOError("Unable to download the CIAO version file")
+            raise he
 
-    contents = cts.decode('utf8')
-    return parse_version_file(contents.splitlines())
+        return res.read().decode('utf-8')
+
+
+    try:
+        rsp = download(system_url)
+        if rsp is None:
+            rsp = download(simple_url)
+
+    except HTTPError as he:
+        v3("Re-caught HTTP error {}".format(he))
+        raise IOError("Unable to download the CIAO version file")
+
+    except URLError as ue:
+        v3("Caught URLError {}".format(ue))
+        raise IOError("Unable to download the CIAO version file")
+
+    if rsp is None:
+        raise IOError("Unable to download the CIAO version file")
+
+    return parse_version_file(rsp.splitlines())
 
 
 def read_latest_versions(filename):

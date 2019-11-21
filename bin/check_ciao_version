@@ -37,7 +37,9 @@ Aim:
   If called with an argument, the check will be made against the given
   version file. This is intended for testing purposes only.
 
-  CIAO must have been started before running this tool.
+  CIAO must have been started before running this tool, and the
+  CIAO installation *must* have been created with ciao-install.
+  The 'conda update' command can be used for conda installations.
 
   If there is an error the tool will exit with a non-zero status.
 
@@ -51,11 +53,10 @@ from optparse import OptionParser
 import socket
 
 toolname = "check_ciao_version"
-version = "11 June 2019"
+version = "20 November 2019"
 
 try:
-    from ciao_contrib.logger_wrapper import handle_ciao_errors, \
-        set_handle_ciao_errors_debug
+    from ciao_contrib import logger_wrapper as lw
     from ciao_contrib._tools import versioninfo
     from ciao_contrib.caldb import get_caldb_dir, \
         get_caldb_installed, check_caldb_version
@@ -65,6 +66,9 @@ except ImportError:
                      "Unable to load a CIAO module. Has CIAO " +
                      "been started?\n")
     sys.exit(1)
+
+
+lgr = lw.initialize_logger(toolname)
 
 
 help_str = """
@@ -192,7 +196,7 @@ def compare_caldb():
         return False
 
 
-@handle_ciao_errors(toolname, version)
+@lw.handle_ciao_errors(toolname, version)
 def doit():
     """Run the code."""
 
@@ -207,14 +211,15 @@ def doit():
 
     opts.add_option("--debug", dest="debug",
                     action="store_true",
-                    help="Provide debugging information on error.")
+                    help="Provide debugging information.")
 
     opts.set_defaults(list_copyright=False, list_version=False)
 
     (options, args) = opts.parse_args()
 
     if options.debug:
-        set_handle_ciao_errors_debug(True)
+        lw.set_verbosity(5)
+        lw.set_handle_ciao_errors_debug(True)
 
     nargs = len(args)
     if nargs > 1:

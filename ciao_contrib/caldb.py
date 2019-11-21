@@ -32,6 +32,9 @@ from urllib.error import URLError
 
 import pycrates
 
+from ciao_contrib import logger_wrapper as lw
+
+
 __all__ = (
     "check_caldb_version",
     "get_caldb_dir",
@@ -41,7 +44,11 @@ __all__ = (
     "get_caldb_installed_date"
 )
 
-release_notes_url = "https://cxc.harvard.edu/caldb/downloads/releasenotes.html"
+lgr = lw.initialize_module_logger('caldb')
+v3 = lgr.verbose3
+
+
+release_notes_url = "https://cxc.cfa.harvard.edu/caldb/downloads/releasenotes.html"
 
 
 def todate(txt):
@@ -240,23 +247,39 @@ def get_caldb_releases(timeout=None):
 
     Notes
     -----
-    The version-string is "1.2" or "4.2.2" and the date is a time
-    object.
-
     This routine will only work if the computer is on-line and able to
     access the Chandra CALDB pages at
 
-      https://cxc.harvard.edu/caldb/
+      https://cxc.cfa.harvard.edu/caldb/
+
+    This call turns off certificate validation for the requests since
+    there are issues with getting this working on all supported platforms.
+    It *only* does it for the calls it makes (i.e. it does not turn
+    off validation of any other requests).
+
+    The version-string is "1.2" or "4.2.2" and the date is a time
+    object.
 
     """
 
+    import ssl
+
+    # Note that the SSL context is explicitly
+    # set to stop verification, because the CIAO 4.12 release has
+    # seen some issues with certificate validation (in particular
+    # on Ubuntu and macOS systems).
+    #
+    context = ssl._create_unverified_context()
+
+    v3("About to download {}".format(release_notes_url))
     try:
         if timeout is None:
-            h = urlopen(release_notes_url).read()
+            h = urlopen(release_notes_url, context=context)
         else:
-            h = urlopen(release_notes_url, timeout=timeout).read()
+            h = urlopen(release_notes_url, context=context, timeout=timeout)
 
     except URLError as ue:
+        v3(" - failed with {}".format(ue))
         # Probably excessive attempt to make a "nice" error message
         #
         if hasattr(ue, "reason"):
@@ -276,7 +299,7 @@ def get_caldb_releases(timeout=None):
         else:
             raise IOError("Unable to access the CALDB site - {}".format(ue))
 
-    h = h.decode('utf-8')
+    h = h.read().decode('utf-8')
 
     try:
         p = CALDBReleaseParser()
