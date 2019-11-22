@@ -36,7 +36,7 @@ from ciao_contrib import logger_wrapper as lw
 
 
 __all__ = ('get_installed_versions', 'get_latest_versions',
-           'read_latest_versions')
+           'read_latest_versions', 'check_conda_versions')
 
 
 lgr = lw.initialize_module_logger('_tools.versioninfo')
@@ -76,17 +76,21 @@ def get_installed_versions(ciao):
     CIAO packages, where ciao is the base of the CIAO installation
     (i.e. the value of the $ASCDS_INSTALL environment variable).
 
+    Returns None if no version files can be found (is there is
+    either no $ASCDS_INSTALL/VERSION or $ASCDS_INSTALL/VERSION_*)
+    which is likely to indicate a conda install.
+
     """
 
     vbase = glob.glob(ciao + "/VERSION")
     if vbase == []:
-        raise IOError("Unable to find $ASCDS_INSTALL/VERSION")
+        return None
 
     # assume there is at least one installed package
     #
     vfiles = glob.glob(ciao + "/VERSION_*")
     if vfiles == []:
-        raise IOError("Unable to find $ASCDS_INSTALL/VERSION_*")
+        return None
 
     # do not require the contrib package
     #
@@ -289,3 +293,114 @@ def read_latest_versions(filename):
 
     with open(filename, "r") as fh:
         return parse_version_file(fh.readlines())
+
+
+def check_conda_versions(ciao):
+    """Is the conda environment up to date?
+
+    This is *experimental* and is assumed to be run in an environment
+    in which CIAO has been installed via conda.
+
+    Returns True if the environmant is up to date, or False if it needs
+    an update.
+    """
+
+    import subprocess
+    import json
+
+    # Assume we are in a conda environment
+    #
+    v3("About to run 'conda list'")
+    try:
+        out = subprocess.run(["conda", "list", "--json"],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        raise IOError("Unable to run the conda tool. Was CIAO installed with conda?")
+
+    js = json.loads(out.stdout)
+
+    # - hardcoding the dependencies, which is not ideal
+    #
+    packages = ["ciao", "ciao-contrib",
+                "sherpa", "xspec-modelsonly",
+                "ds9", "xpa",
+                "marx",
+                "caldb", "caldb_main", "acis_bkg_evt", "hrc_bkg_evt"]
+
+    # Check for the channels used for the packages as, at the time of
+    # writing, the exact name has not been finalized, and also it
+    # could change over time.
+    #
+    found = {}
+    for found_package in js:
+        name = found_package['name']
+        if name not in packages:
+            continue
+
+        channel = found_package['base_url']
+        version = found_package['version']
+        v3(" - found {} {} {}".format(name, version, channel))
+        found[name] = {'channel': channel, 'version': version}
+
+    if len(found) == 0:
+        raise IOError("No CIAO packages found in your conda environment!")
+
+    # Try and upgrade them (as a dry-run)
+    #
+    names = sorted(list(found.keys()))
+
+    channels = []
+    for c in set([v['channel'] for v in found.values()]):
+        channels.extend(["-c", c])
+
+    # We use --no-update-deps since the expected users of this
+    # functionality are likely to want to know just if the CIAO packages
+    # need updating, not any dependency.
+    #
+    command = ["conda", "update", "--json", "--dry-run", "--no-update-deps"] + \
+              channels + names
+    v3("Trying to run {}".format(command))
+
+    # we've already run conda so assume it is still around
+    out = subprocess.run(command, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+
+    js = json.loads(out.stdout)
+
+    # map a missing key to a failure (as indicates schema has changed)
+    success = js.get('success', False)
+    if not js['success']:
+        raise IOError("Unable to run {}: {}".format(command, out.stdout))
+
+    # perhaps could just check to see message exists, since if it does
+    # it *probably* indicates success, which would be a simpler check
+    #
+    msg = js.get('message', '')
+    if msg == 'All requested packages already installed.':
+        v3(" - all packages are up to date")
+        print("CIAO (installed via conda) is up to date.")
+        return True
+
+    fetch = js.get('actions', {}).get('FETCH', None)
+    if fetch is None:
+        v3(" - unable to find actions/FETCH in {}".format(js))
+        print("It looks like a CIAO package needs to be updated by CIAO but I can't find which.")
+        return False
+
+    names = [(f['name'], f['version']) for f in fetch]
+    nnames = len(names)
+    if nnames == 0:
+        v3(" - unable to find FETCH list in {}".format(js))
+        print("Unable to find which conda packages need updating")
+        return False
+
+    if nnames == 1:
+        print("There is one package that needs updating:")
+    else:
+        print("There are {} packages that need updating:".format(nnames))
+
+    for name, version in names:
+        print("  {} : {} -> {}".format(name, found[name]['version'], version))
+
+    print("")
+    return False
