@@ -35,11 +35,16 @@ Aim:
   version file on the CXC web site, and so requires on-line access.
 
   If called with an argument, the check will be made against the given
-  version file. This is intended for testing purposes only.
+  version file. This is intended for testing purposes only, and is
+  *only* for CIAO installations installed via ciao-install.
 
-  CIAO must have been started before running this tool.
+  CIAO must have been started before running this tool, and the
+  CIAO installation should have been made with either ciao-install
+  or conda. Support for the conda installation is new and not
+  well tested.
 
-  If there is an error the tool will exit with a non-zero status.
+  If the system needs an update then the tool will exit with a
+  non-zero status.
 
 """
 
@@ -51,11 +56,10 @@ from optparse import OptionParser
 import socket
 
 toolname = "check_ciao_version"
-version = "11 June 2019"
+version = "21 November 2019"
 
 try:
-    from ciao_contrib.logger_wrapper import handle_ciao_errors, \
-        set_handle_ciao_errors_debug
+    from ciao_contrib import logger_wrapper as lw
     from ciao_contrib._tools import versioninfo
     from ciao_contrib.caldb import get_caldb_dir, \
         get_caldb_installed, check_caldb_version
@@ -67,11 +71,14 @@ except ImportError:
     sys.exit(1)
 
 
+lgr = lw.initialize_logger(toolname)
+
+
 help_str = """
 Check that the installed CIAO is up to date.
 
 The script checks that the installed CIAO and CALDB is up to date,
-which requres that it downloads a file from the CIAO web site.
+which requres that it downloads information from the CIAO web site.
 
 """
 
@@ -122,10 +129,11 @@ def compare_versions(ciao, latest, installed):
     vlatest = latest["CIAO"]
     vinstalled = installed["CIAO"]
 
+    # automatically error out if this fails
     if vlatest != vinstalled:
-        print("The CIAO installation at {0}".format(ciao))
-        print("   has version   {0}".format(vinstalled))
-        print("   the latest is {0}".format(vlatest))
+        print("The CIAO installation at {}".format(ciao))
+        print("   has version             {}".format(vinstalled))
+        print("   the released version is {}".format(vlatest))
         report_update_info()
         sys.exit(1)
 
@@ -192,7 +200,7 @@ def compare_caldb():
         return False
 
 
-@handle_ciao_errors(toolname, version)
+@lw.handle_ciao_errors(toolname, version)
 def doit():
     """Run the code."""
 
@@ -207,14 +215,15 @@ def doit():
 
     opts.add_option("--debug", dest="debug",
                     action="store_true",
-                    help="Provide debugging information on error.")
+                    help="Provide debugging information.")
 
     opts.set_defaults(list_copyright=False, list_version=False)
 
     (options, args) = opts.parse_args()
 
     if options.debug:
-        set_handle_ciao_errors_debug(True)
+        lw.set_verbosity(5)
+        lw.set_handle_ciao_errors_debug(True)
 
     nargs = len(args)
     if nargs > 1:
@@ -235,6 +244,10 @@ def doit():
         raise IOError("$ASCDS_INSTALL is not defined; has CIAO been started?")
 
     installed = versioninfo.get_installed_versions(ciao)
+    if installed is None:
+        flag = versioninfo.check_conda_versions(ciao)
+        sys.exit(0 if flag else 1)
+
     if nargs == 1:
         latest = versioninfo.read_latest_versions(args[0])
     else:
@@ -243,7 +256,6 @@ def doit():
     # Check versions
     flag = compare_versions(ciao, latest, installed)
     flag &= compare_caldb()
-
     if not flag:
         report_update_info()
 

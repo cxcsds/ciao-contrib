@@ -43,7 +43,7 @@ Aim:
 """
 
 toolname = "check_ciao_caldb"
-version = "12 November 2015"
+version = "21 November 2019"
 
 import os
 import time
@@ -53,10 +53,13 @@ from optparse import OptionParser
 import pycrates
 import caldb4
 
-from ciao_contrib.logger_wrapper import handle_ciao_errors
+from ciao_contrib import logger_wrapper as lw
 from ciao_contrib.cxcdm_wrapper import convert_block_number
 from ciao_contrib.caldb import get_caldb_dir, get_caldb_installed, \
     check_caldb_version
+
+
+lw.initialize_logger(toolname)
 
 
 help_str = """
@@ -160,7 +163,7 @@ def check_caldb_query(caldb, caldbver):
     print("CALDB query completed successfully.")
 
 
-@handle_ciao_errors(toolname, version)
+@lw.handle_ciao_errors(toolname, version)
 def doit():
     """Run the code."""
 
@@ -175,13 +178,19 @@ def doit():
     opts.add_option("-v", "--version", dest="list_version",
                     action="store_true",
                     help="List the version of the script and exit.")
-    # opts.add_option("-d", "--debug", dest="debug", action="store_true",
-    #                 help="Display diagnostic output? [default: %default]")
+
+    opts.add_option("--debug", dest="debug", action="store_true",
+                    help="Provide debugging information.")
+
     opts.set_defaults(list_copyright=False, latest=False, list_version=False)
 
     (options, args) = opts.parse_args()
-    nargs = len(args)
 
+    if options.debug:
+        lw.set_verbosity(5)
+        lw.set_handle_ciao_errors_debug(True)
+
+    nargs = len(args)
     if nargs != 0:
         opts.print_help()
         return

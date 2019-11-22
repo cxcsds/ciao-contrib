@@ -29,19 +29,16 @@ the CXC website.
 import glob
 import os
 
+from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
-from ciao_contrib.downloadutils import retrieve_url
 
 from ciao_contrib import logger_wrapper as lw
 
 
 __all__ = ('get_installed_versions', 'get_latest_versions',
-           'read_latest_versions')
+           'read_latest_versions', 'check_conda_versions')
 
 
-# Note: at the moment the check_ciao_version tool does not
-#       set up a logger or its verbosity.
-#
 lgr = lw.initialize_module_logger('_tools.versioninfo')
 v3 = lgr.verbose3
 v4 = lgr.verbose4
@@ -79,17 +76,21 @@ def get_installed_versions(ciao):
     CIAO packages, where ciao is the base of the CIAO installation
     (i.e. the value of the $ASCDS_INSTALL environment variable).
 
+    Returns None if no version files can be found (is there is
+    either no $ASCDS_INSTALL/VERSION or $ASCDS_INSTALL/VERSION_*)
+    which is likely to indicate a conda install.
+
     """
 
     vbase = glob.glob(ciao + "/VERSION")
     if vbase == []:
-        raise IOError("Unable to find $ASCDS_INSTALL/VERSION")
+        return None
 
     # assume there is at least one installed package
     #
     vfiles = glob.glob(ciao + "/VERSION_*")
     if vfiles == []:
-        raise IOError("Unable to find $ASCDS_INSTALL/VERSION_*")
+        return None
 
     # do not require the contrib package
     #
@@ -213,6 +214,11 @@ def get_latest_versions(timeout=None, system=None):
 
     Notes
     -----
+    This call turns off certificate validation for the requests since
+    there are issues with getting this working on all supported platforms.
+    It *only* does it for the calls it makes (i.e. it does not turn
+    off validation of any other requests).
+
     The package names are those returned by the ciaover tool when
     run with the -v option, but in lower case, and the version
     strings have the form:
@@ -221,6 +227,8 @@ def get_latest_versions(timeout=None, system=None):
 
     where <version> has the form "a.b" or "a.b.c".
     """
+
+    import ssl
 
     if system is None:
         system = find_ciao_system()
@@ -235,24 +243,46 @@ def get_latest_versions(timeout=None, system=None):
     system_url = base_url + "ciao_versions.{}.dat".format(system)
     simple_url = base_url + "ciao_versions.dat"
 
-    try:
-        cts = retrieve_url(system_url, timeout).read()
-    except HTTPError as he1:
-        v3("Caught HTTP error {} downloading {}".format(he1, system_url))
+    # Which URL to use? Note that the SSL context is explicitly
+    # set to stop verification, because the CIAO 4.12 release has
+    # seen some issues with certificate validation (in particular
+    # on Ubuntu and macOS systems).
+    #
+    context = ssl._create_unverified_context()
+    def download(url):
+        v3(" - trying to download {}".format(url))
         try:
-            cts = retrieve_url(simple_url, timeout)
-        except HTTPError as he2:
-            v3("Caught HTTP error {} downloading {}".format(he2,
-                                                            simple_url))
-            raise IOError("Unable to download the CIAO version file")
+            if timeout is None:
+                res = urlopen(url, context=context)
+            else:
+                res = urlopen(url, timeout=timeout, context=context)
+        except HTTPError as he:
+            v3(" - caught HTTP error {} for {}".format(he, url))
+            if he.code == 404:
+                return None
 
-        except URLError as ue2:
-            v3("Caught URLError {} downloading {}".format(ue2,
-                                                          simple_url))
-            raise IOError("Unable to download the CIAO version file")
+            raise he
 
-    contents = cts.decode('utf8')
-    return parse_version_file(contents.splitlines())
+        return res.read().decode('utf-8')
+
+
+    try:
+        rsp = download(system_url)
+        if rsp is None:
+            rsp = download(simple_url)
+
+    except HTTPError as he:
+        v3("Re-caught HTTP error {}".format(he))
+        raise IOError("Unable to download the CIAO version file")
+
+    except URLError as ue:
+        v3("Caught URLError {}".format(ue))
+        raise IOError("Unable to download the CIAO version file")
+
+    if rsp is None:
+        raise IOError("Unable to download the CIAO version file")
+
+    return parse_version_file(rsp.splitlines())
 
 
 def read_latest_versions(filename):
@@ -263,3 +293,114 @@ def read_latest_versions(filename):
 
     with open(filename, "r") as fh:
         return parse_version_file(fh.readlines())
+
+
+def check_conda_versions(ciao):
+    """Is the conda environment up to date?
+
+    This is *experimental* and is assumed to be run in an environment
+    in which CIAO has been installed via conda.
+
+    Returns True if the environmant is up to date, or False if it needs
+    an update.
+    """
+
+    import subprocess
+    import json
+
+    # Assume we are in a conda environment
+    #
+    v3("About to run 'conda list'")
+    try:
+        out = subprocess.run(["conda", "list", "--json"],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        raise IOError("Unable to run the conda tool. Was CIAO installed with conda?")
+
+    js = json.loads(out.stdout)
+
+    # - hardcoding the dependencies, which is not ideal
+    #
+    packages = ["ciao", "ciao-contrib",
+                "sherpa", "xspec-modelsonly",
+                "ds9", "xpa",
+                "marx",
+                "caldb", "caldb_main", "acis_bkg_evt", "hrc_bkg_evt"]
+
+    # Check for the channels used for the packages as, at the time of
+    # writing, the exact name has not been finalized, and also it
+    # could change over time.
+    #
+    found = {}
+    for found_package in js:
+        name = found_package['name']
+        if name not in packages:
+            continue
+
+        channel = found_package['base_url']
+        version = found_package['version']
+        v3(" - found {} {} {}".format(name, version, channel))
+        found[name] = {'channel': channel, 'version': version}
+
+    if len(found) == 0:
+        raise IOError("No CIAO packages found in your conda environment!")
+
+    # Try and upgrade them (as a dry-run)
+    #
+    names = sorted(list(found.keys()))
+
+    channels = []
+    for c in set([v['channel'] for v in found.values()]):
+        channels.extend(["-c", c])
+
+    # We use --no-update-deps since the expected users of this
+    # functionality are likely to want to know just if the CIAO packages
+    # need updating, not any dependency.
+    #
+    command = ["conda", "update", "--json", "--dry-run", "--no-update-deps"] + \
+              channels + names
+    v3("Trying to run {}".format(command))
+
+    # we've already run conda so assume it is still around
+    out = subprocess.run(command, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+
+    js = json.loads(out.stdout)
+
+    # map a missing key to a failure (as indicates schema has changed)
+    success = js.get('success', False)
+    if not js['success']:
+        raise IOError("Unable to run {}: {}".format(command, out.stdout))
+
+    # perhaps could just check to see message exists, since if it does
+    # it *probably* indicates success, which would be a simpler check
+    #
+    msg = js.get('message', '')
+    if msg == 'All requested packages already installed.':
+        v3(" - all packages are up to date")
+        print("CIAO (installed via conda) is up to date.")
+        return True
+
+    fetch = js.get('actions', {}).get('FETCH', None)
+    if fetch is None:
+        v3(" - unable to find actions/FETCH in {}".format(js))
+        print("It looks like a CIAO package needs to be updated by CIAO but I can't find which.")
+        return False
+
+    names = [(f['name'], f['version']) for f in fetch]
+    nnames = len(names)
+    if nnames == 0:
+        v3(" - unable to find FETCH list in {}".format(js))
+        print("Unable to find which conda packages need updating")
+        return False
+
+    if nnames == 1:
+        print("There is one package that needs updating:")
+    else:
+        print("There are {} packages that need updating:".format(nnames))
+
+    for name, version in names:
+        print("  {} : {} -> {}".format(name, found[name]['version'], version))
+
+    print("")
+    return False
