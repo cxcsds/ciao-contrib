@@ -50,13 +50,11 @@ Aim:
 
 import os
 import sys
-import glob
+
 from optparse import OptionParser
 
-import socket
-
 toolname = "check_ciao_version"
-version = "16 June 2020"
+version = "07 December 2020"
 
 try:
     from ciao_contrib import logger_wrapper as lw
@@ -65,7 +63,7 @@ try:
         get_caldb_installed, check_caldb_version
 
 except ImportError:
-    sys.stderr.write("# {} ({}): ERROR ".format(toolname, version) +
+    sys.stderr.write(f"# {toolname} ({version}): ERROR " +
                      "Unable to load a CIAO module. Has CIAO " +
                      "been started?\n")
     sys.exit(1)
@@ -131,9 +129,9 @@ def compare_versions(ciao, latest, installed):
 
     # automatically error out if this fails
     if vlatest != vinstalled:
-        print("The CIAO installation at {}".format(ciao))
-        print("   has version             {}".format(vinstalled))
-        print("   the released version is {}".format(vlatest))
+        print(f"The CIAO installation at {ciao}")
+        print(f"   has version             {vinstalled}")
+        print(f"   the released version is {vlatest}")
         report_update_info()
         sys.exit(1)
 
@@ -146,32 +144,31 @@ def compare_versions(ciao, latest, installed):
             updates.append((ik, iv, lv))
 
     if updates == []:
-        print("The CIAO  installation at {0} is up to date.".format(ciao))
+        print(f"The CIAO  installation at {ciao} is up to date.")
         return True
 
+    print(f"Using the CIAO installation at {ciao}\n")
+
+    nu = len(updates)
+    if nu == 1:
+        print("The following package:")
     else:
-        print("Using the CIAO installation at {0}\n".format(ciao))
+        print("The following packages:")
 
-        nu = len(updates)
-        if nu == 1:
-            print("The following package:")
-        else:
-            print("The following packages:")
+    fmt = "    {0:10s}:  {1}"
+    for (pname, iver, _) in updates:
+        print(fmt.format(pname, iver))
 
-        fmt = "    {0:10s}:  {1}"
-        for (pname, iver, _) in updates:
-            print(fmt.format(pname, iver))
+    if nu == 1:
+        print("\nneeds updating to:")
+    else:
+        print("\nneed updating to:")
 
-        if nu == 1:
-            print("\nneeds updating to:")
-        else:
-            print("\nneed updating to:")
+    for (pname, _, lver) in updates:
+        print(fmt.format(pname, lver))
 
-        for (pname, _, lver) in updates:
-            print(fmt.format(pname, lver))
-
-        print("")
-        return False
+    print("")
+    return False
 
 
 # Logic also in check_ciao_caldb: should re-factor
@@ -181,23 +178,23 @@ def compare_caldb():
 
     caldb = get_caldb_dir()
 
-    (cver, cdat) = get_caldb_installed(caldb)
+    inst = get_caldb_installed(caldb)
+    cver = inst[0]
     rval = check_caldb_version(cver)
 
-    cinfo = "The CALDB installation at {0}".format(caldb)
+    cinfo = f"The CALDB installation at {caldb}"
     if os.path.islink(caldb):
         lname = os.path.realpath(caldb)
-        cinfo += " (link to {0})".format(lname)
+        cinfo += f" (link to {lname})"
 
     if rval is None:
-        print("{0} is up to date.".format(cinfo))
+        print(f"{ciao} is up to date.")
         return True
 
-    else:
-        print(cinfo)
-        print("  has version: {0}".format(cver))
-        print("  latest is:   {0}".format(rval[1]))
-        return False
+    print(cinfo)
+    print(f"  has version: {cver}")
+    print(f"  latest is:   {rval[1]}")
+    return False
 
 
 @lw.handle_ciao_errors(toolname, version)
