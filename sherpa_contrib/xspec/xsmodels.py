@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2019
+#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2019, 2020
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -110,22 +110,36 @@ class XSConvolutionKernel(xspec.XSModel):
         lpars = pars[:npars]
         rpars = pars[npars:]
 
-        fluxes = np.asarray(rhs(rpars, *args, **kwargs))
-
-        # As of CIAO 4.8, the Sherpa-provided interfaces to the
-        # X-Spec convolution models require either
-        #     pars, fluxes, edges
-        #     pars, fluxes, elo, ehi
-        # wihch simplifies this from earlier versions.
+        # We do not pass kwargs on to either rhs or self._calc;
+        # this is needed because when used with regrid support the
+        # kwargs may include keywords like 'integrate' but this
+        # can then cause problems downstream (that is, they then
+        # get sent to the xspec compiled routine, which doesn't
+        # support them). This may be a problem with the XSPEC
+        # interface (i.e. it should not pass on kwargs to the compiled
+        # code), but for now stop it here.
         #
-        # should **kwargs be sent as well?
+        # DJB is worried that if there is a nested set of grids
+        # then this could be a problem, but has no experience or
+        # tests to back this up.
+        #
+        # fluxes = np.asarray(rhs(rpars, *args, **kwargs))
+        fluxes = np.asarray(rhs(rpars, *args))
         return self._calc(lpars, fluxes, *args)
 
 
-class XSConvolutionModel(models.CompositeModel, models.ArithmeticModel):
+# It makes sense to derive from XSModel to say "this is XSPEC",
+# but does the extra machinery it provides cause a problem here?
+#
+class XSConvolutionModel(models.CompositeModel, xspec.XSModel):
     """The XSConvolutionKernel instance creates these models for
     use by Sherpa. Users should not be creating instances of this
     class.
+
+    Note
+    ----
+    With the introduction of the Regrid* family of classes, does
+    this need to be changed at all?
     """
 
     @staticmethod
