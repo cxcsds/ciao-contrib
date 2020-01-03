@@ -22,13 +22,17 @@ import numpy as np
 from numpy.testing import assert_allclose
 
 from sherpa.data import Data1DInt
-from sherpa.models.basic import PowLaw1D
+from sherpa.models.basic import Box1D, PowLaw1D
 from sherpa.astro.xspec import XSpowerlaw
 from sherpa.models.parameter import Parameter
 
-from sherpa_contrib.xspec.xsconvolve import XScflux
+from sherpa_contrib.xspec.xsconvolve import XScflux, XSzashift
 from sherpa_contrib.xspec.xsmodels import XSConvolutionKernel, \
     XSConvolutionModel
+
+
+# really should bite the bullet and get pytest working...
+counter = {'ran': [], 'success': []}
 
 
 def setup_data(elo=0.1, ehi=10.0, ebin=0.01):
@@ -96,6 +100,8 @@ def _check_pars(label, mdl, parvals):
 def test_cflux_settings():
     """Do the expected things happen when a model is calculated?"""
 
+    counter['ran'].append('test_cflux_settings')
+
     kern = XScflux('cflux')
     assert isinstance(kern, XSConvolutionKernel), \
         "cflux creates XSConvolutionKernel"
@@ -113,6 +119,8 @@ def test_cflux_settings():
               ('ref', 1.0, True, ''),
               ('ampl', 1.0, False, '')]
     _check_pars('model', mdl, cfluxpars + plpars)
+
+    counter['success'].append('test_cflux_settings')
 
 
 def _test_cflux_calc(mdl, slope, ampl):
@@ -254,10 +262,15 @@ def test_cflux_calc_xspec():
 
     """
 
+    counter['ran'].append('test_cflux_calc_xspec')
+
     mdl = XSpowerlaw('xspec')
     mdl.phoindex = 1.7
     mdl.norm = 0.025
     _test_cflux_calc(mdl, mdl.phoindex.val, mdl.norm.val)
+
+    counter['success'].append('test_cflux_calc_xspec')
+
 
 def test_cflux_calc_sherpa():
     """Test the CFLUX convolution model calculations (sherpa model)
@@ -272,10 +285,14 @@ def test_cflux_calc_sherpa():
 
     """
 
+    counter['ran'].append('test_cflux_calc_sherpa')
+
     mdl = PowLaw1D('sherpa')
     mdl.gamma = 1.7
     mdl.ampl = 0.025
     _test_cflux_calc(mdl, mdl.gamma.val, mdl.ampl.val)
+
+    counter['success'].append('test_cflux_calc_sherpa')
 
 
 def test_cflux_nbins():
@@ -290,6 +307,8 @@ def test_cflux_nbins():
     -----
     There's no check of a non-contiguous grid.
     """
+
+    counter['ran'].append('test_cflux_nbins')
 
     spl = PowLaw1D('sherpa')
     xpl = XSpowerlaw('xspec')
@@ -321,10 +340,160 @@ def test_cflux_nbins():
     check_bins('Convolved Sherpa', cflux(spl))
     check_bins('Convolved XSPEC', cflux(xpl))
 
+    counter['success'].append('test_cflux_nbins')
+
+
+def test_calc_xspec_regrid():
+    """Test the CFLUX convolution model calculations (XSPEC model)
+
+    Can we regrid the model and get a similar result to the
+    direct version? This uses zashift but with 0 redshift.
+
+    See Also
+    --------
+    test_calc_sherpa_regrid
+
+    """
+
+    counter['ran'].append('test_calc_xspec_regrid')
+
+    mdl = XSpowerlaw('xspec')
+    mdl.phoindex = 1.7
+    mdl.norm = 0.025
+
+    # rather than use the 'cflux' convolution model, try
+    # the redshift model but with 0 redshift.
+    #
+    kern = XSzashift('zshift')
+    kern.redshift = 0
+    mdl_convolved = kern(mdl)
+
+    d = setup_data(elo=0.2, ehi=5, ebin=0.01)
+
+    dr = np.arange(0.1, 7, 0.005)
+    mdl_regrid = mdl_convolved.regrid(dr[:-1], dr[1:])
+
+    yconvolved = d.eval_model(mdl_convolved)
+    yregrid = d.eval_model(mdl_regrid)
+
+    # Do a per-pixel comparison (this will automatically catch any
+    # difference in the output sizes).
+    #
+    ydiff = np.abs(yconvolved - yregrid)
+    mdiff = ydiff.max()
+    rdiff = ydiff / yconvolved
+
+    # in testing see the max difference being ~ 3e-17
+    assert mdiff < 1e-15, \
+        'can rebin an XSPEC powerlaw: max diff={}'.format(mdiff)
+
+    counter['success'].append('test_calc_xspec_regrid')
+
+
+def test_calc_sherpa_regrid():
+    """Test the CFLUX convolution model calculations (Sherpa model)
+
+    Can we redshift a sherpa model and get the expected
+    result, with a regrid applied? In this case a feature
+    is added outside the default energy range, but in the
+    regridded range, to check things are working.
+
+    See Also
+    --------
+    test_calc_xspec_regrid
+
+    """
+
+    counter['ran'].append('test_calc_sherpa_regrid')
+
+    mdl = Box1D('box')
+    mdl.xlow = 4
+    mdl.xhi = 12
+    # why is the box amplitude restricted like this?
+    mdl.ampl.max = 2
+    mdl.ampl = 2
+
+    kern = XSzashift('zshift')
+    kern.redshift = 1.0
+    mdl_convolved = kern(mdl)
+
+    d = setup_data(elo=0.1, ehi=10, ebin=0.01)
+    dr = setup_data(elo=0.1, ehi=13, ebin=0.005)
+
+    mdl_regrid = mdl_convolved.regrid(dr.xlo, dr.xhi)
+
+    yconvolved = d.eval_model(mdl_convolved)
+    yregrid = d.eval_model(mdl_regrid)
+
+    # We expect values < 2 keV to be 0
+    #   yconvolved:  > 2 keV to < 5 keV to be 0.02 (ampl / bin width)
+    #   yregrid:     > 2 keV to < 6 keV to be 0.02
+    # above this to be 0, with some fun at the edges.
+    #
+
+    ehi = d.xhi
+
+    idx = np.where(ehi < 2)
+    ymax = np.abs(yconvolved[idx]).max()
+    assert ymax == 0.0, 'yconvolved < 2 keV: max={}'.format(ymax)
+
+    idx = np.where((ehi >= 2) & (ehi < 5))
+    ymax = np.abs(yconvolved[idx] - 0.02).max()
+    assert ymax < 1e-14, 'yconvolved: 2-5 keV max={}'.format(ymax)
+
+    idx = np.where(ehi >= 5)
+    ymax = np.abs(yconvolved[idx]).max()
+    assert ymax == 0.0, 'yconvolved: > 5 keV max={}'.format(ymax)
+
+
+    # expect last bin to be ~ 0 but preceeding ones to be zero
+    idx = np.where(ehi < 2)
+    ymax = np.abs(yregrid[idx][:-1]).max()
+    assert ymax == 0, 'yregrid < 2 keV: max={}'.format(ymax)
+
+    ymax = np.abs(yregrid[idx])[-1]
+    assert ymax < 1e-14, 'yregrid < 2 keV: max={}'.format(ymax)
+
+    idx = np.where((ehi >= 2) & (ehi < 6))
+    ymax = np.abs(yregrid[idx] - 0.02).max()
+    assert ymax < 2e-14, 'yregrid: 2-6 keV {}'.format(ymax)
+
+    # expect first bin to be ~ 0 but following ones to be zero
+    idx = np.where(ehi >= 6)
+    ymax = np.abs(yregrid[idx])[0]
+    assert ymax < 2e-14, 'yregrid: > 6 keV max={}'.format(ymax)
+
+    ymax = np.abs(yregrid[idx][1:]).max()
+    assert ymax == 0.0, 'yregrid: > 6 keV max={}'.format(ymax)
+
+    counter['success'].append('test_calc_sherpa_regrid')
+
 
 if __name__ == "__main__":
+
+    import sys
 
     test_cflux_settings()
     test_cflux_calc_xspec()
     test_cflux_calc_sherpa()
     test_cflux_nbins()
+    test_calc_xspec_regrid()
+    test_calc_sherpa_regrid()
+
+    # This is all a bit silly since if a test fails it is obvious
+    # with the current set up; this is just to check I have
+    # changed counter correctly in the tests.
+    #
+    ran = set(counter['ran'])
+    success = set(counter['success'])
+    failed = False
+    if len(ran) != 6:
+        sys.stderr.write("ERROR: did not run 5 tests!\n")
+        failed = True
+
+    if success != ran:
+        sys.stderr.write("ERROR: at least one test failed\n")
+        failed = True
+
+    if failed:
+        sys.exit(1)
