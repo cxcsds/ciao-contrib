@@ -280,103 +280,17 @@ print( "Energy Flux = %s ergs/cm^2/s\n" % sherpa.calc_energy_flux())
 sherpa.save("$sav", clobber=True)
 
 
-# -- Emulate the 'plot_fit()' sherpa command, 
-
-import subprocess
-
-def xpa_plot_cmd( access_point, command ):
-    """Wrapper around xpaset for plot commands"""
-    
-    cc = ["xpaset", "-p", access_point, "plot" ]
-    cc.extend( command.split(' '))    
-    xpa = subprocess.Popen(cc)
-    xpa.communicate()
-
-
-def blt_plot_data(access_point,xx, ex, yy, ey, title, x_label, y_label):
-    """Plot the data"""
-    
-    cmd = ["xpaset", access_point, "plot"]    
-    cmd.extend( ["new", "name", "dax", "line", 
-        "{{{0}}}".format(title), 
-        "{{{0}}}".format(x_label), 
-        "{{{0}}}".format(y_label),
-        "xyey"
-        ] )
-
-    # Plot the data
-    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-    for vv in zip(xx, yy, ey):
-        pair = " ".join( [str(x) for x in vv])+"\n"        
-        pb = pair.encode()
-        xpa.stdin.write(pb)        
-    xpa.communicate()
-
-    make_pretty(access_point)
-    xpa_plot_cmd(access_point, "legend yes")
-    xpa_plot_cmd(access_point, "legend position right")
-
-
-def blt_plot_delchisqr(access_point,xx, ex, yy, ey, y_label):
-    """Plot the residuals""" 
-
-    # This requires ds9 v8.1    
-    xpa_plot_cmd( "${ds9}", "add graph line")
-    xpa_plot_cmd( "${ds9}", "layout strip")
-    
-    cmd = ["xpaset", access_point, "plot", "data", "xyey"]    
-
-    # Plot the data
-    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-    for vv in zip(xx, yy, ey):
-        pair = " ".join( [str(x) for x in vv])+"\n"        
-        pb = pair.encode()
-        xpa.stdin.write(pb)        
-    xpa.communicate()
-
-    make_pretty(access_point)
-    xpa_plot_cmd( access_point, "title y {delta chisqr}")
-
-
-def make_pretty(access_point):
-    """make pretty plots"""
-    xpa_plot_cmd(access_point, "shape circle")
-    xpa_plot_cmd(access_point, "shape fill yes")
-    xpa_plot_cmd(access_point, "shape color cornflowerblue")
-    xpa_plot_cmd(access_point, "error color cornflowerblue")
-    xpa_plot_cmd(access_point, "width 0")
-    xpa_plot_cmd(access_point, "name {Data }")    
-    xpa_plot_cmd(access_point, "axis x grid no")
-    xpa_plot_cmd(access_point, "axis y grid no")
-
-
-def blt_plot_model(access_point,x_vals, y_vals):
-    """Plot the model"""
-    
-    cmd = ["xpaset", access_point, "plot"]
-    cmd.extend( ["data", "xy"] )
-
-    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-    for x,y in zip(x_vals, y_vals):
-        pair = "{} {}\n".format(x,y)
-        pb = pair.encode()
-        xpa.stdin.write(pb)        
-    xpa.communicate()
-    xpa_plot_cmd(access_point, "shape none")
-    xpa_plot_cmd(access_point, "shape fill no")
-    xpa_plot_cmd(access_point, "color orange")
-    xpa_plot_cmd(access_point, "shape color orange")
-    xpa_plot_cmd(access_point, "width 2")
-    xpa_plot_cmd(access_point, "name Model")
+from ciao_contrib._tools.dax_plot_utils import *
 
 _f = sherpa.get_fit_plot()
 _d = _f.dataplot
 _m = _f.modelplot
 
-blt_plot_data( "${ds9}", _d.x, _d.xerr/2.0, _d.y, _d.yerr, 
+blt_plot_model( "${ds9}", _m.x, _m.y,
     "${spi}", "Energy [keV]", "Count Rate [counts/sec/keV]")
 
-blt_plot_model( "${ds9}", _m.x, _m.y)
+blt_plot_data( "${ds9}", _d.x, _d.xerr/2.0, _d.y, _d.yerr)
+
 
 delta = (_d.y-_m.y)/_d.yerr
 ones = _d.yerr*0.0+1.0
