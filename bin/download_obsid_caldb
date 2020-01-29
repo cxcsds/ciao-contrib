@@ -172,6 +172,19 @@ def filter_config(newver, outdir):
     with open(outconfig, "w") as fp:
         fp.writelines(chandra)
 
+    outconfig = "{}/config/caldbinit-{}.unix".format(outdir, newver)
+    with open(outconfig, "w") as fp:
+        fp.write("setenv CALDB {}\n".format(outdir))
+        fp.write("setenv CALDBCONFIG {}/config/CHANDRA-{}.config\n".format(outdir, newver))
+        fp.write("setenv CALDBALIAS none\n")
+        
+    outconfig = "{}/config/caldbinit-{}.sh".format(outdir, newver)
+    with open(outconfig, "w") as fp:
+        fp.write("export CALDB={}\n".format(outdir))
+        fp.write("export CALDBCONFIG={}/config/CHANDRA-{}.config\n".format(outdir, newver))
+        fp.write("export CALDBALIAS=none\n")
+
+
     return outconfig
 
 
@@ -550,26 +563,38 @@ def get_caldb_files(baseurl, rootdir, infile, outdir, clobber, background_files,
         get_background_files(baseurl, rootdir, infile, outdir, clobber, background_files, missing)
 
 
-def print_new_setup(oldcaldb):
+def print_new_setup(oldcaldb, outdir):
     """
     Let user know if new partial CALDB is different from their CALDB
     setup.
     """
 
     if (oldcaldb and os.path.abspath(oldcaldb) != os.path.abspath(os.environ["CALDB"])) or not oldcaldb:
-        verb0("\nBe sure to setup the following environment variables to")
+        verb0("\nBe sure to source the new setup scripts to")
         verb0("use these CALDB files.")
         verb0("")
         verb0("(t)csh:")
-        verb0("setenv CALDB " + os.path.abspath(os.environ["CALDB"]))
-        verb0("setenv CALDBCONFIG " + os.path.abspath(os.environ["CALDBCONFIG"]))
-        verb0("setenv CALDBALIAS none")
+        tcsh="setenv CALDB " + os.path.abspath(os.environ["CALDB"])+"\n"
+        tcsh=tcsh+"setenv CALDBCONFIG " + os.path.abspath(os.environ["CALDBCONFIG"])+"\n"
+        tcsh=tcsh+"setenv CALDBALIAS none"+"\n"
+        with open(outdir+"/software/tools/caldbinit.unix", "w") as fp:
+            fp.write(tcsh)
+        verb0("source {}/software/tools/caldbinit.unix".format(outdir))
+
         verb0("")
         verb0("bash:")
-        verb0("export CALDB=" + os.path.abspath(os.environ["CALDB"]))
-        verb0("export CALDBCONFIG=" + os.path.abspath(os.environ["CALDBCONFIG"]))
-        verb0("export CALDBALIAS=none")
+        bash="export CALDB=" + os.path.abspath(os.environ["CALDB"])+"\n"
+        bash=bash+"export CALDBCONFIG=" + os.path.abspath(os.environ["CALDBCONFIG"])+"\n"
+        bash=bash+"export CALDBALIAS=none"+"\n"
+        with open(outdir+"/software/tools/caldbinit.sh", "w") as fp:
+            fp.write(bash)
+        verb0("source {}/software/tools/caldbinit.sh".format(outdir))
         verb0("")
+
+        
+        
+        
+        
     
     
 
@@ -664,7 +689,7 @@ def main():
 
         get_caldb_files(baseurl, rootdir, infile, outdir, clobber, background_files, missing)
 
-    print_new_setup(oldcaldb)
+    print_new_setup(oldcaldb,outdir)
 
 
 if __name__ == "__main__":
