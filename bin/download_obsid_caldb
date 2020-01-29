@@ -24,12 +24,13 @@ import os
 import sys
 
 from urllib.parse import urlparse
+import urllib.request 
 
 import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "download_obsid_caldb"
-__revision__ = "18 June 2019"
+__revision__ = "29 January 2020"
 
 lw.initialize_logger(toolname)
 
@@ -40,156 +41,11 @@ verb2 = lgr.verbose2
 verb3 = lgr.verbose3
 verb5 = lgr.verbose5
 
-CDA_SERVER = "ftp://cda.cfa.harvard.edu/pub/arcftp/ChandraCalDB"
-CDA_ENV = "CALDB_MIRROR_SITE"
+CDA_SERVER="https://cxc.cfa.harvard.edu/cdaftp/arcftp/ChandraCalDB"
 
 
-#
-# Ripped off from Doug's download_chandra_obsid  stuff
-#
 
-# Wrapper around a file for writing to write a hash sign every x%
-# of the file has been downloaded.
-#
-# This is based on code from the Tools/scripts/ftpmirror.py in the
-# Python distribution.
-#
-class LoggingFile:
-
-    hashchr = '#'
-
-    def __init__(self, fp, filesize, outfp, startfrom=None, nhash=20):
-        """nhash is the number of hashes to print (so 100/nhash is the
-        percentage of the file content for each #)."""
-        if nhash < 1:
-            raise ValueError("nhash must be >= 1, sent {}".format(nhash))
-        self.fp = fp
-        if startfrom is None:
-            self.bytes = 0
-        else:
-            if startfrom > filesize:
-                raise ValueError("startfrom > filesize ({} vs {})".format(startfrom, filesize))
-            self.bytes = startfrom - 1
-        self.hashes = 0
-        self.filesize = filesize
-        self.nhash = nhash
-        self.blocksize = filesize / self.nhash
-        self.outfp = outfp
-
-    def write(self, data):
-        self.bytes = self.bytes + len(data)
-        hashes = int(self.bytes) / self.blocksize
-        if True:  # logger.getEffectiveVerbose() > 0:
-            while hashes > self.hashes:
-                self.outfp.write(self.hashchr)
-                self.outfp.flush()
-                self.hashes = self.hashes + 1
-
-        self.fp.write(data)
-
-    def close(self):
-        # hack around rounding errors
-        nh = self.nhash - self.hashes
-        if True:  # logger.getEffectiveVerbose() > 0:
-            if nh > 0 and self.bytes >= self.filesize:
-                self.outfp.write('#' * nh)
-
-            self.outfp.write("\n")
-            self.outfp.flush()
-
-
-class FtpFile():
-    """
-    Little wrapper class to get the file size
-    """
-    def __init__(self, ftp, path):
-        self.ftp = ftp
-        self.path = path
-
-    def get_ftp_filesize(self):
-
-        self.filesize = None
-
-        def parse_size(line):
-            toks = line.split()
-            self.filesize = int(toks[4])
-
-        self.ftp.retrlines("LIST " + self.path, parse_size)
-
-        return self.filesize
-
-
-def parse_url():
-    """
-    Allow user to override CALDB location via env variable similar to
-    how download_chandra_obsid works.  Also ripped off from Doug's
-    stuff.
-
-    setenv CALDB_MIRROR_SITE "ftp://user:password@host:port/dir"
-
-    Only FTP protocol is supported.
-
-    """
-
-    def get_id():
-        """
-        DEPRECATED ---
-        get a real user name if there is one.
-        """
-        u = "anonymous"
-        for o in ["USER", "USERNAME"]:
-            if o in os.environ:
-                u = os.environ[o]
-
-        from socket import getfqdn
-        mybox = getfqdn()
-        if not mybox:
-            mybox = toolname
-
-        return "{}@{}".format(u, mybox)
-
-    try:
-        if CDA_ENV not in os.environ:
-            url = urlparse(CDA_SERVER)
-        else:
-            url = urlparse(os.environ[CDA_ENV])
-    except Exception:
-        raise ValueError("Bad {} setting".format(CDA_ENV))
-
-    if url.scheme != "ftp":
-        raise ValueError('The mirror site must begin with ftp://')
-
-    host = url.hostname
-    path = url.path
-    user = "anonymous" if not url.username else url.username
-    pswd = "anonymous@ciao_contrib."+toolname if not url.password else url.password
-
-    verb2("Using FTP host='{}' dir='{}' user='{}' password='{}'".format(host, path, user, pswd))
-    return host, path, user, pswd
-
-
-def init_ftp():
-    """
-    Connect to ftp site
-    """
-
-    from ftplib import FTP
-
-    host, path, user, pswd = parse_url()
-    ftp = FTP(host, user=user, passwd=pswd)
-
-    return ftp, path
-
-
-def close_ftp(ftp):
-    """
-    May not be needed but do it nicely.
-    """
-    if ftp:
-        ftp.close()
-
-
-def retrieve_config_files(ftp, newver, rootdir, outdir):
+def retrieve_config_files(baseurl, newver, rootdir, outdir):
     """
     Retrieve the instrument specific CALDB caldb.indx and key.config files.
 
@@ -208,16 +64,13 @@ def retrieve_config_files(ftp, newver, rootdir, outdir):
 
     verb1("Retrieving CALDB index files")
 
-    ftp.cwd("/{}/software/tools".format(rootdir))
-    ftp.retrbinary("RETR caldb.config",
-                   open("{}/caldb.config".format(outdir), "wb").write)
+    url="{}/software/tools/caldb.config".format(baseurl)
+    page=urllib.request.urlopen(url)
+    with open("{}/caldb.config".format(outdir), "wb") as fp:
+        fp.write( page.read())
 
-    ftp.cwd("/{}/data/chandra/".format(rootdir))
-    for dd in ftp.nlst():
-        if dd in ['ephin', 'sim', 'pcad', 'pimms']:
-            continue
-        ftp.cwd("/{}/data/chandra/{}".format(rootdir, dd))
 
+    for dd in ["acis", "hrc", "default"]:
         #
         # We store both the chandra/$inst/caldb.indx file to make
         # old-school caldb happy, but then we also store versioned
@@ -226,27 +79,30 @@ def retrieve_config_files(ftp, newver, rootdir, outdir):
         #
 
         init_output_dir("{}/data/chandra/{}".format(outdir, dd))
-        out_indx = open("{}/data/chandra/{}/caldb.indx".format(outdir, dd), "wb")
-        out_key = open("{}/data/chandra/{}/key.config".format(outdir, dd), "wb")
-        verb2("Index name :" + out_indx.name)
-        verb2("Key Config name :" + out_key.name)
-        ftp.retrbinary("RETR caldb.indx", out_indx.write)
-        ftp.retrbinary("RETR key.config", out_key.write)
-        out_indx.close()
-        out_key.close()
-
-        # Okay -- this is a bit wasteful x-ferring the file twice.  Could
-        # replace with a copy
-
         init_output_dir("{}/config".format(outdir))
-        out_indx = open("{}/config/{}-{}.indx".format(outdir, dd, newver), "wb")
-        out_key = open("{}/config/{}-{}.config".format(outdir, dd, newver), "wb")
-        verb2("Index name :" + out_indx.name)
-        verb2("Key Config name :" + out_key.name)
-        ftp.retrbinary("RETR caldb.indx", out_indx.write)
-        ftp.retrbinary("RETR key.config", out_key.write)
+
+        out_indx = open("{}/data/chandra/{}/caldb.indx".format(outdir, dd), "wb")
+        out_indx2 = open("{}/config/{}-{}.indx".format(outdir, dd, newver), "wb")
+        url = "{}/data/chandra/{}/caldb.indx".format(baseurl, dd)
+        page=urllib.request.urlopen(url)
+        p = page.read()
+        out_indx.write(p)
+        out_indx2.write(p)
         out_indx.close()
+        out_indx2.close()
+        verb2("Index name :" + out_indx.name)
+
+        out_key = open("{}/data/chandra/{}/key.config".format(outdir, dd), "wb")
+        out_key2 = open("{}/config/{}-{}.config".format(outdir, dd, newver), "wb")
+        url = "{}/data/chandra/{}/key.config".format(baseurl, dd)
+        page=urllib.request.urlopen(url)
+        p=page.read()
+        out_key.write(p)
+        out_key2.write(p)
         out_key.close()
+        out_key2.close()
+        verb2("Key Config name :" + out_key.name)
+
 
 
 def filter_config(newver, outdir):
@@ -319,7 +175,7 @@ def filter_config(newver, outdir):
     return outconfig
 
 
-def get_version_file(ftp, rootdir, outdir):
+def get_version_file(baseurl, rootdir, outdir):
     """
     Read the Chandra caldb version file.  Get the old version if
     it exists then download the new file.
@@ -341,9 +197,12 @@ def get_version_file(ftp, rootdir, outdir):
     except Exception:
         oldver = None
 
-    if ftp:
-        ftp.cwd("/{}/docs/chandra/caldb_version/".format(rootdir))
-        ftp.retrbinary("RETR caldb_version.fits", open(outfile, "wb").write)
+    if baseurl:
+        url="{}/docs/chandra/caldb_version/caldb_version.fits".format(baseurl)
+        page = urllib.request.urlopen(url)
+        with open(outfile,"wb") as fp:
+            fp.write(page.read())
+
     elif os.path.exists(outfile):
         pass
     else:
@@ -374,7 +233,7 @@ def init_output_dir(outdir):
             raise
 
 
-def retrieve_caldb_file(ftp, rootdir, looking_for, outdir, clobber, missing):
+def retrieve_caldb_file(baseurl, rootdir, looking_for, outdir, clobber, missing):
     """
     Retrieve the CALDB data files
     """
@@ -421,8 +280,13 @@ def retrieve_caldb_file(ftp, rootdir, looking_for, outdir, clobber, missing):
             # wrong so then download it.
             #
 
-            ftp.cwd("/{}/{}".format(rootdir, zz))
-            fsize = FtpFile(ftp, hasnam).get_ftp_filesize()
+            url="{}/{}/{}".format(baseurl, zz, hasnam)
+            page = urllib.request.urlopen(url)
+            
+            if 'Content-Length' in page.headers:
+                fsize = int(page.headers['Content-Length'])
+            else:
+                fsize = None # We don't know
 
             if (fsize == outfile_size) and not clobber:
                 sys.stderr.write("." * 20)
@@ -430,9 +294,17 @@ def retrieve_caldb_file(ftp, rootdir, looking_for, outdir, clobber, missing):
                 continue
 
             outfp = open(outfile, "wb")
-            logdl = LoggingFile(outfp, fsize, sys.stderr, None)
 
-            ftp.retrbinary("RETR {}".format(hasnam), logdl.write, 8 * 1024)
+            if fsize is None: 
+                # page len unknown, skip hashes
+                outfp.write(page.read())
+            else:
+                blk = int(fsize/20.0)
+                for k in range(20):
+                    outfp.write( page.read(blk))
+                    sys.stderr.write("#")
+                    sys.stderr.flush()
+
             outfp.close()
 
             if updated:
@@ -441,7 +313,7 @@ def retrieve_caldb_file(ftp, rootdir, looking_for, outdir, clobber, missing):
         sys.stderr.write("\n")
 
 
-def retrieve_files_by_tool(ftp, rootdir, tool, infile, outdir, clobber, missing):
+def retrieve_files_by_tool(baseurl, rootdir, tool, infile, outdir, clobber, missing):
     """
     Use the CALDB to query for each of the files to know which to
     retrieve.
@@ -462,7 +334,7 @@ def retrieve_files_by_tool(ftp, rootdir, tool, infile, outdir, clobber, missing)
                 setattr(cc, constraint, tool[prod][constraint])
 
         products = cc.search
-        retrieve_caldb_file(ftp, rootdir, products, outdir, clobber, missing)
+        retrieve_caldb_file(baseurl, rootdir, products, outdir, clobber, missing)
 
         # The CALDB interface is a little different to normal Python
         # modules, with some attribute accesses acting like method calls.
@@ -592,14 +464,14 @@ def get_tools(infile):
     return [pixlib, ardlib, acis_process_events, mkwarf, mkarf, mkpsfmap, mkacisrmf, tg_create_mask, tg_resolve_events, tgextract, tgextract2, hrc_process_events, misc]
 
 
-def create_config_files(ftp, rootdir, outdir):
+def create_config_files(baseurl, rootdir, outdir):
     """
     Setup the config and index files for the partial CALDB directory.
     """
     init_output_dir(outdir)
 
-    newver = get_version_file(ftp, rootdir, outdir)
-    retrieve_config_files(ftp, newver, rootdir, outdir)
+    newver = get_version_file(baseurl, rootdir, outdir)
+    retrieve_config_files(baseurl, newver, rootdir, outdir)
     newconfig = filter_config(newver, outdir)
     oldver = setup_caldb_environment(outdir, newconfig)
 
@@ -622,7 +494,7 @@ def setup_caldb_environment(outdir, newconfig):
     return oldcaldb
 
 
-def get_background_files(ftp, rootdir, infile, outdir, clobber, background_files, missing):
+def get_background_files(baseurl, rootdir, infile, outdir, clobber, background_files, missing):
     """
     """
 
@@ -637,7 +509,7 @@ def get_background_files(ftp, rootdir, infile, outdir, clobber, background_files
         try:
             acis_bkgrnd_lookup(infile)
             bkgfiles = stk.build(acis_bkgrnd_lookup.outfile)
-            retrieve_caldb_file(ftp, rootdir, bkgfiles, outdir, clobber, missing)
+            retrieve_caldb_file(baseurl, rootdir, bkgfiles, outdir, clobber, missing)
         except Exception as e:
             pass
 
@@ -647,14 +519,14 @@ def get_background_files(ftp, rootdir, infile, outdir, clobber, background_files
         try:
             hrc_bkgrnd_lookup(infile, "event")
             bkgfiles = stk.build(hrc_bkgrnd_lookup.outfile)
-            retrieve_caldb_file(ftp, rootdir, bkgfiles, outdir, clobber, missing)
+            retrieve_caldb_file(baseurl, rootdir, bkgfiles, outdir, clobber, missing)
         except Exception:
             pass
 
         try:
             hrc_bkgrnd_lookup(infile, "spectrum")
             bkgfiles = stk.build(hrc_bkgrnd_lookup.outfile)
-            retrieve_caldb_file(ftp, rootdir, bkgfiles, outdir, clobber, missing)
+            retrieve_caldb_file(baseurl, rootdir, bkgfiles, outdir, clobber, missing)
         except Exception as e:
             pass
     else:
@@ -662,7 +534,7 @@ def get_background_files(ftp, rootdir, infile, outdir, clobber, background_files
         raise RuntimeError("Unknown instrument")
 
 
-def get_caldb_files(ftp, rootdir, infile, outdir, clobber, background_files, missing):
+def get_caldb_files(baseurl, rootdir, infile, outdir, clobber, background_files, missing):
     """
     Get all possible CALDB files needed for this observation.
 
@@ -672,10 +544,10 @@ def get_caldb_files(ftp, rootdir, infile, outdir, clobber, background_files, mis
     sys.stderr.write("    {:<40s}0------------------1\n".format('Filename:'))
 
     for tool in get_tools(infile):
-        retrieve_files_by_tool(ftp, rootdir, tool, infile, outdir, clobber, missing)
+        retrieve_files_by_tool(baseurl, rootdir, tool, infile, outdir, clobber, missing)
 
     if background_files:
-        get_background_files(ftp, rootdir, infile, outdir, clobber, background_files, missing)
+        get_background_files(baseurl, rootdir, infile, outdir, clobber, background_files, missing)
 
 
 def print_new_setup(oldcaldb):
@@ -698,6 +570,8 @@ def print_new_setup(oldcaldb):
         verb0("export CALDBCONFIG=" + os.path.abspath(os.environ["CALDBCONFIG"]))
         verb0("export CALDBALIAS=none")
         verb0("")
+    
+    
 
 
 def locate_infile(infile):
@@ -770,13 +644,14 @@ def main():
     clobber = is_par_set(pars["clobber"])
 
     if missing:
-        ftp = None
+        baseurl = None
         rootdir = None
         oldcaldb = setup_check_missing(outdir)
-        get_version_file(ftp, rootdir, outdir)
+        get_version_file(baseurl, rootdir, outdir)
     else:
-        ftp, rootdir = init_ftp()
-        oldcaldb = create_config_files(ftp, rootdir, outdir)
+        baseurl=CDA_SERVER
+        rootdir=""
+        oldcaldb = create_config_files(baseurl, rootdir, outdir)
 
     import stk as stk
     for infile in stk.build(infiles):
@@ -787,9 +662,8 @@ def main():
             verb0("WARNING: Unable to locate evt2 file in '{}'.  Skipping it.".format(infile))
             continue
 
-        get_caldb_files(ftp, rootdir, infile, outdir, clobber, background_files, missing)
+        get_caldb_files(baseurl, rootdir, infile, outdir, clobber, background_files, missing)
 
-    close_ftp(ftp)
     print_new_setup(oldcaldb)
 
 
