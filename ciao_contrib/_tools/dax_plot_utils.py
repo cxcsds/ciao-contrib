@@ -1,4 +1,35 @@
-# -- Emulate the 'plot_fit()' sherpa command, 
+#
+#  Copyright (C) 2020
+#  Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Emulate the sherpa plot commands using blt via ds9
+
+
+sherpa has various plot commands to plot data, models, residuals, etc.
+dax needs to emulate this plots but instead of using sherpa plotting
+backends (eg matplotlib), we are  using the BLT plotting available 
+through ds9.  This way dax doesn't have to spawn background processes
+and keep track of things running in the background to cleanup/etc.
+
+"""
+
 
 import subprocess
 
