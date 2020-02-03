@@ -58,7 +58,7 @@ class PSF(contextlib.AbstractContextManager):
                            phi_deg, size_arcsec)
 
     def psfSize(self, energy_keV, theta_arcmin, phi_deg, ecf):
-        return psf.psfFrac(self.pdata, energy_keV,
+        return psf.psfSize(self.pdata, energy_keV,
                            theta_arcmin, phi_deg, ecf)
 
 
