@@ -39,10 +39,10 @@ def parse_src( ds9 ):
     """    
     from tempfile import NamedTemporaryFile
         
-    srcreg = xpaget( ds9, "regions -format ciao source -strip yes selected").strip("\n")    
+    srcreg = xpaget( ds9, "regions -format ciao source -system physical -strip yes selected").strip("\n")    
 
     if 0 == len(srcreg):
-        srcreg = xpaget( ds9, "regions -format ciao source -strip yes").strip("\n")
+        srcreg = xpaget( ds9, "regions -format ciao source -system physical -strip yes").strip("\n")
     
     if 0 == len(srcreg):
         raise RuntimeError("No source regions\n")
@@ -75,9 +75,9 @@ def parse_bkg( ds9 ):
     """
     """
 
-    bkgreg = xpaget( ds9, "regions -format ciao background -strip yes selected").strip("\n")
+    bkgreg = xpaget( ds9, "regions -format ciao background -system physical -strip yes selected").strip("\n")
     if 0 == len(bkgreg):
-        bkgreg = xpaget( ds9, "regions -format ciao background -strip yes").strip("\n")
+        bkgreg = xpaget( ds9, "regions -format ciao background -system physical -strip yes").strip("\n")
 
 
     if bkgreg.startswith("@"):
@@ -123,7 +123,7 @@ def pretty_print( infile, srcstk, bkg, _infile ):
     from pycrates import read_file
     tab = read_file(infile)
     
-    _cols = [ "COMPONENT","NET_COUNTS", "NET_ERR", "NET_RATE", "NET_RATE_ERR", "CEL_AREA", "CEL_BRI", "CEL_BRI_ERR"]
+    _cols = [ "COMPONENT","NET_COUNTS", "NET_ERR", "NET_RATE", "ERR_RATE", "CEL_AREA", "CEL_BRI", "CEL_BRI_ERR"]
     cols = [x for x in _cols if tab.column_exists(x)]
     units = list(map( lambda x: getattr(tab.get_column(x), 'unit'), cols ))
     vals= list(map(lambda x: getattr(tab.get_column(x), 'values'), cols ))
@@ -232,6 +232,16 @@ def xpaget(ds9, cmd):
         
     
 
+def check_for_single(ds9):
+    """
+    Check for multiple ds9 instances; there can be only 1 #Highlander
+    """
+    ver = xpaget(ds9, "version")
+    ver=ver.split("\n")
+    if len(ver) > 1 or 'BEGIN' in ver[0]:
+        raise RuntimeError("Multiple ds9's are running.  Please close the others and try again.")
+
+
 
 
 def functs():
@@ -244,6 +254,10 @@ def functs():
 
 
     ds9 = sys.argv[1]
+
+    check_for_single(ds9)
+
+
     infile = xpaget( ds9, "file")
     infile = parse_infile(infile)
 
@@ -263,7 +277,7 @@ if __name__ == "__main__":
     try:
         functs()
     except Exception as E:
-        print("\n# ds9_functs: ERROR "+str(E)+"\n", file=sys.stderr)
+        print("\n# ds9_functs: ERROR: "+str(E)+"\n", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
     
