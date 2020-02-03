@@ -83,8 +83,8 @@ def psfFrac(energy, theta, phi, size):
     eef : float
         enclosed count fraction
     """
-    with PSF() as ecf:
-        return ecf.psfFrac(energy, theta, phi, size)
+    with PSF() as _psf:
+        return _psf.psfFrac(energy, theta, phi, size)
 
 
 def psfSize(energy_keV, theta_arcmin, phi_deg, ecf):
@@ -108,5 +108,5 @@ def psfSize(energy_keV, theta_arcmin, phi_deg, ecf):
     eef : float
         enclosed count fraction
     """
-    with PSF() as ecf:
-        return ecf.psfSize(energy_keV, theta_arcmin, phi_deg, ecf)
+    with PSF() as _psf:
+        return _psf.psfSize(energy_keV, theta_arcmin, phi_deg, ecf)
