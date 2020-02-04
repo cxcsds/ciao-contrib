@@ -23,14 +23,12 @@ from __future__ import print_function
 import os
 import sys
 
-from urllib.parse import urlparse
-import urllib.request 
 
 import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "download_obsid_caldb"
-__revision__ = "29 January 2020"
+__revision__ = "04 February 2020"
 
 lw.initialize_logger(toolname)
 
@@ -42,6 +40,16 @@ verb3 = lgr.verbose3
 verb5 = lgr.verbose5
 
 CDA_SERVER="https://cxc.cfa.harvard.edu/cdaftp/arcftp/ChandraCalDB"
+
+
+def wrap_urlopen(url):
+    """Wrap simple urlopen with a Request object w/ custom User-Agent"""
+
+    import urllib.request as request
+    rr = request.Request(url)
+    rr.add_header("User-Agent", "{}/{}".format(toolname, __revision__))
+    retval = request.urlopen(rr)
+    return(retval)
 
 
 
@@ -65,43 +73,38 @@ def retrieve_config_files(baseurl, newver, rootdir, outdir):
     verb1("Retrieving CALDB index files")
 
     url="{}/software/tools/caldb.config".format(baseurl)
-    page=urllib.request.urlopen(url)
+    page=wrap_urlopen(url)
+    p=page.read()
     with open("{}/caldb.config".format(outdir), "wb") as fp:
-        fp.write( page.read())
+        fp.write(p)
 
+    #
+    # We store both the chandra/$inst/caldb.indx file to make
+    # old-school caldb happy, but then we also store versioned
+    # copies of the index and key.config files in the config/
+    # directory.
+    #
+    init_output_dir("{}/config".format(outdir))
 
-    for dd in ["acis", "hrc", "default"]:
-        #
-        # We store both the chandra/$inst/caldb.indx file to make
-        # old-school caldb happy, but then we also store versioned
-        # copies of the index and key.config files in the config/
-        # directory.
-        #
-
+    for dd in ["acis", "hrc", "default"]:        
         init_output_dir("{}/data/chandra/{}".format(outdir, dd))
-        init_output_dir("{}/config".format(outdir))
 
-        out_indx = open("{}/data/chandra/{}/caldb.indx".format(outdir, dd), "wb")
-        out_indx2 = open("{}/config/{}-{}.indx".format(outdir, dd, newver), "wb")
-        url = "{}/data/chandra/{}/caldb.indx".format(baseurl, dd)
-        page=urllib.request.urlopen(url)
-        p = page.read()
-        out_indx.write(p)
-        out_indx2.write(p)
-        out_indx.close()
-        out_indx2.close()
-        verb2("Index name :" + out_indx.name)
+        for ff in ["caldb.indx", "key.config"]:
 
-        out_key = open("{}/data/chandra/{}/key.config".format(outdir, dd), "wb")
-        out_key2 = open("{}/config/{}-{}.config".format(outdir, dd, newver), "wb")
-        url = "{}/data/chandra/{}/key.config".format(baseurl, dd)
-        page=urllib.request.urlopen(url)
-        p=page.read()
-        out_key.write(p)
-        out_key2.write(p)
-        out_key.close()
-        out_key2.close()
-        verb2("Key Config name :" + out_key.name)
+            url = "{}/data/chandra/{}/{}".format(baseurl, dd, ff)
+            page=wrap_urlopen(url)
+            p = page.read()
+
+            outfile="{}/data/chandra/{}/{}".format(outdir, dd,ff)
+            with open(outfile, "wb") as out_indx:
+                out_indx.write(p)
+
+            ftype = "config" if ff.endswith("config") else "indx"     
+            outfile="{}/config/{}-{}.{}".format(outdir,dd,newver,ftype)
+            with open(outfile, "wb") as out_indx2:
+                out_indx2.write(p)
+
+            verb2(ftype+" name :" + out_indx.name)
 
 
 
@@ -212,9 +215,10 @@ def get_version_file(baseurl, rootdir, outdir):
 
     if baseurl:
         url="{}/docs/chandra/caldb_version/caldb_version.fits".format(baseurl)
-        page = urllib.request.urlopen(url)
+        page = wrap_urlopen(url)
+        p = page.read()
         with open(outfile,"wb") as fp:
-            fp.write(page.read())
+            fp.write(p)
 
     elif os.path.exists(outfile):
         pass
@@ -294,7 +298,7 @@ def retrieve_caldb_file(baseurl, rootdir, looking_for, outdir, clobber, missing)
             #
 
             url="{}/{}/{}".format(baseurl, zz, hasnam)
-            page = urllib.request.urlopen(url)
+            page = wrap_urlopen(url)
             
             if 'Content-Length' in page.headers:
                 fsize = int(page.headers['Content-Length'])
@@ -314,7 +318,7 @@ def retrieve_caldb_file(baseurl, rootdir, looking_for, outdir, clobber, missing)
             else:
                 blk = int(fsize/20.0)
                 for k in range(20):
-                    outfp.write( page.read(blk))
+                    outfp.write(page.read(blk))
                     sys.stderr.write("#")
                     sys.stderr.flush()
 
