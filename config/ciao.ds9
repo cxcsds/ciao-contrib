@@ -170,10 +170,9 @@ endparam
 ###endparam
 
 
-
-
 param spectral
-  model menu {Model} powlaw1d|bbody|xsbremss|xsmekal|gauss1d {Spectral Model}
+  model menu {Model} xszpowerlw|xszbbody|xsbknpower|xscutoffpl|xszgauss|xsdiskline|xsapec|xsbapec|xsmekal|xsvmekal|xsraymond|xszbremss|xscemekl {Spectral Model}
+  add_model menu {Additional component} none|xszpowerlw|xszbbody|xsbknpower|xscutoffpl|xszgauss|xsdiskline|xsapec|xsbapec|xsmekal|xsvmekal|xsraymond|xszbremss|xscemekl {Spectral Model}
   grpcts entry {grpcts} 20 {Group channels by number of counts}
   elo entry {elo} 0.3 {[keV] Lower energy range to perform fit}
   ehi entry {ehi} 7.0 {[keV] Upper energy range to perform fit}
@@ -607,12 +606,7 @@ hmenu CIAO tools (DAX)
     Spectral Fit
     *EVT* *evt*
     menu
-    $param(spectral); $env(ASCDS_CONTRIB)/bin/ds9_specfit.sh $xpa $model $grpcts $elo $ehi $specfit_method $specfit_stat $specfit_absmodel '$extra' |& $text
-
-###    Clean Cache
-###    *
-###    menu
-###    $message(yesno,Are you sure you want to remove cached files?)| /bin/rm -rf $env(ASCDS_WORK_PATH)/ds9specfit.$env(USER) |& $text
+    $param(spectral); $env(ASCDS_CONTRIB)/bin/ds9_specfit.sh $xpa $model $add_model $grpcts $elo $ehi $specfit_method $specfit_stat $specfit_absmodel '$extra' |& $text
  
     ---
 
@@ -641,6 +635,24 @@ hmenu CIAO tools (DAX)
       
       Spectral Fit - [specextract, sherpa] extracts the source
       and background spectra and then fits the spectra with sherpa.  
+
+            Model       Description:
+
+            xszbbody    Black Body              
+            xszpowerlw  Power Law               
+            xsbknpower  Broken Pow Law          
+            xscutoffpl  Pow Law w/ cutoff       
+            xszgauss    Gaussian                
+            xsdiskline  Disk Line Emission      
+            xsapec      APEC                    
+            xsbapec     BAPEC                   
+            xsmekal     Mekal                   
+            xsvmekal    Mekal (abund)           
+            xsraymond   Raymond-Smith           
+            xszbremss   Thermal Brems           
+            xscemekl    Multi-temp Plasma       
+
+
       
       2D Image Fit - [sherpa] fit the image data inside
       the region with a 2D model
