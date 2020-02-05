@@ -49,6 +49,14 @@ ProgressBar
 Display a "progress" bar, indicating the progress of a download.
 This has very-limited functionality.
 
+download_progress
+-----------------
+
+Download a URL to a file, supporting
+
+  - continuation of a previous partial download
+  - a rudimentary progress bar to display progress
+
 Stability
 ---------
 
@@ -58,14 +66,17 @@ at your own risk.
 
 """
 
+import os
 import sys
 import ssl
+import time
 
 from io import BytesIO
 from subprocess import check_output
 
 import urllib.error
 import urllib.request
+import http.client
 
 from html.parser import HTMLParser
 
@@ -83,7 +94,8 @@ v4 = logger.verbose4
 __all__ = ('retrieve_url',
            'find_downloadable_files',
            'find_all_downloadable_files',
-           'ProgressBar')
+           'ProgressBar',
+           'download_progress')
 
 
 def manual_download(url):
@@ -525,3 +537,234 @@ class ProgressBar:
 
         self.hdl.write(self.hashchar * nadd)
         self.hdl.flush()
+
+
+def stringify_dt(dt):
+    """Convert a time interval into a "human readable" string.
+
+    Parameters
+    ----------
+    dt : number
+        The number of seconds.
+
+    Returns
+    -------
+    lbl : str
+        The "human readable" version of the time difference.
+
+    Examples
+    --------
+
+    >>> stringify_dt(0.2)
+    '< 1 s'
+
+    >>> stringify_dt(62.3)
+    '1 m 2 s'
+
+    >>> stringify_dt(2402.24)
+    '40 m 2 s'
+
+    """
+
+    if dt < 1:
+        return "< 1 s"
+
+    def myint(f):
+        return int(f + 0.5)
+
+    d = myint(dt // (24 * 3600))
+    dt2 = dt % (24 * 3600)
+    h = myint(dt2 // 3600)
+    dt3 = dt % 3600
+    m = myint(dt3 // 60)
+    s = myint(dt3 % 60)
+
+    if d > 0:
+        lbl = "%d day" % d
+        if d > 1:
+            lbl += "s"
+        if h > 0:
+            lbl += " %d h" % h
+
+    elif h > 0:
+        lbl = "%d h" % h
+        if m > 0:
+            lbl += " %d m" % m
+
+    elif m > 0:
+        lbl = "%d m" % m
+        if s > 0:
+            lbl += " %d s" % s
+
+    else:
+        lbl = "%d s" % s
+
+    return lbl
+
+
+def download_progress(url, size, outfile,
+                      headers=None,
+                      progress=None,
+                      chunksize=8192,
+                      verbose=True):
+    """Download url and store in outfile, reporting progress.
+
+    The download will use chunks, logging the output to the
+    screen, and will not re-download partial data (e.g.
+    from a partially-completed earlier attempt). Information
+    on the state of the download will be displayed to stdout
+    unless verbose is False. This routine requires that
+    we already know the size of the file.
+
+    Parameters
+    ----------
+    url : str
+        The URL to download; this must be http or https based.
+    size : int
+        The file size in bytes.
+    outfile : str
+        The output file (relative to the current working directory).
+        Any sub-directories must already exist.
+    headers : dict, optional
+        Any additions to the HTTP header in the request (e.g. to
+        set 'User-Agent'). If None, a user-agent string of
+        "ciao_contrib.downloadutils.download_progress" is
+        used).
+    progress : ProgressBar instance, optional
+        If not specified a default instance (20 '#' marks) is used.
+    chunksize : int, optional
+        The chunk size to use, in bytes.
+    verbose : bool, optional
+        Should progress information on the download be written to
+        stdout?
+
+    Notes
+    -----
+    This routine assumes that the HTTP server supports ranged
+    requests [1]_, and ignores SSL validation of the request.
+
+    The assumption is that the resource is static (i.e. it hasn't
+    been updated since content was downloaded). This means that it
+    is possible the output will be invalid, for instance if it
+    has increased in length since the last time it was fully
+    downloaded, or changed and there was a partial download.
+
+    References
+    ----------
+
+    .. [1] https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
+
+    """
+
+    # I used http.client rather than urllib because I read somewhere
+    # that urllib did not handle streaming requests (e.g. it would just
+    # read in everything in one go and then you read from the in-memory
+    # buffer).
+    #
+    # Is this (still) true?
+    #
+    purl = urllib.request.urlparse(url)
+    if purl.scheme == 'https':
+        no_context = ssl._create_unverified_context()
+        conn = http.client.HTTPSConnection(purl.netloc, context=no_context)
+
+    elif purl.scheme == 'http':
+        conn = http.client.HTTPConnection(purl.netloc)
+
+    else:
+        raise ValueError("Unsupported URL scheme: {}".format(url))
+
+    startfrom = 0
+    try:
+        fsize = os.path.getsize(outfile)
+    except OSError:
+        fsize = None
+
+    if fsize is not None:
+        equal_size = fsize == size
+        v3("Checking on-disk file size " +
+           "({}) against archive size ".format(fsize) +
+           "({}): {}".format(size, equal_size))
+
+        if equal_size:
+            if verbose:
+                # Ugly, since this is set up to match what is needed by
+                # ciao_contrib.cda.data.ObsIdFile.download rather than
+                # being generic. Need to look at how messages are
+                # displayed.
+                #
+                sys.stdout.write("{:>20s}\n".format("already downloaded"))
+                sys.stdout.flush()
+
+            return (0, 0)
+
+        if fsize > size:
+            v0("Archive size is less than disk size for " +
+               "{} - {} vs {} bytes.".format(outfile,
+                                             size,
+                                             fsize))
+            return (0, 0)
+
+        startfrom = fsize
+
+    try:
+        outfp = open(outfile, 'ab')
+    except IOError:
+        raise IOError("Unable to create '{}'".format(outfile))
+
+    # Is this seek needed?
+    if startfrom > 0 and outfp.tell() == 0:
+        outfp.seek(0, 2)
+
+    if progress is None:
+        progress = ProgressBar(size)
+
+    if headers is None:
+        headers = {'User-Agent':
+                   'ciao_contrib.downloadutils.download_progress'}
+
+    # Could hide this if startfrom = 0 and size <= chunksize, but
+    # it doesn't seem worth it.
+    #
+    headers['Range'] = 'bytes={}-{}'.format(startfrom, size - 1)
+
+    time0 = time.time()
+    conn.request('GET', url, headers=headers)
+    with conn.getresponse() as rsp:
+
+        # Assume that rsp.status != 206 would cause some form
+        # of an error so we don't need to check for this here.
+        #
+        if verbose:
+            progress.start(startfrom)
+
+        # Note that the progress bar reflects the expected size, not
+        # the actual size; this may not be ideal (but don't expect the
+        # sizes to change so it doesn't really matter).
+        #
+        while True:
+            chunk = rsp.read(chunksize)
+            if not chunk:
+                break
+
+            outfp.write(chunk)
+            if verbose:
+                progress.add(len(chunk))
+
+        if verbose:
+            progress.end()
+
+    time1 = time.time()
+    nbytes = outfp.tell()
+    outfp.close()
+
+    dtime = time1 - time0
+    if verbose:
+        rate = (nbytes - startfrom) / (1024 * dtime)
+        tlabel = stringify_dt(dtime)
+        sys.stdout.write("  {:>13s}  {:.1f} kb/s\n".format(tlabel, rate))
+
+    if size != nbytes:
+        v0("WARNING file sizes do not match: expected {} but downloaded {}".format(size, nbytes))
+
+    return (nbytes, dtime)
