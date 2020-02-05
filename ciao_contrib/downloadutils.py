@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2018
+#  Copyright (C) 2018, 2020
 #            Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -20,9 +20,12 @@
 """
 Support downloading data from URLs in CIAO.
 
+A collection of routines related to data download used in CIAO.
+
 CIAO 4.11 does not include any SSL support, instead relying on the OS.
 This can cause problems on certain platforms. So try with Python and
-then fall through to curl or wget.
+then fall through to curl or wget. This can hopefully be removed for
+CIAO 4.12 or later, but kept in just for now.
 
 This is an internal module, and so the API it provides is not
 considered stable (e.g. we may remove this module at any time). Use
@@ -43,6 +46,9 @@ logger = lw.initialize_module_logger("downloadutils")
 
 v3 = logger.verbose3
 v4 = logger.verbose4
+
+
+__all__ = ('retrieve_url', )
 
 
 def manual_download(url):
