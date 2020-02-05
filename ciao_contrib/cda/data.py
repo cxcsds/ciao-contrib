@@ -103,6 +103,7 @@ known_file_types = [
     "cntr_img", "full_img", "src_img",
     "asol", "eph0", "eph1",
     "aoff", "evt1a", "evt1", "flt", "msk", "mtl", "soff", "stat",
+    "arf", "rmf",  # assume these are the correct tokens
     "bias", "pbk",
     "osol", "aqual",
     "sum", "pha2", "dtf", "plt",
