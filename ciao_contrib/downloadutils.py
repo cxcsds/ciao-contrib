@@ -539,6 +539,11 @@ class ProgressBar:
         self.hdl.flush()
 
 
+def myint(x):
+    """Convert to an integer, my way."""
+    return int(x + 0.5)
+
+
 def stringify_dt(dt):
     """Convert a time interval into a "human readable" string.
 
@@ -569,9 +574,6 @@ def stringify_dt(dt):
     if dt < 1:
         return "< 1 s"
 
-    def myint(f):
-        return int(f + 0.5)
-
     d = myint(dt // (24 * 3600))
     dt2 = dt % (24 * 3600)
     h = myint(dt2 // 3600)
@@ -598,6 +600,54 @@ def stringify_dt(dt):
 
     else:
         lbl = "%d s" % s
+
+    return lbl
+
+
+def stringify_size(s):
+    """Convert a file size to a text string.
+
+    Parameters
+    ----------
+    size : int
+        File size, in bytes
+
+    Returns
+    -------
+    filesize : str
+        A "nice" representation of the size
+
+    Examples
+    --------
+
+    >>> stringify_size(1023)
+    '< 1 Kb'
+
+    >>> stringify_size(1024)
+    '1 Kb'
+
+    >>> stringify_size(1025)
+    '1 Kb'
+
+    >>> stringify_size(54232)
+    '53 Kb'
+
+    >>> stringify_size(4545833)
+    '4 Mb'
+
+    >>> stringify_size(45458330000)
+    '4.2 Gb'
+
+    """
+
+    if s < 1024:
+        lbl = "< 1 Kb"
+    elif s < 1024 * 1024:
+        lbl = "%d Kb" % (myint(s / 1024.0))
+    elif s < 1024 * 1024 * 1024:
+        lbl = "%d Mb" % (myint(s / (1024 * 1024.0)))
+    else:
+        lbl = "%.1f Gb" % (s / (1024 * 1024 * 1024.0))
 
     return lbl
 
