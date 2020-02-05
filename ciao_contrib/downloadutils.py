@@ -711,7 +711,7 @@ def download_progress(url, size, outfile,
     # read in everything in one go and then you read from the in-memory
     # buffer).
     #
-    # Is this (still) true?
+    # From https://stackoverflow.com/a/24900110 - is it still true?
     #
     purl = urllib.request.urlparse(url)
     if purl.scheme == 'https':
@@ -772,6 +772,12 @@ def download_progress(url, size, outfile,
     if headers is None:
         headers = {'User-Agent':
                    'ciao_contrib.downloadutils.download_progress'}
+    else:
+        # Ensure we copy the header dictionary, since we are going
+        # to add to it. It is assumed that a shallow copy is
+        # enough.
+        #
+        headers = headers.copy()
 
     # Could hide this if startfrom = 0 and size <= chunksize, but
     # it doesn't seem worth it.

@@ -11,7 +11,7 @@
 ]>
 <cxchelptopics>
   <ENTRY key="download_chandra_obsid" context="tools"
-	 refkeywords="download ftp chandra obsid obsids
+	 refkeywords="download ftp http https chandra obsid obsids
 		      data archive cda mirror public chaser webchaser
 		      dco download_chandra_obsids
                       &cdaenv;
@@ -79,7 +79,7 @@
 	exist on disk as long as they are the correct size.
 	If the on-disk version is smaller than the archive
 	version, then download will be resumed rather than
-	started again. 
+	started again.
 	A warning message will be displayed if the on-disk version
 	is larger than the archive version.
       </PARA>
@@ -92,16 +92,16 @@
 	Unless the -q or --quiet flag was used, each file that
 	is downloaded will be displayed on screen, giving the
 	"type", format, file type before a progress bar of
-	# marks (each # mark indicates 10% of the file).
-	Once the file has been downloaded an average 
+	# marks (each # mark indicates 5% of the file).
+	Once the file has been downloaded an average
 	rate is displayed for the download. Examples of the
 	output for two files are shown below:
       </PARA>
 <VERBATIM>
 Type     Format      Size  0........H.........1  Download Time Average Rate
 ---------------------------------------------------------------------------
-vv       pdf        78 Kb  ####################          &lt; 1 s  843.1 kb/s
 evt2     fits       17 Mb  ####################            2 s  7170.3 kb/s
+vv       pdf        78 Kb  ####################          &lt; 1 s  843.1 kb/s
 </VERBATIM>
       <PARA>
 	If a file has already been downloaded then the message
@@ -113,44 +113,44 @@ evt2     fits       17 Mb  ####################            2 s  7170.3 kb/s
     <QEXAMPLELIST>
       <QEXAMPLE>
 	<SYNTAX>
-	  <LINE>&pr; download_chandra_obsid 1843</LINE>
+	  <LINE>&pr; download_chandra_obsid 1842</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
-	    This will download all the data files for ObsId 1843 to
-	    the directory 1843/. The screen output for the run
+	    This will download all the data files for ObsId 1842 to
+	    the directory 1842/. The screen output for the run
 	    will look something like the following (where many lines
 	    have been excluded, indicated by the "..." lines):
 	  </PARA>
 
 <VERBATIM>
-Downloading files for ObsId 1843, total size is 81 Mb.
+Downloading files for ObsId 1842, total size is 81 Mb.
 
-Type   Format   Size  0........H.........1  Download Time Average Rate
-----------------------------------------------------------------------
-readme ascii   11 Kb  ####################          &lt; 1 s  433.7 kb/s
+Type     Format   Size  0........H.........1  Download Time Average Rate
+------------------------------------------------------------------------
+evt1     fits    36 Mb  ####################           46 s  818.4 kb/s
+evt2     fits    19 Mb  ####################           23 s  809.1 kb/s
 ...
-evt2   fits    17 Mb  ####################            4 s  4740.2 kb/s
-asol   fits     2 Mb  ####################          &lt; 1 s  5239.1 kb/s
-bpix   fits    13 Kb  ####################          &lt; 1 s  575.7 kb/s
-fov    fits     6 Kb  ####################          &lt; 1 s  610.6 kb/s
-...
-osol   fits   354 Kb  ####################          &lt; 1 s  1764.3 kb/s
+readme   ascii   11 Kb  ####################          &lt; 1 s  91.7 kb/s
+eph1     fits     6 Kb  ####################          &lt; 1 s  109.7 kb/s
+fov      fits     6 Kb  ####################          &lt; 1 s  108.1 kb/s
+msk      fits     5 Kb  ####################          &lt; 1 s  62.0 kb/s
+pbk      fits     4 Kb  ####################          &lt; 1 s  81.4 kb/s
 
-    Total download size for ObsId 1843 = 81 Mb
-    Total download time for ObsId 1843 = 16 s
+    Total download size for ObsId 1842 = 81 Mb
+    Total download time for ObsId 1842 = 1 m 45 s
 </VERBATIM>
 	</DESC>
       </QEXAMPLE>
 
       <QEXAMPLE>
 	<SYNTAX>
-	  <LINE>&pr; download_chandra_obsid 1843 evt1,bpix,asol,fov,readme</LINE>
+	  <LINE>&pr; download_chandra_obsid 1842 evt1,bpix,asol,fov,readme</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
 	    Here we restrict the download to just the evt1, bpix,
-	    asol, fov, and readme files from ObsId 1843.
+	    asol, fov, and readme files from ObsId 1842.
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
@@ -198,7 +198,7 @@ osol   fits   354 Kb  ####################          &lt; 1 s  1764.3 kb/s
 
       <QEXAMPLE>
 	<SYNTAX>
-	  <LINE>&pr; download_chandra_obsid -m ftp://cda.cfa.harvard.edu/pub 1842</LINE>
+	  <LINE>&pr; download_chandra_obsid -m https://cxc.cfa.harvard.edu/cdaftp/ 1842</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
@@ -214,7 +214,7 @@ osol   fits   354 Kb  ####################          &lt; 1 s  1764.3 kb/s
 	  </PARA>
 	  <PARA>
 	    <SYNTAX>
-	      <LINE>&pr; setenv &cdaenv; ftp://cda.cfa.harvard.edu/pub</LINE>
+	      <LINE>&pr; setenv &cdaenv; https://cxc.cfa.harvard.edu/cdaftp/</LINE>
 	      <LINE>&pr; download_chandra_obsid 1842</LINE>
 	    </SYNTAX>
 	  </PARA>
@@ -239,22 +239,37 @@ osol   fits   354 Kb  ####################          &lt; 1 s  1764.3 kb/s
 	for the data.
       </PARA>
       <PARA>
-        The mirror location should include the URL of the FTP site
-        (the leading ftp:// is required) and the path up to, but not including,
+        The mirror location should include the URL of the HTTP or
+	HTTPS site
+        (the leading https:// or http:// is required) and the path up to, but not including,
         the byobsid/ directory. So, for the Chandra Data Archive itself
         you would use
-        <EQUATION>ftp://cda.cfa.harvard.edu/pub</EQUATION>
+        <EQUATION>https://cxc.cfa.harvard.edu/cdaftp/</EQUATION>
         (although obviously in this case you do not need to use the mirror
         option).
         Please see the documentation for the mirror site to find out
         the correct path to use.
       </PARA>
+      <!--
       <PARA>
         If needed, you can include a username and password in the mirror
-        setting, following 
+        setting, following
         <HREF link="https://tools.ietf.org/html/rfc3986">RFC3986</HREF>,
         for instance
         <EQUATION>ftp://anonymous:foo@bar.com@cda.cfa.harvard.edu/pub</EQUATION>
+	</PARA>
+	-->
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.12.2 (March 2020) release">
+      <PARA title="Archive has moved">
+	The script now uses the HTTPS service provided by the
+	Chandra Data Archive as the FTP service is being retired.
+	The archive is now available at https://cxc.cfa.harvard.edu/cdaftp/
+      </PARA>
+      <PARA title="Order by file size">
+	For each observation, the files are now sorted by decreasing
+	file size before being downloaded.
       </PARA>
     </ADESC>
 
@@ -263,7 +278,6 @@ osol   fits   354 Kb  ####################          &lt; 1 s  1764.3 kb/s
         Updated to use ftp://cda.cfa.harvard.edu as the default FTP server.
       </PARA>
     </ADESC>
-
 
     <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
       <PARA>
@@ -275,7 +289,7 @@ osol   fits   354 Kb  ####################          &lt; 1 s  1764.3 kb/s
 
     <ADESC title="Changes in the scripts 4.6.5 (June 2014) release">
       <PARA title="Added evt1a and adat file types">
-	It is now possible to select evt1a and adat 
+	It is now possible to select evt1a and adat
 	(PCAD Level 1 ACA image) files using the
 	filetype argument. The adat files can be used with the
         monitor_photom script.
@@ -285,7 +299,7 @@ osol   fits   354 Kb  ####################          &lt; 1 s  1764.3 kb/s
     <ADESC title="Changes in the scripts 4.5.4 (August 2013) release">
       <PARA title="Support for CDA mirror sites">
 	The --mirror command-line argument and support for the
-	&cdaenv; environment variable 
+	&cdaenv; environment variable
 	has been added to allow data access from a
 	mirror of the Chandra Data Archive site.
       </PARA>
@@ -309,10 +323,10 @@ osol   fits   354 Kb  ####################          &lt; 1 s  1764.3 kb/s
 	See the
 	<HREF link="https://cxc.harvard.edu/ciao/bugs/download_chandra_obsid.html">bugs page
 	for this script</HREF> on the CIAO website for an up-to-date
-	listing of known bugs. 
+	listing of known bugs.
       </PARA>
     </BUGS>
-    
-    <LASTMODIFIED>December 2018</LASTMODIFIED>
+
+    <LASTMODIFIED>February 2020</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
