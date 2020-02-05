@@ -43,6 +43,12 @@ find_all_downloadable_files
 
 Similar to find_downloadble_files but recurses through all sub-directories.
 
+ProgressBar
+-----------
+
+Display a "progress" bar, indicating the progress of a download.
+This has very-limited functionality.
+
 Stability
 ---------
 
@@ -52,6 +58,7 @@ at your own risk.
 
 """
 
+import sys
 import ssl
 
 from io import BytesIO
@@ -75,7 +82,8 @@ v4 = logger.verbose4
 
 __all__ = ('retrieve_url',
            'find_downloadable_files',
-           'find_all_downloadable_files')
+           'find_all_downloadable_files',
+           'ProgressBar')
 
 
 def manual_download(url):
@@ -144,7 +152,7 @@ def retrieve_url(url, timeout=None):
 
     Returns
     -------
-    response : StringIO instance
+    response : HTTPResponse instance
         The response
 
     """
@@ -391,3 +399,129 @@ def find_all_downloadable_files(urlname, headers):
         todo += subdir['directories']
 
     return out
+
+
+class ProgressBar:
+    """A very-simple progress "bar".
+
+    This just displays the hash marks for each segment of a
+    download to stdout. It is called from the code doing the
+    actual download. There is no logic to conditionally display
+    the output in this class - for instance based on the
+    current verbose setting - since this should be handled
+    by the code deciding to call this obejct or not.
+
+    Parameters
+    ----------
+    size : int
+        The number of bytes to download.
+    nhash : int
+        The number of hashes representing the full download
+        (so each hash represents 100/nhash % of the file)
+    hashchar : char
+        The character to display when a chunk has been
+        downloaded.
+
+    Examples
+    --------
+
+    The bar is created with the total number of bytes to download,
+    then it starts (with an optional number of already-downloaded
+    bytes), and each chunk that is added is reported with the add
+    method. Once the download has finished the end method is called.
+
+    Note that the methods (start, add, and end) may cause output
+    to stdout.
+
+    >>> progress = ProgressBar(213948)
+    >>> progress.start()
+    ...
+    >>> progress.add(8192)
+    ...
+    >>> progress.add(8192)
+    ...
+    >>> progress.end()
+
+    """
+
+    def __init__(self, size, nhash=20, hashchar='#'):
+        if size < 0:
+            raise ValueError("size can not be negative")
+        if nhash < 1:
+            raise ValueError("must have at least one hash")
+
+        self.size = size
+        self.nhash = nhash
+        self.hashchar = hashchar
+
+        self.hashsize = size // nhash
+        self.hdl = sys.stdout
+        self.added = 0
+        self.hashes = 0
+
+    def start(self, nbytes=0):
+        """Initialize the download.
+
+        Parameters
+        ----------
+        nbytes : int, optional
+            The number of bytes of the file that has already been
+            downloaded. If not zero this may cause hash marks to be
+            displayed.
+        """
+
+        self.added = nbytes
+        self.hashes = self.added // self.hashsize
+        if self.hashes == 0:
+            return
+
+        self.hdl.write(self.hashchar * self.hashes)
+        self.hdl.flush()
+
+
+    def add(self, nbytes):
+        """Add the number of bytes for this segment.
+
+        This must only be called after start.
+
+        Parameters
+        ----------
+        nbytes : int, optional
+            The number of bytes added to the file.
+        """
+
+        if nbytes < 0:
+            raise ValueError("nbytes must be positive")
+
+        if nbytes == 0:
+            return
+
+        self.added += nbytes
+        hashes = self.added // self.hashsize
+        if hashes == self.hashes:
+            return
+
+        nadd = hashes - self.hashes
+        self.hdl.write(self.hashchar * nadd)
+        self.hdl.flush()
+
+        self.hashes = hashes
+
+    def end(self):
+        """Finished the download.
+
+        This is mainly to allow for handling of rounding errors.
+        """
+
+        nadd = self.nhash - self.hashes
+        if nadd <= 0:
+            return
+
+        # Don't bother trying to correct for any rounding errors
+        # if the file wasn't fully downloaded.
+        #
+        if self.added < self.size:
+            return
+
+        self.hdl.write(self.hashchar * nadd)
+        self.hdl.flush()
