@@ -28,7 +28,7 @@ import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "download_obsid_caldb"
-__revision__ = "04 February 2020"
+__revision__ = "06 February 2020"
 
 lw.initialize_logger(toolname)
 
@@ -43,14 +43,18 @@ CDA_SERVER="https://cxc.cfa.harvard.edu/cdaftp/arcftp/ChandraCalDB"
 
 
 def wrap_urlopen(url):
-    """Wrap simple urlopen with a Request object w/ custom User-Agent"""
-
+    """Wrap simple urlopen with a Request object w/ custom User-Agent
+    
+    The ciao-install version of python doesn't setup the ssl certificates
+    correctly so we have to access the cxc site w/o verification.
+    """
     import urllib.request as request
+    import ssl as ssl
+    no_context = ssl._create_unverified_context()
     rr = request.Request(url)
     rr.add_header("User-Agent", "{}/{}".format(toolname, __revision__))
-    retval = request.urlopen(rr)
+    retval = request.urlopen(rr,context=no_context)
     return(retval)
-
 
 
 def retrieve_config_files(baseurl, newver, rootdir, outdir):
