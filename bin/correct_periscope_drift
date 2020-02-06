@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010, 2016, 2019  Smithsonian Astrophysical Observatory
+# Copyright (C) 2010, 2016, 2019, 2020  Smithsonian Astrophysical Observatory
 #
 #
 #
@@ -42,7 +42,7 @@ from sherpa import plot
 
 
 TOOLNAME = "correct_periscope_drift"
-VERSION = "0.3"
+VERSION = "6 Feb 2020"
 
 # Set up the logging/verbose code
 initialize_logger(TOOLNAME)
@@ -58,7 +58,9 @@ LOGLEVELS = {5: logging.DEBUG,
              4: logging.INFO,
              3: logging.WARNING,
              2: logging.ERROR,
-             1: logging.CRITICAL}
+             1: logging.CRITICAL,
+             0: logging.CRITICAL + 5}
+
 
 
 def process_command_line(argv):
@@ -416,7 +418,7 @@ def ylimits(ymin, ymax):
         pychips.limits(pychips.Y_AXIS, ymin, ymax)
 
     else:
-        # unlike hardcoopy, we do not tell the user if the backend
+        # unlike hardcopy, we do not tell the user if the backend
         # is unknown, as this is a cosmetic change.
         #
         pass
@@ -468,10 +470,10 @@ def hardcopy(filename):
 # without having to worry about them calling sys.exit.
 
 
-@handle_ciao_errors(TOOLNAME, VERSION)
 def main(opt):
 
     # Use verbose option to control sherpa output
+    #
     logger = logging.getLogger("sherpa")
     logger.setLevel(LOGLEVELS[opt['verbose']])
 
@@ -595,7 +597,14 @@ def main(opt):
                      toolversion=VERSION)
 
 
-if __name__ == "__main__":
+@handle_ciao_errors(TOOLNAME, VERSION)
+def doit():
+    "Catch all errors raised in this set of routines"
+
     opt = process_command_line(sys.argv)
     display_start_info(opt)
     main(opt)
+
+
+if __name__ == "__main__":
+    doit()
