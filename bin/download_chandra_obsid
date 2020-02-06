@@ -71,7 +71,7 @@ import ciao_contrib.logger_wrapper as lw
 import ciao_contrib.cda.data as data
 
 TOOLNAME = "download_chandra_obsid"
-VERSION = "5 February 2020"
+VERSION = "6 February 2020"
 
 lw.initialize_logger(TOOLNAME, verbose=1)
 V1 = lw.make_verbose_level(TOOLNAME, 1)
@@ -186,6 +186,10 @@ def download_chandra_obsid():
                         help="List the valid file types and exit.")
     parser.add_argument("--mirror", "-m", dest="mirror_site", action="store",
                         help="Use this instead of the CDA site")
+
+    # Note: --debug is stripped out by preprocess_arglist, but leave in
+    # here as it is used in the help string.
+    #
     parser.add_argument("--debug", "-d", dest="debug", action="store_true",
                         help="Display diagnostic output? [default: %(default)s]")
 
@@ -206,7 +210,12 @@ def download_chandra_obsid():
         V1("")
         sys.exit(0)
 
-    if args.debug:
+    # We stripped out the --debug argument before sending it to the
+    # argument parser, so args.debug is only  set if -d was given,
+    # not --debug. I should remove -d (ie so it isn't a synonym for
+    # --debug), but leave in for now.
+    #
+    if args.debug or lw.get_handle_ciao_errors_debug():
         lw.set_verbosity(3)
     elif args.quiet:
         lw.set_verbosity(0)
