@@ -45,6 +45,7 @@ import sys
 import os
 import os.path
 
+import ssl
 import urllib.parse
 import urllib.request
 
@@ -247,7 +248,8 @@ class ObsIdFile:
 
         req = urllib.request.Request(self.url, headers=headers)
         try:
-            with urllib.request.urlopen(req) as rsp:
+            no_context = ssl._create_unverified_context()
+            with urllib.request.urlopen(req, context=no_context) as rsp:
                 try:
                     size = int(rsp.info().get('content-length', 0))
                 except ValueError:
@@ -337,7 +339,25 @@ class ObsId:
         urlname = "{}/{}/{}".format(base_url, ostr[-1], ostr)
         V3("Looking for directory: {}".format(urlname))
 
-        urls = downloadutils.find_all_downloadable_files(urlname, hdr)
+        try:
+            urls = downloadutils.find_all_downloadable_files(urlname, hdr)
+
+        except urllib.error.HTTPError as herr:
+            V3("HTTPError for {}".format(urlname))
+            V3(str(herr))
+            if herr.code == 404:
+                emsg = "There is no directory {}".format(urlname)
+            else:
+                emsg = "Unable to access {}\ncode={}".format(urlname,
+                                                             herr.code)
+            raise IOError(emsg)
+
+        except urllib.error.URLError as uerr:
+            V3("URLError for {}".format(urlname))
+            V3(str(uerr))
+            emsg = "Unable to reach {}\n{}".format(urlname, uerr.reason)
+            raise IOError(emsg)
+
         self.files = [ObsIdFile(obsid, url) for url in urls]
         V3("Found {} files".format(len(self.files)))
 
@@ -496,12 +516,12 @@ def download_chandra_obsids(obsids,
     hdr = get_http_header()
 
     for obsid in obsids:
-        V3("Setting up for ObsId {0}".format(obsid))
+        V3("Setting up for ObsId {}".format(obsid))
         try:
             oid = ObsId(obsid, base_url, hdr)
-        except IOError as ie:
-            V3("Unable to cd to ObsId {0}: msg={1}".format(obsid, ie))
-            V1("Skipping ObsId {0} as it was not found on the {1} site.".format(obsid, sitename))
+        except IOError as ierr:
+            V3("Unable to cd to ObsId {}: msg={}".format(obsid, ierr))
+            V1("Skipping ObsId {} as it was not found on the {} site.".format(obsid, sitename))
             out.append(False)
             continue
 

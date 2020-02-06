@@ -327,31 +327,15 @@ def find_downloadable_files(urlname, headers):
     Requests are made with *no* SSL validation (since there are
     problems with CIAO 4.12 installed via ciao-install on a Ubuntu
     machine).
+
+    There is no attempt to make a "nice" error message for a user
+    here, as that is better done in the calling code.
     """
 
     no_context = ssl._create_unverified_context()
     req = urllib.request.Request(urlname, headers=headers)
-    try:
-        with urllib.request.urlopen(req, context=no_context) as rsp:
-            html_contents = rsp.read().decode('utf-8')
-
-    except urllib.error.URLError as ue:
-        v2("URLError for {}".format(urlname))
-        v2(str(ue))
-        try:
-            emsg = "Unable to reach {}\n{}".format(urlname, ue.reason)
-        except KeyError:
-            try:
-                is404 = ue.code == 404
-            except KeyError:
-                raise IOError("Unable to access {}\n{}".format(urlname, ue))
-
-            if is404:
-                emsg = "There is no directory {}".format(urlname)
-            else:
-                emsg = "Unable to access {}\ncode={}".format(urlname, ue.code)
-
-        raise IOError(emsg)
+    with urllib.request.urlopen(req, context=no_context) as rsp:
+        html_contents = rsp.read().decode('utf-8')
 
     return unpack_filelist_html(html_contents, urlname)
 
