@@ -20,8 +20,8 @@
 
 
 ds9=$1
-energy=$2
-order=$3
+energies=$2
+orders=$3
 
 
 echo "# -------------------"
@@ -100,48 +100,61 @@ dmcoords "${f}" op=sky x=$x y=$y mode=hl celfmt=deg verb=0
 razo=`pget dmcoords ra`
 deczo=`pget dmcoords dec`
 
-if test $order -gt 0
-then
-    order="+${order}"
-fi
+
+ooo=`stk_build "${orders}" out=stdout`
+eee=`stk_build "${energies}" out=stdout`
 
 
-if test x$grt = xLETG
-then
+for order in $ooo
+do
+    if test $order -gt 0
+    then
+        order="+${order}"
+    fi
 
-    punlearn dmcoords
-    dmcoords "${f}" op=cel ra=$razo dec=$deczo energy=$energy order=$order \
-      celfmt=deg verb=0 mode=hl grating=leg
+    for energy in $eee
+    do
 
-    ex=`pget dmcoords x`
-    ey=`pget dmcoords y`
-    
-    echo "point $ex $ey # "point=circle text="{${energy},L${order}}"
-    echo "point $ex $ey # "point=circle text="{${energy},L${order}}" | \
-      xpaset ${ds9} regions
-  
-else # HETG, do both
+        if test x$grt = xLETG
+        then
 
-    punlearn dmcoords
-    dmcoords "${f}" op=cel ra=$razo dec=$deczo energy=$energy order=$order \
-      celfmt=deg verb=0 mode=hl grating=heg
-    ex=`pget dmcoords x`
-    ey=`pget dmcoords y`
-    
-    echo "point $ex $ey # "point=circle text="{${energy},H${order}}"
-    echo "point $ex $ey # "point=circle text="{${energy},H${order}}" | \
-      xpaset ${ds9} regions
+            punlearn dmcoords
+            dmcoords "${f}" op=cel ra=$razo dec=$deczo energy=$energy order=$order \
+              celfmt=deg verb=0 mode=hl grating=leg
 
-    punlearn dmcoords
-    dmcoords "${f}" op=cel ra=$razo dec=$deczo energy=$energy order=$order \
-      celfmt=deg verb=0 mode=hl grating=meg
-    ex=`pget dmcoords x`
-    ey=`pget dmcoords y`
-    
-    echo "point $ex $ey # "point=circle text="{${energy},M${order}}"
-    echo "point $ex $ey # "point=circle text="{${energy},M${order}}" | \
-      xpaset ${ds9} regions
+            ex=`pget dmcoords x`
+            ey=`pget dmcoords y`
+            
+            echo "point $ex $ey # "point=circle text="{${energy},L${order}}"
+            echo "point $ex $ey # "point=circle text="{${energy},L${order}}" | \
+              xpaset ${ds9} regions
+          
+        else # HETG, do both
 
-fi
+            punlearn dmcoords
+            dmcoords "${f}" op=cel ra=$razo dec=$deczo energy=$energy order=$order \
+              celfmt=deg verb=0 mode=hl grating=heg
+            ex=`pget dmcoords x`
+            ey=`pget dmcoords y`
+            
+            echo "point $ex $ey # "point=circle text="{${energy},H${order}}"
+            echo "point $ex $ey # "point=circle text="{${energy},H${order}}" | \
+              xpaset ${ds9} regions
+
+            punlearn dmcoords
+            dmcoords "${f}" op=cel ra=$razo dec=$deczo energy=$energy order=$order \
+              celfmt=deg verb=0 mode=hl grating=meg
+            ex=`pget dmcoords x`
+            ey=`pget dmcoords y`
+            
+            echo "point $ex $ey # "point=circle text="{${energy},M${order}}"
+            echo "point $ex $ey # "point=circle text="{${energy},M${order}}" | \
+              xpaset ${ds9} regions
+
+        fi
+
+    done #end energies
+
+done # end orders
 
 
