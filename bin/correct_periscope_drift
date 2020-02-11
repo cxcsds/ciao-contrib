@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010, 2016, 2019  Smithsonian Astrophysical Observatory
+# Copyright (C) 2010, 2016, 2019, 2020  Smithsonian Astrophysical Observatory
 #
 #
 #
@@ -37,12 +37,15 @@ from ciao_contrib._tools.fileio import outfile_clobber_checks
 import pycrates
 import paramio as pio
 
-from sherpa import ui
+from sherpa.data import Data1D
+from sherpa.models.basic import Polynom1D
+from sherpa.fit import Fit
+
 from sherpa import plot
 
 
 TOOLNAME = "correct_periscope_drift"
-VERSION = "0.3"
+VERSION = "6 Feb 2020"
 
 # Set up the logging/verbose code
 initialize_logger(TOOLNAME)
@@ -52,13 +55,9 @@ initialize_logger(TOOLNAME)
 #
 v1 = make_verbose_level(TOOLNAME, 1)
 v2 = make_verbose_level(TOOLNAME, 2)
+v3 = make_verbose_level(TOOLNAME, 3)
 v5 = make_verbose_level(TOOLNAME, 5)
 
-LOGLEVELS = {5: logging.DEBUG,
-             4: logging.INFO,
-             3: logging.WARNING,
-             2: logging.ERROR,
-             1: logging.CRITICAL}
 
 
 def process_command_line(argv):
@@ -267,7 +266,7 @@ def time_bins(times, x, nbins=20):
     return bin_centers, np.array(bin_x), np.array(bin_std)
 
 
-def _fit_poly(fit_data, evt_times, degree, data_id=0):
+def _fit_poly(fit_data, evt_times, degree):
     """
     Given event data transformed into Y or Z angle positions, and a degree of the desired
     fit polynomial, fit a polynomial to the data.
@@ -275,39 +274,49 @@ def _fit_poly(fit_data, evt_times, degree, data_id=0):
     :param fit_data: event y or z angle position data
     :param evt_times: times of event/fit_data
     :param degree: degree of polynomial to use for the fit model
-    :param data_id: sherpa dataset id to use for the fit
 
-    :returns: (sherpa model plot, sherpa model)
+    :returns: (sherpa data set, sherpa model)
     """
-    # Set initial value for fit data position error
-    init_error = 1
 
-    ui.clean()
-    ui.load_arrays(data_id, evt_times - evt_times[0], fit_data,
-                   np.zeros_like(fit_data) + init_error)
+    def scale_error(eterm):
+        return np.zeros_like(fit_data) + eterm
+
+    dset = Data1D('data',
+                  evt_times - evt_times[0],
+                  fit_data,
+                  staterror=scale_error(1))
+
     v2("Fitting a line to the data to get reduced stat errors")
-    # First just fit a line to get reduced errors on this set
-    ui.polynom1d.line
-    ui.set_model(data_id, 'line')
-    ui.thaw('line.c1')
-    ui.fit(data_id)
-    fit = ui.get_fit_results()
-    calc_error = init_error * np.sqrt(fit.rstat)
-    ui.set_staterror(data_id, calc_error)
+
+    # First just fit a line to get reduced errors on this set. Note that
+    # polynom1d models default to c0 being the only thawed parameter.
+    #
+    line = Polynom1D('line')
+    line.c1.thaw()
+    fit = Fit(dset, line).fit()
+    v3("Initial fit: succeeded={} rstat= {}".format(fit.succeeded, fit.rstat))
+
+    dset.staterror = scale_error(np.sqrt(fit.rstat))
+
     # Then fit the specified model
+    #
     v2("Fitting a polynomial of degree {} to the data".format(degree))
-    ui.polynom1d.fitpoly
-    ui.freeze('fitpoly')
+    fitpoly = Polynom1D('fitpoly')
+    fitpoly.c0 = 0
+
     # Thaw the coefficients requested by the degree of the desired polynomial
-    ui.thaw('fitpoly.c0')
-    fitpoly.c0.val = 0
     for deg in range(1, 1 + degree):
-        ui.thaw("fitpoly.c{}".format(deg))
-    ui.set_model(data_id, 'fitpoly')
-    ui.fit(data_id)
-    mp = ui.get_model_plot(data_id)
-    model = ui.get_model(data_id)
-    return mp, model
+        attr = "c{}".format(deg)
+        getattr(fitpoly, attr).thaw()
+
+    v3("Starting fit with:")
+    v3(str(fitpoly))
+    Fit(dset, fitpoly).fit()
+
+    v3("Ended fit with:")
+    v3(str(fitpoly))
+
+    return dset, fitpoly
 
 
 def write_key(crate, name, value, comment, units=""):
@@ -369,14 +378,23 @@ def make_fit_plot(evt_times, fit_data, mp, ax):
         plot.end()
 
 
-def make_data_plot(data_id, fit_data, ax):
+def make_data_plot(dset, model, fit_data, ax):
 
     # set minimum limit on data plot in arcsecs and set this explicitly
     # as a symmetric limit
     data_ymax = max(2.0, np.max(np.abs(fit_data)) + .2)
 
     # Adjust the default look of the plot
-    fplot = ui.get_fit_plot(data_id)
+    #
+    dplot = plot.DataPlot()
+    dplot.prepare(dset)
+
+    mplot = plot.ModelPlot()
+    mplot.prepare(dset, model)
+
+    fplot = plot.FitPlot()
+    fplot.prepare(dplot, mplot)
+
     dplot = fplot.dataplot
     dplot.plot_prefs['yerrorbars'] = False
     dplot.xlabel = 'Observation elapsed/delta time (s)'
@@ -404,19 +422,15 @@ def ylimits(ymin, ymax):
     Notes
     -----
     Sherpa doesn't provide a back-end agnostic interface for this
-    functionality.
+    functionality. As of CIAO 4.12 this is not really needed.
     """
 
     if plot.backend.name == 'pylab':
         from matplotlib import pyplot as plt
         plt.ylim(ymin, ymax)
 
-    elif plot.backend.name == 'chips':
-        import pychips
-        pychips.limits(pychips.Y_AXIS, ymin, ymax)
-
     else:
-        # unlike hardcoopy, we do not tell the user if the backend
+        # unlike hardcopy, we do not tell the user if the backend
         # is unknown, as this is a cosmetic change.
         #
         pass
@@ -439,16 +453,12 @@ def hardcopy(filename):
     Notes
     -----
     Sherpa doesn't provide a back-end agnostic interface for this
-    functionality.
+    functionality. As of CIAO 4.12 this is not really needed.
     """
 
     if plot.backend.name == 'pylab':
         from matplotlib import pyplot as plt
         plt.savefig(filename)
-
-    elif plot.backend.name == 'chips':
-        import pychips
-        pychips.print_window(filename, ['clobber', True])
 
     else:
         # could check if this has already been created, but if this
@@ -468,12 +478,7 @@ def hardcopy(filename):
 # without having to worry about them calling sys.exit.
 
 
-@handle_ciao_errors(TOOLNAME, VERSION)
 def main(opt):
-
-    # Use verbose option to control sherpa output
-    logger = logging.getLogger("sherpa")
-    logger.setLevel(LOGLEVELS[opt['verbose']])
 
     events = extract_events(opt['evtfile'],
                             opt['x'], opt['y'], opt['radius'])
@@ -526,23 +531,26 @@ def main(opt):
     fit_comments = []
     plot_list = []
 
-    for data_id, ax in enumerate(['yag', 'zag']):
+    for ax in ['yag', 'zag']:
         fit_data = ax_data[ax] - np.mean(ax_data[ax])
-        mp, model = _fit_poly(fit_data, evt_times, opt['corr_poly_degree'], data_id=data_id)
+        dset, model = _fit_poly(fit_data, evt_times, opt['corr_poly_degree'])
 
-        make_fit_plot(evt_times, fit_data, mp, ax)
+        mplot = plot.ModelPlot()
+        mplot.prepare(dset, model)
+
+        make_fit_plot(evt_times, fit_data, mplot, ax)
 
         fit_plot = "{}_fit_{}.png".format(opt['corr_plot_root'], ax)
         hardcopy(fit_plot)
         plot_list.append(fit_plot)
 
-        make_data_plot(data_id, fit_data, ax)
+        make_data_plot(dset, model, fit_data, ax)
 
         data_plot = "{}_data_{}.png".format(opt['corr_plot_root'], ax)
         hardcopy(data_plot)
         plot_list.append(data_plot)
 
-        asol_corr = np.interp(asol_times, mp.x + evt_times[0], mp.y)
+        asol_corr = np.interp(asol_times, mplot.x + evt_times[0], mplot.y)
         asol_col_to_fix = asol.get_column(ax_map[ax])
         fit_comments.append("Events show drift range of {:.2f} arcsec in {} axis".format(
                 np.max(asol_corr) - np.min(asol_corr), ax))
@@ -595,7 +603,14 @@ def main(opt):
                      toolversion=VERSION)
 
 
-if __name__ == "__main__":
+@handle_ciao_errors(TOOLNAME, VERSION)
+def doit():
+    "Catch all errors raised in this set of routines"
+
     opt = process_command_line(sys.argv)
     display_start_info(opt)
     main(opt)
+
+
+if __name__ == "__main__":
+    doit()
