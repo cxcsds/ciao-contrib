@@ -1,11 +1,11 @@
 #! /usr/bin/env python
 
 #
-# Copyright (C) 2013-2018 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2018,2020 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -21,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "srcflux"
-__revision__ = "13 May 2019"
+__revision__ = "12 February 2020"
 
 import os
 
@@ -276,6 +276,29 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
     return delme("@-"+outsrc),delme("@-"+outbkg)
 
 
+def choose_skyfov_method( asolfiles ):
+    """
+    Choose skyfov method parameter based on ASOL CONTENT keyword
+    
+    In Repro-5, there will be a new aspect solution file.  It will
+    differ from the previous file in how the offsets (DY,DZ) are
+    applied. With these new files we can start to use the new 
+    skyfov convex hull algorithm.    
+    """    
+    from pycrates import read_file
+
+    skyfov_choices={ 'ASPSOLOBI' : 'convexhull' , 'ASPSOL' : 'minmax' }
+    if asolfiles is None or 1 != len(asolfiles):
+        # New obi based asol, there will be 1 file per obi (by design)
+        return skyfov_choices["ASPSOL"]
+    
+    asol=read_file(asolfiles[0])
+    flavor=asol.get_key_value("CONTENT")
+    if flavor not in skyfov_choices:
+        raise ValueError("Unknown CONTENT keyword in {}".format(asolfiles[0]))
+    return skyfov_choices[flavor]
+
+
 def run_skyfov( myparams ):
     
     import ciao_contrib._tools.obsinfo as o
@@ -284,12 +307,14 @@ def run_skyfov( myparams ):
     dot= "" if os.path.isdir(myparams.outroot) else "."
 
     obs = o.ObsInfo( myparams.infile )
+    asol_files = obs.get_asol() if 0 == len(myparams.asolfile) else myparams.asolfile
     
     skyfov.infile= myparams.infile
-    skyfov.aspect = obs.get_asol() if 0 == len(myparams.asolfile) else myparams.asolfile
+    skyfov.aspect = asol_files
     skyfov.kernel = "FITS"
     skyfov.msk = obs.get_ancillary("mask") if 0 == len(myparams.mskfile) else myparams.mskfile
     skyfov.outfile = myparams.outroot+dot+"fov"
+    skyfov.method = choose_skyfov_method( asol_files )
     skyfov.clobber = True
     
     x = skyfov()
