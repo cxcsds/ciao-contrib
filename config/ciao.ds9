@@ -248,6 +248,20 @@ param regrid2
     rd_mthd menu {Normalization} {sum|average} {sum: preserve flux, average: preserve mean value}
 endparam
 
+param celldetect
+    cell_expmap entry {Exposure map} {} {Exposure map file name, leave blank for none}
+    cell_psfmap entry {PSF map} {} {PSF map file name, leave blank for none} 
+    cell_sig entry {Sigma Threshold} {3} {SNR threshold for sources}
+    cell_size entry {Fixed cell size} {0} {Fixed cell size. 0 : use psfmap}
+endparam
+
+param wavdetect
+    wav_scales entry {Wavelet scales} {1.4,2,4,8} {Wavelet scales}
+    wav_expmap entry {Exposure map} {} {Exposure map file name, leave blank for none}
+    wav_psfmap entry {PSF map} {} {PSF map file name, leave blank for none} 
+    wav_sig entry {Sig. Threshold} {1e-06} {Significance threshold (false positives per pixel)}
+endparam
+
 
 
 # ------------------------------------------------------
@@ -485,13 +499,13 @@ hmenu CIAO tools (DAX)
     wavdetect
     *
     menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa wavdetect "$entry(Wavelet Scales)" |& $text
+    $param(wavdetect); $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa wavdetect "$wav_scales" e"$wav_expmap" p"$wav_psfmap" $wav_sig |& $text
 
 
     celldetect
     *
     menu
-    $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa celldetect "$entry(Cell Size)" |& $text
+    $param(celldetect); $data | $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa celldetect $cell_size e"$cell_expmap" p"$cell_psfmap" $cell_sig |& $text
 
     vtpdetect
     *
