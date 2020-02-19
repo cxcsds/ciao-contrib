@@ -232,6 +232,29 @@ elif "dmellipse" == toolname:
         ffilt=""
     tool.infile=tool.infile+ffilt
 
+elif "dmregrid2" == toolname:
+    tool.xoffset=float(sys.argv[3])*-1.0
+    tool.yoffset=float(sys.argv[4])*-1.0
+    tool.theta=float(sys.argv[5])
+    tool.xscale=float(sys.argv[6])
+    tool.yscale=float(sys.argv[7])
+
+    import pycrates as pc
+    _i = pc.read_file(infile).get_image().values
+    _ylen,_xlen = _i.shape
+
+    if "INDEF" == sys.argv[8]:
+        tool.rotxcenter=int(_xlen/2.0)
+    else:
+        tool.rotxcenter=float(sys.argv[8])
+    
+    if "INDEF" == sys.argv[9]:
+        tool.rotycenter=int(_ylen/2.0)
+    else:
+        tool.rotycenter=float(sys.argv[9])
+
+    tool.method=sys.argv[10] 
+
 else:
     raise ValueError("Unknown Tool")
 
