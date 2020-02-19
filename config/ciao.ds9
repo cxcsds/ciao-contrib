@@ -237,6 +237,18 @@ param tgcoords
 endparam
 
 
+param regrid2
+    rd_xoff entry {X Offset} {0.0} {pixels to shift in +X direction}
+    rd_yoff entry {Y Offset} {0.0} {pixels to shift in +Y direction}
+    rd_rot  entry {Rotate} {0.0} {degrees to rotate about +X axis}
+    rd_xscl entry {X Scale} {1.0} {scaling applied to X axis}
+    rd_yscl entry {Y Scale} {1.0} {scaling applied to Y axis}
+    rd_xcen entry {X center} {INDEF} {center of X-axis, INDEF: len(x)/2}
+    rd_ycen entry {Y center} {INDEF} {center of Y-axis, INDEF: len(y)/2}
+    rd_mthd menu {Normalization} {sum|average} {sum: preserve flux, average: preserve mean value}
+endparam
+
+
 
 # ------------------------------------------------------
 
@@ -743,6 +755,12 @@ hmenu CIAO tools (DAX)
     menu
     $param(filth); $data | $env(ASCDS_CONTRIB)/bin/ds9_fill.sh $xpa $fillmeth |& $text
     
+
+    ---
+    Regrid
+    *
+    menu
+    $param(regrid2); $env(ASCDS_CONTRIB)/bin/ds9_imgproc_wrapper $xpa dmregrid2 $rd_xoff $rd_yoff $rd_rot $rd_xscl $rd_yscl $rd_xcen $rd_ycen $rd_mthd |& $text
 
     ---
     Powerspectrum
