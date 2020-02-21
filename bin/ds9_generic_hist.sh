@@ -41,9 +41,9 @@ fi
 
 file=`xpaget $ds9 file`
 
-xpaget $ds9 regions -format ciao source | \
+xpaget $ds9 regions -format ciao source -system physical | \
   egrep -v "^#" > $DAX_OUTDIR/$$_src.reg
-xpaget $ds9 regions -format ciao background | \
+xpaget $ds9 regions -format ciao background -system physical | \
   egrep -v "^#" > $DAX_OUTDIR/$$_bkg.reg
 
 mm=`wc -m $DAX_OUTDIR/$$_bkg.reg | awk '{print $1}'`
