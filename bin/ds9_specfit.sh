@@ -32,13 +32,6 @@ xtra="$1"
 
 
 
-echo $ds9
-echo $model
-echo $addmodel
-
-
-
-
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
 then
@@ -56,10 +49,10 @@ echo ""
 echo " (1/4) Parsing Regions" 
 
 
-src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'`
+src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'`
 if test "x$src" = x
 then
-  src=`xpaget ${ds9} regions -format ciao source -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+  src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
   if test "x$src" = x
   then  
       echo "***"
@@ -83,10 +76,10 @@ then
   exit 1
 fi
 
-bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+bkg=`xpaget ${ds9} regions -format ciao -system physical background -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
 if test x"${bkg}" = x
 then
-  bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+  bkg=`xpaget ${ds9} regions -format ciao -system physical background -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
   if test x"${bkg}" = x
   then
     echo "***"

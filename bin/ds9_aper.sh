@@ -58,10 +58,10 @@ else
 fi
 
 
-src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
 if test x$src = x
 then
-  src=`xpaget ${ds9} regions -format ciao source -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+  src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
   if test x$src = x
   then  
       echo "***"
@@ -86,10 +86,10 @@ then
 fi
 
 
-bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+bkg=`xpaget ${ds9} regions -format ciao -system physical background -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
 if test x$bkg = x
 then
-  bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+  bkg=`xpaget ${ds9} regions -format ciao -system physical background -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
   if test x$bkg = x
   then
       echo "***"
