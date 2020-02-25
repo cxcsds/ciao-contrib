@@ -43,7 +43,9 @@ class PSF(contextlib.AbstractContextManager):
     def __init__(self, pdata=None):
         if pdata is None:
             cdb = caldb4.Caldb(telescope="CHANDRA", product="REEF")
+            # Need check here that search returns values?
             reef = cdb.search[0][:-3]
+            cdb.close
             pdata = psf.psfInit(reef)
         self.pdata = pdata
 
@@ -54,10 +56,50 @@ class PSF(contextlib.AbstractContextManager):
         psf.psfClose(self.pdata)
 
     def psfFrac(self, energy_keV, theta_arcmin, phi_deg, size_arcsec):
+        """Return approximated enclosed count fraction of a PSF
+
+        Parameters
+        ----------
+        energy : float
+            Energy in keV
+        theta : float
+            off-axis angle in arcmin
+            (see the MSC coordinate system described in "ahelp coords")
+        phi : float
+            angle in degrees
+            (see the MSC coordinate system described in "ahelp coords")
+        size : float
+            radius in arcsec
+
+        Returns
+        -------
+        eef : float
+            enclosed count fraction
+        """
         return psf.psfFrac(self.pdata, energy_keV, theta_arcmin,
                            phi_deg, size_arcsec)
 
     def psfSize(self, energy_keV, theta_arcmin, phi_deg, ecf):
+        """Return approximated enclosed count fraction of a PSF
+
+        Parameters
+        ----------
+        energy : float
+            Energy in keV
+        theta : float
+            off-axis angle in arcmin
+            (see the MSC coordinate system described in "ahelp coords")
+        phi : float
+            angle in degrees
+            (see the MSC coordinate system described in "ahelp coords")
+
+        Returns
+        -------
+        size : float
+            radius in arcsec
+        eef : float
+            enclosed count fraction
+        """
         return psf.psfSize(self.pdata, energy_keV,
                            theta_arcmin, phi_deg, ecf)
 
