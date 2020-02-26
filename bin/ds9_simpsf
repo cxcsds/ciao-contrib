@@ -50,15 +50,18 @@ def get_coords( ds9 ):
         yy = float(xy_str[1])
         return (xx,yy)
 
+    # Else, regions are more complicated .... 
+    # Try 'selected' first
     srcreg = xpaget( ds9, "regions -format ciao source -system "+
                 "physical -strip yes selected").strip("\n")    
 
     if 0 == len(srcreg):
+        # Try unselected
         srcreg = xpaget( ds9, "regions -format ciao source -system "+
                 "physical -strip yes").strip("\n")
     
     if 0 == len(srcreg):
-        raise RuntimeError("No source regions and not in crosshair mode.\n")
+        raise RuntimeError("No source region and not in crosshair mode.")
     
     if srcreg.startswith("@"):
         raise RuntimeError("Arrr... too many src regions!")
@@ -72,7 +75,7 @@ def get_coords( ds9 ):
     reg = CXCRegion(shapes[0])
     
     if reg.shapes[0].name in ['rectangle','polygon','field']:
-        raise ValueError("Unsupported shape type: try circle or ellipse")
+        raise ValueError("Unsupported shape type: try circle or ellipse?")
     
     xx = reg.shapes[0].xpoints[0]
     yy = reg.shapes[0].ypoints[0]
@@ -82,7 +85,8 @@ def get_coords( ds9 ):
 
 
 def xpaget(ds9, cmd):
-    
+    "Run xpaget and return string"
+
     runcmd = [ "xpaget", ds9]
     runcmd.extend(cmd.split(" "))
     try:
@@ -94,6 +98,7 @@ def xpaget(ds9, cmd):
         
 
 def xpaset(ds9, cmd):
+    "Run xpaset using -p (no stdin)"
     
     runcmd = [ "xpaset", "-p", ds9]
     runcmd.extend(cmd.split(" "))
@@ -105,7 +110,6 @@ def xpaset(ds9, cmd):
     return out.decode().strip()
 
     
-
 def check_for_single(ds9):
     """
     Check for multiple ds9 instances; there can be only 1 #Highlander
@@ -117,8 +121,9 @@ def check_for_single(ds9):
                     "Please close the others and try again.")
 
 
-ds9=sys.argv[1]
+from ciao_contrib.runtool import make_tool
 
+ds9=sys.argv[1]
 mono = sys.argv[2]
 flux = sys.argv[3]
 blur = sys.argv[4]
@@ -129,17 +134,24 @@ ideal = ( "1" == sys.argv[8] )
 extnd = ( "1" == sys.argv[9] )
 
 check_for_single(ds9)
+
+# Get first so we can go back to at the end.
+curframe = xpaget(ds9, "frame")
 xx,yy = get_coords(ds9)
 filename = xpaget(ds9, "file")
 
-from ciao_contrib.runtool import make_tool
 dmcoords = make_tool("dmcoords")
 dmcoords(infile=filename,op="sky", x=xx, y=yy, celfmt="deg")
 
+root=os.path.join(os.environ["DAX_OUTDIR"], "simulate_psf", str(os.getpid()))
+try:
+    os.makedirs(root)
+except Exception as e:
+    pass
+
 simpsf = make_tool("simulate_psf")
 simpsf.infile = filename
-simpsf.outroot = os.path.join( os.environ["DAX_OUTDIR"], 
-                    "simulate_psf", str(os.getpid()),"out")
+simpsf.outroot = root+"/out".replace("//","/")
 simpsf.ra = dmcoords.ra
 simpsf.dec = dmcoords.dec
 simpsf.spectrumfile = ""
@@ -155,11 +167,6 @@ simpsf.ideal = ideal
 simpsf.extended = extnd
 simpsf.keep=True
 
-try:
-    os.makedirs(os.path.join(os.environ["DAX_OUTDIR"], 
-        "simulate_psf",str(os.getpid()) ))
-except Exception as e:
-    pass
     
 vv = simpsf()
 if vv:
@@ -168,9 +175,9 @@ if vv:
 if not os.path.exists( simpsf.outroot+".psf"):
     raise RuntimeError("PSF file was not created")
 
-curframe = xpaget(ds9, "frame")
 xpaset(ds9, "fits new {}".format(simpsf.outroot+".psf"))
 xpaset(ds9, "tile")
 xpaset(ds9, "frame {}".format(curframe))
 xpaset(ds9, "pan to {} {} fk5".format(simpsf.ra,simpsf.dec))
 xpaset(ds9, "match frame wcs")
+
