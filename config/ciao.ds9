@@ -262,6 +262,17 @@ param wavdetect
     wav_sig entry {Sig. Threshold} {1e-06} {Significance threshold (false positives per pixel)}
 endparam
 
+param simpsf
+    sim_eng entry {Energy} {1.0} {keV, Mochromatic energy for simulation}
+    sim_flux entry {Flux} {1.0e-4} {photon/cm^2/sec, Photon flux}
+    sim_blur entry {Blur} {0.07} {arcsec, Gaussian blur added to PSF}
+    sim_iter entry {Iterations} {1} {Number of iterations to combine}
+    sim_streak checkbox {Readout Streak} 0 {Simulate ACIS readout streak?}
+    sim_pileup checkbox {Pileup} 0 {Simulate ACIS pileup?}
+    sim_ideal checkbox {Ideal} 1 {Simulate ideal detectors?}
+    sim_extd checkbox {Off Chip} 1 {Simulate PSF off detector?}
+endparam
+
 
 
 # ------------------------------------------------------
@@ -282,8 +293,8 @@ hmenu CIAO tools (DAX)
 #NEW#    $param(dl_csc); $env(ASCDS_CONTRIB)/bin/ds9_dl_csc.sh $xpa $dlobi $dldir $dlview  |& $text
 #NEW#
 #NEW#  endhmenu
-  
-  ---
+#NEW#  
+#NEW#  ---
 
   hmenu Statistics
 
@@ -322,8 +333,7 @@ hmenu CIAO tools (DAX)
     help
 
 
-    Net Coounts - [dmextract] computes simple net counts, and count-rates 
-    
+    Net Counts - [dmextract] computes simple net counts, and count-rates 
     
     Photometry - [srcflux]  computes photon and energy fluxes assuming 
     a user specified spectral model.
@@ -463,8 +473,8 @@ hmenu CIAO tools (DAX)
     menu
     $param(tgcoords); $env(ASCDS_CONTRIB)/bin/ds9_tgcoord.sh $xpa $tgenergy $tg_m |& $text
 
-#    ---
-
+##    ---
+##
 ##    Colden
 ##    *
 ##    menu
@@ -583,23 +593,6 @@ hmenu CIAO tools (DAX)
 #    menu
 #    $param(regions); $data | $env(ASCDS_CONTRIB)/bin/ds9_hull_n_tess.sh tri $xpa "$minval" "$regions(ciao,strip)" |& $text
 
-    ---
-    
-    PSF Size
-    *
-    menu
-    $param(psfsize); $env(ASCDS_CONTRIB)/bin/ds9_get_psfsize.sh $xpa $energy $frac |& $text
-
-    PSF Fraction
-    *
-    menu
-    $param(psffrac); $env(ASCDS_CONTRIB)/bin/ds9_get_psffrac.sh $xpa $fenergy |& $text
-
-###    SAOTrace PSF Simulation
-###    *EVT* *evt*
-###    menu
-###    $env(ASCDS_CONTRIB)/bin/ds9_saotrace.sh $xpa |& $text
-
 
    
     ---
@@ -622,19 +615,56 @@ hmenu CIAO tools (DAX)
     Convex Hull - [dmimghull] computes the convex hull around the
     pixels in region above the threshold.
     
-    PSF Size - [] Creates a circular region as the current location
-    that encloses the specified fraction at the specified energy.
-    
-    PSF Fraction - (circles only) computes the fraction of the PSF
-    inside the current circle at the specified energy.
-
-    
     endhelp
    
     
     
   endhmenu
     
+  ---
+
+  hmenu Chandra PSF
+    
+    PSF Size
+    *
+    menu
+    $param(psfsize); $env(ASCDS_CONTRIB)/bin/ds9_get_psfsize.sh $xpa $energy $frac |& $text
+
+    PSF Fraction
+    *
+    menu
+    $param(psffrac); $env(ASCDS_CONTRIB)/bin/ds9_get_psffrac.sh $xpa $fenergy |& $text
+
+
+    Simulate PSF with MARX
+    *
+    menu
+    $param(simpsf); $env(ASCDS_CONTRIB)/bin/ds9_simpsf $xpa $sim_eng $sim_flux $sim_blur $sim_iter $sim_streak $sim_pileup $sim_ideal $sim_extd |& $text
+
+
+###    SAOTrace PSF Simulation
+###    *EVT* *evt*
+###    menu
+###    $env(ASCDS_CONTRIB)/bin/ds9_saotrace.sh $xpa |& $text
+
+    help
+
+    PSF Size - [] Creates a circular region as the current location
+    that encloses the specified fraction at the specified energy.
+    
+    PSF Fraction - (circles only) computes the fraction of the PSF
+    inside the current circle at the specified energy.    
+
+    Simulate PSF with MARX [simulate_psf] - simulates monochromatic PSF
+    using MARX. Uses crosshair location or selected source region.
+    
+    endhelp
+  
+  
+  endhmenu
+
+
+
   ---
 
   hmenu Sherpa
@@ -842,7 +872,6 @@ hmenu CIAO tools (DAX)
   menu
   ahelp -n 80 dax | $text
   
-    
     
 
     #  ColorMap
