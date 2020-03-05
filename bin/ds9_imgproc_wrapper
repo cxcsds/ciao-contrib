@@ -44,13 +44,32 @@ def check_unique(xpa):
 
 
 def save_ds9_image(xpa):
-    ds9_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"], 
-         suffix="_ds9.fits", delete=False)
+    # ds9 can crop images; but when you get the file it 
+    # sends the whole thing.  We can get the crop info
+    # and apply it separately. Note: I'm using image coords (#1,#2)
+    # to avoid problems w/ sky vs. pos. vs (x,y).
+    cmd = ['xpaget', xpa, 'crop', 'image' ]
+    crop = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    xmid,ymid,xlen,ylen = [float(x) for x in crop.split()]
+    xl=xmid-xlen/2.0
+    xh=xmid+xlen/2.0
+    yl=ymid-ylen/2.0
+    yh=ymid+ylen/2.0
+    filt="[#1={}:{},#2={}:{}]".format(xl,xh,yl,yh)
 
+    # Get fits image from ds9
     cmd = [ 'xpaget', xpa, 'fits' ]
     fits = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
-    open(ds9_file.name,"wb").write(fits)
-    
+
+    # Use dmcopy to filter on cropped region; pipe
+    # fits file into dmcopy via stdin.
+    ds9_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"], 
+         suffix="_ds9.fits", delete=False)
+    cmd = [ 'dmcopy', '-{}'.format(filt), ds9_file.name, "clobber=yes"]
+    dmc = sp.Popen(cmd, stdin=sp.PIPE)
+    dmc.stdin.write(fits)
+    dmc.communicate()
+
     return(ds9_file.name)
 
 
