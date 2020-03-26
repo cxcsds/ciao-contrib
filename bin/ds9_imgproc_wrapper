@@ -288,7 +288,8 @@ elif "dmimgcalc" == toolname:
         infile2=save_ds9_image(xpa)
         cmd = [ 'xpaset', '-p', xpa, 'frame', 'next' ]
         sp.run( cmd, check=True)
-        tool.infile = tool.infile+","+infile2
+        infile = tool.infile+","+infile2
+        tool.infile = infile
     
     if "add" == task:
         tool.op="imgout=((img1*1.0)+img2)"
@@ -331,7 +332,8 @@ try:
     print("Output file: {}".format(outfile.name))
 
 finally:
-
-    if os.path.exists(infile):
-        os.unlink(infile)
+    infiles = infile.split(",")
+    for ff in infiles:
+        if os.path.exists(ff):
+            os.unlink(ff)
 
