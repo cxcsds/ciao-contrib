@@ -255,7 +255,6 @@ elif "dmellipse" == toolname:
     else:
         ffilt=""
     tool.infile=tool.infile+ffilt
-
 elif "dmregrid2" == toolname:
     tool.xoffset=float(sys.argv[3])*-1.0
     tool.yoffset=float(sys.argv[4])*-1.0
@@ -279,6 +278,42 @@ elif "dmregrid2" == toolname:
 
     tool.method=sys.argv[10] 
 
+elif "dmimgcalc" == toolname:
+    task=sys.argv[3]
+    
+    if task in ["add", "mul", "sub_c-p", "sub_p-c", "div_c/p", "div_p/c"]:
+        # Get fits image from ds9
+        cmd = [ 'xpaset', '-p', xpa, 'frame', 'prev' ]
+        sp.run( cmd, check=True)
+        infile2=save_ds9_image(xpa)
+        cmd = [ 'xpaset', '-p', xpa, 'frame', 'next' ]
+        sp.run( cmd, check=True)
+        tool.infile = tool.infile+","+infile2
+    
+    if "add" == task:
+        tool.op="imgout=((img1*1.0)+img2)"
+    elif "sub_c-p" == task:
+        tool.op="imgout=((img1*1.0)-img2)"        
+    elif "sub_p-c" == task:
+        tool.op="imgout=(img2-(img1*1.0))"                
+    elif "mul" == task:
+        tool.op="imgout=((img1*1.0)*img2)"            
+    elif "div_c/p" == task:
+        tool.op="imgout=((img1*1.0)/img2)"                
+    elif "div_p/c" == task:
+        tool.op="imgout=(img2/(img1*1.0))"            
+    elif "scale" == task:
+        tool.op="imgout=((img1*1.0)*{})".format(sys.argv[4])
+    elif "offset" == task:
+        tool.op="imgout=((img1*1.0)+{})".format(sys.argv[4])        
+    elif "pow" == task:
+        tool.op="imgout=((img1*1.0)^{})".format(sys.argv[4])        
+    elif "mod" == task:
+        tool.op="imgout=((img1*1.0)%{})".format(sys.argv[4])
+    elif task in ["acos","asin","atan","acosh","asinh","atanh","cos","cosh","exp","fabs","ln","log","sin","sinh","sqrt","tan","tanh"]:
+        tool.op = "imgout={}(img1*1.0)".format(task)
+    else:
+        raise ValueError("Unknown task")
 else:
     raise ValueError("Unknown Tool")
 
