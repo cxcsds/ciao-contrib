@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2019  Smithsonian Astrophysical Observatory
+# Copyright (C) 2010-2020  Smithsonian Astrophysical Observatory
 #
 #
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "30 October 2019"
+version = "12 February 2020"
 
 # import standard python modules as required
 #
@@ -2137,6 +2137,34 @@ def set_ardlib(params):
     v2("Observation-specific bad pixel file is set in ardlib.par.")
 
 
+def choose_skyfov_method( asolfiles ):
+    """
+    Choose skyfov method parameter based on ASOL CONTENT keyword
+    
+    In Repro-5, there will be a new aspect solution file.  It will
+    differ from the previous file in how the offsets (DY,DZ) are
+    applied. With these new files we can start to use the new 
+    skyfov convex hull algorithm.    
+    """    
+    from pycrates import read_file
+    import stk as stk
+
+    skyfov_choices={ 'ASPSOLOBI' : 'convexhull' , 'ASPSOL' : 'minmax' }
+    if asolfiles is None: 
+        return skyfov_choices["ASPSOL"]
+
+    asolfiles = stk.build("@"+asolfiles)
+    if 1 != len(asolfiles):
+        # New obi based asol, there will be 1 file per obi (by design)
+        return skyfov_choices["ASPSOL"]
+
+    asol=read_file(asolfiles[0])
+    flavor=asol.get_key_value("CONTENT")
+    if flavor not in skyfov_choices:
+        raise ValueError("Unknown CONTENT keyword in {}".format(asolfiles[0]))
+    return skyfov_choices[flavor]
+
+
 def remake_fov1_file( pars ):
     """
     Since the event file may have extra time filters and/or may
@@ -2158,6 +2186,8 @@ def remake_fov1_file( pars ):
         v0("\nWARNING: Level 2 event file has 0 good-time\n")
     else:
         skyfov.aspect = "@{}[@{}]".format(pars["asol1_file"], pars["evt2_file"])
+
+    skyfov.method= choose_skyfov_method( pars["asol1_file"] )
 
     out = skyfov()
 
