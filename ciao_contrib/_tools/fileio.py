@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2019
+#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2019, 2020
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -306,22 +306,39 @@ def validate_asol(infile):
     although the current check is not guaranteed to be complete,
     just to catch common errors (e.g. using aspect histogram).
 
+    Added in DS10.8.3 is a change from CONTENT=ASPSOL to
+    CONTENT=ASPSOLOBI, so we check we have one of these
+    two here (since we'll switch on this later so may as
+    well error out if it is unexpected).
     """
 
     # Could check things like the block type, but for
     # not just try a simplistic check.
     #
     (keys, cols) = get_keys_cols_from_file(infile)
+    try:
+        content = keys['CONTENT']
+    except KeyError:
+        raise IOError("The file {} is missing the CONTENT keyword.".format(infile))
+
+    if content not in ['ASPSOL', 'ASPSOLOBI']:
+        raise IOError("Aspect solutions have CONTENT=ASPSOL or ASPSOLOBI, but found {} in\n{}".format(content, infile))
+
     req = ['time', 'ra', 'dec', 'roll']
     for col in cols:
         cname = col.name.lower()
         if cname in req:
             req.remove(cname)
+            if req == []:
+                return
 
-    if req == []:
-        return
+    missing = ", ".join(req)
+    if len(req) == 1:
+        emsg = "Missing aspect column {} in {}".format(missing, infile)
+    else:
+        emsg = "Missing aspect columns {} in {}".format(missing, infile)
 
-    raise IOError("The file {} does not appear to be an aspect solution.".format(infile))
+    raise IOError(emsg)
 
 
 def get_aimpoint(infile):
@@ -559,7 +576,14 @@ def find_output_grid(evtfile, asolfile, maskfile,
     evtfile has had an off-chip filter applied to it, so is
     empty).
 
-    If possible, use find_output_grid2 instead.
+    The skyfov method depends on the type of the aspect solution,
+    as given by the CONTENT type:
+
+        ASPSOL (pre DS 10.8.3)  - use method=minmax
+        ASPSOLOBI               - use method=convexhull
+
+    If possible, use find_output_grid2 instead (which just wraps
+    up this routine in a bit-more logic).
     """
 
     v3("Calculating sky grid of {}".format(evtfile))
@@ -603,6 +627,38 @@ def find_output_grid(evtfile, asolfile, maskfile,
         dmcopy(evtfile, evtcopy.name, option="all", clobber=True)
         gtifilter = "[@{}]".format(evtcopy.name)
 
+    # What SKYFOV method to use?
+    #
+    # I think with ASPSOLOBI (ie DS 10.8.3 or later) there should be only
+    # one aspect-solution file here, but not going to enforce that.
+    #
+    def get_content(f):
+        bl = cxcdm.dmBlockOpen(f, update=False)
+        try:
+            keys = cxcdm.dmKeyRead(bl, 'CONTENT')
+            content = keys[1].decode('ascii')
+            return content
+        finally:
+            cxcdm.dmBlockClose(bl)
+
+    contents = set([get_content(f) for f in asolfile])
+    if len(contents) != 1:
+        emsg = "Multiple types of aspect solution found: " + \
+               "{}\n{}".format(", ".join(contents),
+                               " ".join(asolfile))
+        raise IOError(emsg)
+
+    content = contents.pop()
+    if content == 'ASPSOLOBI':
+        method = 'convexhull'
+    elif content == 'ASPSOL':
+        method = 'minmax'
+    else:
+        raise IOError("Invalid CONTENT={} in aspect solution\n{}".format(content,
+                                                                         " ".join(asolfile)))
+
+    v3("Aspect solutions: CONTENT={}  skyfov method={}".format(content, method))
+
     fasol = [f + gtifilter for f in asolfile]
 
     skyfov = runtool.make_tool('skyfov')
@@ -614,6 +670,7 @@ def find_output_grid(evtfile, asolfile, maskfile,
                aspect=fasol,
                mskfile=maskfile,
                kernel="FITS",
+               method=method,
                clobber=True)
 
         cstr = ",".join([str(c) for c in chips])
