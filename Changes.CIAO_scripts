@@ -1,12 +1,39 @@
 
 ## 4.12.2 - April 2020 ##
 
-Note that the CXC-provided FTP service has been deprecated, and will
-soon be removed. It is important to update to version 4.12.2 of the
-contributed scripts package, or later, otherwise scripts will fail
-or may hang indefinitely.
+CIAO users are *strongly encouraged* to update to the 4.12.2
+contributed-script release!
+
+Main updates:
+
+ - The DS 10.8.3 release, which was released on March 24 2020 and is
+   used to process Chandra data, has changed how the aspect-solution
+   files for an observation are created. The CONTENT keyword for the
+   new asol files is "ASPSOLOBI" whereas data created with previous
+   versions uses the value of "ASPSOL". For new data, the method
+   parameter of skyfov can be set to convexhull, which gives a better
+   approximation of the field-of-view of the observation. A number of
+   scripts have been updated to use these new aspect-solution files,
+   including: chandra_repro, apply_fov_limits, fluximage, flux_obs,
+   merge_obs, and srcflux.
+
+ - The DS 10.8.3 release also now creates ARF and RMF files for
+   grating observations. The download_chandra_obsid script has
+   been updates with support for these files.
+
+ - The CXC is moving to providing data access via https rather than
+   ftp, and a number of scripts have been updated to use the new
+   service.
 
 Updated scripts
+
+  chandra_repro
+
+    The skyfov method=convexhull algorithm will now be used when
+    the script find the new style aspect solution files (those with
+    CONTENT="ASPSOLOBI").  This new FOV provides a tighter fitting
+    polygon around each chip and will provide, for example, a better
+    estimate of the geometric area of a region at the edge of the chip.
 
   download_chandra_obsid
 
@@ -51,25 +78,6 @@ Updated scripts
   correct_periscope_drift
 
     The script will now run when the verbose parameter is set to 0.
-
-  chandra_repro
-
-    The skyfov method=convexhull algorithm will now be used when
-    the script find the new style aspect solution files (those with
-    CONTENT="ASPSOLOBI").  This new FOV provides a tighter fitting
-    polygon around each chip and will provide, for example, a better
-    estimate of the geometric area of a region at the edge of the chip.
-
-  apply_fov_limits, fluximage, flux_obs, merge_obs
-
-    These scripts have been updated to support the new aspect solution
-    files (those with CONTENT="ASPSOLOBI"), and use method=convexhull
-    when running skyfov with such data.
-
-  srcflux
-
-    Uses the new skyfov method=convexhull algorithm when new
-    aspect solution files with CONTENT=ASPSOLOBI are used.
 
 Updated Python modules
 
