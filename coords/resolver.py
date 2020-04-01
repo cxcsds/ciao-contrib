@@ -317,7 +317,10 @@ def identify_name(name):
 
     try:
         return identify_name_cadc(name)
-    except ValueError:
+    except (ValueError, OSError):
+        # urllib errors seem to be suclasses of OSError so the
+        # above should be general enough to identify a problem
+        # with the CADC case.
         return identify_name_sesame(name)
 
 
