@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2011, 2013, 2015, 2016, 2018, 2019
+#  Copyright (C) 2011, 2013, 2015, 2016, 2018, 2019, 2020
 #            Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -36,17 +36,24 @@ This module provides a simple interface - the identify_name routine -
 to a name resolver, which is currently
 the one provided by the CADC at
 http://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/cadc-target-resolver/
+
+For cases when the CADC resolver is not available it falls back to
+using the Sesame interface from CDS: http://vizier.u-strasbg.fr/vizier/doc/sesame.htx
+
 """
 
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
 
+import xml.etree.ElementTree as ET
+
 import ciao_contrib.logger_wrapper as lw
 
 __all__ = ("identify_name", )
 
 logger = lw.initialize_module_logger("cda.resolver")
+v4 = logger.verbose4
 v5 = logger.verbose5
 
 
@@ -79,8 +86,8 @@ def strtofloat(val):
         raise ValueError("Unable to convert '{0}' to a float.".format(val))
 
 
-def identify_name(name):
-    """Find the coordinates of an Astronomical object.
+def identify_name_cadc(name):
+    """Find the coordinates of an Astronomical object from the CADC.
 
     Use the CADC name resolver to identify the given object name.
 
@@ -116,7 +123,7 @@ def identify_name(name):
     # it somewhat readable.
     #
     try:
-        v5("Name query: {0}".format(url))
+        v5("CADC name query: {0}".format(url))
         rsp = urlopen(url)
 
     except HTTPError as he:
@@ -126,10 +133,10 @@ def identify_name(name):
         v5("Error from CADC name resolver - status = {0}".format(code))
         if code == 425:
             raise ValueError("No position found matching the name '{0}'.".format(name))
-        else:
-            v5("HTTPError code={0}".format(code))
-            v5(str(he))
-            raise he
+
+        v5("HTTPError code={0}".format(code))
+        v5(str(he))
+        raise he
 
     except URLError as ue:
         # Is this a sufficient check?
@@ -137,8 +144,8 @@ def identify_name(name):
         v5("error.reason = {0}".format(ue.reason))
         if ue.reason.errno == 8:
             raise IOError("Unable to connect to the CADC Name Resolver")
-        else:
-            raise
+
+        raise
 
     v5("Response from query:")
     out = [None, None, None]
@@ -167,10 +174,151 @@ def identify_name(name):
             return None
 
     if any([o is None for o in out]):
-        raise IOError("Incomplete response from CADC name resolver: {0}".format(out))
+        raise IOError("Incomplete response from CADC name resolver: {}".format(out))
 
     out = tuple(out)
-    v5("Position = {0}".format(out))
+    v5("Position = {}".format(out))
     return out
+
+
+def identify_name_sesame(name):
+    """Find the coordinates of an Astronomical object from CDS/Sesame.
+
+    Use the Sesame name resolver to identify the given object name.
+
+    Parameters
+    ----------
+    name : str
+        The name of the object. This sent to the Sesame server.
+
+    Returns
+    -------
+    ra, dec, coordsys : number, number, string
+        The coordinates, in decimal degrees, and coordinate system
+        of the object if it was found. The coordsys value is
+        always set to 'ICRS'.
+
+    Raises
+    ------
+    ValueError
+        This is raised if the object is unknown
+    IOError
+        This is raised if there was an error contacting the CADC
+        service, or the return value could not be understood.
+
+    Notes
+    -----
+    Other errors from the Python networking stack may also be raised.
+
+    """
+
+    # Note: just want first response, search NED first, and select "XML" output.
+    #
+    tname = quote_plus(name)
+    url = 'https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-ox/~NSV?' + tname
+
+    # When there's no match the response document is different, rather than
+    # being reported by a HTTP error-response code.
+    #
+    try:
+        v5("Sesame name query: {0}".format(url))
+        rsp = urlopen(url)
+
+    except HTTPError as he:
+        code = he.getcode()
+        v5("Error from Sesame name resolver - status = {0}".format(code))
+        v5("HTTPError code={0}".format(code))
+        v5(str(he))
+        raise he
+
+    except URLError as ue:
+        # Is this a sufficient check?
+        v5("Error opening URL: {0}".format(ue))
+        v5("error.reason = {0}".format(ue.reason))
+        if ue.reason.errno == 8:
+            raise IOError("Unable to connect to the Sesame Name Resolver")
+
+        raise
+
+    v5("Response from query:")
+    data = rsp.read().decode('utf8')
+    v5(data)
+
+    # parse as XML
+    # root = ET.parse(rsp).getroot()
+    v4("Parsing response as XML")
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        raise IOError("Unable to parse response from Sesame name server")
+
+    rslvs = root.findall('Target/Resolver')
+    if len(rslvs) == 0:
+        raise ValueError("No position found matching the name '{0}'.".format(name))
+
+    # Pick the first response (there should be only one. but just in case)
+    v4("Found {} Resolver components".format(len(rslvs)))
+    rslv = rslvs[0]
+    xra = rslv.find('jradeg')
+    xde = rslv.find('jdedeg')
+    if xra is None:
+        raise IOError("Missing RA of source in respose from Sesame")
+    if xde is None:
+        raise IOError("Missing Declination of source in respose from Sesame")
+
+    v5("RA=[{}] Dec=[{}]".format(xra.text, xde.text))
+
+    try:
+        ra = float(xra.text)
+    except ValueError:
+        raise IOError("Invalid RA response from Sesame ({})".format(xra.text))
+
+    try:
+        dec = float(xde.text)
+    except ValueError:
+        raise IOError("Invalid Declination response from Sesame ({})".format(xde.text))
+
+    # WE ASSUME THE POSITION IS ICRS
+    out = (ra, dec, 'ICRS')
+    v5("Position = {}".format(out))
+    return out
+
+
+def identify_name(name):
+    """Find the coordinates of an Astronomical object.
+
+    Use CADC name resolver to identify the given object name.
+    Fall over to Sesame/CDS if this fails.
+
+    Parameters
+    ----------
+    name : str
+        The name of the object.
+
+    Returns
+    -------
+    ra, dec, coordsys : number, number, string
+        The coordinates, in decimal degrees, and coordinate system
+        of the object if it was found.
+
+    Raises
+    ------
+    ValueError
+        This is raised if the object is unknown
+    IOError
+        This is raised if there was an error contacting the name
+        servers, or the return value could not be understood.
+
+    Notes
+    -----
+    Other errors from the Python networking stack may also be raised.
+
+    """
+
+    try:
+        return identify_name_cadc(name)
+    except ValueError:
+        return identify_name_sesame(name)
+
 
 # End
