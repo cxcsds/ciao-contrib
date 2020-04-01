@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2011, 2013, 2014, 2015, 2016, 2017, 2018, 2019
+# Copyright (C) 2011, 2013, 2014, 2015, 2016, 2017, 2018
 #        Smithsonian Astrophysical Observatory
 #
 #
@@ -30,10 +30,10 @@ This script is an enhanced Python translation of the original CIAO tool specextr
 
 """
 
-__version__ = "CIAO 4.10"
+__version__ = "CIAO 4.12"
 
 toolname = "specextract"
-__revision__ = "11 May 2018"
+__revision__ = "19 March 2020"
 
 
 ##########################################################################
@@ -52,7 +52,7 @@ import pycrates as pcr
 
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors, get_verbosity
 from ciao_contrib.param_wrapper import open_param_file
-from ciao_contrib.runtool import dmextract, mkrmf, mkacisrmf, mkwarf, dmgroup, dmhedit, calquiz, dmcopy, dmstat, acis_fef_lookup, mkarf, asphist, sky2tdet, arfcorr, combine_spectra, ardlib, acis_set_ardlib, dmmakereg, dmlist, dmkeypar, dmcoords, stk_build, stk_read_num, stk_count, add_tool_history
+from ciao_contrib.runtool import dmextract, mkrmf, mkacisrmf, mkwarf, dmgroup, dmhedit, calquiz, dmcopy, dmstat, acis_fef_lookup, mkarf, asphist, sky2tdet, arfcorr, combine_spectra, ardlib, acis_set_ardlib, dmmakereg, dmlist, dmkeypar, dmcoords, stk_build, stk_read_num, stk_count, add_tool_history, dmhistory, dmimgthresh
 from ciao_contrib.cxcdm_wrapper import get_block_info_from_file, get_info_from_file
 import ciao_contrib.cxcdm_wrapper as dmw
 from ciao_contrib.cxcdm_wrapper import open_block_from_file, close_block
@@ -81,7 +81,7 @@ v5 = make_verbose_level(toolname, 5)
 #########################################################################################
 #
 # suppress warnings printed to screen from get_keyvals when probing for blank sky files
-# http://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
+# https://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
 #
 #########################################################################################
 class suppress_stdout_stderr(object):
@@ -279,7 +279,7 @@ def extract_spectra(full_outroot, infile, ptype, channel, ewmap, binwmap, instru
 #
 ##########################################################################
 
-def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, specfile, weightfile):
+def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, specfile, weightfile, wmap_clip, wmap_sky2tdet):
 
     # RMF filename to return
     #rmffile = full_outroot + ".wrmf"
@@ -312,14 +312,16 @@ def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, 
         mkacisrmf.energy   =  ebin
         mkacisrmf.channel  =  channel[0]
         mkacisrmf.chantype =  ptype.upper()
-        mkacisrmf.wmap     =  "{}[WMAP]".format(specfile)
-                              #dmextract WMAP is faster than sky2tdet WMAP
         mkacisrmf.gain     =  "CALDB"
         mkacisrmf.clobber  =  clobber
         mkacisrmf.verbose  =  str(verbose)
         mkacisrmf.ccd_id   =  "0" # hopefully, this par will
                                   # be ignored since it can't
                                   # be set to "".
+        if wmap_clip:
+            mkacisrmf.wmap = "{}[wmap]".format(wmap_sky2tdet)
+        else:
+            mkacisrmf.wmap =  "{}[WMAP]".format(specfile) # dmextract WMAP is faster than sky2tdet WMAP            
 
         return mkacisrmf(), rmffile
 
@@ -821,6 +823,88 @@ def mk_asphist(asol_param, evt_filename_filter, full_outroot, dtffile, instrumen
     return asphist(), asp_out.name, asp_out
 
 
+def clip_wmap(wmapfile,threshold,tmpdir):
+    """
+    OPTIONAL: Truncate sky2tdet WMAP to speed up mkwarf by threshold 
+              clipping the WMAP for large areas. Rebinning the WMAP 
+              is less desirable since it essentially can randomly cause 
+              badpixels/columns/etc to be over or under weighted.  (It 
+              will be the same every time, just random in that you don't 
+              have control over it.)  If your region is huge (i.e. whole 
+              chip) then that probably won't matter, if it's a modest size, 
+              eg off-axis point-like source, then binning is bad.
+    
+              One way to threshold (and there are several) is just to look 
+              at the pixel values in the WMAP, and determine a cutoff that 
+              preserves a certain amount of the total flux. That way, if a 
+              badpixel/column/etc. is not weighted by a lot of flux it can 
+              be explicitly purged and likewise if they are covered by a 
+              large flux, then they will be preserved and the ARF 
+              appropriately weighted.
+    """
+
+    cr = pcr.read_file("{}[wmap]".format(wmapfile))
+    im = cr.get_image().values
+    threshold = float(threshold)
+
+    cr.__del__()
+
+    # sort pixel values
+
+    im_sort = im.flatten()
+    im_sort.sort()
+
+    im, = numpy.where(im_sort > 0)
+    im_sort = im_sort[im]
+
+    # create cumulative flux distribution
+
+    flux_dist = im_sort.cumsum()
+    flux_dist /= flux_dist[-1] # normalize flux distribution
+
+    flux_dist_thresh, = numpy.where(flux_dist < threshold)
+    cutoff = im_sort[flux_dist_thresh[-1]]
+
+
+    # Give some feedback on statistics of applying threshold
+
+    flux_dist_info = numpy.arange(len(flux_dist)*1.0)
+    flux_dist_info /= flux_dist_info[-1]
+    perc = int(flux_dist_thresh[-1] / (len(flux_dist)*0.01)+0.5)
+    cutoff_stat = "{0:.3g}% flux cutoff @{1:.3g} removes {2}% area\n".format((threshold*100),cutoff,perc)
+    v1(cutoff_stat)      
+
+    # Run dmimgthresh with 'cutoff'
+
+    threshfile = tempfile.NamedTemporaryFile(dir=tmpdir)
+
+    dmcopy.punlearn()
+    dmcopy.infile = wmapfile
+    dmcopy.outfile = threshfile.name
+    dmcopy.verbose = "0"
+    dmcopy.clobber = "yes"
+
+    dmcopy()       
+
+    dmimgthresh.punlearn()
+
+    dmimgthresh.infile = threshfile.name
+    dmimgthresh.outfile = wmapfile 
+    dmimgthresh.cut = cutoff
+    dmimgthresh.value = "0.0"
+    dmimgthresh.expfile = ""
+    dmimgthresh.clobber = "yes"
+    dmimgthresh.verbose = "0"
+
+    dmimgthresh()
+
+    threshfile.close()
+    del(im)
+    del(im_sort)
+    del(flux_dist)
+    del(flux_dist_thresh)
+        
+
 ##########################################################################
 # Usage:
 #  create_arf_ext( outtype, outroot, ebin, clobber, verbose,
@@ -834,8 +918,7 @@ def mk_asphist(asol_param, evt_filename_filter, full_outroot, dtffile, instrumen
 #
 ##########################################################################
 
-#def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, specfile, pbkfile, dafile, mskfile, ewmap_param, bintwmap_param, pars):
-def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, specfile, dafile, mskfile, ewmap_param, bintwmap_param, pars, tmpdir):
+def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, specfile, dafile, mskfile, ewmap_param, bintwmap_param, wmap_clip, wmap_thresh, pars, tmpdir):
 
     # output TDET WMAP filename
     #tdetwmap = full_outroot + "_" + "tdet.fits[wmap]"
@@ -852,20 +935,15 @@ def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, spec
         sky2tdet.asphistfile = asp_param
         sky2tdet.outfile     = "{}[wmap]".format(tdetwmap.name)
         sky2tdet.clobber     = "yes"
-        sky2tdet.verbose     = verbose #"0"
+        sky2tdet.verbose     = verbose 
 
         sky2tdet()
-        #add_tool_history(tdetwmap.name,toolname,pars,toolversion=__revision__)
 
         #++++++++++++++++++++++++++++++++++++++++++++
-        # NO LONGER NEEDED IN CIAO 4.4 AND ON.
-        # Remove extraneous time header keywords from
-        # output of sky2tdet before input to mkwarf.
+        
+        if wmap_clip:
+            clip_wmap(tdetwmap.name,wmap_thresh,tmpdir)
 
-        #ov = get_verbosity()
-        #set_verbosity(0)
-        #dmw.remove_extra_time_keywords(tdetwmap)
-        #set_verbosity(ov)
         # ++++++++++++++++++++++++++++++++++++++++++
 
         # ARF output file
@@ -898,9 +976,9 @@ def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, spec
 
         raise IOError("Failure to create weighted ARF.  Possible causes include: zero counts in the input region; a memory allocation error; or corrupt ARDLIB.  Try running {} with weight=no, binarfmap!=1, or punlearn ardlib.".format(toolname))
 
-    tdetwmap.close()
+    #tdetwmap.close()
 
-    return ret, arffile, weightfile.name, weightfile
+    return ret, arffile, weightfile.name, weightfile, tdetwmap
 
 
 ###############################################################
@@ -956,9 +1034,9 @@ def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,ve
         if chan == 1024:
             # use SAMP responses
             if detector.upper() == "HRC-S":
-                rmf = "{}/data/chandra/hrc/rmf/hrcsD1999-07-22samprmfN0001.fits".format(CALDB)
+                rmf = "{}/data/chandra/hrc/rmf/hrcsD1999-07-22samprmfN0002.fits".format(CALDB)
             elif detector.upper() == "HRC-I":
-                rmf = "{}/data/chandra/hrc/rmf/hrciD1999-07-22samprmfN0001.fits".format(CALDB)
+                rmf = "{}/data/chandra/hrc/rmf/hrciD1999-07-22samprmfN0002.fits".format(CALDB)
             else:
                 raise ValueError("{0} has an invalid HRC detnam value.".format(specfile))
 
@@ -1763,6 +1841,10 @@ def get_par(args):
     pars["verbose"] = params["verbose"]    = paramio.pgeti(pfile, "verbose")
     pars["mode"] = params["mode"]       = paramio.pgetstr(pfile, "mode")
 
+    pars["wmap_clip"] = params["wmap_clip"] = paramio.pgetstr(pfile,"wmap_clip")
+    pars["wmap_threshold"] = params["wmap_threshold"] = paramio.pgetstr(pfile,"wmap_threshold")
+
+
     #### Deprecated
     ##if params["ptype"].upper() != "PI":
     ##    raise ValueError("Support for ptype=PHA has been removed from specextract. Please contact the CXC HelpDesk at https://cxc.harvard.edu/helpdesk/ if you need to use this option.")
@@ -1787,6 +1869,11 @@ def get_par(args):
 
         if outdir != "":
             fileio.validate_outdir(outdir)
+
+    if params["wmap_clip"].lower() == "yes":
+        params["wmap_clip"] = True
+    else:
+        params["wmap_clip"] = False
 
     paramio.paramclose(pfile)
     return params,pars
@@ -1904,6 +1991,10 @@ def specextract(args):
  clobber  =  params["clobber"]
  verbose  =  params["verbose"]
  mode     =  params["mode"]
+
+ wmap_clip = params["wmap_clip"]
+ wmap_threshold = params["wmap_threshold"]
+
 
 ## error out if there are spaces in absolute paths of the various parameters
  if " " in os.path.abspath(infile):
@@ -2965,7 +3056,7 @@ def specextract(args):
 
          # Set bpixfile argument passes to set_badpix().
 
-         if dobpix==1:
+         if dobpix == 1:
 
              if 1 != bpix_count:
                  bpix_arg  = bpix_stk[ii] #stk_read_num(bpix_stk, ii)
@@ -3143,6 +3234,27 @@ def specextract(args):
              edit_headers(verbose, phafile, "Bell_nH", bell_nh, unit="10**22 cm**-2", comment="galactic HI column density") #comment="galactic neutral hydrogen column density at the source position using the Bell Labs survey, via COLDEN."
 
 
+         # add AREASCAL value from blanksky BKGSCAL value
+         if srcbkg=="bkg":
+             dmhistory.punlearn()
+             dmhistory.infile = fullfile
+             dmhistory.tool = "blanksky"
+
+             try:
+                 bsky_status = dmhistory()
+             except OSError:
+                 bsky_status = None
+
+             if bsky_status != None:
+                 src_cr = pcr.read_file("{}[#row=1]".format(get_filename(src_stk[ii])))
+                 ccdid = src_cr.get_column("CCD_ID").values[0]
+                 src_cr.__del__()
+
+                 bkgscale = fileio.get_keys_from_file(fullfile)["BKGSCAL{}".format(ccdid)]
+
+                 edit_headers(verbose, phafile, "AREASCAL", bkgscale, comment="blanksky background scaling factor derived by the 'blanksky' script")
+
+
          # NB: If 'ret' is null (b/c dmextract() fails), the script should
          # terminate here and exit with a dmextract error, even if verbose=0.
 
@@ -3181,14 +3293,14 @@ def specextract(args):
 
              if instrument == "ACIS":
                  if weight=="yes":
-                     (ret, ancrfile, weightfile, fef_file) = create_arf_ext(full_outroot, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, ewmap, bintwmap, pars, tmpdir)
+                     (ret, ancrfile, weightfile, fef_file, tdetwmap) = create_arf_ext(full_outroot, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, ewmap, bintwmap, wmap_clip, wmap_threshold, pars, tmpdir)
 
                      add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
 
                  else:
                      if "bkg"==srcbkg:
                          # force background to always be weighted
-                         (ret, ancrfile, weightfile, fef_file) = create_arf_ext(full_outroot, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, ewmap, bintwmap, pars, tmpdir)
+                         (ret, ancrfile, weightfile, fef_file, tdetwmap) = create_arf_ext(full_outroot, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, ewmap, bintwmap, wmap_clip, wmap_threshold, pars, tmpdir)
 
                          add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
 
@@ -3262,7 +3374,10 @@ def specextract(args):
 
                  if weight=="yes":
                      if weight_rmf == "yes":
-                         (ret, respfile) = build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile)
+                         (ret, respfile) = build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, wmap_clip, tdetwmap.name)
+                         if wmap_clip:
+                             tdetwmap.close()
+
                      else:
                          (ret, respfile) = build_rmf_ps(rmftool, filename, fullfile, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, chip_id, chipx, chipy)
                      try:
