@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "12 February 2020"
+version = "02 April 2020"
 
 # import standard python modules as required
 #
@@ -137,6 +137,63 @@ def error_out(params,msg,val):
     print("\n%s" % msg)
     raise ValueError("%s" % val)
 
+
+def filter_aspsolobi_from_aspsol(asol_list,mydir):
+    """As of DS10.8.3, there are now two flavors of aspect solution 
+    files, per OBI (CONTENT=ASPSOLOBI) and the original per-constant
+    aspect interval (cai) (CONTENT=ASPCOL).  Users should only ever
+    have one or the other. 
+    
+    Unfortunately, due to a quirk in the archive, users may have both.
+    
+    We know that there can be 1 and only 1 ASPSOLOBI file per obi (multi-obi
+    obsid's will need to have already been split, #repro5). 
+    
+    So if we find both ASPSOLOBI and ASPSOL files, we are going to pick
+    the ASPSOLOBI files.  This provides a better off-axis angle value.
+    
+    """
+    from pycrates import read_file
+
+    content_values = {}
+
+    for f in asol_list:
+        tab = read_file(f.strip("\n").strip(" "), mode="r")
+        content = tab.get_key_value("CONTENT")
+        if content in content_values:
+            content_values[content].append(f)
+        else:
+            content_values[content] = [f]
+        
+    if "ASPSOL" in content_values and "ASPSOLOBI" in content_values:
+        v0("WARNING: The primary directory has both CONTENT=ASPSOL and "+
+          "CONTENT=ASPSOLOBI files. Only the ASPSOLOBI file "+
+          "{} will be used".format(content_values["ASPSOLOBI"]))
+        # don't return yet, fall through to next check
+
+        # But I do want to go ahead and remove the old files from the
+        # output directory.
+        for oldasp in content_values["ASPSOL"]:
+            old = os.path.join(mydir, os.path.basename(oldasp.strip("\n").strip(" ")))
+            if os.path.exists(old):
+                os.unlink(old)
+
+
+    if "ASPSOLOBI" in content_values:
+        if len( content_values["ASPSOLOBI"] ) > 1:
+            error_out("Too many ASPSOLOBI aspect file found.  If this "+
+            "is a mutli-obi observations, be sure to split it first "+
+            "using the splitobs script")
+        return content_values["ASPSOLOBI"]
+    
+    if "ASPSOL" in content_values:
+        return content_values["ASPSOL"]
+    
+    error_out("Unknown CONTENT keywords found in the aspect solution files")
+    
+
+
+
 def _verify_have_list(myfile,mylist,mydir,params):
     '''Verify we have list of fits files in output directory'''
 
@@ -184,6 +241,8 @@ def _verify_have_list(myfile,mylist,mydir,params):
 
         # sort files
         asol_files.sort()
+
+        asol_files = filter_aspsolobi_from_aspsol(asol_files,mydir)
 
         # write out sorted list
         try:
