@@ -44,11 +44,11 @@ then
     y=`xpaget $ds9 crosshair | awk '{print $2}'`
 else 
     # If region is selected then use it
-    reg=`xpaget ds9 region -format ciao -system physical selected | egrep 'circle|box|ellipse|annulus' `
+    reg=`xpaget $ds9 region -format ciao -system physical selected | egrep 'circle|box|ellipse|annulus' `
     if test x"${reg}" = x
     then
         # Okay, just the 1st region
-        reg=`xpaget ds9 region -format ciao -system physical | egrep 'circle|box|ellipse|annulus' `
+        reg=`xpaget $ds9 region -format ciao -system physical | egrep 'circle|box|ellipse|annulus' `
     fi
 
     if test x"${reg}" = x
