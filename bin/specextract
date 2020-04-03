@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2011, 2013, 2014, 2015, 2016, 2017, 2018, 2019
+# Copyright (C) 2011, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020
 #        Smithsonian Astrophysical Observatory
 #
 #
@@ -30,10 +30,10 @@ This script is an enhanced Python translation of the original CIAO tool specextr
 
 """
 
-__version__ = "CIAO 4.10"
+__version__ = "CIAO 4.12"
 
 toolname = "specextract"
-__revision__ = "11 May 2018"
+__revision__ = "06 April 2020"
 
 
 ##########################################################################
@@ -81,7 +81,7 @@ v5 = make_verbose_level(toolname, 5)
 #########################################################################################
 #
 # suppress warnings printed to screen from get_keyvals when probing for blank sky files
-# http://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
+# https://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
 #
 #########################################################################################
 class suppress_stdout_stderr(object):
@@ -937,56 +937,29 @@ def check_event_stats(file,refcoord,weights_check):
 
 def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,verbose,mskfile,skyx,skyy,instrument,chip_id):
 
-    # check number of channels in PI file to determine RMF file to use from CalDB
-    dmlist.punlearn()
-    dmlist.infile = specfile
-    dmlist.opt = "counts"
-
-    chan = int(dmlist())
-
-    detector = get_keyval(specfile,"detnam")
-
     if rmf_file.upper() == "CALDB":
-
         # cf. https://cxc.cfa.harvard.edu/cal/Hrc/detailed_info.html#rmf for HRC RMF information
-        #
-        # get path from $CALDB environmental variable
-        CALDB = os.environ["CALDB"]
+ 
+        calquiz.punlearn()
+        calquiz.infile = specfile
+        calquiz.product = "MATRIX"
+        calquiz.calfile = "CALDB"
+        # calquiz.infile = "none"
+        # calquiz.telescope = "chandra"
+        # calquiz.instrument = "hrc"
+        # calquiz.calfile = "CALDB(DETNAM={})".format(get_keyval(specfile,"detnam"))
 
-        if chan == 1024:
-            # use SAMP responses
-            if detector.upper() == "HRC-S":
-                rmf = "{}/data/chandra/hrc/rmf/hrcsD1999-07-22samprmfN0001.fits".format(CALDB)
-            elif detector.upper() == "HRC-I":
-                rmf = "{}/data/chandra/hrc/rmf/hrciD1999-07-22samprmfN0001.fits".format(CALDB)
-            else:
-                raise ValueError("{0} has an invalid HRC detnam value.".format(specfile))
+        with suppress_stdout_stderr():
+            calquiz()
 
-        elif chan == 256:
-            # use non-SAMP responses
-            if detector.upper() == "HRC-S":
-                rmf = "{}/data/chandra/hrc/rmf/hrcsD1999-07-22rmfN0001.fits".format(CALDB)
-            elif detector.upper() == "HRC-I":
-                rmf = "{}/data/chandra/hrc/rmf/hrciD1999-07-22rmfN0002.fits".format(CALDB)
-            else:
-                raise ValueError("{0} has an invalid HRC detnam value.".format(specfile))
+        if calquiz.outfile is None:
+            raise IOError("{0} is an invalid HRC spectral file, as non-SAMP responses are no longer supported by the CALDB.  Please reprocess the dataset or re-download the observation from the archive.".format(specfile))
 
-        else:
-            raise IOError("{0} is an invalid HRC spectral file".format(specfile))
-
-        # if specfile fails for obsfile, introduce use of event file, which adds another variable to this function
+        rmf = calquiz.outfile
+        rmf = rmf[:rmf.find("[")]
 
         # copy RMF
         rmffile = full_outroot + ".rmf"
-
-        # use opt=all to get the ebounds block in addition to the specresp matrix block
-        #dmcopy.punlearn()
-        #dmcopy.infile = rmf
-        #dmcopy.outfile = rmffile
-        #dmcopy.option = "all"
-        #dmcopy.clobber = clobber
-        #dmcopy.verbose = verbose
-        #dmcopy()
         shutil.copyfile(rmf,rmffile)
 
     else:
@@ -994,7 +967,6 @@ def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,ve
         v1("Warning: 'rmffile' parameter for HRC observations is meant for Calibration Group and expert usage!")
 
         rmffile = rmf_file
-
 
     # establish detsubsys
     if instrument == "HRC":
