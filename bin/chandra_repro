@@ -154,42 +154,45 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir):
     and tighter FOV.
     """
     from pycrates import read_file
-
-    content_values = {}
-
+    from collections import defaultdict
+    
+    content_values = defaultdict(list)
     for f in asol_list:
-        tab = read_file(f.strip("\n").strip(" "), mode="r")
+        tab = read_file(f.strip(), mode="r")
         content = tab.get_key_value("CONTENT")
-        if content in content_values:
-            content_values[content].append(f)
-        else:
-            content_values[content] = [f]
+        content_values[content].append(f)
         
-    if "ASPSOL" in content_values and "ASPSOLOBI" in content_values:
-        v0("WARNING: The primary directory has both CONTENT=ASPSOL and "+
-          "CONTENT=ASPSOLOBI files. Only the ASPSOLOBI file "+
-          "{} will be used".format(content_values["ASPSOLOBI"]))
-        # don't return yet, fall through to next check
-
-        # But I do want to go ahead and remove the old files from the
-        # output directory.
-        for oldasp in content_values["ASPSOL"]:
-            old = os.path.join(mydir, 
-                      os.path.basename(oldasp.strip("\n").strip(" ")))
-            if os.path.exists(old):
-                os.unlink(old)
-
     if "ASPSOLOBI" in content_values:
         if len( content_values["ASPSOLOBI"] ) > 1:
             error_out("Too many ASPSOLOBI aspect file found.  If this "+
             "is a mutli-obi observations, be sure to split it first "+
             "using the splitobs script")
-        else:
-            return content_values["ASPSOLOBI"]
-    elif "ASPSOL" in content_values:
+
+    if "ASPSOL" in content_values and "ASPSOLOBI" in content_values:
+        v2("WARNING: The primary directory has both CONTENT=ASPSOL and "+
+          "CONTENT=ASPSOLOBI files. Only the ASPSOLOBI file "+
+          "{} will be used".format(content_values["ASPSOLOBI"]))
+
+        # Wwant to go ahead and remove the old files from the
+        # output directory.
+        for oldasp in content_values["ASPSOL"]:
+            old = os.path.join(mydir, os.path.basename(oldasp.strip()))
+            if os.path.exists(old):
+                os.unlink(old)
+
+        # may not be necessary to del but I don't like relying on
+        # the order of the if's below should someone one day reorder 
+        # them.
+        del content_values["ASPSOL"]
+
+
+    if "ASPSOLOBI" in content_values:
+        return content_values["ASPSOLOBI"]
+
+    if "ASPSOL" in content_values:
         return content_values["ASPSOL"]
-    else:
-        error_out("Unknown CONTENT keywords found in the aspect solution files")
+    
+    error_out("Unknown CONTENT keywords found in the aspect solution files")
     
 
 
