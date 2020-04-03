@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "02 April 2020"
+version = "03 April 2020"
 
 # import standard python modules as required
 #
@@ -141,7 +141,7 @@ def error_out(params,msg,val):
 def filter_aspsolobi_from_aspsol(asol_list,mydir):
     """As of DS10.8.3, there are now two flavors of aspect solution 
     files, per OBI (CONTENT=ASPSOLOBI) and the original per-constant
-    aspect interval (cai) (CONTENT=ASPCOL).  Users should only ever
+    aspect interval (cai) (CONTENT=ASPSOL).  Users should only ever
     have one or the other. 
     
     Unfortunately, due to a quirk in the archive, users may have both.
@@ -150,8 +150,8 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir):
     obsid's will need to have already been split, #repro5). 
     
     So if we find both ASPSOLOBI and ASPSOL files, we are going to pick
-    the ASPSOLOBI files.  This provides a better off-axis angle value.
-    
+    the ASPSOLOBI files.  This provides a better off-axis angle value
+    and tighter FOV.
     """
     from pycrates import read_file
 
@@ -174,22 +174,22 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir):
         # But I do want to go ahead and remove the old files from the
         # output directory.
         for oldasp in content_values["ASPSOL"]:
-            old = os.path.join(mydir, os.path.basename(oldasp.strip("\n").strip(" ")))
+            old = os.path.join(mydir, 
+                      os.path.basename(oldasp.strip("\n").strip(" ")))
             if os.path.exists(old):
                 os.unlink(old)
-
 
     if "ASPSOLOBI" in content_values:
         if len( content_values["ASPSOLOBI"] ) > 1:
             error_out("Too many ASPSOLOBI aspect file found.  If this "+
             "is a mutli-obi observations, be sure to split it first "+
             "using the splitobs script")
-        return content_values["ASPSOLOBI"]
-    
-    if "ASPSOL" in content_values:
+        else:
+            return content_values["ASPSOLOBI"]
+    elif "ASPSOL" in content_values:
         return content_values["ASPSOL"]
-    
-    error_out("Unknown CONTENT keywords found in the aspect solution files")
+    else:
+        error_out("Unknown CONTENT keywords found in the aspect solution files")
     
 
 
@@ -675,7 +675,9 @@ def get_inputs(params):
         hh = [ os.path.basename(x).split(".gz")[0] for x in hdrname.split(",") ]
 
         if dd not in hh:
-            v0("Warning: Original level 1 event file was created with {} file named '{}', however, the file found on disk is named '{}'.".format( flavor, hh, dd) )
+            v0("Warning: Found {} file named '{}' ".format(flavor,dd)+
+               "which is different from the expected value read from "+
+               "the header of the event file.")
 
 
     for ff in primary_products:
