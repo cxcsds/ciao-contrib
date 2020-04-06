@@ -22,3 +22,31 @@ proc ChangeDaxOutdir {} {
         file mkdir $env(DAX_OUTDIR)
     }    
 }
+
+
+# Add a progress bar for long running processes
+
+proc start_dax_progress { tnam } {    
+  set winnam "dax_"
+  append winnam $tnam
+
+  toplevel .${winnam}
+  wm title .${winnam} "CIAO (DAX)"
+  label .${winnam}.toolname -text $tnam
+  grid .${winnam}.toolname -padx 5 -pady 5 -row 0 -column 0 
+
+  ttk::progressbar .${winnam}.toolname_pb -mode indeterminate -max 15 
+  grid .${winnam}.toolname_pb -padx 5 -pady 5 -row 0 -column 1
+  .${winnam}.toolname_pb start
+}
+
+proc stop_dax_progress {tnam} {
+  set winnam "dax_"
+  append winnam $tnam
+  
+  if { [winfo exists .${winnam}] } {
+    .${winnam}.toolname_pb stop
+    destroy .${winnam}
+  }
+}
+

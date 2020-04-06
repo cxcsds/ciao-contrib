@@ -99,7 +99,8 @@ def send_output_region_to_ds9(xpa, outfile):
     else:
         cmd = [ 'xpaset', '-p', xpa, 'regions', 'load', outfile ]
         fits = sp.run( cmd, check=True )
-    
+
+
 
 
 xpa=sys.argv[1]
@@ -326,7 +327,16 @@ import datetime
 print(datetime.datetime.now())
 
 
+# The "chips_startup.tk" (historical name when chips used for plotting)
+# has the definitions of the start_dax_progress and stop_dax_progress
+# procedures.  We execute these via ds9 using xpa.  Note that the
+# tcl command has to be a single command so it is wrapped in the 
+# {}'s.
+
 try:
+    cmd = [ 'xpaset', '-p', xpa, 'tcl', '{{start_dax_progress {t} }}'.format(t=toolname) ]
+    sp.run( cmd, check=True)
+    
     verb=tool(clobber=True)
     if verb:
         print(verb)
@@ -334,6 +344,9 @@ try:
     print("Output file: {}".format(outfile.name))
 
 finally:
+    cmd = [ 'xpaset', '-p', xpa, 'tcl', '{{stop_dax_progress {t} }}'.format(t=toolname) ]
+    sp.run( cmd, check=True)
+
     infiles = infile.split(",")
     for ff in infiles:
         if os.path.exists(ff):
