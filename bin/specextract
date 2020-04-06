@@ -46,7 +46,7 @@ __revision__ = "06 April 2020"
 
 # Load the necessary libraries.
 
-import paramio, os, sys, shutil, numpy, string, logging, cxcdm, time, tempfile
+import paramio, os, sys, shutil, numpy, string, logging, cxcdm, time, tempfile, caldb4
 import stk as st
 import pycrates as pcr
 
@@ -939,23 +939,17 @@ def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,ve
 
     if rmf_file.upper() == "CALDB":
         # cf. https://cxc.cfa.harvard.edu/cal/Hrc/detailed_info.html#rmf for HRC RMF information
- 
-        calquiz.punlearn()
-        calquiz.infile = specfile
-        calquiz.product = "MATRIX"
-        calquiz.calfile = "CALDB"
-        # calquiz.infile = "none"
-        # calquiz.telescope = "chandra"
-        # calquiz.instrument = "hrc"
-        # calquiz.calfile = "CALDB(DETNAM={})".format(get_keyval(specfile,"detnam"))
 
-        with suppress_stdout_stderr():
-            calquiz()
+        rmf = caldb4.Caldb(infile=specfile,product="MATRIX").search
 
-        if calquiz.outfile is None:
+        if len(rmf) == 0:
             raise IOError("{0} is an invalid HRC spectral file, as non-SAMP responses are no longer supported by the CALDB.  Please reprocess the dataset or re-download the observation from the archive.".format(specfile))
 
-        rmf = calquiz.outfile
+        if len(rmf) > 1:
+            # this should not happen
+            raise IOError("Multiple HRC RMFs returned by CALDB: {}".format(",".join(rmf)))
+
+        rmf = rmf[0]
         rmf = rmf[:rmf.find("[")]
 
         # copy RMF
