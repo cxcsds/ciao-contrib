@@ -402,7 +402,7 @@ def fix_rmf_numkeywords(outrmf):
     the N_GRP and N_CHAN columns, respectively.   It looks like 
     instead they are just copied from the 1st input file.
     
-    Go ahead an update them.    
+    As these are optional keywords, just delete them.
     """
     
     if "" == outrmf:
@@ -414,32 +414,19 @@ def fix_rmf_numkeywords(outrmf):
     # dmhedit to just modify keywords in-place.
 
     from pycrates import read_file
-    tab = read_file(outrmf+"[cols n_grp,n_chan]", mode="r")
-    chan = tab.get_column("n_chan").values
-    numelt = sum( [sum(c) for c in chan]) # variable length array col
-    verb2("The updated NUMELT keyword is {}".format(numelt))
-
-    grp = tab.get_column("n_grp").values
-    numgrp = sum(grp)
-    verb2("The updated NUMGRP keyword is {}".format(numgrp))
+    tab=read_file(outrmf, mode="r")
     
     from ciao_contrib.runtool import dmhedit
+    dmhedit.punlearn()
     dmhedit.infile=outrmf
-    dmhedit.file=""
-    dmhedit.op="add"
-    dmhedit.datatype="ulong"
-    dmhedit.unit=""
+    dmhedit.op="delete"
 
     if tab.get_key("NUMGRP") is not None:
         dmhedit.key="NUMGRP"
-        dmhedit.value=numgrp
-        dmhedit.comment="The sum of the N_GRP column"
         dmhedit()
     
     if tab.get_key("NUMELT") is not None:
         dmhedit.key="NUMELT"
-        dmhedit.value=numelt
-        dmhedit.comment="The sum of the N_CHAN column"
         dmhedit()
 
 
