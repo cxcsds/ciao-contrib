@@ -3,15 +3,23 @@ from tkinter import *
 from tkinter.ttk import *
 
 
+__all__ = ( "DaxModel", )
+
+
 class DaxModel(object):
     
-    def __init__(self):
+    def __init__(self, list_of_model_components):
         self.win = Tk()
         self.win.title("DAX Sherpa Model Editor")
         s = Style(self.win)
         s.theme_use("clam")
         self.row = 0
         self.model_pars = {}
+        for mdl in list_of_model_components:
+            self.add_model_component(mdl)
+        self.add_buttons()
+        
+        
 
     def add_model_component(self,sherpa_model_component):       
         self.sherpa_model = sherpa_model_component
@@ -141,8 +149,4 @@ class DaxModelParameter(object):
 # ~ abs1.nH = 0.1399
 
 
-dax_ui = DaxModel()
-dax_ui.add_model_component(mdl1)
-dax_ui.add_model_component(abs1)
-dax_ui.add_buttons()
-dax_ui.run()
+# ~ DaxModel().run()
