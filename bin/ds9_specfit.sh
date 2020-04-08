@@ -278,12 +278,23 @@ sherpa.set_stat("${stat}")
 
 $extra
 
+if "${addmodel}" == "none":
+    mdls = [mdl1,abs1]
+else:
+  mdls = [mdl1,mdl2,abs1]
+
+
+from ciao_contrib._tools.dax_model_editor import *
+DaxModelEditor(mdls).run()
+
+
 try:
   sherpa.fit()
   sherpa.conf()
 except:
   pass
 
+print( "\n"+str(sherpa.get_source()))
 print( "\nPhoton Flux = %s photon/cm^2/s\n" % sherpa.calc_photon_flux())
 print( "Energy Flux = %s ergs/cm^2/s\n" % sherpa.calc_energy_flux())
 

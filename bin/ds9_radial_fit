@@ -153,6 +153,16 @@ def fit_profile( xpa, infile, model, xcol, method, ycol="sur_bri", ycol_err="sur
     sherpa.load_data( 1, infile, colkeys=[xcol, ycol, ycol_err])
     sherpa.set_model(model)
     sherpa.set_method(method)
+
+    from ciao_contrib._tools.dax_model_editor import DaxModelEditor
+
+    s = sherpa.get_source()
+    if hasattr(s,"parts") is True:
+        mdl = s.parts
+    else:
+        mdl = (s,) 
+    DaxModelEditor(mdl).run()
+
     sherpa.fit()
     
     fobj = sherpa.get_fit_plot()    

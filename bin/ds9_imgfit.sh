@@ -112,6 +112,12 @@ if (ee>1):
 mdl1.ellip=np.sqrt( 1-(ee*ee))
 mdl1.xpos=$xx
 mdl1.ypos=$yy
+
+
+from ciao_contrib._tools.dax_model_editor import *
+DaxModelEditor([mdl1,bkg1]).run()
+
+
 try:
   sherpa.fit()
   ${conf}
