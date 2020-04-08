@@ -3220,7 +3220,7 @@ parinfo['lut'] = {
 parinfo['make_instmap_weights'] = {
     'istool': True,
     'req': [ParValue("outfile","f","Instrument map weighting file",None),ParValue("model","s","Sherpa model definition string",None),ParValue("paramvals","s","';' delimited string of (parameter=value) pairs",None),ParRange("emin","r","Energy range lower bound for flux (keV)",None,0,None),ParValue("emax","r","Energy range upper bound for flux (keV)",None),ParValue("ewidth","r","Energy bin-size for flux (keV)",None)],
-    'opt': [ParSet("abund","s","set XSpec solar abundance",'angr',["angr","feld","aneb","grsa","wilm","lodd"]),ParSet("xsect","s","set XSpec photoelectric cross-section",'bcmc',["bcmc","obcm","vern"]),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Verbosity level?",3,0,5)],
+    'opt': [ParSet("abund","s","set XSpec solar abundance",'angr',["angr","feld","aneb","grsa","wilm","lodd"]),ParSet("xsect","s","set XSpec photoelectric cross-section",'vern',["bcmc","obcm","vern"]),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Verbosity level?",3,0,5)],
     }
 
 
