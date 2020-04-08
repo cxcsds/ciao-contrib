@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2013,2014,2016-2019
+# Copyright (C) 2013,2014,2016-2020
 #       Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
@@ -21,29 +21,10 @@ from __future__ import print_function
 
 
 toolname = "combine_spectra"
-__revision__ = "18 November 2019"
+__revision__ = "07 April 2020"
 
 import sys
-
-
-# Make sure this shows up first!
 import os
-try:
-    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
-        _thisdir = os.path.dirname(__file__)
-        _libname = "python{}.{}".format(sys.version_info.major,
-                                        sys.version_info.minor)
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
-        if os.path.isdir(_pathdir):
-            os.sys.path.insert(0, _pathdir)
-        else:
-            print("*** WARNING: no {}".format(_pathdir))
-
-        del _libname
-        del _pathdir
-        del _thisdir
-except KeyError:
-    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
 
 
 
@@ -415,6 +396,40 @@ def fix_arf_exposure( arfs, outarf, method ):
     tab.write()
 
 
+def fix_rmf_numkeywords(outrmf):
+    """
+    The NUMGRP and NUMELT keywords should be equal to the sum of 
+    the N_GRP and N_CHAN columns, respectively.   It looks like 
+    instead they are just copied from the 1st input file.
+    
+    As these are optional keywords, just delete them.
+    """
+    
+    if "" == outrmf:
+        return
+    
+    # Since RMF files are special: variable length columns and 
+    # multiple extensions (EBOUNDS); I don't trust that crates will 
+    # open in rw mode will work correctly.  So I'm going to use
+    # dmhedit to just modify keywords in-place.
+
+    from pycrates import read_file
+    tab=read_file(outrmf, mode="r")
+    
+    from ciao_contrib.runtool import dmhedit
+    dmhedit.punlearn()
+    dmhedit.infile=outrmf
+    dmhedit.op="delete"
+
+    if tab.get_key("NUMGRP") is not None:
+        dmhedit.key="NUMGRP"
+        dmhedit()
+    
+    if tab.get_key("NUMELT") is not None:
+        dmhedit.key="NUMELT"
+        dmhedit()
+
+
 
 def run_addresp( arfs, rmfs, phas, root, method ):
     """
@@ -444,6 +459,7 @@ def run_addresp( arfs, rmfs, phas, root, method ):
     outarf = addresp.outarf if os.path.exists( addresp.outarf ) else ""
 
     fix_arf_exposure( arfs, outarf, method)
+    fix_rmf_numkeywords(outrmf)
 
     return outrmf,outarf
 
