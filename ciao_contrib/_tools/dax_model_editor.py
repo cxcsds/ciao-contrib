@@ -98,11 +98,21 @@ class DaxModelEditor(object):
         '''Add the labels for the columns.  This needs to be in 
         sync with the DaxModelParameter.render_ui() method.
         '''
+
         win = self.get_win()
         row = self.get_row()
-        
+
+        from tkinter import font
+        stt = Style()
+        lfont=stt.lookup("TLabel", "font")
+        basefont = font.nametofont(lfont)
+        stt.configure("Hdr.TLabel", 
+                font=(basefont.cget("family"),
+                      basefont.cget("size"),
+                      "bold underline"))
+
         for col,txt in enumerate( ["Parameter", "Value", "Frozen?", "Min", "Max", "Units"]):
-            l = Label(lab_frame, text=txt)
+            l = Label(lab_frame, text=txt, style="Hdr.TLabel")
             l.grid(row=row, column=col)        
         self.next_row()        
 
@@ -156,6 +166,9 @@ class DaxModelEditor(object):
 
     def __del__(self):
         """Make sure ds9 plot window is closed"""
+        if self.xpa is None:
+            return
+
         plots = self.xpaget( self.xpa, "plot") # Get a list of plots.
         plots.split(" ")        
         if "dax_model_editor" in plots:
@@ -271,11 +284,11 @@ class DaxModelParameter(object):
         
         # The min value
         # TODO: Lock/UnLock limits for editing
-        par_min = Label(win, text="{}".format(self.sherpa_par.min), width=10)
+        par_min = Label(win, text="{:.5g}".format(self.sherpa_par.min), width=10)
         par_min.grid(row=row,column=3,padx=(5,5),pady=2)
 
         # The max value
-        par_max = Label(win, text="{}".format(self.sherpa_par.max), width=10)
+        par_max = Label(win, text="{:.5g}".format(self.sherpa_par.max), width=10)
         par_max.grid(row=row,column=4,padx=(5,5),pady=2)
 
         # The units of the parameter
@@ -288,7 +301,8 @@ def test_dax_if():
     import sherpa.astro.ui as sherpa
     sherpa.load_arrays(1,[1,2,3],[4,5,6],sherpa.Data1D)
     sherpa.set_source("polynom1d.ply")
-    DaxModelEditor([ply], "ds9").run()
+    #DaxModelEditor([ply], "ds9").run()
+    DaxModelEditor([ply]).run()
 
 
 if __name__ == '__main__':
