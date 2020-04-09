@@ -17,7 +17,6 @@
 
 
 
-import sys
 from tkinter import *
 from tkinter.ttk import *
 
@@ -41,11 +40,13 @@ class DaxModelEditor(object):
     '''
 
 
-    def __init__(self, list_of_model_components):
+    def __init__(self, list_of_model_components, xpa_access_point=None,
+            hide_plot_button=False):
         '''Create a new Tk window for the editor.  
         
-        The use supplies a list of sherpa model components.
+        The user supplies a list of sherpa model components.
         '''
+        self.xpa = xpa_access_point
 
         self.win = Tk()
         self.win.title("DAX Sherpa Model Editor")
@@ -55,7 +56,7 @@ class DaxModelEditor(object):
         self.model_pars = {}
         for mdl in list_of_model_components:
             self.add_model_component(mdl)
-        self.add_buttons()
+        self.add_buttons(hide_plot_button)
                 
 
     def add_model_component(self,sherpa_model_component):       
@@ -66,65 +67,31 @@ class DaxModelEditor(object):
         '''
         self.sherpa_model = sherpa_model_component
 
-        ll = LabelFrame(self.get_win(), text=sherpa_model_component.name)
-        ll.grid(row=self.get_row(),column=0,columnspan=1, 
+        lf = LabelFrame(self.get_win(), text=sherpa_model_component.name)
+        lf.grid(row=self.get_row(),column=0,columnspan=1, 
             padx=(10,10), pady=(10,10))
         self.next_row()
         
         # Repeat column headers in each model component
-        self.add_column_headers(ll)
+        self.add_column_headers(lf)
         for par in self.sherpa_model.pars:
-            self.add_model_parameters(ll,par)
-        
+            DaxModelParameter( self,lf, par )
+            self.next_row()
 
-    def add_model_parameters(self,lab_frame, par):
-        '''Not sure this is actually needed to be written like this.
-        
-        We dont' actually use the .model_pars values after this.
-        Just not sure if there's 
-        '''
-        self.model_pars[ par.fullname ] = DaxModelParameter( self,lab_frame, par )
-        self.next_row()
-
-
-    def get_win(self):
-        'Return window object'
-        return(self.win)
-
-    def get_row(self):
-        'Return the current row in the UI'
-        return(self.row)
-    
-    def next_row(self):
-        'Increment row in the UI'
-        self.row = self.row+1
-
-    def run(self):
-        'Start the event loop'
-        self.win.mainloop()
-
-    def fit(self):
-        '''Stop the event loop.  The expectation is that the next command
-        is sherpa.fit()'''
-        self.win.destroy()
-
-    def quit(self):
-        '''Stop the event loop and exit. I don't like hard-exits 
-        but here it is.'''
-        self.win.destroy()
-        sys.exit(1)
-        
-
-    def add_buttons(self):
+    def add_buttons(self, hide_plot_button):
         '''Add the buttons at the bottom of the UI'''
         ff = Frame(self.get_win())
         ff.grid(row=self.get_row(),column=0,pady=(5,5))
 
         b = Button(ff, text="Fit", command=self.fit)
         b.grid(row=self.get_row(),column=0,columnspan=1,padx=(20,20),pady=(5,5))
-        b = Button(ff, text="Cancel", command=self.quit)
-        b.grid(row=self.get_row(),column=1,columnspan=1,padx=(20,20),pady=(5,5))
 
+        if hide_plot_button is False:
+            b = Button(ff, text="Plot", command=self.plot)
+            b.grid(row=self.get_row(),column=1,columnspan=1,padx=(20,20),pady=(5,5))
+        
+        b = Button(ff, text="Cancel", command=self.quit)
+        b.grid(row=self.get_row(),column=2,columnspan=1,padx=(20,20),pady=(5,5))
 
 
     def add_column_headers(self,lab_frame):
@@ -137,7 +104,94 @@ class DaxModelEditor(object):
         for col,txt in enumerate( ["Parameter", "Value", "Frozen?", "Min", "Max", "Units"]):
             l = Label(lab_frame, text=txt)
             l.grid(row=row, column=col)        
-        self.next_row()
+        self.next_row()        
+
+
+    def get_win(self):
+        'Return window object'
+        return(self.win)
+
+
+    def get_row(self):
+        'Return the current row in the UI'
+        return(self.row)
+
+    
+    def next_row(self):
+        'Increment row in the UI'
+        self.row = self.row+1
+
+
+    def run(self):
+        'Start the event loop'
+        self.win.mainloop()
+
+
+    def fit(self):
+        '''Stop the event loop.  The expectation is that the next command
+        is sherpa.fit()'''
+        self.win.destroy()
+
+
+    def quit(self):
+        '''Stop the event loop and exit. I don't like hard-exits 
+        but here it is.'''
+        import sys as sys
+        self.win.destroy()
+        sys.exit(1)
+
+
+    @staticmethod
+    def xpaget(ds9, cmd):
+        "Run xpaget and return string"
+        import subprocess as sp
+        runcmd = [ "xpaget", ds9]
+        runcmd.extend(cmd.split(" "))
+        try:
+            out = sp.run( runcmd, check=False, stdout=sp.PIPE).stdout
+        except:
+            raise RuntimeError("Problem getting {}".format(runcmd))
+        return out.decode().strip()
+
+
+    def __del__(self):
+        """Make sure ds9 plot window is closed"""
+        plots = self.xpaget( self.xpa, "plot") # Get a list of plots.
+        plots.split(" ")        
+        if "dax_model_editor" in plots:
+            import subprocess as sp
+            runcmd = [ "xpaset", "-p", self.xpa, "plot", "dax_model_editor", "close"]
+            sp.run( runcmd, check=False)
+
+
+    def plot(self):
+
+        import sherpa.astro.ui as sherpa
+
+        if self.xpa is None:
+            import matplotlib.pylab as plt
+            sherpa.plot_fit()
+            plt.show()
+            return
+
+        plots = self.xpaget( self.xpa, "plot") # Get a list of plots.
+        plots.split(" ")        
+        newplot= ("dax_model_editor" not in plots)
+
+        _f = sherpa.get_fit_plot()
+        _d = _f.dataplot
+        _m = _f.modelplot
+        if _d.xerr is None:
+            _d.xerr = (_d.x-_d.x) # zeros
+
+        import ciao_contrib._tools.dax_plot_utils as dax
+        dax.blt_plot_model( self.xpa, _m.x, _m.y,
+            "Dax Model Editor Plot", "X-axis", "Y-axis",
+            new=newplot, winname="dax_model_editor")
+
+        dax.blt_plot_data( self.xpa, _d.x, _d.xerr/2.0, _d.y, _d.yerr)
+        
+        
         
 
 
@@ -155,6 +209,7 @@ class DaxModelParameter(object):
         self.parent = parent
         self.label_frame = label_frame
         self.render_ui()
+
     
     def _freeze_thaw(self):
         '''ACTION: set the freeze() or thaw() based on the 
@@ -163,6 +218,7 @@ class DaxModelParameter(object):
             self.sherpa_par.freeze()
         else:
             self.sherpa_par.thaw()
+
 
     def entry_callback(self,keyevt):
         '''ACTION: set the model parameter value when the user
@@ -227,12 +283,13 @@ class DaxModelParameter(object):
         par_units.grid(row=row,column=5,padx=(5,5),pady=2)
 
 
+def test_dax_if():
+
+    import sherpa.astro.ui as sherpa
+    sherpa.load_arrays(1,[1,2,3],[4,5,6],sherpa.Data1D)
+    sherpa.set_source("polynom1d.ply")
+    DaxModelEditor([ply], "ds9").run()
 
 
-# ~ import sherpa.astro.ui as sherpa
-# ~ sherpa.load_data("out.pi")
-# ~ sherpa.group_counts(20)
-# ~ sherpa.notice(0.3,7.0)
-# ~ sherpa.set_source("xszpowerlw.mdl1 * xswabs.abs1")
-# ~ abs1.nH = 0.1399
-# ~ DaxModel([mdl1,abs1]).run()
+if __name__ == '__main__':
+    test_dax_if()    

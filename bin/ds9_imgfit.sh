@@ -115,7 +115,7 @@ mdl1.ypos=$yy
 
 
 from ciao_contrib._tools.dax_model_editor import *
-DaxModelEditor([mdl1,bkg1]).run()
+DaxModelEditor([mdl1,bkg1], hide_plot_button=True).run()
 
 
 try:

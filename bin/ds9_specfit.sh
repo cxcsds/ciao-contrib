@@ -278,14 +278,18 @@ sherpa.set_stat("${stat}")
 
 $extra
 
+sherpa.guess(mdl1)
+sherpa.guess(abs1)
+
 if "${addmodel}" == "none":
     mdls = [mdl1,abs1]
 else:
-  mdls = [mdl1,mdl2,abs1]
+    mdls = [mdl1,mdl2,abs1]
+    sherpa.guess(mdl2)
 
 
 from ciao_contrib._tools.dax_model_editor import *
-DaxModelEditor(mdls).run()
+DaxModelEditor(mdls, "${ds9}").run()
 
 
 try:
@@ -300,9 +304,8 @@ print( "Energy Flux = %s ergs/cm^2/s\n" % sherpa.calc_energy_flux())
 
 sherpa.save("$sav", clobber=True)
 
-
 from ciao_contrib._tools.dax_plot_utils import *
-
+ 
 _f = sherpa.get_fit_plot()
 _d = _f.dataplot
 _m = _f.modelplot
