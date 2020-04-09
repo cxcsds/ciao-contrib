@@ -62,16 +62,22 @@ def blt_plot_data(access_point,xx, ex, yy, ey):
     xpa_plot_cmd(access_point, "legend position right")
 
 
-def blt_plot_model(access_point,x_vals, y_vals, title, x_label, y_label):
+def blt_plot_model(access_point,x_vals, y_vals, title, x_label, y_label, 
+        new=True, winname="dax"):
     """Plot the model"""
     
-    cmd = ["xpaset", access_point, "plot"]    
-    cmd.extend( ["new", "name", "dax", "line", 
-        "{{{0}}}".format(title), 
-        "{{{0}}}".format(x_label), 
-        "{{{0}}}".format(y_label),
-        "xy"
-        ] )
+    if new is True:
+        cmd = ["xpaset", access_point, "plot", "new"]            
+        cmd.extend( ["name", winname, "line", 
+            "{{{0}}}".format(title), 
+            "{{{0}}}".format(x_label), 
+            "{{{0}}}".format(y_label),
+            "xy"
+            ] )
+    else:
+        xpa_plot_cmd(access_point, winname+" delete dataset")        
+        xpa_plot_cmd(access_point, winname+" delete dataset")
+        cmd = ["xpaset", access_point, "plot", "data", "xy"]
 
     xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
     for x,y in zip(x_vals, y_vals):
