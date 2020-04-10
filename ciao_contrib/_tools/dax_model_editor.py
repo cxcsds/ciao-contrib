@@ -271,13 +271,13 @@ class DaxModelParameter(object):
         win = self.label_frame
 
         # The parameter name
-        lab = Label( win, text=self.sherpa_par.name, width=12) 
+        lab = Label( win, text=self.sherpa_par.name, width=12, anchor="e") 
         lab.grid(row=row,column=0,padx=(5,5),pady=2)
 
         # The current parameter value
         self.val_str = StringVar()  
         self.val = Entry(win, textvariable=self.val_str, 
-            foreground="black", width=12)
+            foreground="black", width=12, justify="right")
         self.val.grid(row=row, column=1,padx=(5,5),pady=2)
         self.val.delete(0,END)
         self.val.insert(0,"{:.5g}".format(self.sherpa_par.val) )
@@ -295,15 +295,15 @@ class DaxModelParameter(object):
         
         # The min value
         # TODO: Lock/UnLock limits for editing
-        par_min = Label(win, text="{:.5g}".format(self.sherpa_par.min), width=12)
+        par_min = Label(win, text="{:.5g}".format(self.sherpa_par.min), width=12, anchor="e")
         par_min.grid(row=row,column=3,padx=(5,5),pady=2)
 
         # The max value
-        par_max = Label(win, text="{:.5g}".format(self.sherpa_par.max), width=12)
+        par_max = Label(win, text="{:.5g}".format(self.sherpa_par.max), width=12, anchor="e")
         par_max.grid(row=row,column=4,padx=(5,5),pady=2)
 
         # The units of the parameter
-        par_units = Label(win, text="{}".format(self.sherpa_par.units), width=20)
+        par_units = Label(win, text="{}".format(self.sherpa_par.units), width=20, anchor="e")
         par_units.grid(row=row,column=5,padx=(5,5),pady=2)
 
 
