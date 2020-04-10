@@ -44,7 +44,6 @@ class DaxModelEditor():
 
     '''
 
-
     def __init__(self, list_of_model_components, xpa_access_point=None,
                  hide_plot_button=False):
         '''Create a new Tk window for the editor.
@@ -61,7 +60,6 @@ class DaxModelEditor():
         for mdl in list_of_model_components:
             self.add_model_component(mdl)
         self.add_buttons(hide_plot_button)
-
 
     def add_model_component(self, sherpa_model_component):
         '''Create UI elements for model component.
@@ -83,7 +81,6 @@ class DaxModelEditor():
             DaxModelParameter(self, lfrm, par)
             self.next_row()
 
-
     def add_buttons(self, hide_plot_button):
         '''Add the buttons at the bottom of the UI'''
         myfrm = Frame(self.get_win())
@@ -101,7 +98,6 @@ class DaxModelEditor():
         abtn = Button(myfrm, text="Cancel", command=self.quit)
         abtn.grid(row=self.get_row(), column=2, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
-
 
     def add_column_headers(self, lab_frame):
         '''Add the labels for the columns.  This needs to be in
@@ -124,26 +120,21 @@ class DaxModelEditor():
             label.grid(row=row, column=col)
         self.next_row()
 
-
     def get_win(self):
         'Return window object'
         return self.win
-
 
     def get_row(self):
         'Return the current row in the UI'
         return self.row
 
-
     def next_row(self):
         'Increment row in the UI'
         self.row = self.row+1
 
-
     def run(self):
         'Start the event loop'
         self.win.mainloop()
-
 
     def fit(self):
         '''Stop the event loop.  The expectation is that the next
@@ -152,14 +143,11 @@ class DaxModelEditor():
         sherpa.fit()'''
         self.win.destroy()
 
-
     def quit(self):
         '''Stop the event loop and exit. I don't like hard-exits
         but here it is.'''
-        #import sys as sys
         self.win.destroy()
         sys.exit(1)
-
 
     @staticmethod
     def xpaget(ds9, cmd):
@@ -168,23 +156,21 @@ class DaxModelEditor():
         runcmd.extend(cmd.split(" "))
         try:
             out = sp.run(runcmd, check=False, stdout=sp.PIPE).stdout
-        except:
-            raise RuntimeError("Problem getting {}".format(runcmd))
+        except sp.CalledProcessError as sp_err:
+            raise RuntimeError("Problem getting '{}'.".format(runcmd) +
+                               "Error message: {}".format(str(sp_err)))
         return out.decode().strip()
-
 
     def __del__(self):
         """Make sure ds9 plot window is closed"""
         if self.xpa is None:
             return
-
-        plots = self.xpaget(self.xpa, "plot") # Get a list of plots.
+        plots = self.xpaget(self.xpa, "plot")  # Get a list of plots.
         plots.split(" ")
         if "dax_model_editor" in plots:
             runcmd = ["xpaset", "-p", self.xpa, "plot",
                       "dax_model_editor", "close"]
             sp.run(runcmd, check=False)
-
 
     def plot(self):
         '''Plot model with current parameters'''
@@ -196,7 +182,7 @@ class DaxModelEditor():
             plt.show()
             return
 
-        plots = self.xpaget(self.xpa, "plot") # Get a list of plots.
+        plots = self.xpaget(self.xpa, "plot")  # Get a list of plots.
         plots.split(" ")
         newplot = ("dax_model_editor" not in plots)
 
@@ -204,7 +190,7 @@ class DaxModelEditor():
         _d = _f.dataplot
         _m = _f.modelplot
         if _d.xerr is None:
-            _d.xerr = (_d.x-_d.x) # zeros
+            _d.xerr = (_d.x-_d.x)  # zeros
 
         import ciao_contrib._tools.dax_plot_utils as dax
         dax.blt_plot_model(self.xpa, _m.x, _m.y,
@@ -212,9 +198,6 @@ class DaxModelEditor():
                            new=newplot, winname="dax_model_editor")
 
         dax.blt_plot_data(self.xpa, _d.x, _d.xerr/2.0, _d.y, _d.yerr)
-
-
-
 
 
 class DaxModelParameter():
@@ -232,7 +215,6 @@ class DaxModelParameter():
         self.label_frame = label_frame
         self.render_ui()
 
-
     def _freeze_thaw(self):
         '''ACTION: set the freeze() or thaw() based on the
         checkbox value.'''
@@ -240,7 +222,6 @@ class DaxModelParameter():
             self.sherpa_par.freeze()
         else:
             self.sherpa_par.thaw()
-
 
     def entry_callback(self, keyevt):
         '''ACTION: set the model parameter value when the user
@@ -272,7 +253,6 @@ class DaxModelParameter():
 
         else:
             self.val.configure(foreground="red")
-
 
     def render_ui(self):
         '''Render the parameter UI elements and attach bindings'''
@@ -326,7 +306,7 @@ def test_dax_if():
     import sherpa.astro.ui as sherpa
     sherpa.load_arrays(1, [1, 2, 3], [4, 5, 6], sherpa.Data1D)
     sherpa.set_source("polynom1d.ply")
-    #DaxModelEditor([ply], "ds9").run()
+    # DaxModelEditor([ply], "ds9").run()
     DaxModelEditor([ply]).run()
 
 
