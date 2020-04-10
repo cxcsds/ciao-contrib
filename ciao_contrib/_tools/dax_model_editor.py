@@ -63,6 +63,7 @@ class DaxModelEditor():
         sty = Style(self.win)
         sty.theme_use("clam")
         self.row = 0
+        self.model_parameters = []
         for mdl in list_of_model_components:
             self.add_model_component(mdl)
         self.add_buttons(hide_plot_button)
@@ -84,7 +85,8 @@ class DaxModelEditor():
         # Repeat column headers in each model component
         self.add_column_headers(lfrm)
         for par in self.sherpa_model.pars:
-            DaxModelParameter(self, lfrm, par)
+            mod_par = DaxModelParameter(self, lfrm, par)
+            self.model_parameters.append(mod_par)
             self.next_row()
 
     def add_buttons(self, hide_plot_button):
@@ -101,15 +103,18 @@ class DaxModelEditor():
             abtn.grid(row=self.get_row(), column=1, columnspan=1,
                       padx=(20, 20), pady=(5, 5))
 
-        abtn = Button(myfrm, text="Cancel", command=self.cancel)
+        abtn = Button(myfrm, text="Reset", command=self.reset)
         abtn.grid(row=self.get_row(), column=2, columnspan=1,
+                  padx=(20, 20), pady=(5, 5))
+
+        abtn = Button(myfrm, text="Cancel", command=self.cancel)
+        abtn.grid(row=self.get_row(), column=3, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
 
     def add_column_headers(self, lab_frame):
         '''Add the labels for the columns.  This needs to be in
         sync with the DaxModelParameter.render_ui() method.
         '''
-
         row = self.get_row()
 
         stt = Style()
@@ -148,6 +153,11 @@ class DaxModelEditor():
 
         sherpa.fit()'''
         self.win.destroy()
+
+    def reset(self):
+        "Restore all values back to initial values"
+        for modpar in self.model_parameters:
+            modpar.reset()
 
     def cancel(self):
         '''Stop the event loop and raise a Dax exception'''
@@ -218,6 +228,7 @@ class DaxModelParameter():
         self.sherpa_par = sherpa_model_parameter
         self.parent = parent
         self.label_frame = label_frame
+        self.initial_value = self.sherpa_par.val
         self.render_ui()
 
     def _freeze_thaw(self):
@@ -227,6 +238,18 @@ class DaxModelParameter():
             self.sherpa_par.freeze()
         else:
             self.sherpa_par.thaw()
+
+    def __format_val(self, val):
+        'Format parameter values'
+        retval = "{:.5g}".format(val)
+        return retval
+
+    def reset(self):
+        """Reset values to original"""
+        self.val.delete(0, END)
+        self.val.insert(0, self.__format_val(self.initial_value))
+        self.val.configure(foreground="black")
+        self.sherpa_par.val = self.initial_value
 
     def entry_callback(self, keyevt):
         '''ACTION: set the model parameter value when the user
@@ -276,7 +299,7 @@ class DaxModelParameter():
                          foreground="black", width=12, justify="right")
         self.val.grid(row=row, column=1, padx=(5, 5), pady=2)
         self.val.delete(0, END)
-        self.val.insert(0, "{:.5g}".format(self.sherpa_par.val))
+        self.val.insert(0, self.__format_val(self.sherpa_par.val))
         self.val.bind("<Key>", self.entry_callback)
 
         # Frozen|Thawed checkbox.  Checked if frozen.
@@ -291,12 +314,12 @@ class DaxModelParameter():
 
         # The min value
         # RFE: Lock/UnLock limits for editing
-        par_min = Label(win, text="{:.5g}".format(self.sherpa_par.min),
+        par_min = Label(win, text=self.__format_val(self.sherpa_par.min),
                         width=12, anchor="e")
         par_min.grid(row=row, column=3, padx=(5, 5), pady=2)
 
         # The max value
-        par_max = Label(win, text="{:.5g}".format(self.sherpa_par.max),
+        par_max = Label(win, text=self.__format_val(self.sherpa_par.max),
                         width=12, anchor="e")
         par_max.grid(row=row, column=4, padx=(5, 5), pady=2)
 
