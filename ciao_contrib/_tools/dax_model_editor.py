@@ -23,10 +23,16 @@ Provides a simple GUI to edit model parameters
 from tkinter import Tk, StringVar, IntVar, END, font, messagebox
 from tkinter.ttk import Frame, Button, Label, LabelFrame, Entry
 from tkinter.ttk import Checkbutton, Style
-import sys
 import subprocess as sp
 
-__all__ = ("DaxModelEditor",)
+__all__ = ("DaxModelEditor", "DaxCancel")
+
+
+class DaxCancel(Exception):
+    "Raised when the Cancel button is pressed"
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
 
 
 class DaxModelEditor():
@@ -95,7 +101,7 @@ class DaxModelEditor():
             abtn.grid(row=self.get_row(), column=1, columnspan=1,
                       padx=(20, 20), pady=(5, 5))
 
-        abtn = Button(myfrm, text="Cancel", command=self.quit)
+        abtn = Button(myfrm, text="Cancel", command=self.cancel)
         abtn.grid(row=self.get_row(), column=2, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
 
@@ -143,11 +149,10 @@ class DaxModelEditor():
         sherpa.fit()'''
         self.win.destroy()
 
-    def quit(self):
-        '''Stop the event loop and exit. I don't like hard-exits
-        but here it is.'''
+    def cancel(self):
+        '''Stop the event loop and raise a Dax exception'''
         self.win.destroy()
-        sys.exit(1)
+        raise DaxCancel("Cancel Button Pressed")
 
     @staticmethod
     def xpaget(ds9, cmd):
