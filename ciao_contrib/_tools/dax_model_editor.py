@@ -245,10 +245,21 @@ class DaxModelParameter(object):
         the limits so the color remains red until valid value is 
         entered.        
         '''
-        if "Return" == keyevt.keysym:
-            setattr( self.sherpa_par, "val",
-                float( self.val.get()) )
-            self.val.configure(foreground="black")
+
+        # Note: use .char instead of .keysym because Return
+        # and Enter on the keypad are different keysym's but both
+        # generate CR. This makes sense since can remap keyboard
+        # keys -- the action we want is CR, whichever key generates it.
+
+        if '\r' == keyevt.char:
+            try:
+                fval = float(self.val.get())
+                setattr( self.sherpa_par, "val", fval )
+                self.val.configure(foreground="black")
+            except Exception as e:
+                from tkinter import messagebox
+                messagebox.showerror("DAX Model Editor",
+                  str(e))
         else:
             self.val.configure(foreground="red")
     
@@ -260,16 +271,16 @@ class DaxModelParameter(object):
         win = self.label_frame
 
         # The parameter name
-        lab = Label( win, text=self.sherpa_par.name, width=10) 
+        lab = Label( win, text=self.sherpa_par.name, width=12) 
         lab.grid(row=row,column=0,padx=(5,5),pady=2)
 
         # The current parameter value
         self.val_str = StringVar()  
         self.val = Entry(win, textvariable=self.val_str, 
-            foreground="black", width=10)
+            foreground="black", width=12)
         self.val.grid(row=row, column=1,padx=(5,5),pady=2)
         self.val.delete(0,END)
-        self.val.insert(0,"{}".format(self.sherpa_par.val) )
+        self.val.insert(0,"{:.5g}".format(self.sherpa_par.val) )
         self.val.bind("<Key>", self.entry_callback)
 
         # Frozen|Thawed checkbox.  Checked if frozen.
@@ -284,11 +295,11 @@ class DaxModelParameter(object):
         
         # The min value
         # TODO: Lock/UnLock limits for editing
-        par_min = Label(win, text="{:.5g}".format(self.sherpa_par.min), width=10)
+        par_min = Label(win, text="{:.5g}".format(self.sherpa_par.min), width=12)
         par_min.grid(row=row,column=3,padx=(5,5),pady=2)
 
         # The max value
-        par_max = Label(win, text="{:.5g}".format(self.sherpa_par.max), width=10)
+        par_max = Label(win, text="{:.5g}".format(self.sherpa_par.max), width=12)
         par_max.grid(row=row,column=4,padx=(5,5),pady=2)
 
         # The units of the parameter
