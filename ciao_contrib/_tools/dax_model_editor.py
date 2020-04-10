@@ -20,10 +20,11 @@
 Provides a simple GUI to edit model parameters
 '''
 
-from tkinter import Tk, StringVar, IntVar, END
+from tkinter import Tk, StringVar, IntVar, END, font, messagebox
 from tkinter.ttk import Frame, Button, Label, LabelFrame, Entry
 from tkinter.ttk import Checkbutton, Style
 import sys
+import subprocess as sp
 
 __all__ = ("DaxModelEditor",)
 
@@ -57,7 +58,6 @@ class DaxModelEditor():
         sty = Style(self.win)
         sty.theme_use("clam")
         self.row = 0
-        self.model_pars = {}
         for mdl in list_of_model_components:
             self.add_model_component(mdl)
         self.add_buttons(hide_plot_button)
@@ -83,21 +83,24 @@ class DaxModelEditor():
             DaxModelParameter(self, lfrm, par)
             self.next_row()
 
+
     def add_buttons(self, hide_plot_button):
         '''Add the buttons at the bottom of the UI'''
         myfrm = Frame(self.get_win())
         myfrm.grid(row=self.get_row(), column=0, pady=(5, 5))
 
         abtn = Button(myfrm, text="Fit", command=self.fit)
-        abtn.grid(row=self.get_row(), column=0, columnspan=1, padx=(20, 20),
-                  pady=(5, 5))
+        abtn.grid(row=self.get_row(), column=0, columnspan=1,
+                  padx=(20, 20), pady=(5, 5))
 
         if hide_plot_button is False:
             abtn = Button(myfrm, text="Plot", command=self.plot)
-            abtn.grid(row=self.get_row(), column=1, columnspan=1, padx=(20, 20), pady=(5, 5))
+            abtn.grid(row=self.get_row(), column=1, columnspan=1,
+                      padx=(20, 20), pady=(5, 5))
 
         abtn = Button(myfrm, text="Cancel", command=self.quit)
-        abtn.grid(row=self.get_row(), column=2, columnspan=1, padx=(20, 20), pady=(5, 5))
+        abtn.grid(row=self.get_row(), column=2, columnspan=1,
+                  padx=(20, 20), pady=(5, 5))
 
 
     def add_column_headers(self, lab_frame):
@@ -107,7 +110,6 @@ class DaxModelEditor():
 
         row = self.get_row()
 
-        from tkinter import font
         stt = Style()
         lfont = stt.lookup("TLabel", "font")
         basefont = font.nametofont(lfont)
@@ -116,7 +118,8 @@ class DaxModelEditor():
                             basefont.cget("size"),
                             "bold underline"))
 
-        for col, txt in enumerate(["Parameter", "Value", "Frozen?", "Min", "Max", "Units"]):
+        cols = ["Parameter", "Value", "Frozen?", "Min", "Max", "Units"]
+        for col, txt in enumerate(cols):
             label = Label(lab_frame, text=txt, style="Hdr.TLabel")
             label.grid(row=row, column=col)
         self.next_row()
@@ -143,8 +146,10 @@ class DaxModelEditor():
 
 
     def fit(self):
-        '''Stop the event loop.  The expectation is that the next command
-        is sherpa.fit()'''
+        '''Stop the event loop.  The expectation is that the next
+        command is
+
+        sherpa.fit()'''
         self.win.destroy()
 
 
@@ -159,7 +164,6 @@ class DaxModelEditor():
     @staticmethod
     def xpaget(ds9, cmd):
         "Run xpaget and return string"
-        import subprocess as sp
         runcmd = ["xpaget", ds9]
         runcmd.extend(cmd.split(" "))
         try:
@@ -177,8 +181,8 @@ class DaxModelEditor():
         plots = self.xpaget(self.xpa, "plot") # Get a list of plots.
         plots.split(" ")
         if "dax_model_editor" in plots:
-            import subprocess as sp
-            runcmd = ["xpaset", "-p", self.xpa, "plot", "dax_model_editor", "close"]
+            runcmd = ["xpaset", "-p", self.xpa, "plot",
+                      "dax_model_editor", "close"]
             sp.run(runcmd, check=False)
 
 
@@ -250,6 +254,7 @@ class DaxModelParameter():
         the limits so the color remains red until valid value is
         entered.
         '''
+        from sherpa.utils.err import ParameterErr
 
         # Note: use .char instead of .keysym because Return
         # and Enter on the keypad are different keysym's but both
@@ -261,10 +266,10 @@ class DaxModelParameter():
                 fval = float(self.val.get())
                 setattr(self.sherpa_par, "val", fval)
                 self.val.configure(foreground="black")
-            except Exception as all_es:
-                from tkinter import messagebox
+            except (ValueError, ParameterErr) as val_err:
                 messagebox.showerror("DAX Model Editor",
-                                     str(all_es))
+                                     str(val_err))
+
         else:
             self.val.configure(foreground="red")
 
@@ -276,7 +281,8 @@ class DaxModelParameter():
         win = self.label_frame
 
         # The parameter name
-        lab = Label(win, text=self.sherpa_par.name, width=12, anchor="e")
+        lab = Label(win, text=self.sherpa_par.name,
+                    width=12, anchor="e")
         lab.grid(row=row, column=0, padx=(5, 5), pady=2)
 
         # The current parameter value
@@ -299,7 +305,7 @@ class DaxModelParameter():
         fzbtn.grid(row=row, column=2, padx=(5, 5), pady=2)
 
         # The min value
-        # TODO: Lock/UnLock limits for editing
+        # RFE: Lock/UnLock limits for editing
         par_min = Label(win, text="{:.5g}".format(self.sherpa_par.min),
                         width=12, anchor="e")
         par_min.grid(row=row, column=3, padx=(5, 5), pady=2)
