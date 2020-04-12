@@ -275,12 +275,14 @@ class DaxModelParameter():
                 fval = float(self.val.get())
                 setattr(self.sherpa_par, "val", fval)
                 self.val.configure(foreground="black")
+                self.last_value = self.val.get()
             except (ValueError, ParameterErr) as val_err:
                 messagebox.showerror("DAX Model Editor",
                                      str(val_err))
 
         else:
-            self.val.configure(foreground="red")
+            if self.val.get() != self.last_value:
+                self.val.configure(foreground="red")
 
     def render_ui(self):
         '''Render the parameter UI elements and attach bindings'''
@@ -300,7 +302,8 @@ class DaxModelParameter():
         self.val.grid(row=row, column=1, padx=(5, 5), pady=2)
         self.val.delete(0, END)
         self.val.insert(0, self.__format_val(self.sherpa_par.val))
-        self.val.bind("<Key>", self.entry_callback)
+        self.last_value = self.val.get()
+        self.val.bind("<KeyRelease>", self.entry_callback)
 
         # Frozen|Thawed checkbox.  Checked if frozen.
         self.fz_box = IntVar()
