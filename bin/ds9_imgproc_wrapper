@@ -79,6 +79,7 @@ def save_ds9_image(xpa):
     return ds9_file.name
 
 
+
 class ImageProcTask():
     'Base classs for image processing tasks'
 
@@ -104,6 +105,23 @@ class ImageProcTask():
             self.tool.outfile = self.outfile.name
 
         self.set_args(args)
+
+    def apply_region_to_infile(self, regions):
+        '''Tools like dmellipse and dmimghull only operate on filtered
+        regions.'''
+ 
+        if regions is None or regions == "" :
+            return
+
+        if regions.startswith("@"):
+            import stk
+            regions = "+".join(stk.build(regions.replace("@", "@-")))
+        else:
+            regions = regions.replace(";", "+").replace("+-", "-").rstrip("+")
+        ffilt = "[(x,y)={}]".format(regions)
+
+        self.infile = self.infile+ffilt
+        self.tool.infile = self.infile
 
     def run(self):
         'Do it'
@@ -519,21 +537,19 @@ class Dmellipse(ImageProcTaskRegionOut):
         'Args: fraction shape'
         self.tool.fraction = args[0]
         self.tool.shape = args[1]
+        self.apply_region_to_infile(args[2])
 
-        # Unlike the other image proc tasks, dmellipse only
-        # works on data in region
 
-        freg = args[2]
-        if freg != "":
-            if freg.startswith("@"):
-                import stk
-                freg = "+".join(stk.build(freg.replace("@", "@-")))
-            else:
-                freg = freg.replace(";", "+").replace("+-", "-").rstrip("+")
-            ffilt = "[(x,y)={}]".format(freg)
-        else:
-            ffilt = ""
-        self.tool.infile = self.tool.infile+ffilt
+class Dmimghull(ImageProcTaskRegionOut):
+    'CIAO dmimghull tool'
+
+    toolname = 'dmimghull'
+
+    def set_args(self, args):
+        'Args: fraction shape'
+        self.tool.tolerance = args[0]
+        self.apply_region_to_infile(args[1])
+
 
 
 def map_tool_to_object(toolname, xpa, args):
@@ -548,7 +564,8 @@ def map_tool_to_object(toolname, xpa, args):
                'wavdetect': Wavdetect, 'vtpdetect': Vtpdetect,
                'celldetect': Celldetect, 'get_src_region': Getsrcregion,
                'dmimglasso': Dmimglasso, 'dmcontour': Dmcontour,
-               'skyfov': Skyfov, 'dmellipse': Dmellipse}
+               'skyfov': Skyfov, 'dmellipse': Dmellipse,
+               'dmimghull': Dmimghull}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
