@@ -206,6 +206,15 @@ class ImageProcTaskRegionOut(ImageProcTask):
             sp.run(cmd, check=True)
 
 
+class ImageProcTaskPlotOut(ImageProcTask):
+    'Classes that send output plot to ds9'
+
+    def send_output(self):
+        'Send plot to da9'
+        cmd = ['ds9_plot_blt', self.plotfile, self.title, self.xpa]
+        sp.run(cmd, check=True)
+
+
 # Specific classes for each tool ------------------
 
 
@@ -551,6 +560,35 @@ class Dmimghull(ImageProcTaskRegionOut):
         self.apply_region_to_infile(args[1])
 
 
+class Dmimgproject(ImageProcTaskPlotOut):
+    'CIAO dmimgproject tool'
+
+    toolname = 'dmimgproject'
+
+    def set_args(self, args):
+        'Args: fraction shape'
+        stat=args[0]
+        self.tool.axis = args[1]
+        self.apply_region_to_infile(args[2])
+    
+        self.plotfile = self.tool.outfile + "[cols {},{}]".format(self.tool.axis, stat)
+                        
+        self.title = "Project {} Profile {}".format(stat, self.tool.outfile)
+
+
+class Dmimghist(ImageProcTaskPlotOut):
+    'CIAO dmimghist tool'
+
+    toolname = 'dmimghist'
+
+    def set_args(self, args):
+        'Args: fraction shape'
+        self.tool.hist="1"
+        self.apply_region_to_infile(args[0])
+    
+        self.plotfile = self.tool.outfile + "[cols bin,counts]"
+        self.title = "Pixel Histogram {}".format(self.tool.outfile)
+
 
 def map_tool_to_object(toolname, xpa, args):
     'Create object based on tool name'
@@ -565,7 +603,8 @@ def map_tool_to_object(toolname, xpa, args):
                'celldetect': Celldetect, 'get_src_region': Getsrcregion,
                'dmimglasso': Dmimglasso, 'dmcontour': Dmcontour,
                'skyfov': Skyfov, 'dmellipse': Dmellipse,
-               'dmimghull': Dmimghull}
+               'dmimghull': Dmimghull, 'dmimgproject':Dmimgproject,
+               'dmimghist': Dmimghist}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
