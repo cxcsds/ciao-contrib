@@ -8,6 +8,8 @@ params = sorted(glob.glob("param/*.par"))
 docs = sorted(glob.glob("share/doc/xml/*.xml"))
 datum = sorted(glob.glob("data/*"))
 configs = sorted(glob.glob("config/*"))
+etc = sorted(glob.glob("etc/conda/activate.d/*"))
+
 mods = [ "ciao_contrib",
     "ciao_contrib/region",
     "ciao_contrib/_tools",
@@ -35,6 +37,7 @@ setup( name='ciao-contrib',
                        ("config", configs),
                        ("data", datum),
                        (".", ["Changes.CIAO_scripts", "README_CIAO_scripts"]),
+                       ("etc/conda/activate.d/", etc),
                        ],
         packages=mods,
         py_modules=["lightcurves",]
