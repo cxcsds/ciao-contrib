@@ -17,6 +17,9 @@
 #  with this program; if not, write to the Free Software Foundation, Inc.,
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+
+'DAX wrapper around various image procesing tasks'
+
 import sys
 import os
 
@@ -26,8 +29,8 @@ from tempfile import NamedTemporaryFile
 
 def check_unique(xpa):
     'Make sure only 1 xpa server is listening'
-    
-    cmd = ['xpaaccess','-n',xpa]
+
+    cmd = ['xpaaccess', '-n', xpa]
     try:
         # xpaaccess returns num proc as exit status
         num = sp.run(cmd, check=False, stdout=sp.PIPE).stdout
@@ -38,26 +41,27 @@ def check_unique(xpa):
         raise RuntimeError("What happened to ds9?")
 
     if int(num) != 1:
-        raise RuntimeError("Multiple ({}) ds9's are running using the "+
-            "same title: '{}'.  Please close the other windows "+
-            "and restart.".format(num,xpa))
+        raise RuntimeError("Multiple ({}) ds9's are ".format(num) +
+                           "running using the same title: " +
+                           "'{}'.".format(xpa) +
+                           "  Please close the other windows and restart.")
 
 
 def save_ds9_image(xpa):
     'Save image currently displayed by ds9'
-    
+
     # ds9 can crop images; but when you get the file it
     # sends the whole thing.  We can get the crop info
     # and apply it separately. Note: I'm using image coords (#1,#2)
     # to avoid problems w/ sky vs. pos. vs (x,y).
     cmd = ['xpaget', xpa, 'crop', 'image']
     crop = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
-    xmid,ymid,xlen,ylen = [float(x) for x in crop.split()]
-    xl=xmid-xlen/2.0
-    xh=xmid+xlen/2.0
-    yl=ymid-ylen/2.0
-    yh=ymid+ylen/2.0
-    filt="[#1={}:{},#2={}:{}]".format(xl,xh,yl,yh)
+    xmid, ymid, xlen, ylen = [float(x) for x in crop.split()]
+    xlo = xmid-xlen/2.0
+    xhi = xmid+xlen/2.0
+    ylo = ymid-ylen/2.0
+    yhi = ymid+ylen/2.0
+    filt = "[#1={}:{},#2={}:{}]".format(xlo, xhi, ylo, yhi)
 
     # Get fits image from ds9
     cmd = ['xpaget', xpa, 'fits']
@@ -66,20 +70,20 @@ def save_ds9_image(xpa):
     # Use dmcopy to filter on cropped region; pipe
     # fits file into dmcopy via stdin.
     ds9_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"],
-         suffix="_ds9.fits", delete=False)
+                                  suffix="_ds9.fits", delete=False)
     cmd = ['dmcopy', '-{}'.format(filt), ds9_file.name, "clobber=yes"]
     dmc = sp.Popen(cmd, stdin=sp.PIPE)
     dmc.stdin.write(fits)
     dmc.communicate()
 
-    return(ds9_file.name)
-
-
+    return ds9_file.name
 
 
 class ImageProcTask():
     'Base classs for image processing tasks'
-    
+
+    toolname = None
+
     def __init__(self, xpa, args):
         'Init: save image, and setup parameters'
 
@@ -88,20 +92,22 @@ class ImageProcTask():
         self.xpa = xpa
 
         self.infile = save_ds9_image(xpa)
+
+        suffix = "_{}.fits".format(self.toolname)
         self.outfile = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"],
-            suffix="_{}.fits".format(self.toolname), delete=False)
+                                          suffix=suffix, delete=False)
         self.tool = make_tool(self.toolname)
 
         if hasattr(self.tool, "infile"):
-            self.tool.infile=self.infile
+            self.tool.infile = self.infile
         if hasattr(self.tool, "outfile"):
-            self.tool.outfile=self.outfile.name
+            self.tool.outfile = self.outfile.name
 
         self.set_args(args)
-    
+
     def run(self):
         'Do it'
-        
+
         print("-------------")
         import datetime
         print(datetime.datetime.now())
@@ -113,44 +119,43 @@ class ImageProcTask():
         # {}'s.
 
         try:
-            cmd = ['xpaset', '-p', self.xpa, 'tcl', 
+            cmd = ['xpaset', '-p', self.xpa, 'tcl',
                    '{{start_dax_progress {t}}}'.format(t=self.toolname)]
             sp.run(cmd, check=True)
 
-            verb=self.tool(clobber=True)
+            verb = self.tool(clobber=True)
             if verb:
                 print(verb)
             self.send_output()
             print("Output file: {}".format(self.outfile.name))
 
         finally:
-            cmd = ['xpaset', '-p', self.xpa, 'tcl', 
+            cmd = ['xpaset', '-p', self.xpa, 'tcl',
                    '{{stop_dax_progress {t}}}'.format(t=self.toolname)]
             sp.run(cmd, check=True)
 
             infiles = self.infile.split(",")
-            for ff in infiles:
-                if os.path.exists(ff):
-                    os.unlink(ff)
-    
+            for infile in infiles:
+                if os.path.exists(infile):
+                    os.unlink(infile)
+
     def set_args(self, args):
         'Set argument, in specific classes'
         raise NotImplementedError("Not here")
-    
-    def send_output(self,args):
+
+    def send_output(self):
         'In derived classed'
         raise NotImplementedError("Not here")
 
 
 class ImageProcTaskImgOut(ImageProcTask):
     'Classes that send output image to ds9'
-    
+
     def send_output(self):
         'Send output, go into tile mode if requsted'
-        
-        #def send_output_image_to_ds9(xpa, outfile):
+
         cmd = ['xpaset', '-p', self.xpa, 'fits', 'new', self.tool.outfile]
-        fits = sp.run(cmd, check=True)
+        sp.run(cmd, check=True)
 
         # Todo, move to init
         from paramio import pget
@@ -164,15 +169,14 @@ class ImageProcTaskRegionOut(ImageProcTask):
 
     def send_output(self):
         'Send region if > 0 rows'
-        
-        #def send_output_region_to_ds9(xpa, outfile):
+
         try:
             # vtpdetect uses src_region
             import pycrates as pc
             src_reg = "{}[src_region]".format(self.tool.outfile)
             pc.read_file(src_reg)
             outreg = src_reg
-        except Exception as e:
+        except Exception:
             outreg = self.tool.outfile
 
         cmd = ["dmlist", outreg, "counts"]
@@ -181,19 +185,21 @@ class ImageProcTaskRegionOut(ImageProcTask):
             print("\n\nNo sources detected\n")
         else:
             cmd = ['xpaset', '-p', self.xpa, 'regions', 'load', outreg]
-            fits = sp.run(cmd, check=True)
+            sp.run(cmd, check=True)
+
 
 # Specific classes for each tool ------------------
 
+
 class Dmimgblob(ImageProcTaskImgOut):
     'CIAO dmimgblob tool'
-    
+
     toolname = "dmimgblob"
 
-    def set_args(self,args):
-        'Arguments: thresold' 
-        self.tool.threshold=args[0]
-        self.tool.srconly=True
+    def set_args(self, args):
+        'Arguments: thresold'
+        self.tool.threshold = args[0]
+        self.tool.srconly = True
 
 
 class Dmimgadapt(ImageProcTaskImgOut):
@@ -203,31 +209,31 @@ class Dmimgadapt(ImageProcTaskImgOut):
 
     def set_args(self, args):
         'Args: function, minrad, maxrad, numrad, radscal counts'
-        self.tool.function=args[0]
-        self.tool.minrad=args[1]
-        self.tool.maxrad=args[2]
-        self.tool.numrad=args[3]
-        self.tool.radscale=args[4]
-        self.tool.counts=args[5]
+        self.tool.function = args[0]
+        self.tool.minrad = args[1]
+        self.tool.maxrad = args[2]
+        self.tool.numrad = args[3]
+        self.tool.radscale = args[4]
+        self.tool.counts = args[5]
 
 
 class Csmooth(ImageProcTaskImgOut):
     'CIAO csmooth tool'
-    
+
     toolname = 'csmooth'
 
     def set_args(self, args):
         'Args: kernel sigmin sigmax sclmin sclmax'
-        self.tool.sclmap="none"
-        self.tool.outsigfile="none"
-        self.tool.outsclfile="none"
-        self.tool.conmeth="fft"
-        self.tool.conkerneltype=args[0]
-        self.tool.sigmin=args[1]
-        self.tool.sigmax=args[2]
-        self.tool.sclmin=args[3]
-        self.tool.sclmax=args[4]
-        self.tool.sclmode="compute"
+        self.tool.sclmap = "none"
+        self.tool.outsigfile = "none"
+        self.tool.outsclfile = "none"
+        self.tool.conmeth = "fft"
+        self.tool.conkerneltype = args[0]
+        self.tool.sigmin = args[1]
+        self.tool.sigmax = args[2]
+        self.tool.sclmin = args[3]
+        self.tool.sclmax = args[4]
+        self.tool.sclmode = "compute"
 
 
 class Dmimgfilt(ImageProcTaskImgOut):
@@ -249,18 +255,18 @@ class Dmimgthresh(ImageProcTaskImgOut):
 
     def set_args(self, args):
         'Args: cutoff value'
-        self.tool.cut=args[0]
+        self.tool.cut = args[0]
         self.tool.value = args[1]
 
 
 class Dmnautilus(ImageProcTaskImgOut):
     'CIAO dmnautilus tool'
-    
+
     toolname = 'dmnautilus'
 
     def set_args(self, args):
         'ARGS: SNR'
-        self.tool.snr=args[0]
+        self.tool.snr = args[0]
 
 
 class Dmimgdist(ImageProcTaskImgOut):
@@ -270,7 +276,7 @@ class Dmimgdist(ImageProcTaskImgOut):
 
     def set_args(self, args):
         'Args: (none)'
-        pass # no parameters
+        pass     # no parameters
 
 
 class Apowerspectrum(ImageProcTaskImgOut):
@@ -297,32 +303,31 @@ class Acrosscorr(ImageProcTaskImgOut):
 
 class Aconvolve(ImageProcTaskImgOut):
     'CIAO aconvolve tool'
-    
+
     toolname = 'aconvolve'
 
     def set_args(self, args):
         'Args: kernel xlen ylen method'
-        ker=args[0]
-        xx=args[1]
-        yy=args[2]
-        meth=args[3]
-        nrad=4
-        kernels = {
-            "gaus"   : "lib:{ker}(2,{nrad},1,{xx},{yy})",
-            "mexhat" : "lib:{ker}(2,{nrad},1,{xx},{yy})",
-            "power"  : "lib:{ker}(2,{nrad},1,{xx},{yy})",
-            "exp"    : "lib:{ker}(2,{nrad},1,{xx},{yy})",
-            "tophat" : "lib:{ker}(2,1,{xx},{yy})",
-            "box"    : "lib:{ker}(2,1,{xx},{yy})",
-            "sinc"   : "lib:{ker}(2,{nrad},1,{xx})",
-            "beta"   : "lib:{ker}(2,{nrad},1,{xx})",
-            "cone"   : "lib:{ker}(2,1,{xx})",
-            "pyramid": "lib:{ker}(2,1,{xx})",
-            "sphere" : "lib:{ker}(2,{xx})",
-           }
-        self.tool.kernelspec = kernels[ker].format(ker=ker,xx=xx,yy=yy,
-                                                   nrad=nrad)
-        self.tool.method=meth
+        ker = args[0]
+        xlen = args[1]
+        ylen = args[2]
+        meth = args[3]
+        nrad = 4
+        kernels = {"gaus": "lib:{ker}(2,{nrad},1,{xx},{yy})",
+                   "mexhat": "lib:{ker}(2,{nrad},1,{xx},{yy})",
+                   "power": "lib:{ker}(2,{nrad},1,{xx},{yy})",
+                   "exp": "lib:{ker}(2,{nrad},1,{xx},{yy})",
+                   "tophat": "lib:{ker}(2,1,{xx},{yy})",
+                   "box": "lib:{ker}(2,1,{xx},{yy})",
+                   "sinc": "lib:{ker}(2,{nrad},1,{xx})",
+                   "beta": "lib:{ker}(2,{nrad},1,{xx})",
+                   "cone": "lib:{ker}(2,1,{xx})",
+                   "pyramid": "lib:{ker}(2,1,{xx})",
+                   "sphere": "lib:{ker}(2,{xx})", }
+        self.tool.kernelspec = kernels[ker].format(ker=ker, xx=xlen,
+                                                   yy=ylen, nrad=nrad)
+        self.tool.method = meth
+
 
 class Dmregrid2(ImageProcTaskImgOut):
     'CIAO dmregrid2 tool'
@@ -331,28 +336,27 @@ class Dmregrid2(ImageProcTaskImgOut):
 
     def set_args(self, args):
         'args: xoff yoff rotang xscale yscale x0 y0 method'
-        self.tool.xoffset=float(args[0])*-1.0
-        self.tool.yoffset=float(args[1])*-1.0
-        self.tool.theta=float(args[2])
-        self.tool.xscale=float(args[3])
-        self.tool.yscale=float(args[4])
+        self.tool.xoffset = float(args[0])*-1.0
+        self.tool.yoffset = float(args[1])*-1.0
+        self.tool.theta = float(args[2])
+        self.tool.xscale = float(args[3])
+        self.tool.yscale = float(args[4])
 
         import pycrates as pc
         _i = pc.read_file(self.infile).get_image().values
-        _ylen,_xlen = _i.shape
+        _ylen, _xlen = _i.shape
 
         if "INDEF" == args[5]:
-            self.tool.rotxcenter=int(_xlen/2.0)
+            self.tool.rotxcenter = int(_xlen/2.0)
         else:
-            self.tool.rotxcenter=float(args[5])
+            self.tool.rotxcenter = float(args[5])
 
         if "INDEF" == args[6]:
-            self.tool.rotycenter=int(_ylen/2.0)
+            self.tool.rotycenter = int(_ylen/2.0)
         else:
-            self.tool.rotycenter=float(args[6])
+            self.tool.rotycenter = float(args[6])
 
-        self.tool.method=args[7]
-
+        self.tool.method = args[7]
 
 
 class Dmimgcalc(ImageProcTaskImgOut):
@@ -363,41 +367,42 @@ class Dmimgcalc(ImageProcTaskImgOut):
     def set_args(self, args):
         'Args: task [value]'
 
-        task=args[0]
+        task = args[0]
 
         if task in ["add", "mul", "sub_c-p", "sub_p-c", "div_c/p", "div_p/c"]:
             # Get fits image from ds9
-            cmd = ['xpaset', '-p', xpa, 'frame', 'prev']
+            cmd = ['xpaset', '-p', self.xpa, 'frame', 'prev']
             sp.run(cmd, check=True)
-            infile2=save_ds9_image(xpa)
-            cmd = ['xpaset', '-p', xpa, 'frame', 'next']
+            infile2 = save_ds9_image(self.xpa)
+            cmd = ['xpaset', '-p', self.xpa, 'frame', 'next']
             sp.run(cmd, check=True)
             self.infile = self.tool.infile+","+infile2
             self.tool.infile = self.infile
 
         if "add" == task:
-            self.tool.op="imgout=(img1+img2)"
+            self.tool.op = "imgout=(img1+img2)"
         elif "sub_c-p" == task:
-            self.tool.op="imgout=(img1-img2)"
+            self.tool.op = "imgout=(img1-img2)"
         elif "sub_p-c" == task:
-            self.tool.op="imgout=(img2-img1)"
+            self.tool.op = "imgout=(img2-img1)"
         elif "mul" == task:
-            self.tool.op="imgout=(img1*img2)"
+            self.tool.op = "imgout=(img1*img2)"
         elif "div_c/p" == task:
-            self.tool.op="imgout=(img1/img2)"
+            self.tool.op = "imgout=(img1/img2)"
         elif "div_p/c" == task:
-            self.tool.op="imgout=(img2/img1)"
+            self.tool.op = "imgout=(img2/img1)"
         elif "scale" == task:
-            self.tool.op="imgout=(img1*{})".format(args[1])
+            self.tool.op = "imgout=(img1*{})".format(args[1])
         elif "offset" == task:
-            self.tool.op="imgout=(img1+{})".format(args[1])
+            self.tool.op = "imgout=(img1+{})".format(args[1])
         elif "pow" == task:
-            self.tool.op="imgout=(img1^{})".format(args[1])
+            self.tool.op = "imgout=(img1^{})".format(args[1])
         elif "mod" == task:
-            self.tool.op="imgout=(img1%{})".format(args[1])
-        elif task in ["acos","asin","atan","acosh","asinh","atanh","cos",
-          "cosh","exp","fabs","ln","log","sin","sinh","sqrt","tan",
-          "tanh", "ceil", "floor", "erf", "erfc", "gamma", "lgamma"]:
+            self.tool.op = "imgout=(img1%{})".format(args[1])
+        elif task in ["acos", "asin", "atan", "acosh", "asinh", "atanh",
+                      "cos", "cosh", "exp", "fabs", "ln", "log", "sin",
+                      "sinh", "sqrt", "tan", "tanh", "ceil", "floor",
+                      "erf", "erfc", "gamma", "lgamma"]:
             self.tool.op = "imgout={}(img1*1.0)".format(task)
         else:
             raise ValueError("Unknown task")
@@ -410,13 +415,13 @@ class Wavdetect(ImageProcTaskRegionOut):
 
     def set_args(self, args):
         'Args: scales expfile psffile'
-        self.tool.scales=args[0]
-        self.tool.scellfile=self.tool.outfile+"_scell"
-        self.tool.imagefile=self.tool.outfile+"_reconimg"
-        self.tool.defnbkgfile=self.tool.outfile+"_nbkg"
-        self.tool.interdir=os.environ["DAX_OUTDIR"]
-        self.tool.expfile=args[1][1:].strip('"') # strip off leading 'e'
-        self.tool.psffile=args[2][1:].strip('"') # strip off leading 'p'
+        self.tool.scales = args[0]
+        self.tool.scellfile = self.tool.outfile+"_scell"
+        self.tool.imagefile = self.tool.outfile+"_reconimg"
+        self.tool.defnbkgfile = self.tool.outfile+"_nbkg"
+        self.tool.interdir = os.environ["DAX_OUTDIR"]
+        self.tool.expfile = args[1][1:].strip('"')  # strip off leading 'e'
+        self.tool.psffile = args[2][1:].strip('"')  # strip off leading 'p'
         # TODO: sigthresh?
 
 
@@ -427,10 +432,10 @@ class Celldetect(ImageProcTaskRegionOut):
 
     def set_args(self, args):
         'Args: fixedcell expfile psffile thersh'
-        self.tool.fixedcell=int(args[0])
-        self.tool.expstk=args[1][1:].strip('"') # strip off leading 'e'
-        self.tool.psffile=args[2][1:].strip('"') # strip off leading 'p'
-        self.tool.thresh=float(args[3])
+        self.tool.fixedcell = int(args[0])
+        self.tool.expstk = args[1][1:].strip('"')   # strip off leading 'e'
+        self.tool.psffile = args[2][1:].strip('"')  # strip off leading 'p'
+        self.tool.thresh = float(args[3])
 
 
 class Vtpdetect(ImageProcTaskRegionOut):
@@ -441,8 +446,8 @@ class Vtpdetect(ImageProcTaskRegionOut):
     def set_args(self, args):
         'Args (none)'
         self.tool.infile = self.tool.infile+"[opt type=i4]"
-        
-        
+
+
 class Getsrcregion(ImageProcTaskRegionOut):
     'CIAO get_src_region tool'
 
@@ -452,23 +457,25 @@ class Getsrcregion(ImageProcTaskRegionOut):
         'Args (none)'
         # gsr clobber doesn't work well
         if os.path.exists(self.tool.outfile):
-                os.unlink(self.tool.outfile)
-        self.tool.invert=True
-        
+            os.unlink(self.tool.outfile)
+        self.tool.invert = True
+
+
 class Dmimglasso(ImageProcTaskRegionOut):
     '''CIAO dmimglasso tool
-    
+
     This task requires ds9 be running in crosshair mode'''
 
     toolname = 'dmimglasso'
 
     def set_args(self, args):
         'Args: lowval highval'
-        
+
         cmd = ['xpaget', self.xpa, 'mode']
-        ch = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
-        if ch.decode().strip() != "crosshair":
-            print("\n***\n*** You must be in crosshair mode to use this task \n***\n")
+        is_ch = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
+        if is_ch.decode().strip() != "crosshair":
+            print("\n***\n*** You must be in crosshair " +
+                  "mode to use this task \n***\n")
             if os.path.exists(self.tool.infile):
                 os.unlink(self.tool.infile)
             raise RuntimeError("Must be in crosshair mode to use this task")
@@ -482,7 +489,7 @@ class Dmimglasso(ImageProcTaskRegionOut):
         self.tool.low_value = args[0]
         self.tool.high_value = args[1]
 
-        
+
 class Dmcontour(ImageProcTaskRegionOut):
     'CIAO dmcontour tool'
 
@@ -490,9 +497,9 @@ class Dmcontour(ImageProcTaskRegionOut):
 
     def set_args(self, args):
         'Args: levels'
-        self.tool.levels=args[0]
+        self.tool.levels = args[0]
 
-        
+
 class Skyfov(ImageProcTaskRegionOut):
     'CIAO skyfov tool'
 
@@ -500,9 +507,9 @@ class Skyfov(ImageProcTaskRegionOut):
 
     def set_args(self, args):
         'Args: none'
-        pass # no args, TODO: find asol file?
+        pass   # no args, TODO: find asol file?
 
-        
+
 class Dmellipse(ImageProcTaskRegionOut):
     'CIAO dmellipse tool'
 
@@ -510,48 +517,50 @@ class Dmellipse(ImageProcTaskRegionOut):
 
     def set_args(self, args):
         'Args: fraction shape'
-        self.tool.fraction=args[0]
-        self.tool.shape=args[1]
+        self.tool.fraction = args[0]
+        self.tool.shape = args[1]
 
         # Unlike the other image proc tasks, dmellipse only
         # works on data in region
 
         freg = args[2]
-        if len(freg):
+        if freg != "":
             if freg.startswith("@"):
                 import stk
-                freg="+".join(stk.build(freg.replace("@","@-")))
+                freg = "+".join(stk.build(freg.replace("@", "@-")))
             else:
-                freg = freg.replace(";","+").replace("+-","-").rstrip("+")
-            ffilt="[(x,y)={}]".format(freg)
+                freg = freg.replace(";", "+").replace("+-", "-").rstrip("+")
+            ffilt = "[(x,y)={}]".format(freg)
         else:
-            ffilt=""
-        self.tool.infile=self.tool.infile+ffilt
+            ffilt = ""
+        self.tool.infile = self.tool.infile+ffilt
 
 
-    
 def map_tool_to_object(toolname, xpa, args):
-    
-    toolmap = {'dmimgblob':Dmimgblob, 'dmimgadapt':Dmimgadapt,
-                'csmooth':Csmooth, 'dmimgfilt':Dmimgfilt,
-                'dmimgthresh':Dmimgthresh, 'dmnautilus': Dmnautilus,
-                'dmimgdist':Dmimgdist, 'apowerspectrum':Apowerspectrum,
-                'acrosscorr':Acrosscorr, 'aconvolve':Aconvolve,
-                'dmregrid2':Dmregrid2, 'dmimgcalc':Dmimgcalc,
-                'wavdetect':Wavdetect, 'vtpdetect':Vtpdetect,
-                'celldetect':Celldetect, 'get_src_region':Getsrcregion,
-                'dmimglasso':Dmimglasso, 'dmcontour':Dmcontour,
-                'skyfov':Skyfov, 'dmellipse':Dmellipse}
-    toolClass = toolmap[toolname]
-    tool = toolClass(xpa, args)
+    'Create object based on tool name'
+
+    toolmap = {'dmimgblob': Dmimgblob, 'dmimgadapt': Dmimgadapt,
+               'csmooth': Csmooth, 'dmimgfilt': Dmimgfilt,
+               'dmimgthresh': Dmimgthresh, 'dmnautilus': Dmnautilus,
+               'dmimgdist': Dmimgdist, 'apowerspectrum': Apowerspectrum,
+               'acrosscorr': Acrosscorr, 'aconvolve': Aconvolve,
+               'dmregrid2': Dmregrid2, 'dmimgcalc': Dmimgcalc,
+               'wavdetect': Wavdetect, 'vtpdetect': Vtpdetect,
+               'celldetect': Celldetect, 'get_src_region': Getsrcregion,
+               'dmimglasso': Dmimglasso, 'dmcontour': Dmcontour,
+               'skyfov': Skyfov, 'dmellipse': Dmellipse}
+    ToolClass = toolmap[toolname]
+    tool = ToolClass(xpa, args)
     return tool
-    
 
-    
-xpa=sys.argv[1]
-toolname=sys.argv[2]
-check_unique(xpa)
-tool = map_tool_to_object(toolname, xpa, sys.argv[3:])
-tool.run()
+def doit():
+    'Main routine'
+    myxpa = sys.argv[1]
+    toolname = sys.argv[2]
+    check_unique(myxpa)
+    tool = map_tool_to_object(toolname, myxpa, sys.argv[3:])
+    tool.run()
 
 
+if __name__ == '__main__':
+    doit()
