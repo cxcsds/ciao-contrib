@@ -19,7 +19,7 @@
 #
 
 'DAX wrapper around various image procesing tasks'
- 
+
 import sys
 import os
 
@@ -79,7 +79,6 @@ def save_ds9_image(xpa):
     return ds9_file.name
 
 
-
 class ImageProcTask():
     'Base classs for image processing tasks'
 
@@ -89,6 +88,10 @@ class ImageProcTask():
         'Init: save image, and setup parameters'
 
         from ciao_contrib.runtool import make_tool
+        import datetime
+
+        print("-------------")
+        print(datetime.datetime.now())
 
         self.xpa = xpa
 
@@ -109,8 +112,8 @@ class ImageProcTask():
     def apply_region_to_infile(self, regions):
         '''Tools like dmellipse and dmimghull only operate on filtered
         regions.'''
- 
-        if regions is None or regions == "" :
+
+        if regions is None or regions == "":
             return
 
         if regions.startswith("@"):
@@ -120,15 +123,13 @@ class ImageProcTask():
             regions = regions.replace(";", "+").replace("+-", "-").rstrip("+")
         ffilt = "[(x,y)={}]".format(regions)
 
+        print("Using filter '{}'\n".format(ffilt))
+
         self.infile = self.infile+ffilt
         self.tool.infile = self.infile
 
     def run(self):
         'Do it'
-
-        print("-------------")
-        import datetime
-        print(datetime.datetime.now())
 
         # The "chips_startup.tk" (historical name when chips used for plotting)
         # has the definitions of the start_dax_progress and stop_dax_progress
@@ -141,11 +142,15 @@ class ImageProcTask():
                    '{{start_dax_progress {t}}}'.format(t=self.toolname)]
             sp.run(cmd, check=True)
 
-            verb = self.tool(clobber=True)
+            if hasattr(self.tool, "clobber") is True:
+                self.tool.clobber = True
+            verb = self.tool()
             if verb:
                 print(verb)
             self.send_output()
-            print("Output file: {}".format(self.outfile.name))
+
+            if hasattr(self.tool, "outfile") is True:
+                print("Output file: {}".format(self.outfile.name))
 
         finally:
             cmd = ['xpaset', '-p', self.xpa, 'tcl',
@@ -213,6 +218,14 @@ class ImageProcTaskPlotOut(ImageProcTask):
         'Send plot to da9'
         cmd = ['ds9_plot_blt', self.plotfile, self.title, self.xpa]
         sp.run(cmd, check=True)
+
+
+class ImageProcTaskTextOut(ImageProcTask):
+    'Classes that only output text'
+
+    def send_output(self):
+        'Send text to ds9; implement in each subclass'
+        raise NotImplementedError("Implement reportting in subclass")
 
 
 # Specific classes for each tool ------------------
@@ -406,6 +419,9 @@ class Dmimgcalc(ImageProcTaskImgOut):
             self.infile = self.tool.infile+","+infile2
             self.tool.infile = self.infile
 
+        # pylint doesn't like this many elif's but
+        # anything else is too complicated since number of
+        # args is different.
         if "add" == task:
             self.tool.op = "imgout=(img1+img2)"
         elif "sub_c-p" == task:
@@ -567,12 +583,12 @@ class Dmimgproject(ImageProcTaskPlotOut):
 
     def set_args(self, args):
         'Args: fraction shape'
-        stat=args[0]
+        stat = args[0]
         self.tool.axis = args[1]
         self.apply_region_to_infile(args[2])
-    
-        self.plotfile = self.tool.outfile + "[cols {},{}]".format(self.tool.axis, stat)
-                        
+        cols = "[cols {},{}]".format(self.tool.axis, stat)
+        self.plotfile = self.tool.outfile + cols
+
         self.title = "Project {} Profile {}".format(stat, self.tool.outfile)
 
 
@@ -583,11 +599,73 @@ class Dmimghist(ImageProcTaskPlotOut):
 
     def set_args(self, args):
         'Args: fraction shape'
-        self.tool.hist="1"
+        self.tool.hist = "1"
         self.apply_region_to_infile(args[0])
-    
+
         self.plotfile = self.tool.outfile + "[cols bin,counts]"
         self.title = "Pixel Histogram {}".format(self.tool.outfile)
+
+
+class Imgmoment(ImageProcTaskTextOut):
+    'CIAO imgmoment task'
+
+    toolname = 'imgmoment'
+
+    def set_args(self, args):
+        'Args: regions'
+        self.apply_region_to_infile(args[0])
+
+    def send_output(self):
+        'Nicely format output'
+        print("{:>20s} : {}".format("Total (0th)", self.tool.m_0_0))
+        print("{:>20s} : {}, {}".format("Centroid (1st)", self.tool.x_mu,
+                                        self.tool.y_mu))
+        print("{:>20s} : {}".format("Angle abt centroid", self.tool.phi))
+        print("{:>20s} : {}".format("1-sigma in X", self.tool.xsig))
+        print("{:>20s} : {}".format("1-sigma in Y", self.tool.ysig))
+        print("{:>20s} :".format("Moment matrix:"))
+        print("{:22s} {:12.5g}\t{:12.5g}\t{:12.5g}".format(" ", self.tool.m_0_0, self.tool.m_0_1, self.tool.m_0_2))
+        print("{:22s} {:12.5g}\t{:12.5g}\t{:12.5g}".format(" ", self.tool.m_1_0, self.tool.m_1_1, self.tool.m_1_2))
+        print("{:22s} {:12.5g}\t{:12.5g}\t{:12.5g}".format(" ", self.tool.m_2_0, self.tool.m_2_1, self.tool.m_2_2))
+
+
+class Dmstat(ImageProcTaskTextOut):
+    'CIAO dmstat task'
+
+    toolname = 'dmstat'
+
+    def set_args(self, args):
+        'Args: regions'
+        self.apply_region_to_infile(args[0])
+        self.tool.centroid = True
+        self.tool.median = False
+        self.tool.sigma = False
+        self.tool.verbose = 0
+
+    def send_output(self):
+        '''Nicely format output
+
+        We actually re-run dmstat a 2nd time here since centroid=yes|no
+        changes output and we want both.
+        '''
+        print("{:>20s} : {}".format("Image Axes", self.tool.out_columns))
+        print("{:>20s} : {}".format("Centroid (physical)",
+                                    self.tool.out_cntrd_phys))
+
+        self.tool.centroid = False
+        self.tool.sigma = True
+        self.tool.median = True
+        self.tool()
+
+        print("{:>20s} : {}".format("Minimum", self.tool.out_min))
+        print("{:>20s} : {}".format("Maximum", self.tool.out_max))
+        print("{:>20s} : {}".format("Average", self.tool.out_mean))
+        print("{:>20s} : {}".format("Sum", self.tool.out_sum))
+        print("{:>20s} : {}".format("Median", self.tool.out_median))
+        print("{:>20s} : {}".format("Area (pixels)", self.tool.out_good))
+        print("{:>20s} : {}".format("NULL pixels", self.tool.out_null))
+        print("{:>20s} : {}".format("Coords min pix", self.tool.out_min_loc))
+        print("{:>20s} : {}".format("Coords max pix", self.tool.out_max_loc))
 
 
 def map_tool_to_object(toolname, xpa, args):
@@ -603,8 +681,9 @@ def map_tool_to_object(toolname, xpa, args):
                'celldetect': Celldetect, 'get_src_region': Getsrcregion,
                'dmimglasso': Dmimglasso, 'dmcontour': Dmcontour,
                'skyfov': Skyfov, 'dmellipse': Dmellipse,
-               'dmimghull': Dmimghull, 'dmimgproject':Dmimgproject,
-               'dmimghist': Dmimghist}
+               'dmimghull': Dmimghull, 'dmimgproject': Dmimgproject,
+               'dmimghist': Dmimghist, 'imgmoment': Imgmoment,
+               'dmstat': Dmstat}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
