@@ -747,6 +747,46 @@ class Dmfilth(ImageProcTaskImgOut):
         self.tool.bkglist = "@-"+bkg_name
 
 
+class Dmextract(ImageProcTaskPlotOut):
+    'CIAO dmextract tool for radial profiles'
+    
+    toolname = "dmextract"
+    
+    def set_args(self, args):
+        'args: units'
+
+        cmd = "xpaget {}".format(self.xpa)
+        cmd = cmd + " regions -format ds9 -system physical"
+        cmd = cmd.split()
+        regout = sp.run(cmd, check=True,
+                        stdout=sp.PIPE).stdout.decode()
+
+        ds9_reg = self.tool.outfile+".ds9.reg"
+        with open(ds9_reg, "w") as fptr:
+            fptr.write(regout)
+
+        ciao_reg = self.tool.outfile+".ciao.reg"
+
+        from ciao_contrib.runtool import make_tool
+        convert = make_tool("convert_ds9_region_to_ciao_stack")
+        convert.infile = ds9_reg
+        convert.outfile = ciao_reg
+        convert(verbose=0, clobber=True)
+
+        self.tool.infile = "{}[bin (x,y)=@-{}]".format(self.tool.infile, ciao_reg)
+        self.tool.opt = "generic"
+        
+        if 'physical' == args[0]:
+            cols = "[cols rmid,sur_bri]"
+        elif 'arcsec' == args[0]:
+            cols = "[cols cel_rmid,sur_bri]"
+        else:
+            raise RuntimeError("Unknown units")
+
+        self.plotfile = self.tool.outfile+cols
+        self.title = "Radial Profile "+self.tool.outfile
+
+
 def map_tool_to_object(toolname, xpa, args):
     'Create object based on tool name'
 
@@ -763,7 +803,7 @@ def map_tool_to_object(toolname, xpa, args):
                'dmimghull': Dmimghull, 'dmimgproject': Dmimgproject,
                'dmimghist': Dmimghist, 'imgmoment': Imgmoment,
                'dmstat': Dmstat, 'arestore': Arestore,
-               'dmfilth': Dmfilth}
+               'dmfilth': Dmfilth, 'dmextract': Dmextract}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
