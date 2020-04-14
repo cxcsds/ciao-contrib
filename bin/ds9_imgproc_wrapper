@@ -676,9 +676,12 @@ class Arestore(ImageProcTaskImgOut):
     def set_args(self, args):
         'Args: none'
 
+        # Keep infile for arestore.  Use the
+        # filtered file to obtain an estimate of the PSF
         keep_infile = self.tool.infile
         self.apply_region_to_infile(args[0])
 
+        # Crop PSF just using dmcopy
         from ciao_contrib.runtool import make_tool
         dmcopy = make_tool("dmcopy")
         dmcopy.infile = self.tool.infile
@@ -688,6 +691,60 @@ class Arestore(ImageProcTaskImgOut):
         self.tool.infile = keep_infile
         self.tool.psffile = dmcopy.outfile
         self.tool.numiter = 20
+
+
+class Dmfilth(ImageProcTaskImgOut):
+    'CIAO dmfilth task'
+
+    toolname = 'dmfilth'
+
+    def set_args(self, args):
+        self.tool.method = args[0]
+
+        #
+        # Okay, a lot more prep work then the other tasks.  We
+        # Get the src and bkg regions via xpa.  We need to be
+        # sure separate them and match them up (using dmgroupreg).
+        #
+
+        def get_region_flavor(srcbkg):
+            'Get region via xpa and add ds9 tag info'
+            
+            cmd = "xpaget {}".format(self.xpa)
+            cmd = cmd + " regions {}".format(srcbkg)
+            cmd = cmd + " -format ds9 -system physical -strip"
+            cmd = cmd.split()
+            regout = sp.run(cmd, check=True,
+                            stdout=sp.PIPE).stdout.decode()
+            regout = regout.split(";")
+            regout = regout[1:]   # Strip off leading 'physical;'
+            bkg = srcbkg if srcbkg == "background" else ""
+            regout = [xx+" # {} tag={{{}}}".format(bkg, ii)
+                      for ii, xx in enumerate(regout)
+                      if xx != ""]
+            regout = "\n".join(regout)
+            return regout
+
+        all_regs = get_region_flavor("source")
+        all_regs = all_regs + "\n" + get_region_flavor("background") + "\n"
+        all_name = self.tool.outfile+".all.reg"
+        src_name = self.tool.outfile+".src.reg"
+        bkg_name = self.tool.outfile+".bkg.reg"
+
+        with open(all_name, "w") as fptr:
+            fptr.write(all_regs)
+
+        from ciao_contrib.runtool import make_tool
+        dmgroupreg = make_tool("dmgroupreg")
+        dmgroupreg.infile = all_name
+        dmgroupreg.srcoutfile = src_name
+        dmgroupreg.bkgoutfile = bkg_name
+        dmgroupreg.exclude = False if self.tool.method == "POLY" else True
+        dmgroupreg(clobber=True)
+
+        # Stack @- mean never add path
+        self.tool.srclist = "@-"+src_name
+        self.tool.bkglist = "@-"+bkg_name
 
 
 def map_tool_to_object(toolname, xpa, args):
@@ -705,7 +762,8 @@ def map_tool_to_object(toolname, xpa, args):
                'skyfov': Skyfov, 'dmellipse': Dmellipse,
                'dmimghull': Dmimghull, 'dmimgproject': Dmimgproject,
                'dmimghist': Dmimghist, 'imgmoment': Imgmoment,
-               'dmstat': Dmstat, 'arestore': Arestore}
+               'dmstat': Dmstat, 'arestore': Arestore,
+               'dmfilth': Dmfilth}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
