@@ -709,7 +709,7 @@ class Dmfilth(ImageProcTaskImgOut):
 
         def get_region_flavor(srcbkg):
             'Get region via xpa and add ds9 tag info'
-            
+
             cmd = "xpaget {}".format(self.xpa)
             cmd = cmd + " regions {}".format(srcbkg)
             cmd = cmd + " -format ds9 -system physical -strip"
@@ -749,9 +749,9 @@ class Dmfilth(ImageProcTaskImgOut):
 
 class Dmextract(ImageProcTaskPlotOut):
     'CIAO dmextract tool for radial profiles'
-    
+
     toolname = "dmextract"
-    
+
     def set_args(self, args):
         'args: units'
 
@@ -773,9 +773,10 @@ class Dmextract(ImageProcTaskPlotOut):
         convert.outfile = ciao_reg
         convert(verbose=0, clobber=True)
 
-        self.tool.infile = "{}[bin (x,y)=@-{}]".format(self.tool.infile, ciao_reg)
+        self.tool.infile = "{}[bin (x,y)=@-{}]".format(self.tool.infile,
+                                                       ciao_reg)
         self.tool.opt = "generic"
-        
+
         if 'physical' == args[0]:
             cols = "[cols rmid,sur_bri]"
         elif 'arcsec' == args[0]:
@@ -785,6 +786,62 @@ class Dmextract(ImageProcTaskPlotOut):
 
         self.plotfile = self.tool.outfile+cols
         self.title = "Radial Profile "+self.tool.outfile
+
+
+class Dmimgpick(ImageProcTaskPlotOut):
+    'CIAO dmimgpick tool'
+
+    toolname = 'dmimgpick'
+
+    def set_args(self, args):
+        'Args: method col2plot'
+
+        cmd = "xpaget {}".format(self.xpa)
+        cmd = cmd + " regions -format ds9 -system physical"
+        regout = sp.run(cmd.split(), check=True,
+                        stdout=sp.PIPE).stdout.decode()
+        polys = [x for x in regout.split("\n") if x.startswith("poly")]
+        if not polys:
+            raise RuntimeError("No polygons found")
+
+        regfile = self.tool.outfile + ".poly.reg"
+        from region import CXCRegion
+        CXCRegion(polys[-1]).write(regfile, fits=True, clobber=True)
+
+        self.tool.imgfile = self.tool.infile
+        self.tool.infile = regfile + "[cols x,y]"
+        self.tool.method = args[0]
+
+        cols = "[cols {},#2]".format(args[1])
+        self.plotfile = self.tool.outfile + cols
+        self.title = "{} pixel values".format(args[0])
+
+    def send_output(self):
+        'Need to do a little manip before plotting'
+
+        from ciao_contrib.runtool import make_tool
+        dmlist = make_tool("dmlist")
+        print(dmlist(self.tool.outfile, op="data,clean,array"))
+
+        from pycrates import read_file
+        import numpy as np
+        from crates_contrib.utils import add_colvals
+
+        tab = read_file(self.tool.outfile, mode="rw")
+        xvals = tab.get_column("x").values
+        yvals = tab.get_column("y").values
+        meanx = np.average(xvals)
+        meany = np.average(yvals)
+        radii = np.hypot(xvals-meanx, yvals-meany)
+        angles = np.rad2deg(np.arctan2(yvals-meany, xvals-meanx))
+        rows = np.ones_like(xvals).cumsum(axis=1)
+
+        add_colvals(tab, "radius", radii, unit="pixels")
+        add_colvals(tab, "angle", angles, unit="deg")
+        add_colvals(tab, "rownum", rows)
+        tab.write()
+
+        super().send_output()
 
 
 def map_tool_to_object(toolname, xpa, args):
@@ -803,7 +860,8 @@ def map_tool_to_object(toolname, xpa, args):
                'dmimghull': Dmimghull, 'dmimgproject': Dmimgproject,
                'dmimghist': Dmimghist, 'imgmoment': Imgmoment,
                'dmstat': Dmstat, 'arestore': Arestore,
-               'dmfilth': Dmfilth, 'dmextract': Dmextract}
+               'dmfilth': Dmfilth, 'dmextract': Dmextract,
+               'dmimgpick': Dmimgpick}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
