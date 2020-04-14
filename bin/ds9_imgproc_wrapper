@@ -806,6 +806,7 @@ class Dmimgpick(ImageProcTaskPlotOut):
 
         regfile = self.tool.outfile + ".poly.reg"
         from region import CXCRegion
+        # We only want the last polygon
         CXCRegion(polys[-1]).write(regfile, fits=True, clobber=True)
 
         self.tool.imgfile = self.tool.infile
@@ -844,6 +845,58 @@ class Dmimgpick(ImageProcTaskPlotOut):
         super().send_output()
 
 
+class Ecfcalc(ImageProcTaskPlotOut):
+    'Contrib script ecf_calc'
+
+    toolname = 'ecf_calc'
+
+    def set_args(self, args):
+        'args: none'
+
+        cmd = "xpaget {}".format(self.xpa)
+        cmd = cmd + " regions -format ciao -system physical -strip"
+        regout = sp.run(cmd.split(), check=True,
+                        stdout=sp.PIPE).stdout.decode()
+
+        from region import CXCRegion
+        for shape in regout.split(";"):
+            if not shape:
+                continue
+
+            atreg = CXCRegion(shape).shapes[0]
+
+            if atreg.name not in ['circle', 'ellipse', 'box', 'rotbox']:
+                continue
+
+            self.tool.xpos = atreg.xpoints[0]
+            self.tool.ypos = atreg.ypoints[0]
+            if atreg.name == 'circle':
+                self.tool.radius = atreg.radii[0]
+            else:
+                from math import sqrt
+                rad1 = atreg.radii[0]
+                rad2 = atreg.radii[1]
+                self.tool.radius = sqrt(rad1*rad1+rad2*rad2)
+
+        self.tool.binsize = 1.0
+        if args[0] == 'default':
+            self.tool.fraction = "0.01,0.025,0.05,0.075,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.85,0.9,0.95,0.99"
+        else:
+            self.tool.fraction = args[0]
+
+        self.plotfile = self.tool.outfile+"[cols r_mid,fraction]"
+        self.title = "Enclosed Counts Fraction "+self.tool.outfile
+
+    def send_output(self):
+        'Tweak output after plotting'
+        super().send_output()
+        cmd = "xpaset -p {} plot shape circle".format(self.xpa)
+        sp.run(cmd.split(), check=True)
+
+        cmd = "xpaset -p {} plot smooth linear".format(self.xpa)
+        sp.run(cmd.split(), check=True)
+
+
 def map_tool_to_object(toolname, xpa, args):
     'Create object based on tool name'
 
@@ -861,7 +914,7 @@ def map_tool_to_object(toolname, xpa, args):
                'dmimghist': Dmimghist, 'imgmoment': Imgmoment,
                'dmstat': Dmstat, 'arestore': Arestore,
                'dmfilth': Dmfilth, 'dmextract': Dmextract,
-               'dmimgpick': Dmimgpick}
+               'dmimgpick': Dmimgpick, 'ecf_calc': Ecfcalc}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
