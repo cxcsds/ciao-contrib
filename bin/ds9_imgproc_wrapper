@@ -668,6 +668,28 @@ class Dmstat(ImageProcTaskTextOut):
         print("{:>20s} : {}".format("Coords max pix", self.tool.out_max_loc))
 
 
+class Arestore(ImageProcTaskImgOut):
+    'CIAO arestore task'
+
+    toolname = "arestore"
+
+    def set_args(self, args):
+        'Args: none'
+
+        keep_infile = self.tool.infile
+        self.apply_region_to_infile(args[0])
+
+        from ciao_contrib.runtool import make_tool
+        dmcopy = make_tool("dmcopy")
+        dmcopy.infile = self.tool.infile
+        dmcopy.outfile = self.tool.outfile+".psf"
+        dmcopy(clobber=True)
+
+        self.tool.infile = keep_infile
+        self.tool.psffile = dmcopy.outfile
+        self.tool.numiter = 20
+
+
 def map_tool_to_object(toolname, xpa, args):
     'Create object based on tool name'
 
@@ -683,7 +705,7 @@ def map_tool_to_object(toolname, xpa, args):
                'skyfov': Skyfov, 'dmellipse': Dmellipse,
                'dmimghull': Dmimghull, 'dmimgproject': Dmimgproject,
                'dmimghist': Dmimghist, 'imgmoment': Imgmoment,
-               'dmstat': Dmstat}
+               'dmstat': Dmstat, 'arestore': Arestore}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
