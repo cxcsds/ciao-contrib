@@ -47,38 +47,6 @@ def check_unique(xpa):
                            "  Please close the other windows and restart.")
 
 
-def save_ds9_image(xpa):
-    'Save image currently displayed by ds9'
-
-    # ds9 can crop images; but when you get the file it
-    # sends the whole thing.  We can get the crop info
-    # and apply it separately. Note: I'm using image coords (#1,#2)
-    # to avoid problems w/ sky vs. pos. vs (x,y).
-    cmd = ['xpaget', xpa, 'crop', 'image']
-    crop = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
-    xmid, ymid, xlen, ylen = [float(x) for x in crop.split()]
-    xlo = xmid-xlen/2.0
-    xhi = xmid+xlen/2.0
-    ylo = ymid-ylen/2.0
-    yhi = ymid+ylen/2.0
-    filt = "[#1={}:{},#2={}:{}]".format(xlo, xhi, ylo, yhi)
-
-    # Get fits image from ds9
-    cmd = ['xpaget', xpa, 'fits']
-    fits = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
-
-    # Use dmcopy to filter on cropped region; pipe
-    # fits file into dmcopy via stdin.
-    ds9_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"],
-                                  suffix="_ds9.fits", delete=False)
-    cmd = ['dmcopy', '-{}'.format(filt), ds9_file.name, "clobber=yes"]
-    dmc = sp.Popen(cmd, stdin=sp.PIPE)
-    dmc.stdin.write(fits)
-    dmc.communicate()
-
-    return ds9_file.name
-
-
 class ImageProcTask():
     'Base classs for image processing tasks'
 
@@ -95,7 +63,7 @@ class ImageProcTask():
 
         self.xpa = xpa
 
-        self.infile = save_ds9_image(xpa)
+        self.infile = self.save_ds9_image()
 
         suffix = "_{}.fits".format(self.toolname)
         self.outfile = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"],
@@ -138,10 +106,7 @@ class ImageProcTask():
         # {}'s.
 
         try:
-            cmd = ['xpaset', '-p', self.xpa, 'tcl',
-                   '{{start_dax_progress {t}}}'.format(t=self.toolname)]
-            sp.run(cmd, check=True)
-
+            self.xpaset_p(['tcl', '{{start_dax_progress {t}}}'.format(t=self.toolname)])
             if hasattr(self.tool, "clobber") is True:
                 self.tool.clobber = True
             verb = self.tool()
@@ -153,9 +118,7 @@ class ImageProcTask():
                 print("Output file: {}".format(self.outfile.name))
 
         finally:
-            cmd = ['xpaset', '-p', self.xpa, 'tcl',
-                   '{{stop_dax_progress {t}}}'.format(t=self.toolname)]
-            sp.run(cmd, check=True)
+            self.xpaset_p(['tcl', '{{stop_dax_progress {t}}}'.format(t=self.toolname)])
 
             infiles = self.infile.split(",")
             for infile in infiles:
@@ -170,6 +133,59 @@ class ImageProcTask():
         'In derived classed'
         raise NotImplementedError("Not here")
 
+    def xpaset_p(self, args):
+        'Run xpaset -p (nothing return)'
+        cmd = ["xpaset", "-p", self.xpa]
+
+        if isinstance(args, str):
+            cmd.extend(args.split())
+        else:
+            cmd.extend(args)
+
+        sp.run(cmd, check=True)
+
+    def xpaget(self, args, decode=True):
+        'Run xpaget, return output as str'
+        cmd = ["xpaget", self.xpa]
+
+        if isinstance(args, str):
+            cmd.extend(args.split())
+        else:
+            cmd.extend(args)
+        retval = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
+        if decode is True:
+            retval = retval.decode()
+        return retval
+
+    def save_ds9_image(self):
+        'Save image currently displayed by ds9'
+
+        # ds9 can crop images; but when you get the file it
+        # sends the whole thing.  We can get the crop info
+        # and apply it separately. Note: I'm using image coords (#1,#2)
+        # to avoid problems w/ sky vs. pos. vs (x,y).
+        crop = self.xpaget("crop image")
+        xmid, ymid, xlen, ylen = [float(x) for x in crop.split()]
+        xlo = xmid-xlen/2.0
+        xhi = xmid+xlen/2.0
+        ylo = ymid-ylen/2.0
+        yhi = ymid+ylen/2.0
+        filt = "[#1={}:{},#2={}:{}]".format(xlo, xhi, ylo, yhi)
+
+        # Get fits image from ds9
+        fits = self.xpaget(["fits", ], decode=False)
+
+        # Use dmcopy to filter on cropped region; pipe
+        # fits file into dmcopy via stdin.
+        ds9_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"],
+                                      suffix="_ds9.fits", delete=False)
+        cmd = ['dmcopy', '-{}'.format(filt), ds9_file.name, "clobber=yes"]
+        dmc = sp.Popen(cmd, stdin=sp.PIPE)
+        dmc.stdin.write(fits)
+        dmc.communicate()
+
+        return ds9_file.name
+
 
 class ImageProcTaskImgOut(ImageProcTask):
     'Classes that send output image to ds9'
@@ -177,14 +193,11 @@ class ImageProcTaskImgOut(ImageProcTask):
     def send_output(self):
         'Send output, go into tile mode if requsted'
 
-        cmd = ['xpaset', '-p', self.xpa, 'fits', 'new', self.tool.outfile]
-        sp.run(cmd, check=True)
+        self.xpaset_p(['fits', 'new', self.tool.outfile])
 
-        # Todo, move to init
         from paramio import pget
         if "yes" == pget("dax", "tile"):
-            cmd = ['xpaset', '-p', self.xpa, 'tile']
-            sp.run(cmd, check=True)
+            self.xpaset_p(['tile', ])
 
 
 class ImageProcTaskRegionOut(ImageProcTask):
@@ -207,8 +220,7 @@ class ImageProcTaskRegionOut(ImageProcTask):
         if nrows.decode().strip() == '0':
             print("\n\nNo sources detected\n")
         else:
-            cmd = ['xpaset', '-p', self.xpa, 'regions', 'load', outreg]
-            sp.run(cmd, check=True)
+            self.xpaset_p(['regions', 'load', outreg])
 
 
 class ImageProcTaskPlotOut(ImageProcTask):
@@ -411,11 +423,11 @@ class Dmimgcalc(ImageProcTaskImgOut):
 
         if task in ["add", "mul", "sub_c-p", "sub_p-c", "div_c/p", "div_p/c"]:
             # Get fits image from ds9
-            cmd = ['xpaset', '-p', self.xpa, 'frame', 'prev']
-            sp.run(cmd, check=True)
-            infile2 = save_ds9_image(self.xpa)
-            cmd = ['xpaset', '-p', self.xpa, 'frame', 'next']
-            sp.run(cmd, check=True)
+            self.xpaset_p(['frame', 'prev'])
+
+            infile2 = self.save_ds9_image()
+            self.xpaset_p(['frame', 'next'])
+
             self.infile = self.tool.infile+","+infile2
             self.tool.infile = self.infile
 
@@ -514,18 +526,16 @@ class Dmimglasso(ImageProcTaskRegionOut):
     def set_args(self, args):
         'Args: lowval highval'
 
-        cmd = ['xpaget', self.xpa, 'mode']
-        is_ch = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
-        if is_ch.decode().strip() != "crosshair":
+        is_ch = self.xpaget(['mode', ])
+        if is_ch.strip() != "crosshair":
             print("\n***\n*** You must be in crosshair " +
                   "mode to use this task \n***\n")
             if os.path.exists(self.tool.infile):
                 os.unlink(self.tool.infile)
             raise RuntimeError("Must be in crosshair mode to use this task")
 
-        cmd = ['xpaget', self.xpa, 'crosshair', 'physical']
-        phys = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
-        xpos, ypos = phys.decode().split()
+        phys = self.xpaget("crosshair physical")
+        xpos, ypos = phys.split()
 
         self.tool.xpos = xpos
         self.tool.ypos = ypos
@@ -710,12 +720,8 @@ class Dmfilth(ImageProcTaskImgOut):
         def get_region_flavor(srcbkg):
             'Get region via xpa and add ds9 tag info'
 
-            cmd = "xpaget {}".format(self.xpa)
-            cmd = cmd + " regions {}".format(srcbkg)
-            cmd = cmd + " -format ds9 -system physical -strip"
-            cmd = cmd.split()
-            regout = sp.run(cmd, check=True,
-                            stdout=sp.PIPE).stdout.decode()
+            regout = self.xpaget(["regions", srcbkg, "-format", "ds9",
+                                  "-system", "physical", "-strip"])
             regout = regout.split(";")
             regout = regout[1:]   # Strip off leading 'physical;'
             bkg = srcbkg if srcbkg == "background" else ""
@@ -755,12 +761,7 @@ class Dmextract(ImageProcTaskPlotOut):
     def set_args(self, args):
         'args: units'
 
-        cmd = "xpaget {}".format(self.xpa)
-        cmd = cmd + " regions -format ds9 -system physical"
-        cmd = cmd.split()
-        regout = sp.run(cmd, check=True,
-                        stdout=sp.PIPE).stdout.decode()
-
+        regout = self.xpaget("regions -format ds9 -system physical")
         ds9_reg = self.tool.outfile+".ds9.reg"
         with open(ds9_reg, "w") as fptr:
             fptr.write(regout)
@@ -796,10 +797,7 @@ class Dmimgpick(ImageProcTaskPlotOut):
     def set_args(self, args):
         'Args: method col2plot'
 
-        cmd = "xpaget {}".format(self.xpa)
-        cmd = cmd + " regions -format ds9 -system physical"
-        regout = sp.run(cmd.split(), check=True,
-                        stdout=sp.PIPE).stdout.decode()
+        regout = self.xpaget("regions -format ds9 -system physical")
         polys = [x for x in regout.split("\n") if x.startswith("poly")]
         if not polys:
             raise RuntimeError("No polygons found")
@@ -853,12 +851,9 @@ class Ecfcalc(ImageProcTaskPlotOut):
     def set_args(self, args):
         'args: none'
 
-        cmd = "xpaget {}".format(self.xpa)
-        cmd = cmd + " regions -format ciao -system physical -strip"
-        regout = sp.run(cmd.split(), check=True,
-                        stdout=sp.PIPE).stdout.decode()
-
+        regout = self.xpaget("regions -format ciao -system physical -strip")
         from region import CXCRegion
+        valid_shape = False
         for shape in regout.split(";"):
             if not shape:
                 continue
@@ -868,6 +863,7 @@ class Ecfcalc(ImageProcTaskPlotOut):
             if atreg.name not in ['circle', 'ellipse', 'box', 'rotbox']:
                 continue
 
+            valid_shape = True
             self.tool.xpos = atreg.xpoints[0]
             self.tool.ypos = atreg.ypoints[0]
             if atreg.name == 'circle':
@@ -877,6 +873,10 @@ class Ecfcalc(ImageProcTaskPlotOut):
                 rad1 = atreg.radii[0]
                 rad2 = atreg.radii[1]
                 self.tool.radius = sqrt(rad1*rad1+rad2*rad2)
+            break     # Use 1st shape we find.
+
+        if valid_shape is False:
+            raise RuntimeError("No valid shapes (circle, ellipse, box) found")
 
         self.tool.binsize = 1.0
         if args[0] == 'default':
@@ -890,11 +890,8 @@ class Ecfcalc(ImageProcTaskPlotOut):
     def send_output(self):
         'Tweak output after plotting'
         super().send_output()
-        cmd = "xpaset -p {} plot shape circle".format(self.xpa)
-        sp.run(cmd.split(), check=True)
-
-        cmd = "xpaset -p {} plot smooth linear".format(self.xpa)
-        sp.run(cmd.split(), check=True)
+        self.xpaset_p("plot shape circle")
+        self.xpaset_p("plot smooth linear")
 
 
 def map_tool_to_object(toolname, xpa, args):
