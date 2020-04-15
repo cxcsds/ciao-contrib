@@ -288,7 +288,7 @@ else:
     sherpa.guess(mdl2)
 
 
-from ciao_contrib._tools.dax_model_editor import *
+from dax.dax_model_editor import *
 DaxModelEditor(mdls, "${ds9}").run()
 
 
@@ -304,7 +304,7 @@ print( "Energy Flux = %s ergs/cm^2/s\n" % sherpa.calc_energy_flux())
 
 sherpa.save("$sav", clobber=True)
 
-from ciao_contrib._tools.dax_plot_utils import *
+from dax.dax_plot_utils import *
  
 _f = sherpa.get_fit_plot()
 _d = _f.dataplot

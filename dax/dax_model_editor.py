@@ -207,12 +207,12 @@ class DaxModelEditor():
         if _d.xerr is None:
             _d.xerr = (_d.x-_d.x)  # zeros
 
-        import ciao_contrib._tools.dax_plot_utils as dax
-        dax.blt_plot_model(self.xpa, _m.x, _m.y,
+        import dax.dax_plot_utils as dax_plot
+        dax_plot.blt_plot_model(self.xpa, _m.x, _m.y,
                            "Dax Model Editor Plot", "X-axis", "Y-axis",
                            new=newplot, winname="dax_model_editor")
 
-        dax.blt_plot_data(self.xpa, _d.x, _d.xerr/2.0, _d.y, _d.yerr)
+        dax_plot.blt_plot_data(self.xpa, _d.x, _d.xerr/2.0, _d.y, _d.yerr)
 
 
 class DaxModelParameter():
