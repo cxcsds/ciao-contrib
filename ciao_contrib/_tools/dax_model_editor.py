@@ -228,7 +228,9 @@ class DaxModelParameter():
         self.sherpa_par = sherpa_model_parameter
         self.parent = parent
         self.label_frame = label_frame
-        self.initial_value = self.sherpa_par.val
+        self.initial_value = {'val': self.sherpa_par.val,
+                              'min': self.sherpa_par.min,
+                              'max': self.sherpa_par.max}
         self.render_ui()
 
     def _freeze_thaw(self):
@@ -239,19 +241,22 @@ class DaxModelParameter():
         else:
             self.sherpa_par.thaw()
 
-    def __format_val(self, val):
+    @staticmethod
+    def __format_val(val):
         'Format parameter values'
         retval = "{:.5g}".format(val)
         return retval
 
     def reset(self):
         """Reset values to original"""
-        self.val.delete(0, END)
-        self.val.insert(0, self.__format_val(self.initial_value))
-        self.val.configure(foreground="black")
-        self.sherpa_par.val = self.initial_value
+        for field in ['max', 'min', 'val']:
+            to_mod = getattr(self, field)
+            to_mod.delete(0, END)
+            to_mod.insert(0, self.__format_val(self.initial_value[field]))
+            to_mod.configure(foreground="black")
+            setattr(self.sherpa_par, field, self.initial_value[field])
 
-    def entry_callback(self, keyevt):
+    def entry_callback(self, keyevt, field):
         '''ACTION: set the model parameter value when the user
         type <<Return>>.  Otherwise, when user edits value
         it turns red so user knows it hasn't been set yet.
@@ -270,19 +275,20 @@ class DaxModelParameter():
         # generate CR. This makes sense since can remap keyboard
         # keys -- the action we want is CR, whichever key generates it.
 
+        to_mod = getattr(self, field)
+
         if '\r' == keyevt.char:
             try:
-                fval = float(self.val.get())
-                setattr(self.sherpa_par, "val", fval)
-                self.val.configure(foreground="black")
-                self.last_value = self.val.get()
+                fval = float(to_mod.get())
+                setattr(self.sherpa_par, field, fval)
+                to_mod.configure(foreground="black")
+                to_mod.last_value = to_mod.get()
             except (ValueError, ParameterErr) as val_err:
-                messagebox.showerror("DAX Model Editor",
-                                     str(val_err))
+                messagebox.showerror("DAX Model Editor", str(val_err))
 
         else:
-            if self.val.get() != self.last_value:
-                self.val.configure(foreground="red")
+            if to_mod.get() != to_mod.last_value:
+                to_mod.configure(foreground="red")
 
     def render_ui(self):
         '''Render the parameter UI elements and attach bindings'''
@@ -302,8 +308,9 @@ class DaxModelParameter():
         self.val.grid(row=row, column=1, padx=(5, 5), pady=2)
         self.val.delete(0, END)
         self.val.insert(0, self.__format_val(self.sherpa_par.val))
-        self.last_value = self.val.get()
-        self.val.bind("<KeyRelease>", self.entry_callback)
+        self.val.last_value = self.val.get()
+        self.val.bind("<KeyRelease>",
+                      lambda x: self.entry_callback(x, field='val'))
 
         # Frozen|Thawed checkbox.  Checked if frozen.
         self.fz_box = IntVar()
@@ -316,15 +323,26 @@ class DaxModelParameter():
         fzbtn.grid(row=row, column=2, padx=(5, 5), pady=2)
 
         # The min value
-        # RFE: Lock/UnLock limits for editing
-        par_min = Label(win, text=self.__format_val(self.sherpa_par.min),
-                        width=12, anchor="e")
-        par_min.grid(row=row, column=3, padx=(5, 5), pady=2)
+        self.min_str = StringVar()
+        self.min = Entry(win, textvariable=self.min_str,
+                         foreground="black", width=12, justify="right")
+        self.min.grid(row=row, column=3, padx=(5, 5), pady=2)
+        self.min.delete(0, END)
+        self.min.insert(0, self.__format_val(self.sherpa_par.min))
+        self.min.last_value = self.min.get()
+        self.min.bind("<KeyRelease>",
+                      lambda x: self.entry_callback(x, field='min'))
 
         # The max value
-        par_max = Label(win, text=self.__format_val(self.sherpa_par.max),
-                        width=12, anchor="e")
-        par_max.grid(row=row, column=4, padx=(5, 5), pady=2)
+        self.max_str = StringVar()
+        self.max = Entry(win, textvariable=self.max_str,
+                         foreground="black", width=12, justify="right")
+        self.max.grid(row=row, column=4, padx=(5, 5), pady=2)
+        self.max.delete(0, END)
+        self.max.insert(0, self.__format_val(self.sherpa_par.max))
+        self.max.last_value = self.max.get()
+        self.max.bind("<KeyRelease>",
+                      lambda x: self.entry_callback(x, field='max'))
 
         # The units of the parameter
         par_units = Label(win, text="{}".format(self.sherpa_par.units),
