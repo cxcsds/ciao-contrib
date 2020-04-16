@@ -105,7 +105,8 @@ class ImageProcTask():
         # {}'s.
 
         try:
-            self.xpaset_p(['tcl', '{{start_dax_progress {t}}}'.format(t=self.toolname)])
+            self.xpaset_p(['tcl',
+                           '{{start_dax_progress {t}}}'.format(t=self.toolname)])
             if hasattr(self.tool, "clobber") is True:
                 self.tool.clobber = True
             verb = self.tool()
@@ -117,7 +118,8 @@ class ImageProcTask():
                 print("Output file: {}".format(self.outfile.name))
 
         finally:
-            self.xpaset_p(['tcl', '{{stop_dax_progress {t}}}'.format(t=self.toolname)])
+            self.xpaset_p(['tcl',
+                           '{{stop_dax_progress {t}}}'.format(t=self.toolname)])
 
             infiles = self.infile.split(",")
             for infile in infiles:
@@ -657,7 +659,6 @@ class Skyfov(ImageProcTaskRegionOut):
         self.tool.aspect = auxfiles["asol"]
 
 
-
 class Dmellipse(ImageProcTaskRegionOut):
     'CIAO dmellipse tool'
 
@@ -999,7 +1000,8 @@ class Ditherregion(ImageProcTaskPlotOut):
 
         auxfiles = self.find_aux()
 
-        regions = self.xpaget("regions -format ciao -system physical source -strip yes")
+        regions = self.xpaget(["regions", "-format", "ciao", "-system",
+                               "physical", "source", "-strip", "yes"])
         if regions.startswith("@"):
             import stk
             regions = "+".join(stk.build(regions.replace("@", "@-")))
