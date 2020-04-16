@@ -668,7 +668,8 @@ class Dmellipse(ImageProcTaskRegionOut):
         'Args: fraction shape'
         self.tool.fraction = args[0]
         self.tool.shape = args[1]
-        self.apply_region_to_infile(args[2])
+        if len(args) > 2:
+            self.apply_region_to_infile(args[2])
 
 
 class Dmimghull(ImageProcTaskRegionOut):
@@ -679,7 +680,8 @@ class Dmimghull(ImageProcTaskRegionOut):
     def set_args(self, args):
         'Args: fraction shape'
         self.tool.tolerance = args[0]
-        self.apply_region_to_infile(args[1])
+        if len(args) > 1:
+            self.apply_region_to_infile(args[1])
 
 
 class Dmimgproject(ImageProcTaskPlotOut):
@@ -691,7 +693,8 @@ class Dmimgproject(ImageProcTaskPlotOut):
         'Args: fraction shape'
         stat = args[0]
         self.tool.axis = args[1]
-        self.apply_region_to_infile(args[2])
+        if len(args) > 2:
+            self.apply_region_to_infile(args[2])
         cols = "[cols {},{}]".format(self.tool.axis, stat)
         self.plotfile = self.tool.outfile + cols
 
@@ -705,8 +708,9 @@ class Dmimghist(ImageProcTaskPlotOut):
 
     def set_args(self, args):
         'Args: fraction shape'
+        if args is not None and len(args) > 0:
+            self.apply_region_to_infile(args[0])
         self.tool.hist = "1"
-        self.apply_region_to_infile(args[0])
 
         self.plotfile = self.tool.outfile + "[cols bin,counts]"
         self.title = "Pixel Histogram {}".format(self.tool.outfile)
@@ -719,7 +723,8 @@ class Imgmoment(ImageProcTaskTextOut):
 
     def set_args(self, args):
         'Args: regions'
-        self.apply_region_to_infile(args[0])
+        if args is not None and len(args) > 0:
+            self.apply_region_to_infile(args[0])
 
     def send_output(self):
         'Nicely format output'
@@ -742,7 +747,10 @@ class Dmstat(ImageProcTaskTextOut):
 
     def set_args(self, args):
         'Args: regions'
-        self.apply_region_to_infile(args[0])
+        print(args)
+
+        if args is not None and len(args) > 0:
+            self.apply_region_to_infile(args[0])
         self.tool.centroid = True
         self.tool.median = False
         self.tool.sigma = False
@@ -785,7 +793,10 @@ class Arestore(ImageProcTaskImgOut):
         # Keep infile for arestore.  Use the
         # filtered file to obtain an estimate of the PSF
         keep_infile = self.tool.infile
-        self.apply_region_to_infile(args[0])
+        if args is not None and len(args) > 0:
+            self.apply_region_to_infile(args[0])
+        else:
+            raise RuntimeError("ERROR: No valid regions found")
 
         # Crop PSF just using dmcopy
         from ciao_contrib.runtool import make_tool
@@ -817,7 +828,10 @@ class Dmfilth(ImageProcTaskImgOut):
             'Get region via xpa and add ds9 tag info'
 
             regout = self.xpaget(["regions", srcbkg, "-format", "ds9",
-                                  "-system", "physical", "-strip"])
+                                  "-system", "physical", "-strip", "yes"])
+            if regout == "":
+                raise RuntimeError("No valid {} regions found".format(srcbkg))
+
             regout = regout.split(";")
             regout = regout[1:]   # Strip off leading 'physical;'
             bkg = srcbkg if srcbkg == "background" else ""
@@ -868,7 +882,12 @@ class Dmextract(ImageProcTaskPlotOut):
         convert = make_tool("convert_ds9_region_to_ciao_stack")
         convert.infile = ds9_reg
         convert.outfile = ciao_reg
-        convert(verbose=0, clobber=True)
+
+        try:
+            convert(verbose=0, clobber=True)
+        except OSError:
+            print("ERROR: No valid regions found")
+            raise
 
         self.tool.infile = "{}[bin (x,y)=@-{}]".format(self.tool.infile,
                                                        ciao_reg)
@@ -1007,6 +1026,9 @@ class Ditherregion(ImageProcTaskPlotOut):
             regions = "+".join(stk.build(regions.replace("@", "@-")))
         else:
             regions = regions.replace(";", "+").replace("+-", "-").rstrip("+")
+
+        if regions == "":
+            raise RuntimeError("ERROR: No valid regions found")
 
         self.tool.wcsfile = self.tool.infile
         self.tool.infile = auxfiles["asol"]
