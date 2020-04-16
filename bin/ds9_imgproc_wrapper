@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2019  Smithsonian Astrophysical Observatory
-#
+#  Copyright (C) 2019-2020  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -186,6 +185,99 @@ class ImageProcTask():
 
         return ds9_file.name
 
+    def _get_header(self):
+        'Parse FITS header returned by ds9 into dict'
+
+        filehdr = self.xpaget(["fits", "header"])
+        filehdr = filehdr.split("\n")
+
+        # Remove excess
+        hdr_z = [x for x in filehdr if len(x) > 8]
+        hdr_a = [x for x in hdr_z if x[8] == "="]  # FITS std
+        hdr_b = [x.split("/")[0] for x in hdr_a]   # strip comments
+        hdr_c = [x.replace("'", "") for x in hdr_b]  # remove '
+        out_hdr = {}
+        for line in hdr_c:
+            cut = line.split("=")
+            key = cut[0].strip()
+            val = cut[1].strip()
+            out_hdr[key] = val
+        return out_hdr
+
+    @staticmethod
+    def setup_ardlib(bpix, filehdr):
+        'Create a local ardlib and set bpix parameter(s)'
+
+        import paramio as pio
+        ardlibpar = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"],
+                                       suffix="_ardlib.par", delete=False)
+        ardlibpar = ardlibpar.name
+        # Copy, this make it easy to avoid permission issues
+        syspar = pio.paccess("ardlib")
+        with open(ardlibpar, "w") as out_par:
+            with open(syspar, "r") as in_par:
+                for line in in_par.readlines():
+                    out_par.write(line)
+
+        if "ACIS" == filehdr["INSTRUME"]:
+            from ciao_contrib.runtool import acis_set_ardlib
+            acis_set_ardlib(bpix, ardlibfile=ardlibpar)
+        elif "HRC-I" == filehdr["DETNAM"]:
+            pio.pset(ardlibpar, "AXAF_HRC-I_BADPIX_FILE", bpix)
+        elif "HRC-S" == filehdr["DETNAM"]:
+            pio.pset(ardlibpar, "AXAF_HRC-S_BADPIX_FILE", bpix)
+        else:
+            raise ValueError("Unknown Instrument/Detector configuration")
+        return ardlibpar
+
+    def find_aux(self):
+        """
+        This is a little bit more involved.  The image displayed
+        in ds9 is all I've got.  I don't know that it was actually
+        loaded from disk, or if it was loaded via xpa, or samp, or
+        ... who knows.
+
+        """
+        cwd = self.xpaget(["cd", ])   # Where ds9 thinks it is
+        dskfile = self.xpaget(["file", ])  # If image is from file on disk
+        dskdir = os.path.dirname(dskfile.strip())
+
+        # Get header, we go ahead and just get from ds9 directly
+        filehdr = self._get_header()
+
+        if "TELESCOP" not in filehdr or "CHANDRA" != filehdr["TELESCOP"]:
+            raise ValueError("This task is only available for Chandra data")
+
+        def multi_try(ftype):
+            """
+            The concept of the cwd then is murky at best.  I try three options
+            - "." (where-ever that is)
+            - cwd as reported by ds9.  This will either be the directory
+              in which ds9 was launched or the dir where the file is; not sure.
+              (and I think this has changed in the past)
+            - get the file name and use the dirname off of there.  Honestly
+              this is probably the most reliable since most users load from
+              disk -- but I just don't know so I have to try all 3.
+            """
+            from ciao_contrib.ancillaryfiles import find_ancillary_files_header
+            for path in [".", cwd, dskdir]:
+                flist = find_ancillary_files_header(filehdr, [ftype], cwd=path)
+                if flist is not None and flist[0] is not None:
+                    return flist
+            return None
+
+        retval = {}
+        for ftype in ["asol", "mask", "bpix", "dtf"]:
+            rval = multi_try(ftype)
+            retval[ftype] = None if rval is None else rval[0]
+
+        if retval["bpix"] is not None:
+            retval["ardlib"] = self.setup_ardlib(retval["bpix"], filehdr)
+        else:
+            retval["ardlib"] = "ardlib.par"
+
+        return retval
+
 
 class ImageProcTaskImgOut(ImageProcTask):
     'Classes that send output image to ds9'
@@ -212,7 +304,7 @@ class ImageProcTaskRegionOut(ImageProcTask):
             src_reg = "{}[src_region]".format(self.tool.outfile)
             pc.read_file(src_reg)
             outreg = src_reg
-        except Exception:
+        except (OSError, IOError):
             outreg = self.tool.outfile
 
         cmd = ["dmlist", outreg, "counts"]
@@ -560,7 +652,10 @@ class Skyfov(ImageProcTaskRegionOut):
 
     def set_args(self, args):
         'Args: none'
-        pass   # no args, TODO: find asol file?
+        auxfiles = self.find_aux()
+        self.tool.mskfile = auxfiles["mask"]
+        self.tool.aspect = auxfiles["asol"]
+
 
 
 class Dmellipse(ImageProcTaskRegionOut):
@@ -894,6 +989,33 @@ class Ecfcalc(ImageProcTaskPlotOut):
         self.xpaset_p("plot smooth linear")
 
 
+class Ditherregion(ImageProcTaskPlotOut):
+    'CIAO dither_region tool'
+
+    toolname = 'dither_region'
+
+    def set_args(self, args):
+        'Args: none ; but this does require files found in hdr'
+
+        auxfiles = self.find_aux()
+
+        regions = self.xpaget("regions -format ciao -system physical source -strip yes")
+        if regions.startswith("@"):
+            import stk
+            regions = "+".join(stk.build(regions.replace("@", "@-")))
+        else:
+            regions = regions.replace(";", "+").replace("+-", "-").rstrip("+")
+
+        self.tool.wcsfile = self.tool.infile
+        self.tool.infile = auxfiles["asol"]
+        self.tool.region = regions
+        self.tool.maskfile = auxfiles["mask"]
+        self.tool.ardlib = auxfiles["ardlib"]
+
+        self.plotfile = self.tool.outfile+"[cols time,fracarea]"
+        self.title = "Dither Region for {}".format(self.tool.outfile)
+
+
 def map_tool_to_object(toolname, xpa, args):
     'Create object based on tool name'
 
@@ -911,7 +1033,8 @@ def map_tool_to_object(toolname, xpa, args):
                'dmimghist': Dmimghist, 'imgmoment': Imgmoment,
                'dmstat': Dmstat, 'arestore': Arestore,
                'dmfilth': Dmfilth, 'dmextract': Dmextract,
-               'dmimgpick': Dmimgpick, 'ecf_calc': Ecfcalc}
+               'dmimgpick': Dmimgpick, 'ecf_calc': Ecfcalc,
+               'dither_region': Ditherregion}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
