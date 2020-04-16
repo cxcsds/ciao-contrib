@@ -248,6 +248,11 @@ param regrid2
     rd_mthd menu {Normalization} {sum|average} {sum: preserve flux, average: preserve mean value}
 endparam
 
+param reprojectimg
+    rimgmeth menu {Method} {sum|average} {sum: preserve flux, average: preserve mean value}
+    rimgcoords menu {Coordinates} {world|physical|image} {Which coordinate system to use?}
+endparam
+
 param celldetect
     cell_expmap entry {Exposure map} {} {Exposure map file name, leave blank for none}
     cell_psfmap entry {PSF map} {} {PSF map file name, leave blank for none} 
@@ -833,6 +838,11 @@ hmenu CIAO tools (DAX)
     menu
     $param(regrid2); ds9_imgproc_wrapper $xpa dmregrid2 $rd_xoff $rd_yoff $rd_rot $rd_xscl $rd_yscl $rd_xcen $rd_ycen $rd_mthd |& $text
 
+    Reproject (current to match previous)
+    *
+    menu
+    $param(reprojectimg); ds9_imgproc_wrapper $xpa reproject_image $rimgmeth $rimgcoords |& $text
+
     ---
     Powerspectrum
     *
@@ -879,6 +889,12 @@ hmenu CIAO tools (DAX)
       Regrid - [dmregrid2] allows users to apply a non-integer pixel shift
          to the image pixels, apply scaling factor separately to the X
          and Y axes, and rotate the image about an arbitrary center.
+
+      Reproject - [reproject_image] reprojects the current frame to the
+         same coordinate system and grid in the previous frame.  
+         Use method=sum to preserve flux (pixels may not remain integers)
+         or method=average to preserve the mean value (eg when reprojecting
+         exposure maps or psfmaps).
 
       Powerspectrum - [apowerspectrum] compute |FFT| of image
 

@@ -1040,6 +1040,26 @@ class Ditherregion(ImageProcTaskPlotOut):
         self.title = "Dither Region for {}".format(self.tool.outfile)
 
 
+class Reprojectimage(ImageProcTaskImgOut):
+    'CIAO reproject_image tool'
+
+    toolname = 'reproject_image'
+
+    def set_args(self, args):
+        '''Args: method coords
+
+        matches current frame to the previous frame
+        '''
+
+        self.xpaset_p(['frame', 'prev'])
+        infile2 = self.save_ds9_image()
+        self.xpaset_p(['frame', 'next'])
+
+        self.tool.matchfile = infile2
+        self.tool.method = args[0]
+        self.tool.coord_sys = args[1]
+
+
 def map_tool_to_object(toolname, xpa, args):
     'Create object based on tool name'
 
@@ -1058,7 +1078,8 @@ def map_tool_to_object(toolname, xpa, args):
                'dmstat': Dmstat, 'arestore': Arestore,
                'dmfilth': Dmfilth, 'dmextract': Dmextract,
                'dmimgpick': Dmimgpick, 'ecf_calc': Ecfcalc,
-               'dither_region': Ditherregion}
+               'dither_region': Ditherregion,
+               'reproject_image': Reprojectimage}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
