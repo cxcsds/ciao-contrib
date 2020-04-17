@@ -73,6 +73,9 @@ class ImageProcTask():
             self.tool.infile = self.infile
         if hasattr(self.tool, "outfile"):
             self.tool.outfile = self.outfile.name
+            self.img2display = self.outfile.name
+        else:
+            self.img2display = None
 
         self.set_args(args)
 
@@ -280,6 +283,54 @@ class ImageProcTask():
 
         return retval
 
+    def get_coords(self):
+        """
+        Get coords: use crosshair if in crosshair mode,otherwise
+          Get selected region, if any selected, otherwise
+             Get regions
+        """
+        if "crosshair" == self.xpaget(["mode", ]).strip():
+            xy_str = self.xpaget("crosshair physical")
+            xy_str = xy_str.split()
+            xx = float(xy_str[0])
+            yy = float(xy_str[1])
+            return (xx, yy)
+
+        # Else, regions are more complicated ....
+        # Try 'selected' first
+        srcreg = self.xpaget("regions -format ciao source -system " +
+                             "physical -strip yes selected").strip()
+
+        if "" == srcreg:
+            # Try unselected
+            srcreg = self.xpaget("regions -format ciao source -system " +
+                                 "physical -strip yes").strip()
+
+        if "" == srcreg:
+            raise RuntimeError("No source region and not in crosshair mode.")
+
+        if srcreg.startswith("@"):
+            raise RuntimeError("Arrr... too many src regions!")
+
+        shapes = srcreg.strip(";").split(";")
+
+        if len(shapes) > 1:
+            raise RuntimeError("Please select a single region")
+
+        from region import CXCRegion
+        reg = CXCRegion(shapes[0])
+
+        if reg.shapes[0].name in ['rectangle', 'polygon', 'field']:
+            raise ValueError("Unsupported shape type: try circle or ellipse?")
+
+        xx = reg.shapes[0].xpoints[0]
+        yy = reg.shapes[0].ypoints[0]
+
+        return (xx, yy)
+
+
+# Define different classes for each output type --------
+
 
 class ImageProcTaskImgOut(ImageProcTask):
     'Classes that send output image to ds9'
@@ -287,7 +338,7 @@ class ImageProcTaskImgOut(ImageProcTask):
     def send_output(self):
         'Send output, go into tile mode if requsted'
 
-        self.xpaset_p(['fits', 'new', self.tool.outfile])
+        self.xpaset_p(['fits', 'new', self.img2display])
 
         from paramio import pget
         if "yes" == pget("dax", "tile"):
@@ -334,7 +385,7 @@ class ImageProcTaskTextOut(ImageProcTask):
         raise NotImplementedError("Implement reportting in subclass")
 
 
-# Specific classes for each tool ------------------
+# Specific classes for each task ------------------
 
 
 class Dmimgblob(ImageProcTaskImgOut):
@@ -611,25 +662,14 @@ class Getsrcregion(ImageProcTaskRegionOut):
 
 
 class Dmimglasso(ImageProcTaskRegionOut):
-    '''CIAO dmimglasso tool
-
-    This task requires ds9 be running in crosshair mode'''
+    'CIAO dmimglasso tool'
 
     toolname = 'dmimglasso'
 
     def set_args(self, args):
         'Args: lowval highval'
 
-        is_ch = self.xpaget(['mode', ])
-        if is_ch.strip() != "crosshair":
-            print("\n***\n*** You must be in crosshair " +
-                  "mode to use this task \n***\n")
-            if os.path.exists(self.tool.infile):
-                os.unlink(self.tool.infile)
-            raise RuntimeError("Must be in crosshair mode to use this task")
-
-        phys = self.xpaget("crosshair physical")
-        xpos, ypos = phys.split()
+        xpos, ypos = self.get_coords()
 
         self.tool.xpos = xpos
         self.tool.ypos = ypos
@@ -1060,6 +1100,52 @@ class Reprojectimage(ImageProcTaskImgOut):
         self.tool.coord_sys = args[1]
 
 
+class Simulatepsf(ImageProcTaskImgOut):
+    'Contrib simulate_psf tool'
+
+    toolname = 'simulate_psf'
+
+    def set_args(self, args):
+        '''args:  energy flux blur niter steak pileup ideal extend
+        mono = sys.argv[2]
+        flux = sys.argv[3]
+        blur = sys.argv[4]
+        niter = sys.argv[5]
+        streak = ( "1" == sys.argv[6] )
+        pileup = ( "1" == sys.argv[7] )
+        ideal = ( "1" == sys.argv[8] )
+        extnd = ( "1" == sys.argv[9] )
+        '''
+        from os import environ
+        if 'MARX_ROOT' not in environ:
+            raise RuntimeError("This tasks requires that you setup for MARX before starting ds9")
+
+        xx, yy = self.get_coords()
+        auxfiles = self.find_aux()
+        
+        from ciao_contrib.runtool import make_tool
+        dmcoords = make_tool("dmcoords")
+        dmcoords(infile=self.tool.infile, op="sky", x=xx, y=yy,
+                 celfmt="deg")
+        self.tool.outroot = self.outfile.name.rstrip(".fits")
+        self.tool.ra = dmcoords.ra
+        self.tool.dec = dmcoords.dec
+        self.tool.spectrumfile = ""
+        self.tool.monoenergy = args[0]
+        self.tool.flux = args[1]
+        self.tool.blur = args[2]
+        self.tool.numiter = args[3]
+        self.tool.numsig = 1
+        self.tool.minsize = 256
+        self.tool.readout_streak = ("1" == args[4])
+        self.tool.pileup = ("1" == args[5])
+        self.tool.ideal = ("1" == args[6])
+        self.tool.extended = ("1" == args[7])
+        self.tool.keep = True
+        self.tool.asolfile = auxfiles["asol"]
+        self.img2display = self.tool.outroot + ".psf"
+
+
 def map_tool_to_object(toolname, xpa, args):
     'Create object based on tool name'
 
@@ -1079,7 +1165,8 @@ def map_tool_to_object(toolname, xpa, args):
                'dmfilth': Dmfilth, 'dmextract': Dmextract,
                'dmimgpick': Dmimgpick, 'ecf_calc': Ecfcalc,
                'dither_region': Ditherregion,
-               'reproject_image': Reprojectimage}
+               'reproject_image': Reprojectimage,
+               'simulate_psf': Simulatepsf}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
