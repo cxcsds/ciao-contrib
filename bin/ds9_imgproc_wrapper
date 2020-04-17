@@ -292,9 +292,9 @@ class ImageProcTask():
         if "crosshair" == self.xpaget(["mode", ]).strip():
             xy_str = self.xpaget("crosshair physical")
             xy_str = xy_str.split()
-            xx = float(xy_str[0])
-            yy = float(xy_str[1])
-            return (xx, yy)
+            xpos = float(xy_str[0])
+            ypos = float(xy_str[1])
+            return (xpos, ypos)
 
         # Else, regions are more complicated ....
         # Try 'selected' first
@@ -323,10 +323,10 @@ class ImageProcTask():
         if reg.shapes[0].name in ['rectangle', 'polygon', 'field']:
             raise ValueError("Unsupported shape type: try circle or ellipse?")
 
-        xx = reg.shapes[0].xpoints[0]
-        yy = reg.shapes[0].ypoints[0]
+        xpos = reg.shapes[0].xpoints[0]
+        ypos = reg.shapes[0].ypoints[0]
 
-        return (xx, yy)
+        return (xpos, ypos)
 
 
 # Define different classes for each output type --------
@@ -1106,26 +1106,18 @@ class Simulatepsf(ImageProcTaskImgOut):
     toolname = 'simulate_psf'
 
     def set_args(self, args):
-        '''args:  energy flux blur niter steak pileup ideal extend
-        mono = sys.argv[2]
-        flux = sys.argv[3]
-        blur = sys.argv[4]
-        niter = sys.argv[5]
-        streak = ( "1" == sys.argv[6] )
-        pileup = ( "1" == sys.argv[7] )
-        ideal = ( "1" == sys.argv[8] )
-        extnd = ( "1" == sys.argv[9] )
-        '''
+        'args:  energy flux blur niter steak pileup ideal extend'
+
         from os import environ
         if 'MARX_ROOT' not in environ:
             raise RuntimeError("This tasks requires that you setup for MARX before starting ds9")
 
-        xx, yy = self.get_coords()
+        xpos, ypos = self.get_coords()
         auxfiles = self.find_aux()
-        
+
         from ciao_contrib.runtool import make_tool
         dmcoords = make_tool("dmcoords")
-        dmcoords(infile=self.tool.infile, op="sky", x=xx, y=yy,
+        dmcoords(infile=self.tool.infile, op="sky", x=xpos, y=ypos,
                  celfmt="deg")
         self.tool.outroot = self.outfile.name.rstrip(".fits")
         self.tool.ra = dmcoords.ra
