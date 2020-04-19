@@ -1138,6 +1138,29 @@ class Simulatepsf(ImageProcTaskImgOut):
         self.img2display = self.tool.outroot + ".psf"
 
 
+class Dmcoords(ImageProcTaskTextOut):
+    'CIAO dmcoords tool'
+    
+    toolname = 'dmcoords'
+    
+    def set_args(self, args):
+        'Args: none'
+        xpos, ypos = self.get_coords()
+        self.tool.x = xpos
+        self.tool.y = ypos
+        self.tool.op = "sky"
+
+    def send_output(self):
+        _keep = ['chip', 'tdet', 'det ', 'ra ', 'dec ', 
+                 'logical', 'theta', 'phi', 'x', 'y' ]
+        out = str(self.tool).split("\n")
+        for line in out:
+            for keep in _keep:
+                if line.strip().startswith(keep):
+                    print(line)
+        
+        
+
 def map_tool_to_object(toolname, xpa, args):
     'Create object based on tool name'
 
@@ -1158,7 +1181,7 @@ def map_tool_to_object(toolname, xpa, args):
                'dmimgpick': Dmimgpick, 'ecf_calc': Ecfcalc,
                'dither_region': Ditherregion,
                'reproject_image': Reprojectimage,
-               'simulate_psf': Simulatepsf}
+               'simulate_psf': Simulatepsf, 'dmcoords': Dmcoords}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
