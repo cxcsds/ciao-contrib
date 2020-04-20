@@ -336,10 +336,10 @@ class ImageProcTask():
         ypos = reg.shapes[0].ypoints[0]
 
         return (xpos, ypos)
-        
+
     def get_regions(self, src_or_bkg="source"):
         'Get regions via xpa'
-        
+
         regions = self.xpaget(["regions", "-format", "ciao", "-system",
                                "physical", src_or_bkg, "-strip", "yes"])
         if regions.startswith("@"):
@@ -350,7 +350,7 @@ class ImageProcTask():
 
         if regions == "":
             raise RuntimeError("ERROR: No valid regions found")
-        
+
         return regions
 
     def use_eventfile(self):
@@ -358,15 +358,13 @@ class ImageProcTask():
 
         evt_name = self.xpaget(["file", ]).strip()
         # Funtools to DM conversion
-        evt_name = evt_name.replace("EVENTS,","EVENTS][") 
-    
+        evt_name = evt_name.replace("EVENTS,", "EVENTS][")
+
         if os.path.exists(self.tool.infile):
             os.unlink(self.tool.infile)
         self.infile = evt_name
         self.tool.infile = evt_name
-        self.keep_infiles = True        
-        region = self.get_regions().strip()
-        self.apply_region_to_infile(region)
+        self.keep_infiles = True
 
 
 # Define different classes for each output type --------
@@ -1249,31 +1247,163 @@ class Srcpsffrac(ImageProcTaskTextOut):
 
 class Glvary(ImageProcTaskPlotOut):
     'CIAO glvary tool'
-    
+
     toolname = 'glvary'
 
     def set_args(self, args):
         'args: none'
         self.use_eventfile()
+        region = self.get_regions().strip()
+        self.apply_region_to_infile(region)
         self.tool.lcfile = self.tool.outfile+".lc"
 
         self.title = "G-L Lightcurve {}".format(self.tool.lcfile)
         self.plotfile = self.tool.lcfile + "[cols time,count_rate]"
-    
+
 
 class Pfold(ImageProcTaskPlotOut):
     'CIAO pfold tool'
-    
+
     toolname = 'pfold'
 
     def set_args(self, args):
         'args: minperiod maxperiod'
         self.use_eventfile()
+        region = self.get_regions().strip()
+        self.apply_region_to_infile(region)
         self.tool.periodgrid = "{}:{}:1".format(args[0], args[1])
         self.tool.pdot = 0
 
         self.title = "Period Fold {}".format(self.tool.outfile)
         self.plotfile = self.tool.outfile+"[cols period,sigma_rate]"
+
+
+class Dmepha(ImageProcTaskPlotOut):
+    'CIAO dmextract tool w/ PHA output'
+
+    toolname = 'dmextract'
+
+    def set_args(self, args):
+        'args: none'
+
+        self.use_eventfile()
+        keep_infile = self.tool.infile
+        try:
+            bkgreg = self.get_regions(src_or_bkg="background").strip()
+            self.apply_region_to_infile(bkgreg)
+            self.tool.bkg = self.tool.infile
+            plotcol = "net_rate"
+        except RuntimeError:
+            self.tool.bkg = ""
+            plotcol = "count_rate"
+
+        self.tool.infile = keep_infile
+        self.infile = keep_infile
+        srcreg = self.get_regions()
+        self.apply_region_to_infile(srcreg)
+
+        self.tool.infile = self.tool.infile + "[bin pha=::4]"
+        self.tool.opt = "pha1"
+
+        self.plotfile = self.tool.outfile + "[cols channel,{}]".format(plotcol)
+        self.title = "PHA Spectrum {}".format(self.infile)
+
+
+class Dmepi(ImageProcTaskPlotOut):
+    'CIAO dmextract tool w/ PI output'
+
+    toolname = 'dmextract'
+
+    def set_args(self, args):
+        'args: none'
+
+        self.use_eventfile()
+        keep_infile = self.tool.infile
+        try:
+            bkgreg = self.get_regions(src_or_bkg="background").strip()
+            self.apply_region_to_infile(bkgreg)
+            self.tool.bkg = self.tool.infile
+            plotcol = "net_rate"
+        except RuntimeError:
+            self.tool.bkg = ""
+            plotcol = "count_rate"
+
+        self.tool.infile = keep_infile
+        self.infile = keep_infile
+        srcreg = self.get_regions()
+        self.apply_region_to_infile(srcreg)
+
+        self.tool.infile = self.tool.infile + "[bin pi=::1]"
+        self.tool.opt = "pha1"
+
+        self.plotfile = self.tool.outfile + "[cols channel,{}]".format(plotcol)
+        self.title = "PI Spectrum {}".format(self.infile)
+
+
+class Dmetime(ImageProcTaskPlotOut):
+    'CIAO dmextract tool w/ TIME output'
+
+    toolname = 'dmextract'
+
+    def set_args(self, args):
+        'args: timebin'
+
+        self.use_eventfile()
+        keep_infile = self.tool.infile
+        try:
+            bkgreg = self.get_regions(src_or_bkg="background").strip()
+            self.apply_region_to_infile(bkgreg)
+            self.tool.bkg = self.tool.infile
+            plotcol = "net_rate"
+        except RuntimeError:
+            self.tool.bkg = ""
+            plotcol = "count_rate"
+
+        self.tool.infile = keep_infile
+        self.infile = keep_infile
+        srcreg = self.get_regions()
+        self.apply_region_to_infile(srcreg)
+
+        self.tool.infile = self.tool.infile + "[bin time=::{}]".format(args[0])
+        self.tool.opt = "ltc1"
+
+        self.plotfile = self.tool.outfile + "[cols dt,{}]".format(plotcol)
+        self.title = "Light Curve {}".format(self.infile)
+
+
+class Dmeexpno(ImageProcTaskPlotOut):
+    'CIAO dmextract tool w/ Expno output'
+
+    toolname = 'dmextract'
+
+    def set_args(self, args):
+        'args: binsize'
+
+        self.use_eventfile()
+        keep_infile = self.tool.infile
+        try:
+            bkgreg = self.get_regions(src_or_bkg="background").strip()
+            self.apply_region_to_infile(bkgreg)
+            self.tool.bkg = self.tool.infile
+            plotcol = "net_rate"
+        except RuntimeError:
+            self.tool.bkg = ""
+            plotcol = "count_rate"
+
+        self.tool.infile = keep_infile
+        self.infile = keep_infile
+        srcreg = self.get_regions()
+        self.apply_region_to_infile(srcreg)
+
+        from ciao_contrib.runtool import dmstat
+        dmstat(self.tool.infile+"[cols expno]", sigma=False,
+               centroid=False, median=False)
+
+        self.tool.infile = self.tool.infile + "[bin expno=:{}:{}]".format(dmstat.out_max, args[0])
+        self.tool.opt = "ltc1"
+
+        self.plotfile = self.tool.outfile + "[cols expno,{}]".format(plotcol)
+        self.title = "EXPNO Lightcurve {}".format(self.infile)
 
 
 def map_tool_to_object(toolname, xpa, args):
@@ -1298,7 +1428,9 @@ def map_tool_to_object(toolname, xpa, args):
                'reproject_image': Reprojectimage,
                'simulate_psf': Simulatepsf, 'dmcoords': Dmcoords,
                'psfsize_srcs': Psfsizesrcs, 'src_psffrac': Srcpsffrac,
-               'glvary': Glvary, 'pfold': Pfold }
+               'glvary': Glvary, 'pfold': Pfold,
+               'dme_pha': Dmepha, 'dme_pi': Dmepi, 'dme_time': Dmetime,
+               'dme_expno': Dmeexpno}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
