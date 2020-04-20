@@ -1140,9 +1140,9 @@ class Simulatepsf(ImageProcTaskImgOut):
 
 class Dmcoords(ImageProcTaskTextOut):
     'CIAO dmcoords tool'
-    
+
     toolname = 'dmcoords'
-    
+
     def set_args(self, args):
         'Args: none'
         xpos, ypos = self.get_coords()
@@ -1151,15 +1151,70 @@ class Dmcoords(ImageProcTaskTextOut):
         self.tool.op = "sky"
 
     def send_output(self):
-        _keep = ['chip', 'tdet', 'det ', 'ra ', 'dec ', 
-                 'logical', 'theta', 'phi', 'x', 'y' ]
+        _keep = ['chip', 'tdet', 'det ', 'ra ', 'dec ',
+                 'logical', 'theta', 'phi', 'x', 'y']
         out = str(self.tool).split("\n")
         for line in out:
             for keep in _keep:
                 if line.strip().startswith(keep):
                     print(line)
-        
-        
+
+
+class Psfsizesrcs(ImageProcTaskRegionOut):
+    'Contrib psfsize_srcs'
+
+    toolname = 'psfsize_srcs'
+
+    def set_args(self, args):
+        'Args: energy fraction'
+
+        xpos, ypos = self.get_coords()
+        from ciao_contrib.runtool import dmcoords
+        dmcoords(self.tool.infile, op="sky", x=xpos, y=ypos)
+
+        ra_dec = "{}, {}".format(dmcoords.ra, dmcoords.dec)
+        self.tool.pos = ra_dec
+        self.tool.energy = args[0]
+        self.tool.ecf = args[1]
+
+
+class Srcpsffrac(ImageProcTaskTextOut):
+    'Contrib src_psffrac script'
+
+    toolname = 'src_psffrac'
+
+    def set_args(self, args):
+        'Args: energy'
+
+        regs = self.xpaget("regions source -format ciao -system physical selected")
+        if "" == regs:
+            regs = self.xpaget("regions source -format ciao -system physical")
+            if "" == regs:
+                raise RuntimeError("Please draw a source region")
+
+        regs = regs.split("\n")
+        regs = [x for x in regs if x[0:3] in ['cir', 'box', 'ell']]
+        if len(regs) > 1:
+            raise RuntimeError("Please select a single region")
+        self.tool.region = regs[0]
+        self.tool.energy = args[0]
+
+    def send_output(self):
+        from pycrates import read_file
+        tab = read_file(self.tool.outfile)
+        theta = tab.get_column("theta").values[0]
+        phi = tab.get_column("phi").values[0]
+        radius = tab.get_column("r").values[0]
+        psffrac = tab.get_column("psffrac").values[0]
+
+        outstr = "\n"
+        outstr = outstr + "theta: {:.2f}'\t".format(theta)
+        outstr = outstr + "phi: {:.2f}deg\t".format(phi)
+        outstr = outstr + "radius: {:.2f}pix\t".format(radius)
+        outstr = outstr + "energy: {}keV\t".format(self.tool.energy)
+        outstr = outstr + "PSFFRAC: {:.4g}\n".format(psffrac)
+        print(outstr)
+
 
 def map_tool_to_object(toolname, xpa, args):
     'Create object based on tool name'
@@ -1181,7 +1236,8 @@ def map_tool_to_object(toolname, xpa, args):
                'dmimgpick': Dmimgpick, 'ecf_calc': Ecfcalc,
                'dither_region': Ditherregion,
                'reproject_image': Reprojectimage,
-               'simulate_psf': Simulatepsf, 'dmcoords': Dmcoords}
+               'simulate_psf': Simulatepsf, 'dmcoords': Dmcoords,
+               'psfsize_srcs': Psfsizesrcs, 'src_psffrac': Srcpsffrac}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
