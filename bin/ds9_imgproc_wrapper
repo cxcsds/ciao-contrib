@@ -1406,6 +1406,39 @@ class Dmeexpno(ImageProcTaskPlotOut):
         self.title = "EXPNO Lightcurve {}".format(self.infile)
 
 
+class Dmegeneric(ImageProcTaskPlotOut):
+    'CIAO dmextract tool generic columns'
+
+    toolname = 'dmextract'
+
+    def set_args(self, args):
+        'args: bincol binspec'
+
+        self.use_eventfile()
+        keep_infile = self.tool.infile
+        try:
+            bkgreg = self.get_regions(src_or_bkg="background").strip()
+            self.apply_region_to_infile(bkgreg)
+            self.tool.bkg = self.tool.infile
+            plotcol = "net_counts"
+        except RuntimeError:
+            self.tool.bkg = ""
+            plotcol = "counts"
+
+        self.tool.infile = keep_infile
+        self.infile = keep_infile
+        srcreg = self.get_regions()
+        self.apply_region_to_infile(srcreg)
+
+        binspec = "[bin {}={}]".format(args[0], args[1])
+
+        self.tool.infile = self.tool.infile + binspec
+        self.tool.opt = "generic"
+
+        self.plotfile = self.tool.outfile + "[cols {},{}]".format(args[0], plotcol)
+        self.title = "Hisotram {}".format(self.infile)
+
+
 def map_tool_to_object(toolname, xpa, args):
     'Create object based on tool name'
 
@@ -1430,7 +1463,7 @@ def map_tool_to_object(toolname, xpa, args):
                'psfsize_srcs': Psfsizesrcs, 'src_psffrac': Srcpsffrac,
                'glvary': Glvary, 'pfold': Pfold,
                'dme_pha': Dmepha, 'dme_pi': Dmepi, 'dme_time': Dmetime,
-               'dme_expno': Dmeexpno}
+               'dme_expno': Dmeexpno, 'dme_generic': Dmegeneric}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
