@@ -746,8 +746,11 @@ class Dmellipse(ImageProcTaskRegionOut):
         'Args: fraction shape'
         self.tool.fraction = args[0]
         self.tool.shape = args[1]
-        if len(args) > 2:
-            self.apply_region_to_infile(args[2])
+        try:
+            regions = self.get_regions().strip()
+            self.apply_region_to_infile(regions)
+        except RuntimeError:
+            pass  # use whole image
 
 
 class Dmimghull(ImageProcTaskRegionOut):
@@ -758,8 +761,11 @@ class Dmimghull(ImageProcTaskRegionOut):
     def set_args(self, args):
         'Args: fraction shape'
         self.tool.tolerance = args[0]
-        if len(args) > 1:
-            self.apply_region_to_infile(args[1])
+        try:
+            regions = self.get_regions().strip()
+            self.apply_region_to_infile(regions)
+        except RuntimeError:
+            pass  # use whole image
 
 
 class Dmimgproject(ImageProcTaskPlotOut):
@@ -771,8 +777,12 @@ class Dmimgproject(ImageProcTaskPlotOut):
         'Args: fraction shape'
         stat = args[0]
         self.tool.axis = args[1]
-        if len(args) > 2:
-            self.apply_region_to_infile(args[2])
+        try:
+            regions = self.get_regions()
+            self.apply_region_to_infile(regions)
+        except RuntimeError:
+            pass   # Use whole image
+
         cols = "[cols {},{}]".format(self.tool.axis, stat)
         self.plotfile = self.tool.outfile + cols
 
@@ -785,9 +795,13 @@ class Dmimghist(ImageProcTaskPlotOut):
     toolname = 'dmimghist'
 
     def set_args(self, args):
-        'Args: fraction shape'
-        if args is not None and len(args) > 0:
-            self.apply_region_to_infile(args[0])
+        'Args: none'
+        try:
+            regions = self.get_regions()
+            self.apply_region_to_infile(regions)
+        except RuntimeError:
+            pass   # Use whole image
+
         self.tool.hist = "1"
 
         self.plotfile = self.tool.outfile + "[cols bin,counts]"
@@ -800,9 +814,12 @@ class Imgmoment(ImageProcTaskTextOut):
     toolname = 'imgmoment'
 
     def set_args(self, args):
-        'Args: regions'
-        if args is not None and len(args) > 0:
-            self.apply_region_to_infile(args[0])
+        'Args: none'
+        try:
+            regions = self.get_regions()
+            self.apply_region_to_infile(regions)
+        except RuntimeError:
+            pass   # Use whole image
 
     def send_output(self):
         'Nicely format output'
@@ -824,11 +841,13 @@ class Dmstat(ImageProcTaskTextOut):
     toolname = 'dmstat'
 
     def set_args(self, args):
-        'Args: regions'
-        print(args)
+        'Args: none'
+        try:
+            regions = self.get_regions()
+            self.apply_region_to_infile(regions)
+        except RuntimeError:
+            pass  # Use whole image
 
-        if args is not None and len(args) > 0:
-            self.apply_region_to_infile(args[0])
         self.tool.centroid = True
         self.tool.median = False
         self.tool.sigma = False
@@ -871,10 +890,9 @@ class Arestore(ImageProcTaskImgOut):
         # Keep infile for arestore.  Use the
         # filtered file to obtain an estimate of the PSF
         keep_infile = self.tool.infile
-        if args is not None and len(args) > 0:
-            self.apply_region_to_infile(args[0])
-        else:
-            raise RuntimeError("ERROR: No valid regions found")
+
+        regions = self.get_regions().strip()
+        self.apply_region_to_infile(regions)
 
         # Crop PSF just using dmcopy
         from ciao_contrib.runtool import make_tool
