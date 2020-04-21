@@ -145,6 +145,9 @@ class DaxModelEditor():
 
     def run(self):
         'Start the event loop'
+        from os import environ
+        if 'DAXNOGUI' in environ:
+            return
         self.win.mainloop()
 
     def fit(self):
