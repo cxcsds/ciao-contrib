@@ -38,7 +38,6 @@ setup( name='ciao-contrib',
                        ("config", configs),
                        ("data", datum),
                        (".", ["Changes.CIAO_scripts", "README_CIAO_scripts"]),
-                       ("etc/conda/activate.d/", etc),
                        ],
         packages=mods,
         py_modules=["lightcurves",]
