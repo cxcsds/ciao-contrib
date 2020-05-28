@@ -1977,7 +1977,7 @@ def merge_get_counts( infiles ):
     return retval
 
 
-def merge_aprates( cts, rate=False ):
+def merge_aprates( cts, conf, rate=False ):
     """
     TODO:  CSC1 approach.  Take instead from xaprate/naprates/etc
     
@@ -2047,6 +2047,7 @@ def merge_aprates( cts, rate=False ):
     aprates.E_b = E_B
     aprates.eng_b = 1.0
     aprates.flux_b = 1.0
+    aprates.conf = conf
     aprates(outfile=outfile.name, clobber=True, verbose=0)
 
     from paramio import pget
@@ -2130,11 +2131,11 @@ def merge_counts( stk_params, myparams):
         for at_energy in bands:
             srcfiles = [ "{}{}[#row={}]".format(get_root(src,at_energy), __osuf__, snum+1) for src in stk_params  ]
             cts = merge_get_counts( srcfiles )
-            retvals[at_energy]['rates'].append( merge_aprates(cts, rate=True) )
+            retvals[at_energy]['rates'].append( merge_aprates(cts, myparams.conf, rate=True) )
 
             # Note: slightly inconsistent with how per-obi are computed
             # from fluxed images.
-            retvals[at_energy]['fluxes'].append( merge_aprates(cts, rate=False) )
+            retvals[at_energy]['fluxes'].append( merge_aprates(cts, myparams.conf, rate=False) )
 
             retvals[at_energy]['photfluxes'].append( merge_photfluxes(cts) )
 
