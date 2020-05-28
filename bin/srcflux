@@ -2132,7 +2132,7 @@ def merge_counts( stk_params, myparams):
             cts = merge_get_counts( srcfiles )
             retvals[at_energy]['rates'].append( merge_aprates(cts, rate=True) )
 
-            # TODO: this is wrong for photon fluxes; inconsistent with how per-obi are computed
+            # Note: slightly inconsistent with how per-obi are computed
             # from fluxed images.
             retvals[at_energy]['fluxes'].append( merge_aprates(cts, rate=False) )
 
@@ -2191,7 +2191,7 @@ def merge_write_output( stk_params, myparams, modelflux_vals, merge_fluxes ):
         total_net_rate_hilim = [ float(r['hilimit']) for r in merge_fluxes[at_energy]['rates']]        
 
         total_photflux = [r['value'] for r in merge_fluxes[at_energy]['photfluxes']]
-        total_photflux_cnv = np.array(total_photflux) / np.array(total_net_rate)  # TODO upper limit
+        total_photflux_cnv = np.array(total_photflux) / np.array(total_net_rate)  
         total_photflux_lolim = np.array(total_net_rate_lolim)*total_photflux_cnv
         total_photflux_hilim = np.array(total_net_rate_hilim)*total_photflux_cnv
         
@@ -2714,13 +2714,13 @@ def main():
         summarize_results( myparams, obi=None, single=True )
         return
 
-    #M#merged_fluxes = merge_counts( stk_pars, myparams) 
-    #M#modelflux_vals = merge_modelflux( stk_pars, myparams )
-    #M#merge_write_output( stk_pars, myparams, modelflux_vals, merged_fluxes)
+    merged_fluxes = merge_counts( stk_pars, myparams) 
+    modelflux_vals = merge_modelflux( stk_pars, myparams )
+    merge_write_output( stk_pars, myparams, modelflux_vals, merged_fluxes)
 
     for ii,ss in enumerate(stk_pars):
         summarize_results( ss, obi=ii, single=False )
-    #M#summarize_results( myparams, obi=None, single=False )
+    summarize_results( myparams, obi=None, single=False )
     
     
 
