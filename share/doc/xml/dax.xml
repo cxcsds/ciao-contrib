@@ -19,7 +19,7 @@
 
       <PARA title="Getting Started">
 	The commands are stored in the file
-	$ASCDS_INSTALL/contrib/config/ciao.ds9 and are
+	$ASCDS_CONTRIB/config/ciao.ds9 and are
 	automatically loaded when ds9 is launched within CIAO.
       </PARA>
 
@@ -28,7 +28,7 @@
 	-analysis switch:	 
       </PARA>
       <VERBATIM>
-unix% ds9 -analysis $ASCDS_INSTALL/contrib/config/ciao.ds9 ...
+unix% ds9 -analysis $ASCDS_CONTRIB/config/ciao.ds9 ...
       </VERBATIM>
 
       <PARA title="Using the Tools">
@@ -38,24 +38,32 @@ unix% ds9 -analysis $ASCDS_INSTALL/contrib/config/ciao.ds9 ...
 
       <LIST>
         <ITEM> 
-           Statistics: use the defined regions to calculate
-           counts, centroid, min pixel value, max pixel value, etc. 
+           Statistics: calculates various statistics: min|max pixel value, 
+           centroid, net-counts, and fully calibrated aperture photometry (for
+           Chandra event  files). 
         </ITEM>
         <ITEM>
            Histograms: create spectra, lightcurves, and radial
-	   profiles, for example. 
+	   profiles.
         </ITEM>
         <ITEM>
            Coordinates: Obtain coordinates for a region center or crosshair 
            in various Chandra coordinate systems:  chips, detector, 
-           sky, celestial.
+           sky, celestial. Also identify location of energies in 
+           Chandra dispered grating spectra.           
+        </ITEM>
+        <ITEM>
+           Regions: generate regions that enclose a fraction of flux,
+	   magic-wand style source selector (local contouring), and 
+       convex hulls.
         </ITEM>
         <ITEM>
            Detect: run source detection tools on images.
         </ITEM>
         <ITEM>
-           Regions: generate regions that enclose a fraction of flux,
-	   magic-wand style source selector (local contouring).
+          Chandra PSF: look up the size of the Chandra PSF at a location,
+          or determine the fraction of the PSF enclosed by a selected
+          region.  Users can also simulate the PSF using MARX.        
         </ITEM>
         <ITEM>
            Sherpa: extract and fit spectra, 2D images, or radial profiles.
@@ -67,6 +75,25 @@ unix% ds9 -analysis $ASCDS_INSTALL/contrib/config/ciao.ds9 ...
 	   filtering (median), fill in where sources have been removed
 	   (dmfilth), and more options. 
         </ITEM>
+
+        <ITEM>
+          Calculator: add, subtract, multiply, divide, scale, offset,
+          and more.
+        </ITEM>
+
+        <ITEM>
+          Change DAX output directory: All outputs files are saved to
+          a temporary directory; the default is $ASCDS_WORK_PATH/ds9_dax.$USER.
+          Users can select a different directory.        
+        </ITEM>
+
+        <ITEM>
+        Custom Color Map: users can create a custom color map (color lookup
+        table).
+        </ITEM>
+
+
+
       </LIST>
 
       <PARA title="Calculating the Statistics">
@@ -82,9 +109,155 @@ unix% ds9 -analysis $ASCDS_INSTALL/contrib/config/ciao.ds9 ...
     Plotting is done using the built in ds9 "BLT" plotting package.
     User can use the menu bar on the plot window to change
     the axes to log scale, change fonts and colors, etc.
-    
       </PARA>
+
+
+      <PARA title="Fitting">
+   When fitting spectra, images, or radial profiles, users will 
+   be presented with a model parameter editor before the fit is performed.
+   Users can specify the initial value, change the limits, and thaw|freeze
+   the parameters.  
+      </PARA>
+      
+      <PARA title="Busy Indicator"> 
+    Tasks which may take a while to run will launch a small window with
+    the task name and a busy indicator (technically an indeterminate 
+    progress bar).  To abort a running task, users need to select the 
+    task again from the DAX menu. 
+      </PARA>
+
+
 </DESC>
+
+
+<ADESC title="Changes in the 4.12.3 (June 2020) release">
+
+  <PARA>
+  This is a major upgrade to DAX.  It includes several new analysis
+  tasks, a new sherpa model parameter editor, visual busy indicators
+  for long running tasks, and a few bug fixes.
+  </PARA>
+
+  <PARA title="New Tasks and Features"></PARA>
+
+  <PARA>
+    New  Detect -&gt; wavdetect task is now available.  Users select the
+    wavelet scales which are used.  Note: This task can be very slow for
+    large images.  wavdetect is run without an exposure map and without a 
+    PSF map; therefore there will tend to be spurious source detected at the
+    edge of the field of view and sources will be reconstructed using the
+    smallest wavelet they were detected at (possibly smaller than PSF).
+  </PARA>
+
+    <PARA>
+    New   Coordinates -&gt; Chandra Grating Energy Lookup.
+    Users draw a region around the 0th order location; when this 
+    task is run, it will prompt the user for a list of Energies and
+    Orders.  The location of these energies and orders will be 
+    identified on the image.   Only for Chandra observation which 
+    used the gratings (HETG or LETG). 
+  </PARA>
+
+
+  <PARA>
+    New Image Processing -&gt; Regrid task which allows the user to 
+    shift, scale, and rotate image pixel values.  This task 
+    intentionally does not adjust the WCS.  
+  </PARA>
+
+  <PARA>
+    New Image Processing -&gt; Reproject tasks will do a full, flux preserving, 
+    reprojection of the image in the current frame to match the WCS
+    in the previous frame.
+  </PARA>
+  <PARA>
+    New Image Processing -&gt; Crop task.  While ds9 does support cropping,
+    the WCS in the saved image does not correctly update the WCS for
+    the cropped out region.
+  </PARA>
+
+  <PARA>
+    New Chandra PSF -&gt; Simulate PSF with MARX task allows users to
+    simulate a monochromatic PSF using MARX.  
+  </PARA>
+
+  <PARA>
+    New Create Custom Color Map task allows user to generate a
+    new color map based on standard X11 color names, eg from black to 
+    cadetblue, to white.
+  </PARA>
+
+  <PARA>
+    New  Histogram -&gt; Dither Region computes the fraction of the
+    region area exposed vs. time due to dither for Chandra datasets.
+  </PARA>
+
+  <PARA>
+    New  Histogram -&gt; Enclosed Counts Fraction computes the ECF
+    in the selected region.
+  </PARA>
+  <PARA>
+    New  Calculator tasks allow users to perform simple arithmetic
+    calculations (add, multiply, divide, subtract) using the images
+    displayed in 2 frames.  Additional scaling functions are
+    provided for the current frame.
+  </PARA>
+
+
+  <PARA title="Updates to Existing Tasks"> </PARA>
+
+  <PARA>
+  The Sherpa fitting tasks:  spectra, images, or radial profiles, 
+    now launch a new model parameter editor.  Users can modify the
+    initial model parameters, change the model limits, and thaw or
+    freeze model parameters.  Users can also plot the model and data 
+    easily before the fit to help refine the values.
+  </PARA>
+
+
+  <PARA>
+    The spectral fit and radial fit tasks now use a common 
+    set of plotting routines.  The plots have been rearranged
+    so that the model is now drawn on top of the data.
+  </PARA>
+
+  <PARA>
+    The list of spectral models has been expanded.  Users can
+    also now specify a 2nd model component to be added to the
+    first.
+  </PARA>
+  <PARA>
+    The Detect -&gt; celldetect task now allows users to change the
+    fixed cellsize that is used.  Users can also now supply the 
+    file name for an exposure map and a  PSF map.
+  </PARA>
+
+  <PARA>
+    Most of the dax tasks are now run via a single wrapper script.  
+    This means more uniform handling of regions and output files.  
+  </PARA>
+
+  <PARA>
+    Long running dax tasks will now launch a small "Busy Indicator" 
+    window with the tool name and an indeterminate progress bar.
+    Note: closing the busy indicator does not terminate the task.  
+    To kill a running task users must reselect the same task.
+  </PARA>
+
+
+  <PARA title="Bug Fixes"></PARA>
+
+  <PARA>
+    Fix problem with Net Counts task where background counts
+    and area are incorrectly reported as '0'.  Net rate errors 
+    are now included in the Net Counts task.  Also now verifies a
+    single unique instance of ds9 is running.
+  </PARA>
+
+
+
+</ADESC>
+
 
 
 <ADESC title="Changes in the 4.12.2 (April 2020) release">
@@ -96,81 +269,7 @@ unix% ds9 -analysis $ASCDS_INSTALL/contrib/config/ciao.ds9 ...
     ciao format.
   </PARA>
 
-  <PARA>
-    Fix problem with Net Counts task where background counts
-    and area are incorrectly reported as '0'.  Net rate errors 
-    are now included in the Net Counts task.  Also now verifies a
-    single unique instance of ds9 is running.
-  </PARA>
-  <PARA>
-    The spectral fit and radial fit tasks now use a common 
-    set of plotting routines.  The plots have been rearranged
-    so that the model is now drawn on top of the data.
-  </PARA>
-  <PARA>
-    The list of spectral models has been expanded.  Users can
-    also now specify a 2nd model component to be added to the
-    first.
-  </PARA>
-  <PARA>
-    New:  CIAO -&gt; Coordinates -&gt; Chandra Grating Energy Lookup.
-    Users draw a region around the 0th order location; when this 
-    task is run, it will prompt the user for a list of Energies and
-    Orders.  The location of these energies and orders will be 
-    identified on the image.   Only for Chandra observation which 
-    used the gratings (HETG or LETG). 
-  </PARA>
-  <PARA>
-    The Detect -&gt; celldetect task now allows users to change the
-    fixed cellsize that is used.  
-  </PARA>
-
-  <PARA>
-    New: Detect -&gt; wavdetect task is now available.  Users select the
-    wavelet scales which are used.  Note: This task can be very slow for
-    large images.  wavdetect is run without an exposure map and without a 
-    PSF map; therefore there will tend to be spurious source detected at the
-    edge of the field of view and sources will be reconstructed using the
-    smallest wavelet they were detected at (possibly smaller than PSF).
-  </PARA>
-
-  <PARA>
-    New Image Processing -&gt; Regrid task which allows the user to 
-    shift, scale, and rotate image pixel values.  This task 
-    intentionally does not adjust the WCS.  
-  </PARA>
-
-  <PARA>
-    New Chandra PSF -&gt; Simulate PSF with MARX task allows users to
-    simulate a monochromatic PSF using MARX.  
-  </PARA>
-
-  <PARA>
-    New Create Custom Color Lookup Table task allows user to generate a
-    new color map based on standard X11 color names, eg from black to 
-    cadetblue, to white.
-  </PARA>
-
-  <PARA>
-    New: Histogram -&gt; Dither Region computes the fraction of the
-    region area exposed vs. time due to dither for Chandra datasets.
-  </PARA>
-
-  <PARA>
-    New: Histogram -&gt; Enclosed Counts Fraction computes the ECF
-    in the selected region.
-  </PARA>
-  <PARA>
-    New: Calculator tasks allow users to perform simple arithmetic
-    calculations (add, multiply, divide, subtract) using the images
-    displayed in 2 frames.  Additional scaling functions are
-    provided for the current frame.
-  </PARA>
-
-
 </ADESC>
-
-
 
 
 <ADESC title="Changes in the 4.11.3 (May 2019) release">
