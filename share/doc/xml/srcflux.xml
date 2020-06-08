@@ -65,7 +65,7 @@
       </PARA>
       <PARA title="Estimating the PSF contribution">
 	The PSF contribution to both the source and background regions
-	can be estimated using one of four methods, controlled by the
+	can be estimated using one of five methods, controlled by the
 	psfmethod argument. Extended sources should use psfmethod=ideal,
 	which makes no correction, or psfmethod=psffile and provide
     an image of the surfrace brightness as the psffile parameter.
@@ -149,7 +149,7 @@ Position                               0.5 - 7.0 keV
 </VERBATIM>
 	  <PARA>
 	    Since source and background regions are not supplied, the script
-	    creates a region that encloses 90% of the PSF at 1.0 keV.
+	    creates a circular region that encloses 90% of the PSF at 1.0 keV.
 	  </PARA>
 <VERBATIM>
 &pr; dmlist rhooph_broad.flux"[cols shape,x,y,r]" data,clean
@@ -530,7 +530,147 @@ Position                               0.5 - 1.2 keV                           1
 	  </PARA>        
 	</DESC>
       </QEXAMPLE>
+
+
+  <QEXAMPLE>
+    <SYNTAX>
+    <LINE>&pr; srcflux "17244/repro/acisf17244_repro_evt2.fits,18681/repro/acisf18681_repro_evt2.fits" \</LINE>
+    <LINE>      pos="9:42:32.2119,+12:20:51.349" psfmethod=quick out=merge_17244_18681/out</LINE>
+    </SYNTAX>
+<DESC>
+  <PARA>
+  This example shows how to combine the photometry for multiple observations.
+  </PARA>
+<VERBATIM>
+srcflux
+          infile = 17244/repro/acisf17244_repro_evt2.fits,18681/repro/acisf18681_repro_evt2.fits
+             pos = 9:42:32.2119,+12:20:51.349
+         outroot = merge_17244_18681/out
+           bands = broad
+          srcreg = 
+          bkgreg = 
+         bkgresp = yes
+       psfmethod = quick
+         psffile = 
+            conf = 0.9
+         binsize = 1
+         rmffile = 
+         arffile = 
+           model = xspowerlaw.pow1
+       paramvals = pow1.PhoIndex=2.0
+        absmodel = xsphabs.abs1
+       absparams = abs1.nH=%GAL%
+           abund = angr
+         fovfile = 
+        asolfile = 
+         mskfile = 
+        bpixfile = 
+         dtffile = 
+         ecffile = CALDB
+        parallel = yes
+           nproc = INDEF
+          tmpdir = /tmp
+         clobber = no
+         verbose = 1
+            mode = ql
+
+Processing OBI 000
+Extracting counts
+Getting net rate and confidence limits
+Getting model independent fluxes 
+Getting model fluxes 
+Getting photon fluxes 
+Running tasks in parallel with 4 processors.
+Running aprates for merge_17244_18681/out_obi0000001_broad_rates.par
+Running eff2evt for merge_17244_18681/out_obi000broad_0001_src.dat
+Running eff2evt for merge_17244_18681/out_obi000broad_0001_bkg.dat
+Making response files for merge_17244_18681/out_obi0000001
+Running modeflux for region 1
+Using GAL=0.032 for source 1
+Adding net rates to output
+Appending flux results onto output
+Appending photflux results onto output
+Computing Net fluxes
+Adding model fluxes to output
+Scaling model flux confidence limits
+Processing OBI 001
+Extracting counts
+Getting net rate and confidence limits
+Getting model independent fluxes 
+Getting model fluxes 
+Getting photon fluxes 
+Running tasks in parallel with 4 processors.
+Running aprates for merge_17244_18681/out_obi0010001_broad_rates.par
+Running eff2evt for merge_17244_18681/out_obi001broad_0001_src.dat
+Running eff2evt for merge_17244_18681/out_obi001broad_0001_bkg.dat
+Making response files for merge_17244_18681/out_obi0010001
+Running modeflux for region 1
+Using GAL=0.032 for source 1
+Adding net rates to output
+Appending flux results onto output
+Appending photflux results onto output
+Computing Net fluxes
+Adding model fluxes to output
+Scaling model flux confidence limits
+Combining count rates
+Combining spectra and running model flux for each source
+Running modeflux for region 1
+Using GAL=0.032 for source 1
+
+
+Summary of source fluxes in OBI 000
+
+      Position                               0.5 - 7.0 keV                           
+                                             Value        90% Conf Interval          
+#0001|9 42 32.21 +12 20 51.3  Rate           0.00262 c/s (0.00204,0.00319)           
+                              Flux           2.85E-14 erg/cm2/s (2.22E-14,3.48E-14)  
+                              Mod.Flux       2.4E-14 erg/cm2/s (1.87E-14,2.93E-14)   
+                              Unabs Mod.Flux 2.53E-14 erg/cm2/s (1.97E-14,3.09E-14)  
+
+
+
+Summary of source fluxes in OBI 001
+
+      Position                               0.5 - 7.0 keV                           
+                                             Value        90% Conf Interval          
+#0001|9 42 32.21 +12 20 51.3  Rate           0.00247 c/s (0.00205,0.00288)           
+                              Flux           2.41E-14 erg/cm2/s (2.01E-14,2.82E-14)  
+                              Mod.Flux       2.26E-14 erg/cm2/s (1.88E-14,2.65E-14)  
+                              Unabs Mod.Flux 2.39E-14 erg/cm2/s (1.99E-14,2.79E-14)  
+
+
+
+Summary of merged source fluxes
+
+      Position                               0.5 - 7.0 keV                           
+                                             Value        90% Conf Interval          
+9 42 32.21 +12 20 51.3        Rate           0.00252 c/s (0.00218,0.00286)           
+  NumObi=2                    Mod.Flux       2.31E-14 erg/cm2/s (2E-14,2.62E-14)     
+                              Unabs Mod.Flux 2.44E-14 erg/cm2/s (2.11E-14,2.76E-14)  
+</VERBATIM>
+
+<PARA>
+    The data for each observation are extracted and calibrated separately.
+    Then the data are combined together to compute the combined (merged)
+    count rate, photon fluxes, and model fluxes.  (Merged model independent, ie 
+    eff2evt fluxes, are not currently computed.)    
+    
+</PARA>
+<PARA>
+  The "NumObi" value reports the number of observations in which the
+  source was imaged.  The output .flux file contains a subset of the
+  per-obsid output .flux files with the column names prefixed with "MERGED".
+</PARA>
+
+</DESC>
+  
+  </QEXAMPLE>
     </QEXAMPLELIST>
+
+
+
+
+
 
     <PARAMLIST>
       <PARAM name="infile" type="file" filetype="input" reqd="yes" stacks="yes">
@@ -545,8 +685,7 @@ Position                               0.5 - 1.2 keV                           1
       <PARA>
         Multiple event files can be input.  The script will 
         iterate over each event file individually, producing the 
-        same set of properties and data products.  The results 
-        are not merged.      
+        same set of properties and data products.  
       </PARA>
 
 
@@ -1132,6 +1271,33 @@ bounds(region(my.reg))
       </PARAM>
     </PARAMLIST>
 
+
+    <ADESC title="Multiple Observations">
+      <PARA>
+        Users can specify a stack of input event files.  srcflux will
+        produce results for each observation separately as well as 
+        computing properties based on the merged products.     
+      </PARA>
+      <PARA>
+      If source and background regions are not supplied, a circle 
+      enclosing  90% of the PSF region at 1keV is computed separately
+      for each observation.  If regions are supplied, users must supply
+      the regions separately for each observation.  So for example, if 
+      there 1 position input but 3 event files, then users need to supply 
+      3 pairs of source and background regions.
+      </PARA>
+
+      <PARA>
+        Absorbed and Unabsorbed model fluxes are computed by combining
+        the ARF and RMF file using the combine_spectra script.
+        Count rates and photon fluxes are computed by running the 
+        aprates tool with the sum of the source and background counts,
+        and weighting by the exposure and PSF fractions.
+      </PARA>
+    </ADESC>
+
+
+
     <ADESC title="PSF Correction">
       <PARA>
 	For extended sources, or when the PSF scattering is being
@@ -1170,7 +1336,8 @@ bounds(region(my.reg))
     <ADESC title="Output files">
       <PARA>
 	This is a list of
-	the column definitions in the output .flux file.
+	the column definitions in the output .flux file created for 
+    each observation.
 	A '*' in the Orig column indicates that the
 	value was computed directly by dmextract.
       </PARA>
@@ -1334,6 +1501,8 @@ bounds(region(my.reg))
 	  &nodmx;
 	  <DATA>Dec of position (decimal degrees)</DATA>
 	</ROW>
+
+
 <!--
 	<ROW>
 	  <DATA>DETX</DATA>
@@ -1597,6 +1766,175 @@ bounds(region(my.reg))
 	  <DATA>Sherpa absorption parameters</DATA>
 	</ROW>
       </TABLE>
+
+
+    <PARA>
+    If multiple event files are supplied, then the results are combined
+    together into a merged .flux file.  It contains the following columns:
+    
+    </PARA>
+
+
+    <TABLE>
+    <ROW>
+	  <DATA>Name</DATA>
+	  <DATA>Description</DATA>
+    </ROW>
+<ROW>
+<DATA>RAPOS</DATA>
+<DATA>Right Ascension of source location </DATA>
+</ROW>
+<ROW>
+<DATA>DECPOS</DATA>
+<DATA>Declination of source location</DATA>
+</ROW>
+<ROW>
+<DATA>COMPONENT</DATA>
+<DATA>integer number identifying region number</DATA>
+</ROW>
+<ROW>
+<DATA>TOTAL_COUNTS</DATA>
+<DATA>Sum of counts in source region from all observations</DATA>
+</ROW>
+<ROW>
+<DATA>TOTAL_BG_COUNTS</DATA>
+<DATA>Sum of counts in background region from all observations</DATA>
+</ROW>
+<ROW>
+<DATA>NUM_OBI</DATA>
+<DATA>Number of observations the source falls within the Field-of-View</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_RATE_APER</DATA>
+<DATA>The merged net rate computed from total counts</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_RATE_APER_LO</DATA>
+<DATA>Lower confidence level of merged net rate computed using
+aprates, the total counts, and exposure weighted PSFs</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_RATE_APER_HI</DATA>
+<DATA>Same as previous for the upper confidence level.</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_RATE_AREASCAL</DATA>
+<DATA>The exposure-time and PSF weighted area scaling factor</DATA>
+</ROW>
+<ROW>
+<DATA>PSF_WEIGHTED_TOTAL_EXPOSURE_TIME</DATA>
+<DATA>Exposure time weighted by PSF fraction</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_APRATES_PHOTFLUX_APER</DATA>
+<DATA>Net photon flux computed using aprates and mean exposure-map
+values.  This is different from the per-observation photon flux values
+which are computed by summing pixels in the exposure weighted (fluxed)
+images.
+</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_APRATES_PHOTFLUX_APER_LO</DATA>
+<DATA>
+    The aprates_photflux lower confidence level 
+</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_APRATES_PHOTFLUX_APER_HI</DATA>
+<DATA>    The aprates_photflux upper confidence level 
+</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_PHOTFLUX_AREASCAL</DATA>
+<DATA>The area scaling weighted by expoure map and PSF fraction.</DATA>
+</ROW>
+<ROW>
+<DATA>PSF_WEIGHTED_TOTAL_SRC_EXPOSURE</DATA>
+<DATA>Weighted sum of exposure map pixels in the source region scaled by the 
+PSF fraction.
+</DATA>
+</ROW>
+<ROW>
+<DATA>PSF_WEIGHTED_TOTAL_BG_EXPOSURE</DATA>
+<DATA>Same as above for the background region.
+</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_PHOTFLUX_APER</DATA>
+<DATA>
+The merged net photon flux by weighted averaging the per-observation values.
+</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_PHOTFLUX_APER_LO</DATA>
+<DATA>The lower confidence value on the net photon flux computed by scaling
+the net rate errors.
+</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_PHOTFLUX_APER_HI</DATA>
+<DATA>Same as above for the upper confidence value.
+</DATA>
+</ROW>
+<ROW>
+<DATA>MFLUX_CNV</DATA>
+<DATA>The absorbed model flux conversion factor obtained by running
+modelflux on the combined ARF and RMF.
+</DATA>
+</ROW>
+<ROW>
+<DATA>UMFLUX_CNV</DATA>
+<DATA>same as above for the unabsorbed model
+</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_MFLUX_APER</DATA>
+<DATA>The net rate scaled by the model-dependent, absorbed model conversion
+factor (MFLUX_CNV).
+</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_MFLUX_APER_LO</DATA>
+<DATA>Same as above for the lower confidence limit
+</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_MFLUX_APER_HI</DATA>
+<DATA>Same as above for the upper confidence limit.
+</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_UMFLUX_APER</DATA>
+<DATA>Same as the MERGED_NET_MFLUX_APER, but for just the unabsorbed 
+model component</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_UMFLUX_APER_LO</DATA>
+<DATA>Same as above for the lower confidence limit</DATA>
+</ROW>
+<ROW>
+<DATA>MERGED_NET_UMFLUX_APER_HI</DATA>
+<DATA>Same as above for the upper confidence limit</DATA>
+</ROW>
+<ROW>
+<DATA>TOTAL_FLUX_APER</DATA>
+<DATA>Total exposure weighted model-independent, ie eff2evt, flux in
+the source region.</DATA>
+</ROW>
+<ROW>
+<DATA>TOTAL_BG_FLUX_APER</DATA>
+<DATA>Same as above for the background region.
+</DATA>
+</ROW>
+    
+    
+    
+    </TABLE>
+
+
+
+
+
     </ADESC>
 
     <ADESC title="Processing steps">
