@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2011, 2014, 2015, 2016, 2019
+#  Copyright (C) 2011, 2014, 2015, 2016, 2019, 2020
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -302,7 +302,8 @@ def check_conda_versions(ciao):
     in which CIAO has been installed via conda.
 
     Returns True if the environmant is up to date, or False if it needs
-    an update.
+    an update. This is **only** for the base CIAO packages, and does
+    not refer to other packages (e.g. openssl).
     """
 
     import subprocess
@@ -368,9 +369,13 @@ def check_conda_versions(ciao):
     js = json.loads(out.stdout)
 
     # map a missing key to a failure (as indicates schema has changed)
-    success = js.get('success', False)
-    if not js['success']:
-        raise IOError("Unable to run {}: {}".format(command, out.stdout))
+    if not js.get('success', False):
+        v3("- call failed: {}".format(js))
+        msg = js.get('message', None)
+        if msg is None:
+            raise IOError("Unable to run conda dependency check")
+        else:
+            raise IOError("Unable to run conda dependency check:\n{}".format(msg))
 
     # perhaps could just check to see message exists, since if it does
     # it *probably* indicates success, which would be a simpler check
@@ -381,18 +386,57 @@ def check_conda_versions(ciao):
         print("CIAO (installed via conda) is up to date.")
         return True
 
-    fetch = js.get('actions', {}).get('FETCH', None)
+    actions = js.get('actions', {})
+
+    def get_names(action):
+        try:
+            xs = [(f['name'], f['version']) for f in action]
+        except KeyError:
+            xs = []
+
+        return sorted(xs, key=lambda x: x[0])
+
+    # Note down (debugging) if there are LINK/UNLINK actions
+    #
+    unlink = actions.get('UNLINK', None)
+    if unlink is not None:
+        v3(" - found {} UNLINK actions".format(len(unlink)))
+        for n, v in get_names(unlink):
+            v3("   - {} {}".format(n, v))
+
+    link = actions.get('LINK', None)
+    if link is not None:
+        v3(" - found {} LINK actions".format(len(link)))
+        for n, v in get_names(link):
+            v3("   - {} {}".format(n, v))
+
+    # Report on the updates
+    fetch = actions.get('FETCH', None)
     if fetch is None:
         v3(" - unable to find actions/FETCH in {}".format(js))
         print("It looks like a CIAO package needs to be updated by CIAO but I can't find which.")
         return False
 
-    names = [(f['name'], f['version']) for f in fetch]
+    # filter the names list to only show the CIAO packages
+    #
+    names = []
+    for name, version in get_names(fetch):
+        if name not in packages:
+            v3(" - skipping {} {} from FETCH list".format(name, version))
+            continue
+
+        names.append((name, version))
+
     nnames = len(names)
     if nnames == 0:
-        v3(" - unable to find FETCH list in {}".format(js))
-        print("Unable to find which conda packages need updating")
-        return False
+        # assume that the only things needing to be updated are
+        # "support" packages (e.g. openssl) which we are not reporting.
+        #
+        # Should we tell users that an update may be useful?
+        #
+        v3(" - empty FETCH list")
+        print("CIAO (installed via conda) is up to date.")
+        return True
 
     if nnames == 1:
         print("There is one package that needs updating:")
