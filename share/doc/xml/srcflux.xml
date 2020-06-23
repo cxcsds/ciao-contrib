@@ -1268,6 +1268,22 @@ bounds(region(my.reg))
 	<SYNOPSIS>Directory for temporary files</SYNOPSIS>
       </PARAM>
 
+          <PARAM name="random_seed" type="integer" def="-1" reqd="no">
+            <SYNOPSIS>
+              Initial random seed for PSF simulations. It is passed to the 
+              simulate_psf tool when  psfmethod=marx.
+            </SYNOPSIS>
+            <DESC>
+              <PARA>
+                The random_seed is set to initialize the simulation.  
+                With random_seed equal to the default value of -1, the
+                script will use a random value for the
+                initial random_seed.
+              </PARA>
+            </DESC>
+          </PARAM>
+
+
       <PARAM name="clobber" type="boolean" def="no">
 	<SYNOPSIS>Overwrite existing files?</SYNOPSIS>
       </PARAM>
@@ -2022,7 +2038,8 @@ the source region.</DATA>
 
 
       <PARA title="Using with Merged Datasets">
-	Users should not use this script with merged datasets.
+	Users should not use this script with merged datasets; rather they should 
+    supply the individual observations separately.
 	Users should review the material on
 	<HREF link="https://cxc.harvard.edu/ciao/caveats/merged_events.html">
 	  Extracting spectra from Merged Datasets
@@ -2030,10 +2047,6 @@ the source region.</DATA>
 	regarding
 	the issues of trying to extract and fit a spectra from
 	a merged observation as they apply directly to this script.
-	To summarize, while it is trivial to simply combine the
-	counts, even something as simple as NET_COUNTS is
-	problematic if the source was observed on different
-	CCD's.
       </PARA>
       
       <PARA title="Gratings"> 
@@ -2074,6 +2087,34 @@ the source region.</DATA>
       </PARA>
 
     </ADESC>
+
+
+    <ADESC title="Changes in the script 4.12.3 (July 2020) release">
+      <PARA title="Merged Outputs">
+        When multiple event files are specified, users will now also
+        get a flux estimate from all the observations combined.  Currently
+        model independent fluxes are not combined; but rates, photon fluxes,
+        and model fluxes (absorbed and unabsorbed) are computed.  
+        Uncertainties are computed using the aprates tool.  Variable 
+        sources will likely yield incorrect flux estimates.      
+      </PARA>
+    
+      <PARA title="Other">
+        In addition the energy band parameter has been changed to 
+        band=default.  This allows both ACIS (default is broad band)
+        and HRC (default is wide band) to work without explicitly 
+        changing this parameter.      
+      </PARA>
+      <PARA>
+        A new random_seed parameter has been added which is passed to 
+        the simulate_psf script when psfmethod=marx.  The default random_seed=-1
+        will use the current time to seed the random stream.
+      </PARA>
+      
+    
+    </ADESC>
+
+
 
 
     <ADESC title="Changes in the scripts 4.12.2 (April 2020) release">
