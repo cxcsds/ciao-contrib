@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/export/miniconda/envs/srcflux/bin/python
 
 #
 # Copyright (C) 2013-2020 Smithsonian Astrophysical Observatory
@@ -21,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "srcflux"
-__revision__ = "29 June 2020"
+__revision__ = "12 February 2020"
 
 import os
 
@@ -1910,11 +1910,11 @@ def merge_modelflux( stk_params, myparams ):
         rmf_files = [ p.outroot+"{:04d}.rmf".format(snum+1) for p in stk_params ]
 
         _p = [x for x in pi_files if os.path.exists(x)]
-        if combine_spectra.src_spectra is None:
+        if _p is None or 0 == len(_p):
             for at_energy in bands:
                 outfiles[at_energy]["mflux_cnv"].append(np.nan)
                 outfiles[at_energy]["umflux_cnv"].append(np.nan)
-            return outfiles
+            continue  # next source
 
         combine_spectra.src_spectra=_p
         combine_spectra.src_arf=[x for x in arf_files if os.path.exists(x)]
@@ -2031,34 +2031,52 @@ def merge_aprates( cts, conf, rate=False ):
     q = m*r
     Q = np.sum(q)
 
-    R = Q / M
+    R = Q / M if M > 0 else np.nan
 
+    chk = np.sum(exp_s)
+    if chk != 0:
+        Alpha = np.sum(alpha*exp_s)/chk
+    else:
+        Alpha = np.nan
+        
+    chk = np.sum(exp_b)
+    if chk != 0:
+        Beta = np.sum(beta*exp_b)/chk
+    else:
+        Beta = np.nan
 
-    Alpha = np.sum(alpha*exp_s)/np.sum(exp_s)
-    Beta = np.sum(beta*exp_b)/np.sum(exp_b)
     E_S = np.sum(exp_s) 
     E_B = np.sum(exp_b) 
     A_S = 1.0
-    A_B = (E_S/E_B)*R
+
+    if E_B != 0:
+        A_B = (E_S/E_B)*R
+    else:
+        A_B = np.nan
     T_S = np.sum(exptime)
     T_B = np.sum(exptime)
 
+
+    badval = { 'src_cts' : C,
+               'bkg_cts' : B,
+               'backscl' : R,
+               'srcwexp' : F,
+               'bkgwexp' : G,
+               'value' : np.nan,
+               'lolimit' : np.nan,
+               'hilimit' : np.nan,
+               'conf' : float(conf),
+               'numobi': len(c) ,
+               }
+
+    pp = [C,A_S,Alpha,T_S,E_S,B,A_B,Beta,T_B,E_B]
+    wtaf=np.isfinite(pp).all()
+
     if not any(good):
-        retval = { 'src_cts' : C,
-                   'bkg_cts' : B,
-                   'backscl' : R,
-                   'srcwexp' : F,
-                   'bkgwexp' : G,
-                   'value' : np.nan,
-                   'lolimit' : np.nan,
-                   'hilimit' : np.nan,
-                   'conf' : float(conf),
-                   'numobi': len(c) ,
-                   }
-        return retval
-
-
-
+        return badval
+    
+    if wtaf == False:
+        return badval
 
     aprates.n = C
     aprates.A_s = A_S
@@ -2091,7 +2109,7 @@ def merge_aprates( cts, conf, rate=False ):
                'srcwexp' : F,
                'bkgwexp' : G,
                'value' : float(pf),
-               'lolimit' : float(pfl),
+               'lolimit' : float(pfl) if pfl != "INDEF" else np.nan,
                'hilimit' : float(pfh),
                'conf' : float(conf),
                'numobi': len(c) ,
@@ -2102,6 +2120,9 @@ def merge_aprates( cts, conf, rate=False ):
 
 def merge_photfluxes(cts):
     good = ( np.array( cts["inside_fov"] ) == True )
+
+    if not any(good):
+        return { 'value' : np.nan }
 
     exptime = np.array(cts["exptime"])[good]    
     photflux    = np.array(cts["net_photflux_aper"])[good]
@@ -2123,6 +2144,8 @@ def merge_eff2evt( cts ):
 
     """
     good = ( np.array( cts["inside_fov"] ) == True )
+    if not any(good):
+        return {'src' : np.nan, 'bkg': np.nan}
 
     s    = np.array(cts["flux_aper"])[good]
     b    = np.array(cts["bg_flux_aper"])[good]
