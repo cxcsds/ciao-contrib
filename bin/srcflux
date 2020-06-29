@@ -1908,7 +1908,15 @@ def merge_modelflux( stk_params, myparams ):
         pi_files = [ p.outroot+"{:04d}.pi".format(snum+1) for p in stk_params ]
         arf_files = [ p.outroot+"{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
         rmf_files = [ p.outroot+"{:04d}.rmf".format(snum+1) for p in stk_params ]
-        combine_spectra.src_spectra=[x for x in pi_files if os.path.exists(x)]
+
+        _p = [x for x in pi_files if os.path.exists(x)]
+        if combine_spectra.src_spectra is None:
+            for at_energy in bands:
+                outfiles[at_energy]["mflux_cnv"].append(np.nan)
+                outfiles[at_energy]["umflux_cnv"].append(np.nan)
+            return outfiles
+
+        combine_spectra.src_spectra=_p
         combine_spectra.src_arf=[x for x in arf_files if os.path.exists(x)]
         combine_spectra.src_rmf=[x for x in rmf_files if os.path.exists(x)]
         combine_spectra.outroot = myparams.outroot+"{:04d}".format(snum+1)
@@ -1990,6 +1998,7 @@ def merge_aprates( cts, conf, rate=False ):
 
     good = ( np.array( cts["inside_fov"] ) == True )
 
+
     c      = np.array( cts["counts"] )[good]
     b      = np.array( cts["bg_counts"] )[good]
     alpha  = np.array(cts["psffrac"])[good]
@@ -2033,6 +2042,23 @@ def merge_aprates( cts, conf, rate=False ):
     A_B = (E_S/E_B)*R
     T_S = np.sum(exptime)
     T_B = np.sum(exptime)
+
+    if not any(good):
+        retval = { 'src_cts' : C,
+                   'bkg_cts' : B,
+                   'backscl' : R,
+                   'srcwexp' : F,
+                   'bkgwexp' : G,
+                   'value' : np.nan,
+                   'lolimit' : np.nan,
+                   'hilimit' : np.nan,
+                   'conf' : float(conf),
+                   'numobi': len(c) ,
+                   }
+        return retval
+
+
+
 
     aprates.n = C
     aprates.A_s = A_S
