@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019
+# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -23,7 +23,7 @@
 #
 
 toolname = "blanksky_sample"
-__revision__  = "18 November 2019"
+__revision__  = "01 July 2020"
 
 import os, sys, paramio, tempfile, numpy
 
@@ -639,7 +639,13 @@ def sample_chip(bkg,infile,outfile,kw,randomseed,tmpdir,verbose):
                 bkgchipstr = "{0}[ccd_id={1}]".format(bkg,chip)
 
                 tobs = fileio.get_keys_from_file(infile)["LIVTIME{}".format(chip)]
-                tbsky = kw["LIVTIME{}".format(chip)]
+                try:
+                    tbsky = kw["LIVTIME{}".format(chip)]
+                except KeyError:
+                    try:
+                        tbsky = kw["LIVETIM{}".format(chip)]
+                    except KeyError:
+                        tbsky = kw["LIVETIME"]
 
                 bkg_sample.append((bkgchipstr,bkgtmp.name,bkgscale,bkgmeth,tobs,tbsky,randomseed,tmpdir,verbose))
 
