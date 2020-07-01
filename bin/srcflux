@@ -1,4 +1,4 @@
-#!/export/miniconda/envs/srcflux/bin/python
+#!/usr/bin/env python
 
 #
 # Copyright (C) 2013-2020 Smithsonian Astrophysical Observatory
@@ -21,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "srcflux"
-__revision__ = "12 February 2020"
+__revision__ = "01 July 2020"
 
 import os
 
@@ -1909,16 +1909,28 @@ def merge_modelflux( stk_params, myparams ):
         arf_files = [ p.outroot+"{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
         rmf_files = [ p.outroot+"{:04d}.rmf".format(snum+1) for p in stk_params ]
 
-        _p = [x for x in pi_files if os.path.exists(x)]
-        if _p is None or 0 == len(_p):
+        p_good=[]
+        a_good=[]
+        r_good=[]
+
+        for p_a_r in zip(pi_files, arf_files, rmf_files):
+            ondisk = [ os.path.exists(x) for x in p_a_r]
+            if all(ondisk) is False:
+                continue
+            p_good.append(p_a_r[0])
+            a_good.append(p_a_r[1])
+            r_good.append(p_a_r[2])
+
+        
+        if p_good is None or 0 == len(p_good):
             for at_energy in bands:
                 outfiles[at_energy]["mflux_cnv"].append(np.nan)
                 outfiles[at_energy]["umflux_cnv"].append(np.nan)
             continue  # next source
 
-        combine_spectra.src_spectra=_p
-        combine_spectra.src_arf=[x for x in arf_files if os.path.exists(x)]
-        combine_spectra.src_rmf=[x for x in rmf_files if os.path.exists(x)]
+        combine_spectra.src_spectra = p_good
+        combine_spectra.src_arf = a_good
+        combine_spectra.src_rmf = r_good
         combine_spectra.outroot = myparams.outroot+"{:04d}".format(snum+1)
         combine_spectra.clobber=True
         vv = combine_spectra()
@@ -2073,9 +2085,11 @@ def merge_aprates( cts, conf, rate=False ):
     wtaf=np.isfinite(pp).all()
 
     if not any(good):
+        delme(outfile.name)
         return badval
     
     if wtaf == False:
+        delme(outfile.name)
         return badval
 
     aprates.n = C
