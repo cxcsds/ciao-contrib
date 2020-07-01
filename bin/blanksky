@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2018, 2019
+#  Copyright (C) 2018, 2019, 2020
 #            Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 #
 
 toolname = "blanksky"
-__revision__  = "13 November 2019"
+__revision__  = "25 June 2020"
 
 import os, sys, paramio, tempfile, shutil, stat
 
@@ -112,7 +112,10 @@ def caldb_blanksky(detector):
     else:
         error_out("Check that CalDB has been installed.")
 
-    if len(os.listdir(bkg_path)) > 1:
+    if len(os.listdir(bkg_path)) > 2:
+        # the CALDB 'main' tarball only	contains a readme and manifest text
+        # file in the 'bkgrnd' sub-directory
+
         return True
     else:
         return False
@@ -174,6 +177,42 @@ def e_norm(evtfile,bkgfile,chip,bkgparams,instrument):
     return obs_counts/bkg_counts
 
 
+def he_rate_norm(evtfile,bkgfile,chip,bkgparams,instrument,evt_keywords,bkg_keywords):
+    he = e_norm(evtfile,bkgfile,chip,bkgparams,instrument)
+    t = t_norm(evtfile,bkgfile,chip,evt_keywords,bkg_keywords)
+    
+    return he/t
+
+
+def check_tool_par(evt,tool,param):
+    
+    dmhistory.punlearn()
+    dmhistory.infile = evt
+    dmhistory.tool = tool
+    dmhistory.verbose = "1"
+
+    try:
+        hist = dmhistory()
+    except OSError:
+        raise ValueError("{0} was not used to generate {1}".format(tool,evt))
+   
+    hist = [t for t in hist.split("\n") if t.startswith(tool)]
+
+    par_instance = []
+
+    for h in hist:
+        for par in h.split(" "):
+            if par.startswith(param):
+                par_instance.append(par)
+
+    par_instance = [par.replace("\"","") for par in par_instance]
+
+    if "{}=yes".format(param) in par_instance:
+        return True
+    else:
+        return False
+
+
 def apply_gain(infile,outfile,kw,tmpdir,verbose):
     # The two gain files should have the same date and version number in the filename.
     # If they do not match, reprocess the background file with the event file gain file.
@@ -183,33 +222,43 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
     bkg_gain = fileio.get_keys_from_file(infile)["GAINFILE"]
 
     if gainfile != bkg_gain:
-        # grab eventdef and remove time def
-        # change status bits to match infile
-        dmhistory.punlearn()
 
-        dmhistory.infile = infile
-        dmhistory.outfile = "stdout"
-        dmhistory.tool = "acis_process_events"
-        dmhistory.action = "get"
-        dmhistory.clobber = "yes"
-        dmhistory.verbose = "0"
+        ## grab eventdef and remove time def
+        ## change status bits of background events to match infile w/a_p_e
 
-        eventdef = dmhistory()
-        eventdef = eventdef.split("\n")
-        eventdef = [edef for edef in eventdef if edef!=""][-1]
-        eventdef = eventdef.split(" ")
+        def _get_edef(evt,removecol=None):
+            cr = pcr.read_file("{}[#row=1]".format(evt))
+            colnames = cr.get_colnames(vector=False)
 
-        for edef in eventdef:
-            if edef.startswith("eventdef"):
-                eventdef = edef.lstrip("eventdef=").replace("\"","")
+            # The data types recognized by acis_process_events include 
+            # d (double-precision real), f (single-precision real), i (integer), 
+            # l (long integer), s (short integer), and x (logical)
 
-        eventdef = eventdef[1:-1].split(",")
+            edef_type = { "float64" : "d", 
+                          "float32" : "f",
+                          "int64" : "l",
+                          "int32" : "i",
+                          "int16" : "s",
+                          "uint8" : "x" }
 
-        for edef in eventdef:
-            if edef.endswith(":time"):
-                eventdef.remove(edef)
+            edef = {}
+    
+            for col in colnames:
+                edef[col] = edef_type[cr.get_column(col).values.dtype.name]
 
-        eventdef = "{"+",".join(eventdef)+"}"
+            cr.__del__()
+
+            if removecol != None:
+                try:
+                    colnames.remove(removecol)
+                except ValueError:
+                    pass
+
+            edefstr = ["{0}:{1}".format(edef[col],col) for col in colnames]
+    
+            return  "{" + ",".join(edefstr) + "}"
+
+        eventdef = _get_edef(infile,remove="time")
 
         ## CTI and TGAIN Calibration Files
         #
@@ -607,11 +656,15 @@ def blanksky(infile,filters,asols,tmpdir,keywords,verbose,clobber):
 
             bkg = tempfile.NamedTemporaryFile(suffix=".bkg",dir=tmpdir)
 
-            # if datamode is VFAINT, set status to 0
-            if keywords["DATAMODE"] == "VFAINT":
+            # if datamode is VFAINT and ran a_p_e with check_vf_pha=yes, 
+            # remove background events with non-0 status
+            if False not in (keywords["DATAMODE"] == "VFAINT",
+                             check_tool_par(evt=infile,tool="acis_process_events",
+                                            param="check_vf_pha")):
+
                 dmcopy.punlearn()
 
-                dmcopy.infile = bkg_repro.name+"[status=0]"
+                dmcopy.infile = "{}[status=0]".format(bkg_repro.name)
                 dmcopy.outfile = bkg.name
                 dmcopy.verbose = "0"
                 dmcopy.clobber = "yes"
@@ -667,7 +720,7 @@ def doit():
     dmcopy.verbose = "0"
     dmcopy()
 
-    if method == "particle":
+    if method != "time":
         if instrument == "ACIS":
             if bkgparams.lower() == "default":
                 e_particle = "[energy=9000:12000]"
@@ -733,11 +786,15 @@ def doit():
     # calculate scaling factor, add as keyword
     scale = []
     for ccd in sorted(ccds):
-        if method == "time":
-            bkg_kw = fileio.get_keys_from_file(outdir+outfile)
-            scalefactor = t_norm(check_evt.name,outdir+outfile,ccd,kw,bkg_kw)
-        else:
+        if method == "particle":
             scalefactor = e_norm(check_evt.name,outdir+outfile,ccd,e_particle,instrument)
+        else:
+            bkg_kw = fileio.get_keys_from_file(outdir+outfile)
+
+            if method == "time":
+                scalefactor = t_norm(check_evt.name,outdir+outfile,ccd,kw,bkg_kw)
+            else:
+                scalefactor = he_rate_norm(check_evt.name,outdir+outfile,ccd,e_particle,instrument,kw,bkg_kw)
 
         if instrument == "HRC":
             dmhedit.key = "BKGSCALE"
