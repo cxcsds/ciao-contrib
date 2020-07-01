@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 
-Copyright (C) 2009-2011, 2015, 2019
+Copyright (C) 2009-2011, 2015, 2019, 2020
           Smithsonian Astrophysical Observatory
 
 
@@ -43,7 +43,7 @@ Aim:
 """
 
 toolname = "check_ciao_caldb"
-version = "21 November 2019"
+version = "01 July 2020"
 
 import os
 import time
@@ -137,10 +137,13 @@ def check_caldb_query(caldb, caldbver):
     cdb.FP_TEMP = (153, "K")
     cdb.OBS_MODE = "POINTING"
 
+    # The "DATE-OBD" field is needed by changes made in CALDB 4.9.2
+    cdb.start = "2020-07-01"
+
     # cdb.GRATTYPE = ""
 
     for (key, unit) in cdb.allneeded:
-        if key not in ["GRATTYPE", "start", "stop"]:
+        if key not in ["GRATTYPE", "stop"]:
             print("WARNING: the script needs updating to set the {0} parameter; please contact the CXC helpdesk!".format(key))
 
     files = cdb.search
