@@ -215,10 +215,12 @@ def resolve_parameter_dependencies( pars ):
     pars["__flux"]        = 1.0
 
     if pars["asolfile"].strip() in [ "", "INDEF"]:
-        import ciao_contrib._tools.obsinfo as o
-        obs = o.ObsInfo( pars["infile"] )
+        from ciao_contrib.ancillaryfiles import find_ancillary_files
         try:
-            ff = obs.get_asol()
+            ff = find_ancillary_files(pars["infile"], ["asol", ])
+            if ff is None:
+                raise ValueError("")
+            ff = ff[0]
             if any(map( is_none, ff)):
                 raise ValueError("")
             pars["asolfile"] = ",".join(ff)
