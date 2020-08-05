@@ -118,11 +118,15 @@ class ImageProcTask():
                            '{{start_dax_progress {t}}}'.format(t=self.toolname)])
             if hasattr(self.tool, "clobber") is True:
                 self.tool.clobber = True
+
+            print(self.tool)
+            print("")
             verb = self.tool()
             if verb:
                 print(verb)
             self.send_output()
 
+            print("")
             if hasattr(self.tool, "outfile") is True:
                 print("Output file: {}".format(self.outfile.name))
 
@@ -404,6 +408,7 @@ class ImageProcTaskRegionOut(ImageProcTask):
             print("\n\nNo sources detected\n")
         else:
             self.xpaset_p(['regions', 'load', outreg])
+            print("\n\nRegions have been loaded in the current frame.\n")
 
 
 class ImageProcTaskPlotOut(ImageProcTask):
@@ -566,13 +571,13 @@ class Aconvolve(ImageProcTaskImgOut):
 
 class Dmcopy(ImageProcTaskImgOut):
     'CIAO dmcopy tool (to crop image)'
-    
+
     toolname = 'dmcopy'
-    
+
     def set_args(self,args):
         'Args: none'
         pass
-        
+
 
 
 class Dmregrid2(ImageProcTaskImgOut):
@@ -695,6 +700,9 @@ class Vtpdetect(ImageProcTaskRegionOut):
     def set_args(self, args):
         'Args (none)'
         self.tool.infile = self.tool.infile+"[opt type=i4]"
+        self.tool.expfile = args[0][1:].strip('"')    # strip off leading 'e'
+        self.tool.scale = float(args[1])
+        self.tool.limit = float(args[2])
 
 
 class Getsrcregion(ImageProcTaskRegionOut):
@@ -1075,18 +1083,20 @@ class Ecfcalc(ImageProcTaskPlotOut):
         'args: none'
 
         regout = self.get_regions()
+
         from region import CXCRegion
-        valid_shape = False
-        for shape in regout.split(";"):
+        valid_shape = None
+        for shape in regout.split("+"):
             if not shape:
                 continue
 
             atreg = CXCRegion(shape).shapes[0]
 
             if atreg.name not in ['circle', 'ellipse', 'box', 'rotbox']:
+                print("Skipping shape='{}'".format(atreg.name))
                 continue
 
-            valid_shape = True
+            valid_shape = atreg
             self.tool.xpos = atreg.xpoints[0]
             self.tool.ypos = atreg.ypoints[0]
             if atreg.name == 'circle':
@@ -1098,8 +1108,10 @@ class Ecfcalc(ImageProcTaskPlotOut):
                 self.tool.radius = sqrt(rad1*rad1+rad2*rad2)
             break     # Use 1st shape we find.
 
-        if valid_shape is False:
+        if valid_shape is None:
             raise RuntimeError("No valid shapes (circle, ellipse, box) found")
+
+        print("\nUsing region {}\n".format(str(valid_shape)))
 
         self.tool.binsize = 1.0
         if args[0] == 'default':

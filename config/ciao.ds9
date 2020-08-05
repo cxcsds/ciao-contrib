@@ -220,7 +220,7 @@ endparam
 
 
 param radial_profile
-   rad_units menu {Units} physical|arcsec {Display radius in which units?}
+   rad_units menu {Units for Radial Profile} physical|arcsec
 endparam
 
 param contour_lvs
@@ -262,6 +262,12 @@ param wavdetect
     wav_expmap entry {Exposure map} {} {Exposure map file name, leave blank for none}
     wav_psfmap entry {PSF map} {} {PSF map file name, leave blank for none} 
     wav_sig entry {Sig. Threshold} {1e-06} {Significance threshold (false positives per pixel)}
+endparam
+
+param vtp
+    vtp_expmap entry {Exposure map} {} {Exposure map file name, leave blank for none}
+    vtp_scale entry {Scale} {1} {Threshold scale factor}
+    vtp_limit entry {Limit} {1.0e-6} {Max. probability of being a false source}
 endparam
 
 param simpsf
@@ -311,7 +317,7 @@ hmenu CIAO tools (DAX)
 #NEW#  
 #NEW#  ---
 
-  hmenu Statistics
+  hmenu Count Rates and Fluxes
 
     Net Counts
     *
@@ -325,26 +331,6 @@ hmenu CIAO tools (DAX)
 
     ---
 
-    Statistics (dmstat)
-    *
-    menu
-    ds9_imgproc_wrapper $xpa dmstat |& $text
-
-
-    centroid snap selected
-    *
-    bind F1
-    $data | ds9_snap2.sh $xpa |& $text
-    
-    ---
-    
-    moments
-    *
-    menu
-    ds9_imgproc_wrapper $xpa imgmoment  |& $text
-    
-    ---
-    
     help
 
 
@@ -352,6 +338,34 @@ hmenu CIAO tools (DAX)
     
     Photometry - [srcflux]  computes photon and energy fluxes assuming 
     a user specified spectral model.
+
+    endhelp
+    
+    
+  endhmenu
+ 
+  ---
+
+  hmenu Statistics
+
+    centroid snap selected
+    *
+    bind F1
+    $data | ds9_snap2.sh $xpa |& $text
+
+    Statistics (dmstat)
+    *
+    menu
+    ds9_imgproc_wrapper $xpa dmstat |& $text
+       
+    Moments
+    *
+    menu
+    ds9_imgproc_wrapper $xpa imgmoment  |& $text
+    
+    ---
+    
+    help
 
     Statistics - [dmstat]  compute various image pixel statistics: 
     centroid, min, max, mean, median, standard deviation, sum, and area.
@@ -449,8 +463,7 @@ hmenu CIAO tools (DAX)
 
     help
 
-       Generic Histogram - [dmextract] extracts histogram and optionally groups it 
-         (usually for PHA files) for an arbitrary column.
+       Generic Histogram - [dmextract] extracts histogram for an arbitrary column.
 
        PHA - [dmextract] extract spectrum in PHA channels using 1:4096:4
 
@@ -549,7 +562,7 @@ hmenu CIAO tools (DAX)
     vtpdetect
     *
     menu
-    ds9_imgproc_wrapper $xpa vtpdetect  |& $text
+    $param(vtp); ds9_imgproc_wrapper $xpa vtpdetect e"$vtp_expmap" $vtp_scale $vtp_limit |& $text
     
     get_src_region
     *
@@ -901,7 +914,7 @@ hmenu CIAO tools (DAX)
 
   ---
   
-  hmenu Calculator
+  hmenu Image Calculator
   
       ADD: previous frame to current frame (c+p)
       *
@@ -1082,7 +1095,7 @@ hmenu CIAO tools (DAX)
   
 
   ---
-  Change DAX output directory
+  Custom DAX output directory
   *
   menu
   xpaset -p $xpa tcl "{ChangeDaxOutdir}" | $text

@@ -123,7 +123,8 @@ def pretty_print( infile, srcstk, bkg, _infile ):
     from pycrates import read_file
     tab = read_file(infile)
     
-    _cols = [ "COMPONENT","NET_COUNTS", "NET_ERR", "NET_RATE", "ERR_RATE", "CEL_AREA", "CEL_BRI", "CEL_BRI_ERR"]
+    _cols = [ "COMPONENT","NET_COUNTS", "NET_ERR", "NET_RATE", "ERR_RATE", 
+              "SUR_BRI", "SUR_BRI_ERR", "CEL_BRI", "CEL_BRI_ERR"]
     cols = [x for x in _cols if tab.column_exists(x)]
     units = list(map( lambda x: getattr(tab.get_column(x), 'unit'), cols ))
     vals= list(map(lambda x: getattr(tab.get_column(x), 'values'), cols ))
@@ -137,9 +138,17 @@ def pretty_print( infile, srcstk, bkg, _infile ):
         bkg_err = (sa/ba)*be
         bunits = tab.get_column("bg_counts").unit
         
-        cols.extend( ["BGREG_COUNTS", "BGREG_ERR" ])
-        units.extend( [bunits, bunits])
-        vals.extend( [bkg_cts, bkg_err])
+        idx = cols.index("ERR_RATE")
+        idx=idx+1
+        cols.insert(idx,"BGREG_ERR")
+        cols.insert(idx,"BGREG_COUNTS")
+        units.insert(idx, bunits)
+        units.insert(idx, bunits)
+        vals.insert(idx,bkg_err)
+        vals.insert(idx,bkg_cts)
+        # ~ cols.extend( ["BGREG_COUNTS", "BGREG_ERR" ])
+        # ~ units.extend( [bunits, bunits])
+        # ~ vals.extend( [bkg_cts, bkg_err])
 
     rows=list(zip(*vals))
     
@@ -148,7 +157,8 @@ def pretty_print( infile, srcstk, bkg, _infile ):
     print_tab( cols, units, rows )
 
     # ----------
-    cols = [ "COMPONENT","COUNTS", "COUNT_RATE", "AREA"]
+    cols = [ "COMPONENT","COUNTS", "ERR_COUNTS", "COUNT_RATE", "COUNT_RATE_ERR", "AREA", "CEL_AREA"]
+    cols = [x for x in cols if tab.column_exists(x)]
     units, rows = get_units_and_rows( cols )
     print ("\n\n#source region(s):")
     with open( srcstk, "r") as fp:
@@ -159,13 +169,16 @@ def pretty_print( infile, srcstk, bkg, _infile ):
 
     # -------------
     if bkg:
-        cols = [ "BG_COUNTS", "BG_RATE", "BG_AREA"]
+        cols = [ "BG_COUNTS", "BG_ERR", "BG_RATE", "BG_AREA"]
+        cols = [x for x in cols if tab.column_exists(x)]
         units, rows = get_units_and_rows( cols )
         print ("\n\n#background region(s):")
         print ("#{}\n".format(bkg))
         print_tab( cols, units, rows, bkg=True)
 
     print ("")
+    print("Errors are set to Gaussian 1-sigma.")
+    print("Net Counts, Rate, and Errors are approximate.  Use srcflux for a more accurate count rate, error, and upper limit estimation" )
 
 
 
@@ -250,19 +263,20 @@ def functs():
     """
 
     from datetime import datetime    
-    print ("#===== {} =====".format(str(datetime.now()).split(".")[0]))
-
+    print("# ---------------------------")
+    print(str(datetime.now()).split(".")[0])    
+    print("# ---------------------------")
 
     ds9 = sys.argv[1]
 
     check_for_single(ds9)
 
-
     infile = xpaget( ds9, "file")
     infile = parse_infile(infile)
 
-    print ("#File: {}\n".format(infile))
-
+    print("Running dmextract\n")
+    print("#File: {}\n".format(infile))
+    
     srcstk = parse_src( ds9 )
     bkg = parse_bkg( ds9 )
     
