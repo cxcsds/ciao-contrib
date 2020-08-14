@@ -35,6 +35,16 @@
       OR operations; the ds9 format does not support this.  The following
       shapes are not supported:  'field', 'pie', and 'sector'.      
       </PARA>
+      <PARA title="Text and Tags">
+      Regions stored in the ds9 format can have a title that will
+      optionally be displayed above the region.  They can also have 
+      one or more "tags" which allows the user to group 
+      sources together; users can access the list of groups by 
+      going to Region -&gt; Groups ... from the ds9 main menu.
+      When using a FITS region file regphystocel can take values from
+      columns or keywords and populate the title or tags properties.        
+      </PARA>
+
 
 
     </DESC>
@@ -116,6 +126,53 @@ circle(01:13:51.6855,13:16:13.8493,49.2")
 </VERBATIM>
         </DESC>
       </QEXAMPLE>
+
+
+<QEXAMPLE>
+<SYNTAX>
+<LINE>
+% regphystocel cell.src ds9.reg text=component tag=double,double_id,obs_id
+</LINE>
+</SYNTAX>
+<DESC>
+<PARA>
+In this example we use the text and tag parameters to specify additional
+metadata to extract from the FITS region file (cell.src) and store in 
+the ds9 region file.  The value of the COMPONENT column are stored in
+the text field and will be displayed above the regions.  The values
+for the double and double_id columns as well as the obs_id keyword are
+stored as tags.  The output will look something like this:
+</PARA>
+<VERBATIM>
+# Region file format: DS9 version 4.1
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+fk5
+ellipse(05:23:0.8521,33:28:17.0340,1.50728",1.38265",175.227) # text={1}  tag={double=False} tag={double_id=0} tag={obs_id=4396}
+ellipse(05:23:0.6545,33:28:6.6130,1.4234",1.28935",39.5983) # text={2}  tag={double=False} tag={double_id=0} tag={obs_id=4396}
+ellipse(05:22:40.0080,33:28:31.1923,1.49205",1.23199",22.1857) # text={130}  tag={double=False} tag={double_id=0} tag={obs_id=4396}
+ellipse(05:23:6.6306,33:28:8.8049,2.28348",1.86101",156.246) # text={131}  tag={double=True} tag={double_id=343} tag={obs_id=4396}
+ellipse(05:23:5.3125,33:28:36.8242,3.32145",2.22307",115.958) # text={137}  tag={double=True} tag={double_id=139} tag={obs_id=4396}
+</VERBATIM>
+
+<PARA>
+In ds9, the user will see following groups:  double=False, double=True, 
+double_id=0, double_id=343, double_id=139, and obs_id=4396.  The user
+can select the source in these groups for additional analysis.
+</PARA>
+
+<PARA>
+Only a single column or keyword can be used for the text parameter.
+The tag parameter is a stack of column or keyword names.
+</PARA>
+
+</DESC>
+
+
+</QEXAMPLE>  
+
+
+
+
     </QEXAMPLELIST>
 
     <PARAMLIST>
@@ -157,6 +214,36 @@ circle(01:13:51.6855,13:16:13.8493,49.2")
          </PARA>
         </DESC>
       </PARAM>
+      <PARAM name="text" reqd="no" type="string" stacks="no">
+        <SYNOPSIS>
+        The column value or keyword name to use for the region's text label.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+          When the infile is a FITS region file, the user can specify
+          a column or keyword to use for the text label associated
+          with each region.
+          </PARA>        
+        </DESC>
+      </PARAM>
+      <PARAM name="tag" reqd="no" type="string" stacks="yes">
+        <SYNOPSIS>
+        The column values or keyword names to use to tag each region.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+          When the infile is a FITS region file, the user can specify
+          a stack columns and/or keywords to use for as grouping
+          tags.  Groups can be used to attach additional information 
+          to a region such as which source is associated with which
+          background; which sources are extended, adding properties
+          like number of counts, etc.
+          </PARA>        
+        </DESC>
+      </PARAM>
+
+
+
       <PARAM def="1" max="5" min="0" name="verbose" type="integer">
         <SYNOPSIS>
         Amount of tool chatter level.

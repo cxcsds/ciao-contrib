@@ -23,7 +23,7 @@ import sys
 import ciao_contrib.logger_wrapper as lw
 
 toolname = "regphystocel"
-__revision__ = "05 Aug 2020"
+__revision__ = "14 Aug 2020"
 
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
@@ -31,27 +31,94 @@ verb0 = lgr.verbose0
 verb1 = lgr.verbose1
 verb2 = lgr.verbose2
 
+from pycrates import read_file, get_transform
 
 class PhysicalRegion(object):
     """Physical Region object"""
 
-    def __init__(self, infile, wcsfile):
+    def __init__(self, infile, wcsfile, text, tags):
         """Load region and get wcs xfrom"""
-        self.read_region(infile)
+        self.read_region(infile, text, tags)
 
         if len(wcsfile)>0 and wcsfile.lower() != "none":
             self.get_xform(wcsfile)
         else:
             self.get_xform(infile)
 
-    def read_region(self, infile):
+    def read_region(self, infile, text, tags):
         "Load region"
         from region import CXCRegion
         self.physical_region = CXCRegion(infile)
+        self.load_tags_and_text( infile, text, tags )
+
+
+    def load_tags(self, tab, tags):
+        "Tags, aka groups in ds9"
+
+        num_shapes = len(self.physical_region.shapes)
+
+        self.tags = [""]*num_shapes
+        for tag in tags:
+            if tab.key_exists(tag):
+                tagvals = " tag={{{}={}}}".format(tag,tab.get_key_value(tag))
+                tagvals = [tagvals]*num_shapes
+            elif tab.column_exists(tag):
+                tagvals = [" tag={{{}={}}}".format(tag,x) for x in tab.get_column(tag).values]
+            else:
+                verb0("Could not find key or column '{}' for tags attribute".format(tag))
+                tagvals = [""]*num_shapes
+
+            for ii in range(num_shapes):
+                self.tags[ii] = self.tags[ii]+tagvals[ii]
+
+
+    def load_text(self, tab, text):
+        "Text to display above shapes"
+
+        num_shapes = len(self.physical_region.shapes)
+        if tab.key_exists(text):
+            self.text = "text={{{}}}".format(tab.get_key_value(text))
+            self.text = [self.text]*num_shapes
+        elif tab.column_exists(text):
+            self.text = [ "text={{{}}}".format(x) for x in tab.get_column(text).values ]
+        else:
+            verb0("Could not find key or column '{}' for text attribute".format(text))
+            self.text = None
+
+
+    def load_tags_and_text(self, infile, text, tags):
+        "Process tags and text requests"
+
+        if text == "" or text.lower() == "none":
+            if tags == "" or tags.lower() == "none":
+                self.tags = None
+                self.text = None
+                return
+
+        try:
+            tab = read_file(infile)
+        except OSError as ee:
+            if 'does not exist' in str(ee):
+                verb0("WARNING: text and tags can only be used with FITS region files.")
+                self.tags = None
+                self.text = None
+                return
+            raise ee
+
+        if text != "" and text.lower() != "none":
+            self.load_text( tab, text)
+        else:
+            self.text = None
+
+        if tags != "" and tags.lower() != "none":
+            import stk as stk
+            self.load_tags( tab, stk.build(tags))
+        else:
+            self.tags = None
+
 
     def get_xform(self, infile):
         "Get WCS transform: try eqpos then eqsrc, then barf"
-        from pycrates import read_file, get_transform
         input_table = read_file(infile)
 
         try:
@@ -163,7 +230,17 @@ class PhysicalRegion(object):
 
     def run(self):
         """Loop over all shapes in the region """
-        doit = map(self.process_shape, self.physical_region.shapes)
+
+        shapes = self.physical_region.shapes
+
+        doit = []
+        for ii in range(len(shapes)):
+            shape = self.process_shape(shapes[ii])
+            text = self.text[ii] if self.text else ""
+            tags = self.tags[ii] if self.tags else ""
+            line = "{} # {} {}".format(shape, text, tags)
+            doit.append(line)
+
         valid = [x for x in doit if x is not None]
         self.cel_region_str = "\n".join(valid)
 
@@ -188,7 +265,8 @@ def main():
     pars = get_params(toolname, "rw", sys.argv,
                       verbose={"set": lw.set_verbosity, "cmd": verb1})
 
-    pr = PhysicalRegion(pars["infile"], pars["wcsfile"])
+    pr = PhysicalRegion(pars["infile"], pars["wcsfile"],
+                        pars["text"], pars["tag"])
     pr.run()
     pr.write(pars["outfile"], pars["clobber"])
 
