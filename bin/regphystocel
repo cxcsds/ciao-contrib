@@ -48,6 +48,12 @@ class PhysicalRegion(object):
     def read_region(self, infile, text, tags):
         "Load region"
         from region import CXCRegion
+
+        if "'" in infile:
+            raise ValueError("ERROR: Found \"'\" in region string; make sure radii are in physical pixels")
+        if '"' in infile:
+            raise ValueError("ERROR: Found '\"' in region string; make sure radii are in physical pixels")
+
         self.physical_region = CXCRegion(infile)
         self.load_tags_and_text( infile, text, tags )
 
@@ -246,15 +252,19 @@ class PhysicalRegion(object):
 
     def write(self, outfile, clobber=True):
         """Write output"""
-        from ciao_contrib._tools.fileio import outfile_clobber_checks
-        outfile_clobber_checks(clobber, outfile)
+        
+        if outfile == "-":
+            fp = sys.stdout
+        else:
+            from ciao_contrib._tools.fileio import outfile_clobber_checks
+            outfile_clobber_checks(clobber, outfile)
+            fp=open(outfile, "w")
 
-        with open(outfile, "w") as fp:
-            fp.write('# Region file format: DS9 version 4.1\n')
-            fp.write('global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1\n')
-            fp.write('fk5\n')
-            fp.write(self.cel_region_str)
-            fp.write("\n")
+        fp.write('# Region file format: DS9 version 4.1\n')
+        fp.write('global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1\n')
+        fp.write('fk5\n')
+        fp.write(self.cel_region_str)
+        fp.write("\n")
 
 
 @lw.handle_ciao_errors(toolname, __revision__)
