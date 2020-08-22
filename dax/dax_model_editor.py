@@ -220,7 +220,8 @@ class DaxModelEditor():
 
         import dax.dax_plot_utils as dax_plot
         dax_plot.blt_plot_model(self.xpa, _m.x, _m.y,
-                           "Dax Model Editor Plot", "X-axis", "Y-axis",
+                           "Dax Model Editor Plot", _f.dataplot.xlabel, 
+                           _f.dataplot.ylabel,
                            new=newplot, winname="dax_model_editor")
 
         dax_plot.blt_plot_data(self.xpa, _d.x, _d.xerr/2.0, _d.y, _d.yerr)
