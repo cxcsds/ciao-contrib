@@ -99,17 +99,22 @@ class DaxModelEditor():
         abtn.grid(row=self.get_row(), column=0, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
 
+        abtn = Button(myfrm, text="Quit", command=self.quit)
+        abtn.grid(row=self.get_row(), column=1, columnspan=1,
+                  padx=(20, 20), pady=(5, 5))
+
+
         if hide_plot_button is False:
             abtn = Button(myfrm, text="Plot", command=self.plot)
-            abtn.grid(row=self.get_row(), column=1, columnspan=1,
+            abtn.grid(row=self.get_row(), column=2, columnspan=1,
                       padx=(20, 20), pady=(5, 5))
 
         abtn = Button(myfrm, text="Reset", command=self.reset)
-        abtn.grid(row=self.get_row(), column=2, columnspan=1,
+        abtn.grid(row=self.get_row(), column=3, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
 
         abtn = Button(myfrm, text="Cancel", command=self.cancel)
-        abtn.grid(row=self.get_row(), column=3, columnspan=1,
+        abtn.grid(row=self.get_row(), column=4, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
 
     def add_column_headers(self, lab_frame):
@@ -144,12 +149,13 @@ class DaxModelEditor():
         'Increment row in the UI'
         self.row = self.row+1
 
-    def run(self):
+    def run(self, fit_command):
         'Start the event loop'
         from os import environ
         if 'DAXNOGUI' in environ:
             return
 
+        self.fit_command = fit_command
         self.win.mainloop()
 
         # note to self, excpetions raised in the event loop are catch
@@ -159,16 +165,25 @@ class DaxModelEditor():
             raise DaxCancel("Cancel Button Pressed")
 
     def fit(self):
-        '''Stop the event loop.  The expectation is that the next
-        command is
+        '''Go ahead and fit the data
+        '''
+        self.fit_command()
+        self.update()
 
-        sherpa.fit()'''
+    def quit(self):
+        self.win.quit()
         self.win.destroy()
 
     def reset(self):
         "Restore all values back to initial values"
         for modpar in self.model_parameters:
             modpar.reset()
+
+    def update(self):
+        "Update all values "
+        for modpar in self.model_parameters:
+            modpar.update()
+
 
     def cancel(self):
         '''Stop the event loop and set cancel flag'''
@@ -267,6 +282,16 @@ class DaxModelParameter():
             to_mod.insert(0, self.__format_val(self.initial_value[field]))
             to_mod.configure(foreground="black")
             setattr(self.sherpa_par, field, self.initial_value[field])
+
+    def update(self):
+        """Reset values to original"""
+        for field in ['max', 'min', 'val']:
+            to_mod = getattr(self, field)
+            newval = getattr(self.sherpa_par, field)
+            to_mod.delete(0, END)
+            to_mod.insert(0, self.__format_val(newval))
+            # ~ to_mod.configure(foreground="black")
+            # ~ setattr(self.sherpa_par, field, self.initial_value[field])
 
     def entry_callback(self, keyevt, field):
         '''ACTION: set the model parameter value when the user
@@ -368,7 +393,7 @@ def test_dax_if():
     sherpa.load_arrays(1, [1, 2, 3], [4, 5, 6], sherpa.Data1D)
     sherpa.set_source("polynom1d.ply")
     # DaxModelEditor([ply], "ds9").run()
-    DaxModelEditor([ply]).run()
+    DaxModelEditor([ply]).run(sherpa.fit)
 
 
 if __name__ == '__main__':

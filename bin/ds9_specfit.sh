@@ -290,10 +290,9 @@ else:
 
 from dax.dax_model_editor import *
 
-DaxModelEditor(mdls, "${ds9}").run()
+DaxModelEditor(mdls, "${ds9}").run(sherpa.fit)
 
 try:
-  sherpa.fit()
   sherpa.conf()
 except:
   pass
