@@ -66,18 +66,24 @@ def blt_plot_model(access_point,x_vals, y_vals, title, x_label, y_label,
         new=True, winname="dax"):
     """Plot the model"""
     
-    if new is True:
-        cmd = ["xpaset", access_point, "plot", "new"]            
-        cmd.extend( ["name", winname, "line", 
-            "{{{0}}}".format(title), 
-            "{{{0}}}".format(x_label), 
-            "{{{0}}}".format(y_label),
-            "xy"
-            ] )
-    else:
-        xpa_plot_cmd(access_point, winname+" delete dataset")        
-        xpa_plot_cmd(access_point, winname+" delete dataset")
-        cmd = ["xpaset", access_point, "plot", "data", "xy"]
+    if new is False:
+        cmd = xpa_plot_cmd(access_point, "{} close".format(winname))
+
+    cmd = ["xpaset", access_point, "plot", "new"]            
+    cmd.extend( ["name", winname, "line", 
+        "{{{0}}}".format(title), 
+        "{{{0}}}".format(x_label), 
+        "{{{0}}}".format(y_label),
+        "xy"
+        ] )
+
+    # ~ else:
+        # ~ xpa_plot_cmd( access_point, "layout grid")
+        # ~ xpa_plot_cmd(access_point, winname+" delete dataset")
+        # ~ xpa_plot_cmd(access_point, winname+" delete graph")        
+        # ~ xpa_plot_cmd(access_point, winname+" delete dataset")
+        # ~ xpa_plot_cmd(access_point, winname+" delete dataset")
+        # ~ cmd = ["xpaset", access_point, "plot", "data", "xy"]
 
     xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
     for x,y in zip(x_vals, y_vals):
@@ -112,6 +118,7 @@ def blt_plot_delchisqr(access_point,xx, ex, yy, ey, y_label):
 
     make_pretty(access_point)
     xpa_plot_cmd( access_point, "title y {delta chisqr}")
+    xpa_plot_cmd( access_point, "name {delchi}")
 
 
 def make_pretty(access_point):

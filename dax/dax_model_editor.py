@@ -99,7 +99,7 @@ class DaxModelEditor():
         abtn.grid(row=self.get_row(), column=0, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
 
-        abtn = Button(myfrm, text="Quit", command=self.quit)
+        abtn = Button(myfrm, text="Exit", command=self.quit)
         abtn.grid(row=self.get_row(), column=1, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
 
@@ -219,13 +219,14 @@ class DaxModelEditor():
 
         if self.xpa is None:
             import matplotlib.pylab as plt
-            sherpa.plot_fit()
+            sherpa.plot_fit_delchi()
             plt.show()
             return
 
         plots = self.xpaget(self.xpa, "plot")  # Get a list of plots.
         plots.split(" ")
         newplot = ("dax_model_editor" not in plots)
+
 
         _f = sherpa.get_fit_plot()
         _d = _f.dataplot
@@ -240,6 +241,10 @@ class DaxModelEditor():
                            new=newplot, winname="dax_model_editor")
 
         dax_plot.blt_plot_data(self.xpa, _d.x, _d.xerr/2.0, _d.y, _d.yerr)
+
+        delta = (_d.y-_m.y)/_d.yerr
+        ones = _d.yerr*0.0+1.0
+        dax_plot.blt_plot_delchisqr( self.xpa, _d.x, _d.x, delta, ones, "")
 
 
 class DaxModelParameter():
