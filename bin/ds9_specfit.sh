@@ -289,8 +289,8 @@ else:
 
 
 from dax.dax_model_editor import *
-DaxModelEditor(mdls, "${ds9}").run()
 
+DaxModelEditor(mdls, "${ds9}").run()
 
 try:
   sherpa.fit()
@@ -327,10 +327,13 @@ EOF
 
 python $cmd 2>&1 ### | grep -v "^read" | grep -v "grouping flags"
 
-echo ""
-echo "To restore session, start sherpa and type"
-echo ""
-echo "restore('$sav')"
+if test $? -eq 0
+then
+    echo ""
+    echo "To restore session, start sherpa and type"
+    echo ""
+    echo "restore('$sav')"
+fi
 
 
 

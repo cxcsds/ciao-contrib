@@ -67,6 +67,7 @@ class DaxModelEditor():
         for mdl in list_of_model_components:
             self.add_model_component(mdl)
         self.add_buttons(hide_plot_button)
+        self.cancel = False
 
     def add_model_component(self, sherpa_model_component):
         '''Create UI elements for model component.
@@ -148,7 +149,14 @@ class DaxModelEditor():
         from os import environ
         if 'DAXNOGUI' in environ:
             return
+
         self.win.mainloop()
+
+        # note to self, excpetions raised in the event loop are catch
+        # and not raised to calling application.  So I have to set
+        # a flag and raise exception after exit loop.
+        if self.cancel is True:
+            raise DaxCancel("Cancel Button Pressed")
 
     def fit(self):
         '''Stop the event loop.  The expectation is that the next
@@ -163,9 +171,9 @@ class DaxModelEditor():
             modpar.reset()
 
     def cancel(self):
-        '''Stop the event loop and raise a Dax exception'''
-        self.win.destroy()
-        raise DaxCancel("Cancel Button Pressed")
+        '''Stop the event loop and set cancel flag'''
+        self.win.quit()
+        self.cancel=True
 
     @staticmethod
     def xpaget(ds9, cmd):
