@@ -51,7 +51,7 @@ class DaxModelEditor():
     '''
 
     def __init__(self, list_of_model_components, xpa_access_point=None,
-                 hide_plot_button=False):
+                 hide_plot_button=False, xlabel=None, ylabel=None):
         '''Create a new Tk window for the editor.
 
         The user supplies a list of sherpa model components.
@@ -68,6 +68,8 @@ class DaxModelEditor():
             self.add_model_component(mdl)
         self.add_buttons(hide_plot_button)
         self.cancel = False
+        self.x_label = xlabel
+        self.y_label = ylabel
 
     def add_model_component(self, sherpa_model_component):
         '''Create UI elements for model component.
@@ -226,9 +228,9 @@ class DaxModelEditor():
             return
 
         plots = self.xpaget(self.xpa, "plot")  # Get a list of plots.
+
         plots.split(" ")
         newplot = ("dax_model_editor" not in plots)
-
 
         _f = sherpa.get_fit_plot()
         _d = _f.dataplot
@@ -236,10 +238,20 @@ class DaxModelEditor():
         if _d.xerr is None:
             _d.xerr = (_d.x-_d.x)  # zeros
 
+        if self.x_label is None:
+            xlab = _f.dataplot.xlabel
+        else:
+            xlab = self.x_label
+
+        if self.y_label is None:
+            ylab = _f.dataplot.ylabel
+        else:
+            ylab = self.y_label
+
         import dax.dax_plot_utils as dax_plot
         dax_plot.blt_plot_model(self.xpa, _m.x, _m.y,
-                           "Dax Model Editor Plot", _f.dataplot.xlabel, 
-                           _f.dataplot.ylabel,
+                           "Dax Model Editor Plot",                            
+                           xlab, ylab,
                            new=newplot, winname="dax_model_editor")
 
         dax_plot.blt_plot_data(self.xpa, _d.x, _d.xerr/2.0, _d.y, _d.yerr)

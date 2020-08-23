@@ -37,7 +37,8 @@ def blt_plot_fit(sherpa_plot_fit_obj, xpa="ds9",
     _dchi = (_d.y-_m.y)/_d.yerr
     _ones = _dchi*0+1.0
 
-    blt_plot_model( xpa, _m.x, _m.y, tle, xlb, ylb)
+    blt_plot_model( xpa, _m.x, _m.y, tle, xlb, ylb, new=True, 
+      winname="dax_model_editor")
     blt_plot_data( xpa, _d.x, None, _d.y, _d.yerr)
     blt_plot_delchisqr(xpa, _d.x, _d.x, _dchi, _ones, "")
 
@@ -161,8 +162,16 @@ def fit_profile( xpa, infile, model, xcol, method, ycol="sur_bri", ycol_err="sur
         mdl = s.parts
     else:
         mdl = (s,) 
-    DaxModelEditor(mdl, xpa).run(sherpa.fit)
-   
+
+    if 'rmid' == xcol:
+        xcol = 'pixels'
+    else:
+        xcol = 'arcsec'
+
+    me = DaxModelEditor(mdl, xpa, xlabel="Radius [{}]".format(xcol),
+        ylabel="sur_bri [counts/pixel**2]")
+    me.run(sherpa.fit)
+
     fobj = sherpa.get_fit_plot()    
     blt_plot_fit( fobj, xpa, 
        tle="Radial Profile: {}".format(model.name),

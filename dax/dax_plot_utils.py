@@ -72,11 +72,10 @@ def blt_plot_model(access_point,x_vals, y_vals, title, x_label, y_label,
     cmd = ["xpaset", access_point, "plot", "new"]            
     cmd.extend( ["name", winname, "line", 
         "{{{0}}}".format(title), 
-        "{{{0}}}".format(x_label), 
-        "{{{0}}}".format(y_label),
+        "{{{0} }}".format(x_label), 
+        "{{{0} }}".format(y_label),
         "xy"
         ] )
-
     # ~ else:
         # ~ xpa_plot_cmd( access_point, "layout grid")
         # ~ xpa_plot_cmd(access_point, winname+" delete dataset")
