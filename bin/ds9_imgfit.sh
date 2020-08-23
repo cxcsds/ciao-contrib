@@ -113,13 +113,13 @@ mdl1.ellip=np.sqrt( 1-(ee*ee))
 mdl1.xpos=$xx
 mdl1.ypos=$yy
 
-
 from dax.dax_model_editor import *
-DaxModelEditor([mdl1,bkg1], hide_plot_button=True).run(sherpa.fit)
+mod_edit = DaxModelEditor([mdl1,bkg1], hide_plot_button=True)
+mod_edit.run(mod_edit.quit)
 
 
 try:
-  ${conf}
+  sherpa.fit()
 except:
   pass
 

@@ -99,12 +99,11 @@ class DaxModelEditor():
         abtn.grid(row=self.get_row(), column=0, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
 
-        abtn = Button(myfrm, text="Exit", command=self.quit)
-        abtn.grid(row=self.get_row(), column=1, columnspan=1,
-                  padx=(20, 20), pady=(5, 5))
-
-
         if hide_plot_button is False:
+            abtn = Button(myfrm, text="Exit", command=self.quit)
+            abtn.grid(row=self.get_row(), column=1, columnspan=1,
+                      padx=(20, 20), pady=(5, 5))
+
             abtn = Button(myfrm, text="Plot", command=self.plot)
             abtn.grid(row=self.get_row(), column=2, columnspan=1,
                       padx=(20, 20), pady=(5, 5))
@@ -182,7 +181,10 @@ class DaxModelEditor():
     def update(self):
         "Update all values "
         for modpar in self.model_parameters:
-            modpar.update()
+            try:
+                modpar.update()
+            except:
+                pass
 
 
     def cancel(self):
