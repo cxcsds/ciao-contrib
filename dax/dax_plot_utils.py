@@ -106,9 +106,26 @@ def blt_plot_delchisqr(access_point,xx, ex, yy, ey, y_label):
     xpa_plot_cmd( access_point, "add graph line")
     xpa_plot_cmd( access_point, "layout strip")
     
-    cmd = ["xpaset", access_point, "plot", "data", "xyey"]    
 
+    # Add line through 0
+    zero = [0 for x in xx]
+    cmd = ["xpaset", access_point, "plot", "data", "xy"]    
+    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
+    for vv in zip(xx, zero):
+        pair = " ".join( [str(x) for x in vv])+"\n"        
+        pb = pair.encode()
+        xpa.stdin.write(pb)        
+    xpa.communicate()
+    xpa_plot_cmd(access_point, "shape none")
+    xpa_plot_cmd(access_point, "shape fill no")
+    xpa_plot_cmd(access_point, "color grey")
+    xpa_plot_cmd(access_point, "name zero")
+    xpa_plot_cmd(access_point, "width 1")
+    xpa_plot_cmd(access_point, "dash yes")
+
+        
     # Plot the data
+    cmd = ["xpaset", access_point, "plot", "data", "xyey"]    
     xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
     for vv in zip(xx, yy, ey):
         pair = " ".join( [str(x) for x in vv])+"\n"        
