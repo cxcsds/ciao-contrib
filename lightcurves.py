@@ -57,7 +57,7 @@ import matplotlib.pyplot as plt
 # __all__ = ("lc_sigma_clip", "lc_sigma_uclip", "lc_clean")
 __all__ = ("lc_sigma_clip", "lc_clean")
 
-__revision = "04 November 2019"
+__revision = "28 August 2020"
 
 
 def _write_gti_text(outfile, tstart, tend):
@@ -947,7 +947,7 @@ class CleanLightCurve(LightCurve):
 
             gti, = np.where((self.rate > minval) & (self.rate < maxval))
             if gti.size == 0:
-                raise ValueError("Unable to calculate an initial mean level via sigma clipping.")
+                raise ValueError("Unable to calculate an initial GTI mean rate level via sigma clipping; the unclipped count rate is {0:g} +/- {1:g} ct/s".format(omean,clip*osigma))
             mean = self.rate[gti].mean()
 
             if self.verbose:
