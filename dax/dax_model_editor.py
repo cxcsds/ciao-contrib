@@ -330,10 +330,14 @@ class DaxModelParameter():
         # and Enter on the keypad are different keysym's but both
         # generate CR. This makes sense since can remap keyboard
         # keys -- the action we want is CR, whichever key generates it.
+        # Update: Unfortunately the .char field is cleared 
+        # in newer versions of python in the KeyRelease callback, and
+        # the Key callback doesn't work (order of callback doesn't change
+        # text color correctly).  So, I'm back to using the keysym.
 
         to_mod = getattr(self, field)
 
-        if '\r' == keyevt.char:
+        if keyevt.keysym in ['Return', 'KP_Enter', 'Enter']:
             try:
                 fval = float(to_mod.get())
                 setattr(self.sherpa_par, field, fval)
