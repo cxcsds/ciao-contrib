@@ -105,13 +105,19 @@ sherpa.thaw(bkg1)
 sherpa.guess(mdl1)
 sherpa.guess(bkg1)
 
-mdl1.theta=$phi
-ee=${mnr}/${mjr}
-if (ee>1):
-  ee=(1/ee)
-mdl1.ellip=np.sqrt( 1-(ee*ee))
-mdl1.xpos=$xx
-mdl1.ypos=$yy
+
+if hasattr(mdl1, "theta"):
+    mdl1.theta=$phi
+
+if hasattr(mdl1, "ellip"):
+    ee=${mnr}/${mjr}
+    if (ee>1):
+      ee=(1/ee)
+    mdl1.ellip=np.sqrt( 1-(ee*ee))
+
+if hasattr(mdl1,"xpos") and hasattr(mdl1,"ypos"):
+  mdl1.xpos=$xx
+  mdl1.ypos=$yy
 
 from dax.dax_model_editor import *
 mod_edit = DaxModelEditor([mdl1,bkg1], hide_plot_button=True)
@@ -131,6 +137,10 @@ EOF
 echo "  (3/3) Doing fit"
 
 python ${DAX_OUTDIR}/fit.cmd
+if test $? -ne 0
+then
+  exit 1
+fi
 
 xpaset -p $ds9 tile
 
