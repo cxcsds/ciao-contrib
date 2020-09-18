@@ -1,11 +1,11 @@
 #! /bin/sh
 
-#  Copyright (C) 2013,2015,2016,2018-2019  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2013,2015,2016,2018-2020  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -20,13 +20,17 @@
 
 ds9=$1
 model=$2
-grpcts=$3
-elo=$4
-ehi=$5
-method=$6
-stat=$7
-absmodel=$8
-xtra="$9"
+addmodel=$3
+grpcts=$4
+elo=$5
+ehi=$6
+method=$7
+stat=$8
+absmodel=$9
+shift 9
+xtra="$1"
+
+
 
 nxpa=`xpaaccess -n ${ds9}`
 if test $nxpa -ne 1
@@ -45,10 +49,10 @@ echo ""
 echo " (1/4) Parsing Regions" 
 
 
-src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'`
+src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'`
 if test "x$src" = x
 then
-  src=`xpaget ${ds9} regions -format ciao source -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+  src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
   if test "x$src" = x
   then  
       echo "***"
@@ -72,10 +76,10 @@ then
   exit 1
 fi
 
-bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+bkg=`xpaget ${ds9} regions -format ciao -system physical background -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
 if test x"${bkg}" = x
 then
-  bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+  bkg=`xpaget ${ds9} regions -format ciao -system physical background -strip yes | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
   if test x"${bkg}" = x
   then
     echo "***"
@@ -260,7 +264,13 @@ sherpa.load_data("$spi")
 sherpa.group_counts(${grpcts})
 sherpa.notice(${elo},${ehi})
 $subtract
-sherpa.set_source("${model}.mdl1 * ${absmodel}.abs1")
+
+if "${addmodel}" == "none":
+    sherpa.set_source("${model}.mdl1 * ${absmodel}.abs1")
+else:
+    sherpa.set_source("(${model}.mdl1 + ${addmodel}.mdl2) * ${absmodel}.abs1")
+
+
 abs1.nH = $nH
 
 sherpa.set_method("${method}")
@@ -268,115 +278,42 @@ sherpa.set_stat("${stat}")
 
 $extra
 
+sherpa.guess(mdl1)
+sherpa.guess(abs1)
+
+if "${addmodel}" == "none":
+    mdls = [mdl1,abs1]
+else:
+    mdls = [mdl1,mdl2,abs1]
+    sherpa.guess(mdl2)
+
+
+from dax.dax_model_editor import *
+
+DaxModelEditor(mdls, "${ds9}").run(sherpa.fit)
+
 try:
-  sherpa.fit()
   sherpa.conf()
 except:
   pass
 
+print( "\n"+str(sherpa.get_source()))
 print( "\nPhoton Flux = %s photon/cm^2/s\n" % sherpa.calc_photon_flux())
 print( "Energy Flux = %s ergs/cm^2/s\n" % sherpa.calc_energy_flux())
 
 sherpa.save("$sav", clobber=True)
 
-
-# -- Emulate the 'plot_fit()' sherpa command, 
-
-import subprocess
-
-def xpa_plot_cmd( access_point, command ):
-    """Wrapper around xpaset for plot commands"""
-    
-    cc = ["xpaset", "-p", access_point, "plot" ]
-    cc.extend( command.split(' '))    
-    xpa = subprocess.Popen(cc)
-    xpa.communicate()
-
-
-def blt_plot_data(access_point,xx, ex, yy, ey, title, x_label, y_label):
-    """Plot the data"""
-    
-    cmd = ["xpaset", access_point, "plot"]    
-    cmd.extend( ["new", "name", "dax", "line", 
-        "{{{0}}}".format(title), 
-        "{{{0}}}".format(x_label), 
-        "{{{0}}}".format(y_label),
-        "xyey"
-        ] )
-
-    # Plot the data
-    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-    for vv in zip(xx, yy, ey):
-        pair = " ".join( [str(x) for x in vv])+"\n"        
-        pb = pair.encode()
-        xpa.stdin.write(pb)        
-    xpa.communicate()
-
-    make_pretty(access_point)
-    xpa_plot_cmd(access_point, "legend yes")
-    xpa_plot_cmd(access_point, "legend position right")
-
-
-def blt_plot_delchisqr(access_point,xx, ex, yy, ey, y_label):
-    """Plot the residuals""" 
-
-    # This requires ds9 v8.1    
-    xpa_plot_cmd( "${ds9}", "add graph line")
-    xpa_plot_cmd( "${ds9}", "layout strip")
-    
-    cmd = ["xpaset", access_point, "plot", "data", "xyey"]    
-
-    # Plot the data
-    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-    for vv in zip(xx, yy, ey):
-        pair = " ".join( [str(x) for x in vv])+"\n"        
-        pb = pair.encode()
-        xpa.stdin.write(pb)        
-    xpa.communicate()
-
-    make_pretty(access_point)
-    xpa_plot_cmd( access_point, "title y {delta chisqr}")
-
-
-def make_pretty(access_point):
-    """make pretty plots"""
-    xpa_plot_cmd(access_point, "shape circle")
-    xpa_plot_cmd(access_point, "shape fill yes")
-    xpa_plot_cmd(access_point, "shape color cornflowerblue")
-    xpa_plot_cmd(access_point, "error color cornflowerblue")
-    xpa_plot_cmd(access_point, "width 0")
-    xpa_plot_cmd(access_point, "name {Data }")    
-    xpa_plot_cmd(access_point, "axis x grid no")
-    xpa_plot_cmd(access_point, "axis y grid no")
-
-
-def blt_plot_model(access_point,x_vals, y_vals):
-    """Plot the model"""
-    
-    cmd = ["xpaset", access_point, "plot"]
-    cmd.extend( ["data", "xy"] )
-
-    xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-    for x,y in zip(x_vals, y_vals):
-        pair = "{} {}\n".format(x,y)
-        pb = pair.encode()
-        xpa.stdin.write(pb)        
-    xpa.communicate()
-    xpa_plot_cmd(access_point, "shape none")
-    xpa_plot_cmd(access_point, "shape fill no")
-    xpa_plot_cmd(access_point, "color orange")
-    xpa_plot_cmd(access_point, "shape color orange")
-    xpa_plot_cmd(access_point, "width 2")
-    xpa_plot_cmd(access_point, "name Model")
-
+from dax.dax_plot_utils import *
+ 
 _f = sherpa.get_fit_plot()
 _d = _f.dataplot
 _m = _f.modelplot
 
-blt_plot_data( "${ds9}", _d.x, _d.xerr/2.0, _d.y, _d.yerr, 
+blt_plot_model( "${ds9}", _m.x, _m.y,
     "${spi}", "Energy [keV]", "Count Rate [counts/sec/keV]")
 
-blt_plot_model( "${ds9}", _m.x, _m.y)
+blt_plot_data( "${ds9}", _d.x, _d.xerr/2.0, _d.y, _d.yerr)
+
 
 delta = (_d.y-_m.y)/_d.yerr
 ones = _d.yerr*0.0+1.0
@@ -389,10 +326,13 @@ EOF
 
 python $cmd 2>&1 ### | grep -v "^read" | grep -v "grouping flags"
 
-echo ""
-echo "To restore session, start sherpa and type"
-echo ""
-echo "restore('$sav')"
+if test $? -eq 0
+then
+    echo ""
+    echo "To restore session, start sherpa and type"
+    echo ""
+    echo "restore('$sav')"
+fi
 
 
 

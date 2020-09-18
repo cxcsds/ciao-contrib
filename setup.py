@@ -8,12 +8,15 @@ params = sorted(glob.glob("param/*.par"))
 docs = sorted(glob.glob("share/doc/xml/*.xml"))
 datum = sorted(glob.glob("data/*"))
 configs = sorted(glob.glob("config/*"))
+etc = sorted(glob.glob("etc/conda/activate.d/*"))
+
 mods = [ "ciao_contrib",
     "ciao_contrib/region",
     "ciao_contrib/_tools",
     "ciao_contrib/cda",
     "coords",
     "crates_contrib",
+    "dax",
     "sherpa_contrib",
     "sherpa_contrib/profiles",
     "sherpa_contrib/tests",
@@ -23,7 +26,7 @@ mods = [ "ciao_contrib",
 
 from distutils.core import setup
 setup( name='ciao-contrib',
-        version='4.12.0',
+        version='4.12.2',
         license='GNU GPL v3',
         description='CIAO Contributed scripts',
         author='CXCSDS and Friends',

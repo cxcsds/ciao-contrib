@@ -58,10 +58,10 @@ else
 fi
 
 
-src=`xpaget ${ds9} regions -format ciao source -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
 if test x$src = x
 then
-  src=`xpaget ${ds9} regions -format ciao source -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
+  src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g' `
   if test x$src = x
   then  
       echo "***"
@@ -86,10 +86,10 @@ then
 fi
 
 
-bkg=`xpaget ${ds9} regions -format ciao background -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+bkg=`xpaget ${ds9} regions -format ciao -system physical background -strip yes selected | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
 if test x$bkg = x
 then
-  bkg=`xpaget ${ds9} regions -format ciao background -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
+  bkg=`xpaget ${ds9} regions -format ciao -system physical background -strip yes | tr ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'` 
   if test x$bkg = x
   then
       echo "***"
@@ -126,6 +126,8 @@ dmcopy "${file}[(x,y)=${src}]" - | dmstat "-[cols ra,dec]"  verb=0
 ra=`stk_read_num ")dmstat.out_mean" 1 e+ `
 dec=`stk_read_num ")dmstat.out_mean" 2 e+ `
 
+xpaset -p ${ds9} tcl  "{start_dax_progress {srcflux}}" 
+
 echo "#-------------"
 srcflux infile="${file}" \
   band="${bands}" \
@@ -144,6 +146,7 @@ srcflux infile="${file}" \
 
 if test $? -ne 0
 then
+  xpaset -p ${ds9} tcl  "{stop_dax_progress {srcflux}}" 
   if test x$rdir != x
   then  
     /bin/rm ${rdir}/*
@@ -152,7 +155,7 @@ then
   exit 1
 fi
 
-
+xpaset -p ${ds9} tcl  "{stop_dax_progress {srcflux}}" 
 echo ""
 echo "Output files are located in $rdir"
 exit 0

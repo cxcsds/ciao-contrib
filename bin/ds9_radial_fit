@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
 # 
-# Copyright (C) 2019  Smithsonian Astrophysical Observatory
+# Copyright (C) 2019,2020  Smithsonian Astrophysical Observatory
 # 
 # 
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 # 
 # This program is distributed in the hope that it will be useful,
@@ -24,95 +24,11 @@
 import sys
 import os
 
+from dax.dax_plot_utils import *
+
 
 def blt_plot_fit(sherpa_plot_fit_obj, xpa="ds9", 
        tle="Plot Fit", xlb="x ", ylb="y " ):
-
-    import subprocess as subprocess
-
-    def xpa_plot_cmd( access_point, command ):
-        """Wrapper around xpaset for plot commands"""
-        
-        cc = ["xpaset", "-p", access_point, "plot" ]
-        cc.extend( command.split(' '))    
-        xpa = subprocess.Popen(cc)
-        xpa.communicate()
-
-
-    def blt_plot_data(access_point,xx, ex, yy, ey, title, x_label, y_label):
-        """Plot the data"""
-        
-        cmd = ["xpaset", access_point, "plot"]    
-        cmd.extend( ["new", "name", "dax", "line", 
-            "{{{0}}}".format(title), 
-            "{{{0}}}".format(x_label), 
-            "{{{0}}}".format(y_label),
-            "xyey"
-            ] )
-
-        # Plot the data
-        xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-        for vv in zip(xx, yy, ey):
-            pair = " ".join( [str(x) for x in vv])+"\n"        
-            pb = pair.encode()
-            xpa.stdin.write(pb)        
-        xpa.communicate()
-        make_pretty(access_point)
-
-
-    def blt_plot_delchisqr(access_point,xx, ex, yy, ey, y_label):
-        """Plot the residuals""" 
-
-        # This requires ds9 v8.1    
-        xpa_plot_cmd( access_point, "add graph line")
-        xpa_plot_cmd( access_point, "layout strip")
-        
-        cmd = ["xpaset", access_point, "plot", "data", "xyey"]    
-
-        # Plot the data
-        xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-        for vv in zip(xx, yy, ey):
-            pair = " ".join( [str(x) for x in vv])+"\n"        
-            pb = pair.encode()
-            xpa.stdin.write(pb)        
-        xpa.communicate()
-
-        make_pretty(access_point,legend=False)
-        xpa_plot_cmd( access_point, "title y {delta chisqr}")
-
-    def make_pretty(access_point, legend=True):
-        # Make pretty
-        xpa_plot_cmd(access_point, "shape circle")
-        xpa_plot_cmd(access_point, "shape fill yes")
-        xpa_plot_cmd(access_point, "shape color cornflowerblue")
-        xpa_plot_cmd(access_point, "error color cornflowerblue")
-        xpa_plot_cmd(access_point, "width 0")
-        if legend:
-            xpa_plot_cmd(access_point, "legend yes")
-            xpa_plot_cmd(access_point, "legend position right")
-        xpa_plot_cmd(access_point, "name {Data }")    
-        xpa_plot_cmd(access_point, "axis x grid no")
-        xpa_plot_cmd(access_point, "axis y grid no")
-
-
-    def blt_plot_model(access_point,x_vals, y_vals):
-        """Plot the model"""
-        
-        cmd = ["xpaset", access_point, "plot"]
-        cmd.extend( ["data", "xy"] )
-
-        xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-        for x,y in zip(x_vals, y_vals):
-            pair = "{} {}\n".format(x,y)
-            pb = pair.encode()
-            xpa.stdin.write(pb)        
-        xpa.communicate()
-        ###xpa_plot_cmd(access_point, "shape none")
-        xpa_plot_cmd(access_point, "shape fill no")
-        xpa_plot_cmd(access_point, "color orange")
-        xpa_plot_cmd(access_point, "shape color orange")
-        xpa_plot_cmd(access_point, "width 2")
-        xpa_plot_cmd(access_point, "name Model")
 
     
     _d = sherpa_plot_fit_obj.dataplot
@@ -121,9 +37,9 @@ def blt_plot_fit(sherpa_plot_fit_obj, xpa="ds9",
     _dchi = (_d.y-_m.y)/_d.yerr
     _ones = _dchi*0+1.0
 
-    blt_plot_data( xpa, _d.x, None, _d.y, _d.yerr, 
-        tle, xlb, ylb)
-    blt_plot_model( xpa, _m.x, _m.y)
+    blt_plot_model( xpa, _m.x, _m.y, tle, xlb, ylb, new=True, 
+      winname="dax_model_editor")
+    blt_plot_data( xpa, _d.x, None, _d.y, _d.yerr)
     blt_plot_delchisqr(xpa, _d.x, _d.x, _dchi, _ones, "")
 
 
@@ -238,8 +154,24 @@ def fit_profile( xpa, infile, model, xcol, method, ycol="sur_bri", ycol_err="sur
     sherpa.load_data( 1, infile, colkeys=[xcol, ycol, ycol_err])
     sherpa.set_model(model)
     sherpa.set_method(method)
-    sherpa.fit()
-    
+
+    from dax.dax_model_editor import DaxModelEditor
+
+    s = sherpa.get_source()
+    if hasattr(s,"parts") is True:
+        mdl = s.parts
+    else:
+        mdl = (s,) 
+
+    if 'rmid' == xcol:
+        xcol = 'pixels'
+    else:
+        xcol = 'arcsec'
+
+    me = DaxModelEditor(mdl, xpa, xlabel="Radius [{}]".format(xcol),
+        ylabel="sur_bri [counts/pixel**2]")
+    me.run(sherpa.fit)
+
     fobj = sherpa.get_fit_plot()    
     blt_plot_fit( fobj, xpa, 
        tle="Radial Profile: {}".format(model.name),
