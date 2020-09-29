@@ -21,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "srcflux"
-__revision__ = "27 August 2020"
+__revision__ = "29 September 2020"
 
 import os
 
@@ -43,6 +43,8 @@ import sys
 import stk as stk
 from ciao_contrib._tools.taskrunner import TaskRunner
 from ciao_contrib.runtool import make_tool
+from pycrates import read_file
+from tempfile import NamedTemporaryFile
 
 import numpy as np
 np.seterr( all='ignore' )
@@ -64,6 +66,14 @@ class delme( str ):
     def __del__( self ):
         infile = self.__str__().split("[")[0]  # may have a DM filter
         gorm(infile.strip("@-"))  # may be a local stack
+
+
+class Params(object):
+    '''I tried to use a named tuple for this, but they don't 
+    pickle very well, and were completely broken on OSX py3.8.
+    So instead i'll use this dummy class to hold the parameter
+    values as individual attributes (to be added later)'''
+    pass
 
 
 def gorm( infile ):
@@ -119,8 +129,7 @@ def run_roi( infile, fovfile, tmproot="/tmp", bkgmode='mul', bkgradius=3, bkgfun
     """
     Create src and background regions for each source    
     """
-    from ciao_contrib.runtool import roi
-
+    roi = make_tool("roi")
     roi.punlearn()  # make sure clean for num_srcs below
     roi.infile = infile
 
@@ -228,8 +237,7 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
     
 
     def region_to_phys( reg ):
-        from ciao_contrib.runtool import dmmakereg
-        from tempfile import NamedTemporaryFile
+        dmmakereg = make_tool("dmmakereg")
         tmproot = NamedTemporaryFile( dir=tmpdir)
         tfile = tmproot.name
         tmproot.close()        
@@ -285,7 +293,6 @@ def choose_skyfov_method( asolfiles ):
     applied. With these new files we can start to use the new 
     skyfov convex hull algorithm.    
     """    
-    from pycrates import read_file
 
     skyfov_choices={ 'ASPSOLOBI' : 'convexhull' , 'ASPSOL' : 'minmax' }
     if asolfiles is None or 1 != len(asolfiles):
@@ -302,7 +309,7 @@ def choose_skyfov_method( asolfiles ):
 def run_skyfov( myparams ):
     
     import ciao_contrib._tools.obsinfo as o
-    from ciao_contrib.runtool import skyfov
+    skyfov = make_tool("skyfov")
 
     dot= "" if os.path.isdir(myparams.outroot) else "."
 
@@ -352,8 +359,7 @@ def save_regions( myparams, regions, flavor ):
         !!! TODO: Use new region module in ciao4.10 instead of dmmakereg
     
     """    
-    from ciao_contrib.runtool import dmmakereg
-    from tempfile import NamedTemporaryFile    
+    dmmakereg = make_tool("dmmakereg")
 
     # CIAO 4.10 changes to NULL regions no longer creates a fake
     # "point(0,0)" -- I'm using that so we'll put it back.
@@ -395,7 +401,7 @@ def make_regions( myparams ):
     We always want the 1st stuff so we always run this.
     """
 
-    from ciao_contrib.runtool import psfsize_srcs
+    psfsize_srcs = make_tool("psfsize_srcs")
 
     verb2("Converting coords and looking up PSF size")
     myroot = myparams.outroot
@@ -494,9 +500,9 @@ def get_counts( myparams, at_energy, src, bkg ):
     Get the counts in the region using dmextract.
     We add the input columns from the PSF script with dmpaste
     """
-    from ciao_contrib.runtool import dmextract
-    from ciao_contrib.runtool import dmpaste
-    from pycrates import read_file
+    
+    dmextract = make_tool("dmextract")
+    dmpaste = make_tool("dmpaste")
 
     verb1("Extracting counts")
 
@@ -635,10 +641,10 @@ def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
 
     verb2("Getting PSF from file")
 
-    from ciao_contrib.runtool import dmextract
-    from ciao_contrib.runtool import dmmerge
-    from ciao_contrib.runtool import dmpaste
-    from ciao_contrib.runtool import dmstat
+    dmextract = make_tool("dmextract")
+    dmmerge = make_tool("dmmerge")
+    dmpaste = make_tool("dmpaste")
+    dmstat = make_tool("dmstat")
 
     myroot = get_root( myparams, at_energy )
 
@@ -669,7 +675,6 @@ def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
     infiles = [ "{}[sky=region({})][bin sky={}]".format(*x) for x in list(zip(psf_stk,fov,src_stk))]
     bgfiles = [ "{}[sky=region({})][bin sky={}]".format(*x) for x in list(zip(psf_stk,fov,bkg_stk))]
 
-    from tempfile import NamedTemporaryFile
     all_files = []
     for s,b in zip( infiles, bgfiles ):
         tmproot = NamedTemporaryFile( dir=myparams.tmpdir)
@@ -722,8 +727,8 @@ def get_psf_from_region( myparams, at_energy, src, bkg ):
     For circle regions, get PSF frac for radius
     """
 
-    from ciao_contrib.runtool import dmpaste
-    from ciao_contrib.runtool import src_psffrac
+    dmpaste = make_tool("dmpaste")
+    src_psffrac = make_tool("src_psffrac")
     
     verb2("Converting coords and looking up PSF size")
 
@@ -754,7 +759,7 @@ def get_ideal_psf( myparams, at_energy, src, bkg ):
     """
     Ideal PSF is source = 100% and background = 0%
     """
-    from ciao_contrib.runtool import dmtcalc
+    dmtcalc = make_tool("dmtcalc")
 
     verb1( "Setting Ideal PSF : alpha=1 , beta=0")
 
@@ -778,9 +783,8 @@ def run_arfcorr_and_dme( myparams, at_energy, src, bkg,ii):
         regions
     """
 
-    from ciao_contrib.runtool import dmextract
     from ciao_contrib.runtool import new_pfiles_environment as newpf
-    from ciao_contrib.runtool import make_tool
+    dmextract = make_tool("dmextract")
 
     verb1("Getting PSF fraction by running arfcorr {}".format(ii))
 
@@ -852,8 +856,8 @@ def get_psf_from_model( myparams, at_energy, src, bkg):
     Get PSF by making a model via arfcorr.  THis is the
     wrapper about above that runs the jobs in parallel.
     """
-    from ciao_contrib.runtool import dmmerge
-    from ciao_contrib.runtool import dmpaste
+    dmmerge = make_tool("dmmerge")
+    dmpaste = make_tool("dmpaste")
 
     verb1("Making PSF models ")
 
@@ -903,7 +907,7 @@ def run_aprates( c_s, a_s, alpha, c_b, a_b, beta, exposure, conf, outfile ):
     Run aprates tool, save the values in an ASCII file
     that can be combined together later
     """
-    from ciao_contrib.runtool import aprates
+    aprates = make_tool("aprates")
 
     def write_null( outfile ):        
         with open(outfile, "w") as fp:
@@ -968,8 +972,7 @@ def get_livetime_keywords( infile ):
     isn't there).  Also return just LIVETIME keyword value for HRC
     and in case it lands on a chip that isn't on.
     """
-    from pycrates import read_file
-   
+       
     tab = read_file( infile )
     live_times = [ tab.get_key_value("LIVTIME{}".format(n)) for n in range(10)]
     the_live_time = tab.get_key_value( "LIVETIME")
@@ -981,8 +984,7 @@ def get_net_rate_aper( taskrunner, myparams, at_energy, src, bkg ):
     Wrapper around aprates that runs them in parallel then collects
     the outputs
     """
-    from pycrates import read_file
-
+    
     verb1("Getting net rate and confidence limits")
 
     myroot = get_root( myparams, at_energy )
@@ -1021,8 +1023,7 @@ def get_net_rate_aper( taskrunner, myparams, at_energy, src, bkg ):
 def add_aprates_to_output( myparams, at_energy, outfiles):
     """
     """    
-    from pycrates import read_file
-
+    
     myroot = get_root( myparams, at_energy)
     intab = read_file( myroot+__osuf__, mode="rw")
 
@@ -1053,13 +1054,13 @@ def add_aprates_to_output( myparams, at_energy, outfiles):
         gorm( pp )
 
 
-def run_eff2evt( infile, outfile, energy="INDEF" ):
+def run_eff2evt( infile, outfile, energy):
     """
     Run EFF2EVT tool to get a model independent flux
 
     """
-    from ciao_contrib.runtool import eff2evt
-    from ciao_contrib.runtool import dmstat
+    eff2evt = make_tool("eff2evt")
+    dmstat = make_tool("dmstat")
 
     verb1("Running eff2evt for {}".format(outfile))
 
@@ -1108,10 +1109,8 @@ def bound_src_and_bkg( src, bkg, tmpdir ):
     
     """
     
-    def bounds( ss ):
-        from ciao_contrib.runtool import dmmakereg
-        from tempfile import NamedTemporaryFile
-        from pycrates import read_file
+    def bounds( ss ):        
+        dmmakereg = make_tool("dmmakereg")
 
         tmproot = NamedTemporaryFile(dir=tmpdir)
         tfile = tmproot.name
@@ -1150,7 +1149,8 @@ def run_fluximage( infile, outroot, at_energy, src, bkg, myparams ):
 
     """
     
-    from ciao_contrib.runtool import fluximage,dmextract
+    fluximage = make_tool("fluximage")
+    dmextract = make_tool("dmextract")
 
     fov = locate_fovfile( myparams)
 
@@ -1273,7 +1273,7 @@ def get_model_independent_flux( taskrunner, myparams, at_energy, src, bkg ):
         infile = inroot+"[sky={}]".format(src_stk[ii-1])
         outfile= myroot+"_{:04d}_src.dat".format(ii)
         taskrunner.add_task( outfile, "", run_eff2evt,
-            infile, outfile, energy=mono )
+            infile, outfile, mono )
         srcfiles.append( delme(outfile) )
     
     bkgfiles = []
@@ -1281,7 +1281,7 @@ def get_model_independent_flux( taskrunner, myparams, at_energy, src, bkg ):
         infile = inroot+"[sky={}]".format(bkg_stk[ii-1])
         outfile= myroot+"_{:04d}_bkg.dat".format(ii)
         taskrunner.add_task( outfile, "", run_eff2evt,
-            infile, outfile, energy=mono )
+            infile, outfile, mono )
         bkgfiles.append( delme(outfile+"[cols BG_FLUX_APER=FLUX_APER]" ))
     
     return( srcfiles, bkgfiles )
@@ -1294,8 +1294,8 @@ def add_photflux_to_outfile( myparams, at_energy, photfiles ):
     verb1("Appending photflux results onto output")
     myroot = get_root( myparams, at_energy )
 
-    from ciao_contrib.runtool import dmmerge
-    from ciao_contrib.runtool import dmpaste
+    dmmerge = make_tool("dmmerge")
+    dmpaste = make_tool("dmpaste")
 
     zz = [ z+"[cols SRC_PHOTFLUX=counts,BG_PHOTFLUX=bg_counts,MEAN_SRC_EXP,MEAN_BG_EXP][subspace -sky]" for z in photfiles ]
 
@@ -1325,8 +1325,8 @@ def add_effevt_to_outfile( myparams, at_energy, srcfiles, bkgfiles ):
     verb1("Appending flux results onto output")
     myroot = get_root( myparams, at_energy )
 
-    from ciao_contrib.runtool import dmmerge
-    from ciao_contrib.runtool import dmpaste
+    dmmerge = make_tool("dmmerge")
+    dmpaste = make_tool("dmpaste")
 
     sdat = delme(myroot+"_src.dat")
     bdat = delme(myroot+"_bkg.dat")
@@ -1387,7 +1387,6 @@ def scale_eff2evt_fluxes( myparams, at_energy):
 
     verb1("Computing Net fluxes")
 
-    from pycrates import read_file
 
     intab = read_file( myroot+__osuf__, mode="rw")
 
@@ -1480,7 +1479,6 @@ def run_specextract( myparams, outroot, srcreg, bkgreg, ii, at_energy ):
     """
 
     from ciao_contrib.runtool import new_pfiles_environment as newpf
-    from ciao_contrib.runtool import make_tool
 
     verb1("Making response files for {}".format(outroot))
 
@@ -1590,7 +1588,6 @@ def replace_nh_tokens( myparams, at_energy, ii, in_pi=None ):
     colden.
     """
 
-    from pycrates import read_file
 
     def lookup_value( key, modelparam ):
         token = '%{}%'.format(key)
@@ -1626,13 +1623,12 @@ def replace_nh_tokens( myparams, at_energy, ii, in_pi=None ):
     return mparams, absparams
 
 
-def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf, inrmf, inpi=None ):
+def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf, inrmf, inpi ):
     """
     Run the modelflux script to get the conversion factor
     from a 1 c/s rate to the model flux in the
     energy band.
     """
-    from ciao_contrib.runtool import make_tool
 
     if inarf is None and inrmf is None:
 
@@ -1791,7 +1787,7 @@ def get_model_flux( taskrunner, myparams, at_energy, src, bkg, make_resp ):
         outroot = myroot+"_{:04d}.dat".format(ii+1)
         taskrunner.add_task( outroot, "", run_modelflux, myparams, 
             at_energy, outroot, src_stk[ii], bkg_stk[ii], ii+1, make_resp,
-            arfs[ii], rmfs[ii] )
+            arfs[ii], rmfs[ii], None )
         infiles.append( delme(outroot) )
 
     return infiles
@@ -1806,8 +1802,8 @@ def add_modelflux_to_output( myparams, at_energy, infiles ):
     
     myroot = get_root( myparams, at_energy )
 
-    from ciao_contrib.runtool import dmmerge
-    from ciao_contrib.runtool import dmpaste
+    dmmerge = make_tool("dmmerge")
+    dmpaste = make_tool("dmpaste")
     dmmerge.infile = infiles
 
     dmmerge.outfile = delme(myroot+"_mdls.dat")
@@ -1837,7 +1833,6 @@ def scale_modelflux_fluxes( myparams, at_energy ):
 
     verb1("Scaling model flux confidence limits")
 
-    from pycrates import read_file
     myroot = get_root( myparams, at_energy)
 
     intab = read_file( myroot+__osuf__, mode="rw")
@@ -1878,7 +1873,6 @@ def get_num_srcs( pars ):
     """
     Helper to get number of sources
     """
-    from pycrates import read_file
     bands = stk.build( pars.bands )
     myroot = get_root( pars, bands[0] )
     tab = read_file( myroot+__osuf__)
@@ -1892,7 +1886,6 @@ def merge_modelflux( stk_params, myparams ):
 
     Output File:  ${root}_${band}_${src#}.dat
     """
-    from pycrates import read_file
     bands = stk.build( myparams.bands)
     outfiles = {}
     for b in bands:
@@ -1978,7 +1971,6 @@ def counts_helper( ):
 
 
 def merge_get_counts( infiles ):
-    from pycrates import read_file    
     retval = counts_helper()
 
     for infile in infiles:
@@ -2004,8 +1996,7 @@ def merge_aprates( cts, conf, rate=False ):
     
     """
     #~ import aper as aper
-    from ciao_contrib.runtool import aprates
-    from tempfile import NamedTemporaryFile
+    aprates = make_tool("aprates")
     outfile = NamedTemporaryFile(suffix=".par", delete=False)
 
     good = ( np.array( cts["inside_fov"] ) == True )
@@ -2220,7 +2211,6 @@ def merge_write_output( stk_params, myparams, modelflux_vals, merge_fluxes ):
     
     """
     dmmerge = make_tool("dmmerge")
-    from pycrates import read_file
     
     for at_energy in stk.build( myparams.bands ):
         
@@ -2306,7 +2296,6 @@ def cleanup_outfile( myparams, pars, at_energy):
     """
 
     from ciao_contrib.runtool import add_tool_history
-    from pycrates import read_file
 
     myroot = get_root( myparams, at_energy )
 
@@ -2367,7 +2356,6 @@ def summarize_results( myparams, obi=None, single=False ):
     conf = float(myparams.conf)
 
     from coords.format import deg2ra, deg2dec
-    from pycrates import read_file
     
     _lead = 30
     _lead_fmt = "{:"+str(_lead)+"s}"
@@ -2546,7 +2534,6 @@ def check_infile( infile ):
 def check_pos_inside_fov( myparam ):
     
     from region import regParse, regInsideRegion
-    from pycrates import read_file
     fov = locate_fovfile( myparam )
 
     fov = regParse( "region({})".format(fov))
@@ -2693,7 +2680,11 @@ def process_single_obi( myparams, pars ):
         photfluxfiles = get_fluximage_flux( taskrunner, myparams, at_energy, src, bkg )
 
         # ---
-        taskrunner.run_tasks( processes=myparams.nproc )
+        try:
+            taskrunner.run_tasks( processes=myparams.nproc )
+        except Exception as ee:
+            print(ee)
+            raise
         # ---
       
         add_aprates_to_output( myparams, at_energy, outfiles )
@@ -2710,17 +2701,11 @@ def process_single_obi( myparams, pars ):
     cleanup_tempfiles(myparams, src,bkg)
 
 
-## This has to be global so it can be pickled.    
-from collections import namedtuple
-Params = None
-
 #
 # Main Routine
 #
 def obi_main(pars):
     # get parameters
-    global Params    # We need to make this global so it can be pickeled for taskrunner
-
     infiles = build_infile_stacks( pars )
     is_single_obi = ( len(infiles) == 1 )
 
@@ -2742,8 +2727,11 @@ def obi_main(pars):
             obipars["outroot"] = "{}obi{:03d}_".format( pars["outroot"], ii+1)
 
         set_bands(obipars)        
-        Params = namedtuple( 'Params', obipars.keys() )
-        myparams = Params( *tuple(obipars.values()))
+
+        myparams = Params()
+        for k in obipars.keys():
+            setattr(myparams, k, obipars[k])
+
         check_parameters( myparams )
 
         verb1("Processing OBI {:03d}".format(ii+1))
@@ -2756,10 +2744,8 @@ def obi_main(pars):
     return stk_pars
 
 
-
 @lw.handle_ciao_errors( toolname, __revision__)
 def main():
-    global Params    # We need to make this global so it can be pickeled for taskrunner
 
     # Load parameters
     from ciao_contrib.param_soaker import get_params
@@ -2780,8 +2766,10 @@ def main():
 
     # Do this after above so bands is set correctly
     pars["bands"] = stk_pars[0].bands
-    Params = namedtuple( 'Params', pars.keys() )
-    myparams = Params( *tuple(pars.values()))
+
+    myparams = Params()
+    for k in pars.keys():
+        setattr( myparams, k, pars[k])
 
     if len(stk_pars) == 1:
         summarize_results( myparams, obi=None, single=True )
