@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2019
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2019, 2020
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -38,9 +38,6 @@ This interface has seen limited testing, so please check the
 documentation and then the CXC HelpDesk -
 https://cxc.harvard.edu/helpdesk/ - if you have problems.
 
-Note that the convolution interface has seen very limited testing,
-so please take care when using it!
-
 """
 
 import numpy as np
@@ -49,7 +46,6 @@ import sherpa.astro.xspec as xspec
 import sherpa.models as models
 import sherpa.utils as utils
 
-from .xsmodels import XSConvolutionKernel
 
 # c_ang * h_kev, so that E_kev = _hc / E_angstrom
 _hc = 2.99792458e+18 * 6.6260693e-27 / 1.60217653e-9
@@ -321,11 +317,7 @@ class XSMultiplicativeUserModel(XSUserModel):
     pass
 
 
-# TODO: need to updaye to take advantage of the updates to handle
-# XSPEC convolution models in CIAO 4.8 (or, rather, to use the
-# same interface)
-#
-class XSConvolutionUserKernel(XSConvolutionKernel):
+class XSConvolutionUserKernel(xspec.XSConvolutionKernel):
     """Support for XSPEC convolution user models, extending the
     support for the built-in versions since the interface is
     slightly different, due to how the user models are wrapped.
