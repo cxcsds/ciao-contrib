@@ -20,8 +20,7 @@ mods = [ "ciao_contrib",
     "sherpa_contrib",
     "sherpa_contrib/profiles",
     "sherpa_contrib/tests",
-    "sherpa_contrib/xspec",
-    "sherpa_contrib/xspec/tests"]
+    "sherpa_contrib/xspec"]
 
 
 from distutils.core import setup
