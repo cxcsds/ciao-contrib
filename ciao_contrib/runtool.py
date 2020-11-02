@@ -2594,6 +2594,13 @@ parinfo['arfcorr'] = {
     }
 
 
+parinfo['asp_offaxis_corr'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input ASPSOL file - updated in place",None),ParValue("instrume","s","Instrument",None)],
+    'opt': [ParValue("geompar","s","Parameter file for Pixlib Geometry files",'geom'),ParRange("verbose","i","Debug Level(0-5)",0,0,5)],
+    }
+
+
 parinfo['asphist'] = {
     'istool': True,
     'req': [ParValue("infile","f","Aspect Solution List Files",None),ParValue("outfile","f","Aspect Histogram Output File",None),ParValue("evtfile","f","Event List Files",None),ParValue("dtffile","f","Live Time Correction List Files for HRC",None)],
@@ -3661,7 +3668,7 @@ parinfo['wavdetect'] = {
 parinfo['wcs_match'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input file with duplicate srcs",None),ParValue("refsrcfile","f","Input file with reference srcs",None),ParValue("outfile","f","Transform file",None)],
-    'opt': [ParValue("wcsfile","f","Input file with WCS used in transform",None),ParValue("logfile","f","debug log file ( STDOUT | stdout | <filename>)",'STDOUT'),ParSet("method","s","reproject method: rot/scale/trans (rst) or translate (trans)",'rst',["rst","trans"]),ParRange("radius","r","radius used to match sources (arcsec)",12,0,None),ParRange("residlim","r","src pairs with residuals > residlim are dropped (arcsec)",2,0,None),ParRange("residfac","r","src pairs with residuals > residfac * position error are dropped",0,0,None),ParRange("residtype","i","residfac applies to: (0) each residual, (1) avg residuals",0,0,1),ParValue("clobber","b","Overwrite existing output dataset with same name?",False),ParRange("verbose","i","debug level (0-5)",0,0,5)],
+    'opt': [ParValue("wcsfile","f","Input file with WCS used in transform",None),ParValue("logfile","f","debug log file ( STDOUT | stdout | <filename>)",'STDOUT'),ParSet("method","s","reproject method: rot/scale/trans (rst) or translate (trans)",'rst',["rst","trans"]),ParRange("radius","r","radius used to match sources (arcsec)",12,0,None),ParSet("select","s","drop/add srcs from transform calc automatically or manually",'auto',["auto","manual"]),ParRange("residlim","r","src pairs with residuals > residlim are dropped (arcsec)",2,0,None),ParRange("residfac","r","src pairs with residuals > residfac * position error are dropped",0,0,None),ParRange("residtype","i","residfac applies to: (0) each residual, (1) avg residuals",0,0,1),ParValue("clobber","b","Overwrite existing output dataset with same name?",False),ParRange("verbose","i","debug level (0-5)",0,0,5)],
     }
 
 
