@@ -21,7 +21,7 @@
 Download publically-available data from the Chandra Data Archive (CDA).
 
 Routines that wrap up HTTPS access to the Chandra Data Archive -
-https://cxc.harvard.edu/cda/ - supporting mirror sites under the
+https://cxc.harvard.edu/cdaftp/ - supporting mirror sites under the
 assumption that they have the same directory structure and login
 support as the CDA.
 
