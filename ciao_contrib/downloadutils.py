@@ -269,7 +269,7 @@ class DirectoryContents(HTMLParser):
         if data.lower() == 'parent directory':
             self.current = None
         elif self.current != data:
-            v3(f"Dropping link={self.current} as test={data}")
+            v4(f"Dropping link={self.current} as test={data}")
             self.current = None
 
 
