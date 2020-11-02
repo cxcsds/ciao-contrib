@@ -21,7 +21,7 @@
 Download publically-available data from the Chandra Data Archive (CDA).
 
 Routines that wrap up HTTPS access to the Chandra Data Archive -
-https://cxc.harvard.edu/cda/ - supporting mirror sites under the
+https://cxc.harvard.edu/cdaftp/ - supporting mirror sites under the
 assumption that they have the same directory structure and login
 support as the CDA.
 
@@ -239,6 +239,10 @@ class ObsIdFile:
 
         The hdr value is added to the request header to enable the
         user-agent to be changed (or any other header).
+
+        This approach is left-over from the previous FTP code,
+        where we could get the size easily. This should now
+        probably just be folded into the download code.
         """
 
         if self.filesize is not None:
@@ -390,6 +394,10 @@ class ObsId:
         The screen output is determined by the logger instance.
 
         The downloads are done in order of decreasing file size.
+
+        Files we can not download (e.g. doesn't exist or some other
+        reason) are skipped. This is to support possible future
+        changes in the HTML response from the archive.
         """
 
         V3("Downloading {} files".format(len(self.files)))
@@ -415,7 +423,13 @@ class ObsId:
 
         for oelem in order:
             fileobj = itemgetter(1)(oelem)
-            (a, b) = fileobj.download(self.header)
+
+            try:
+                (a, b) = fileobj.download(self.header)
+            except urllib.error.URLError as uerr:
+                V1(f"SKIPPING {fileobj.filename} as {uerr}")
+                continue
+
             nbytes += a
             dtime += b
 

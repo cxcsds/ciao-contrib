@@ -203,9 +203,13 @@ class DirectoryContents(HTMLParser):
     """Extract the output of the mod_autoindex Apache directive.
 
     Limited testing. It assumes that the files are given as links,
-    there's no other links on the page, and the parent directory
-    is listed as 'parent directory' (after removing the white space
-    and converting to lower case).
+    there's no other links on the page, and the parent directory is
+    listed as 'parent directory' (after removing the white space and
+    converting to lower case). There is special casing to remove links
+    where the text does not match the name of the link. This is to
+    handle query fragments, which are used to change the ordering of
+    the table display rather than be an actual link.
+
     """
 
     def __init__(self, *args, **kwargs):
@@ -256,9 +260,16 @@ class DirectoryContents(HTMLParser):
         if self.current is None:
             return
 
-        # Skip the link to the parent directory
+        # Skip the link to the parent directory, and skip any where
+        # the text is different to the href (e.g. to catch query-only
+        # links which are used to change the display rather than being
+        # a link).
+        #
         data = data.strip()
         if data.lower() == 'parent directory':
+            self.current = None
+        elif self.current != data:
+            v4(f"Dropping link={self.current} as test={data}")
             self.current = None
 
 
