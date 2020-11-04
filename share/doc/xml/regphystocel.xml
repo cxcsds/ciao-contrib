@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY context="tools" key="regphystocel" 
+   refkeywords="region coordinates physical celestial ds9 fk5 wcs world coordinate convert ascii" 
+   seealsogroups="detecttools regiontools"
+   >
+    <SYNOPSIS>Convert regions in physical coordinates to ds9 format regions in
+    celestial (fk5) coordinates.
+    </SYNOPSIS>
+    <DESC>
+      <PARA>`regphystocel' will convert a region file stored in physical coordinates
+      into a ds9-format region file using celestial coordinates.  Most 
+      CIAO tools can make use of regions in either physical or celestial
+      coordinates.  However, when working with multiple observations with
+      possibly different tangent plane projection parameters, using 
+      celestial coordinates may be necessary.  This is the case when using
+      the srcflux script with multiple observations.
+      </PARA>
+      <PARA>
+      The input region file can be either a FITS region file 
+      or an CIAO ASCII region file.  The infile can also just be
+      a region string.      
+      </PARA>
+      <PARA>
+      The tool takes position and radius (in physical pixels) of each 
+      shape and applies the world coordinate system (WCS) transform.      
+      The angle is not modified (always measured counter-clockwise from the
+      +X axis).  If using a FITS region file, it may contain the WCS
+      necessary to do the conversion to celestial coordinates; otherwise
+      users can supply an image or event file as the wcsfile parameter.
+      </PARA>
+      <PARA title="Limitations">
+      CIAO regions support complex region logic using logical AND and logical
+      OR operations; the ds9 format does not support this.  The following
+      shapes are not supported:  'field', 'pie', and 'sector'.      
+      </PARA>
+      <PARA title="Text and Tags">
+      Regions stored in the ds9 format can have a title that will
+      optionally be displayed above the region.  They can also have 
+      one or more "tags" which allows the user to group 
+      sources together; users can access the list of groups by 
+      going to Region -&gt; Groups ... from the ds9 main menu.
+      When using a FITS region file regphystocel can take values from
+      columns or keywords and populate the title or tags properties.        
+      </PARA>
+
+
+
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+% regphystocel ciao.reg ds9.reg wcsfile=img.fits
+           </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+The ASCII region stored in the file "ciao.reg" is converted to celestial 
+coordinates using the WCS from the "img.fits" file.  The output is
+written to "ds9.reg" which will look similar to this:
+</PARA>
+<VERBATIM>
+# Region file format: DS9 version 4.1
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+fk5
+ellipse(01:13:51.0473,13:16:17.8925,1.26168",1.17667",25.8786)
+</VERBATIM>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+% regphystocel fov.fits fov.reg
+           </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+              The FITS region file "fov.fits" is converted to celestial
+              coordinates using the WCS provided in the file itself.
+              Most FITS region files will have a WCS.  To determine
+              if the file has a WCS just
+</PARA>
+<VERBATIM>
+% dmlist fov.fits cols
+...
+--------------------------------------------------------------------------------
+World Coord Transforms for Columns in Table Block FOV
+--------------------------------------------------------------------------------
+ 
+ColNo    Name
+1:    EQPOS(RA ) = (+18.4654)[degree] +TAN[(-0.000136667)* (POS(X)-(+4096.50))]
+           (DEC)   (+13.2705)              (+0.000136667)  (   (Y) (+4096.50)) 
+</VERBATIM>
+
+<PARA>
+and in the "World Coord Transforms" section look for either "EQPOS" or "EQSRC".
+If neither is present, then a wcsfile which does have one of those two
+transforms must be supplied.
+</PARA>
+        </DESC>
+      </QEXAMPLE>
+
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+% regphystocel "circle(4096.5,4096.5,100)-box(4096.5,4096.5,100,100)" ds9.reg wcsfile=img.fits
+           </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+In this example the region is provided directly in the infile parameter.
+While the ds9 format does not support the full CIAO logical AND and logical OR
+expressions, it does supported include and excluded shapes as shown here:
+</PARA>
+<VERBATIM>
+# Region file format: DS9 version 4.1
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+fk5
+circle(01:13:51.6855,13:16:13.8493,49.2")
+-box(01:13:51.6855,13:16:13.8493,49.2",49.2")
+</VERBATIM>
+        </DESC>
+      </QEXAMPLE>
+
+
+<QEXAMPLE>
+<SYNTAX>
+<LINE>
+% regphystocel cell.src ds9.reg text=component tag=double,double_id,obs_id
+</LINE>
+</SYNTAX>
+<DESC>
+<PARA>
+In this example we use the text and tag parameters to specify additional
+metadata to extract from the FITS region file (cell.src) and store in 
+the ds9 region file.  The value of the COMPONENT column are stored in
+the text field and will be displayed above the regions.  The values
+for the double and double_id columns as well as the obs_id keyword are
+stored as tags.  The output will look something like this:
+</PARA>
+<VERBATIM>
+# Region file format: DS9 version 4.1
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+fk5
+ellipse(05:23:0.8521,33:28:17.0340,1.50728",1.38265",175.227) # text={1}  tag={double=False} tag={double_id=0} tag={obs_id=4396}
+ellipse(05:23:0.6545,33:28:6.6130,1.4234",1.28935",39.5983) # text={2}  tag={double=False} tag={double_id=0} tag={obs_id=4396}
+ellipse(05:22:40.0080,33:28:31.1923,1.49205",1.23199",22.1857) # text={130}  tag={double=False} tag={double_id=0} tag={obs_id=4396}
+ellipse(05:23:6.6306,33:28:8.8049,2.28348",1.86101",156.246) # text={131}  tag={double=True} tag={double_id=343} tag={obs_id=4396}
+ellipse(05:23:5.3125,33:28:36.8242,3.32145",2.22307",115.958) # text={137}  tag={double=True} tag={double_id=139} tag={obs_id=4396}
+</VERBATIM>
+
+<PARA>
+In ds9, the user will see following groups:  double=False, double=True, 
+double_id=0, double_id=343, double_id=139, and obs_id=4396.  The user
+can select the source in these groups for additional analysis.
+</PARA>
+
+<PARA>
+Only a single column or keyword can be used for the text parameter.
+The tag parameter is a stack of column or keyword names.
+</PARA>
+
+</DESC>
+
+
+</QEXAMPLE>  
+
+
+
+
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM filetype="input" name="infile" reqd="yes" type="file">
+        <SYNOPSIS>
+            The input region.
+       </SYNOPSIS>
+        <DESC>
+          <PARA>
+            The infile can be either an ASCII CIAO region file (using
+            physical coordinates) 
+            or a FITS format region file (always assumed to be using
+            physical coordinates).  Users can also supply a 
+            simple region expression.
+         </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM filetype="output" name="outfile" reqd="yes" type="file">
+        <SYNOPSIS>
+            Output file name.
+       </SYNOPSIS>
+        <DESC>
+          <PARA>
+            The output is a ds9 format region file using celestial coordinates.
+         </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM filetype="input" name="wcsfile" reqd="no" type="file">
+        <SYNOPSIS>
+           File used to obtain world coordinate system transformation.
+       </SYNOPSIS>
+        <DESC>
+          <PARA>
+        If the infile does not contain a recognized WCS, then users must
+        supply a wcsfile which does.  The infile or wcsfile must contain
+        either an EQPOS or EQSRC coordinate transform.  If the 
+        wcsfile is specified and the infile also has a WCS, the wcsfile
+        parameters are used.
+         </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="text" reqd="no" type="string" stacks="no">
+        <SYNOPSIS>
+        The column value or keyword name to use for the region's text label.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+          When the infile is a FITS region file, the user can specify
+          a column or keyword to use for the text label associated
+          with each region.
+          </PARA>        
+        </DESC>
+      </PARAM>
+      <PARAM name="tag" reqd="no" type="string" stacks="yes">
+        <SYNOPSIS>
+        The column values or keyword names to use to tag each region.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+          When the infile is a FITS region file, the user can specify
+          a stack columns and/or keywords to use for as grouping
+          tags.  Groups can be used to attach additional information 
+          to a region such as which source is associated with which
+          background; which sources are extended, adding properties
+          like number of counts, etc.
+          </PARA>        
+        </DESC>
+      </PARAM>
+
+
+
+      <PARAM def="1" max="5" min="0" name="verbose" type="integer">
+        <SYNOPSIS>
+        Amount of tool chatter level.
+       </SYNOPSIS>
+      </PARAM>
+      <PARAM def="no" name="clobber" type="boolean">
+        <SYNOPSIS>
+            Overwrite output files if they already exist?
+        </SYNOPSIS>
+      </PARAM>
+    </PARAMLIST>
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+    <LASTMODIFIED>August 2020</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

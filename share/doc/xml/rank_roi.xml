@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY context="tools" key="rank_roi" refkeywords="roi region regions reg combine overlap exclude bright faint flux counts" seealsogroups="detecttools regiontools">
+    <SYNOPSIS>Assign overlapping region area to highest ranking source.
+    </SYNOPSIS>
+    <DESC>
+      <PARA>
+        The `roi' tool is typically run with the parameter group=exclude
+        which produces source regions with exclude any nearby overlapping
+        sources.  The issue is that the overlapping area is never assigned
+        to any source region so the data in that region are not included
+        any data analysis.
+      </PARA>
+      <PARA>
+      The `rank_roi' tool is a post processing step which takes the 
+      `roi' output files and assigns the overlapping area to the highest
+      ranking source region.  Source regions can be ranked based on
+      several criteria:  most flux, least flux, largest area, smallest
+      area, brightest pixel or faintest pixel.      
+      </PARA>
+      <PARA>
+      The output from `rank_roi' is a new stack of region files with
+      the overlapping area assigned to the highest ranking source.
+      The output root name must contain a Python string format token 
+      to represent the region number.
+      </PARA>
+      <PARA>
+      The `rank_roi` input file, infile, is used to calculate the 
+      ranking.  It will typically be an image of either the counts 
+      or flux.      
+      </PARA>
+      <PARA>
+      Note: For this algorithm to be useful, the `roi' tool had to have
+      been run with group=exclude. Otherwise, the output will always
+      be identical to the input.
+      </PARA>
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+% roi infile=wav_src.fits outsrc="src_%04d.reg" group=exclude target=target mode=h clob+
+</LINE>
+          <LINE>
+% rank_roi infile=broad_thresh.img roifile="src_*.reg" outfile="rank_src_{:04d}.reg" method=max
+</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            This example shows the `roi' tool being run on a source list file using
+            group=exclude.  This will produce region that will exclude nearby overlapping
+            source regions.  The `roi' output root contains the C-formatting style
+            '%04d' which gets replaced with the region number (4-digits with leading
+            zeros).
+          </PARA>
+          <PARA>
+            The `rank_roi' tool is then used to assign the overlapping area to one of
+            the source regions.  The source with the maximum counts, obtained from
+            the input image, broad_thresh.img, is given the highest ranking and
+            assigned the overlapping area.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+        <DESC>
+          <PARA>
+In this example we show an longer example with actual numbers.  We start
+by creating a region file with 2 overlapping source regions (ellipses):
+</PARA>
+          <VERBATIM>
+$ cat &lt;&lt; EOM &gt; ciao.reg
+ellipse(3972,4444,43,38,175)
+ellipse(3945,4501,46,40,128)
+EOM
+$ dmmakereg region="region(ciao.reg)" out=ciao.fits ker=fits clob+
+</VERBATIM>
+          <PARA>
+We then run the `roi' tool with group=exclude
+</PARA>
+          <VERBATIM>
+$ roi ciao.fits outsrc="ciao_%d.src" group=exclude clob+ mode=h
+</VERBATIM>
+          <PARA>
+`roi' writes out each source to a separate file based on the 
+outsrcfile name template; the "%" is replaced by the source number.
+We can look at each file to verify the regions overlap and that each 
+region is excluded from the other
+</PARA>
+          <VERBATIM>
+$ dmlist ciao_1.src data,clean
+Region Block: Ellipse(3972,4444,43,38,175)&amp;!Ellipse(3945,4501,46,40,128)
+#  POS(X,Y)                                 SHAPE              R[2]                                     ROTANG[2]                                COMPONENT
+                       3972.0      4444.0 Ellipse                                    43.0        38.0                                175.0 NaN          1
+                       3945.0      4501.0 !Ellipse                                   46.0        40.0                                128.0 NaN          1
+</VERBATIM>
+          <PARA>and</PARA>
+          <VERBATIM>
+$ dmlist ciao_2.src data,clean
+Region Block: Ellipse(3945,4501,46,40,128)&amp;!Ellipse(3972,4444,43,38,175)
+#  POS(X,Y)                                 SHAPE              R[2]                                     ROTANG[2]                                COMPONENT
+                       3945.0      4501.0 Ellipse                                    46.0        40.0                                128.0 NaN          1
+                       3972.0      4444.0 !Ellipse                                   43.0        38.0                                175.0 NaN          1
+</VERBATIM>
+          <PARA>
+Since the regions exclude each other, the area inbetween them is not assigned 
+to any source region.  Data in that overlapping area is not used in 
+later data analysis. 
+</PARA>
+          <PARA>
+We now use the `rank_roi` tool to assign the area to the source with 
+the most counts based on the input image: broad_thresh.img.
+</PARA>
+          <VERBATIM>
+$ rank_roi infile=broad_thresh.img roi="ciao_?.src" out="rank_ciao_{}.src" method=max clob+
+rank_roi
+          infile = Test/sim/sim.img.gz
+        roifiles = ciao_?.src
+         outfile = rank_ciao_{}.src
+          method = max
+         clobber = yes
+         verbose = 1
+            mode = ql
+
+Loading ROI files
+2 ROI files parsed
+Checking clobber
+Checking infile (image v. table)
+Computing metric for all ROIs
+Determining which ROIs should get overlap area
+Writing out new roi files
+</VERBATIM>
+          <PARA>
+            The stack of roi input files, roifiles, is processed and ranked based
+            on the method parameter; max means maximum counts|flux based on the infile
+            image.  The file names for the output files are generated based 
+            on the outfile name template.  Note: the outfile must include a Python
+            string format token, ie something inside of curly brackets, eg {} or {:04d}.
+          </PARA>
+          <PARA>
+We can then check the output files and we see that the 1st region
+</PARA>
+          <VERBATIM>
+$ dmlist rank_ciao_1.src data,clean
+Region Block: Ellipse(3972,4444,43,38,175)&amp;!Ellipse(3945,4501,46,40,128)
+#  POS(X,Y)                                 SHAPE              R[2]                                     ROTANG[2]                                COMPONENT
+                       3972.0      4444.0 Ellipse                                    43.0        38.0                                175.0 NaN          1
+                       3945.0      4501.0 !Ellipse                                   46.0        40.0                                128.0 NaN          1
+</VERBATIM>
+          <PARA>
+still has the 2nd region excluded from it.  It has a lower rank than 
+the 2nd region.  The 2nd region looks like
+</PARA>
+          <VERBATIM>
+$ dmlist rank_ciao_2.src data,clean
+Region Block: Ellipse(3945,4501,46,40,128)
+#  POS(X,Y)                                 SHAPE              R[2]                                     ROTANG[2]                                COMPONENT
+                       3945.0      4501.0 Ellipse                                    46.0        40.0                                128.0 NaN          1
+</VERBATIM>
+          <PARA>
+Since this region has the highest rank it has claimed the overlapping
+region area (thus no regions are excluded from it).
+</PARA>
+        </DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+    <PARAMLIST>
+      <PARAM filetype="input" name="infile" reqd="yes" stacks="no" type="file">
+        <SYNOPSIS>
+        An image or event list. 
+       </SYNOPSIS>
+        <DESC>
+          <PARA>
+        The infile is filtered by each region and statistics are gathered
+        to compute the regions' rank.        
+         </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM filetype="input" name="roifiles" reqd="yes" stacks="yes" type="file">
+        <SYNOPSIS>
+    The stack of roi region files.
+       </SYNOPSIS>
+        <DESC>
+          <PARA>
+        Users can use any standard CIAO stack syntax to provide the
+        list of roi region files:  "@file.lis", wildcards (*, ?), etc.
+        All the regions must be supplied ; if they are not then overlaps
+        involving any omitted regions will not be checked.
+         </PARA>
+          <PARA>
+        The regions should have been created using roi's group=exclude 
+        parameter setting.  Using any of the other methods results
+        in the output files just being copies of the input files.
+        </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM filetype="output" name="outfile" reqd="yes" stacks="no" type="file">
+        <SYNOPSIS>
+        The output file name template.
+       </SYNOPSIS>
+        <DESC>
+          <PARA>
+        The outfile template value must contain a Python string 
+        formatting token.  The token is replaced by the region number
+        when the files are written.  Typically the value will be "{}" or "{:04d}".
+         </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM def="max" name="method" reqd="no" stacks="no" type="string">
+        <SYNOPSIS>
+        The metric used to determine the regions' ranks.
+       </SYNOPSIS>
+        <DESC>
+          <PARA>
+        The overlapping region area is assigned based on the method
+        parameter:
+        </PARA>
+          <LIST>
+            <ITEM>max : the region with the largest flux</ITEM>
+            <ITEM>min : the region with the least flux</ITEM>
+            <ITEM>bright : the region with the brightest  pixel (maximum, maximum pixel value)</ITEM>
+            <ITEM>faint : the region with the faintest pixel (minimum, maximum pixel value)</ITEM>
+            <ITEM>big : the region with the largest area</ITEM>
+            <ITEM>small : the region with the smallest area</ITEM>
+          </LIST>
+        </DESC>
+      </PARAM>
+      <PARAM def="1" max="5" min="0" name="verbose" type="integer">
+        <SYNOPSIS>
+        Amount of tool chatter level.
+       </SYNOPSIS>
+        <DESC>
+          <PARA>Running with verbose=2 or higher will print the metric
+      for each region.</PARA>
+        </DESC>
+      </PARAM>
+      <PARAM def="no" name="clobber" type="boolean">
+        <SYNOPSIS>
+            Overwrite output files if they already exist?
+        </SYNOPSIS>
+      </PARAM>
+    </PARAMLIST>
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+    <LASTMODIFIED>June 2020</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
