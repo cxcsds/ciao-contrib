@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2010, 2011, 2012, 2014, 2015, 2018, 2019
+#  Copyright (C) 2010, 2011, 2012, 2014, 2015, 2018, 2019, 2020
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -52,7 +52,6 @@ __all__ = (
     "run",
     "punlearn",
     "dmcopy",
-    "update_column_range",
     "dmmerge",
     "dmimgcalc2", "dmimgcalc", "dmimgcalc_add",
     "dmkeypar",
@@ -136,30 +135,12 @@ def dmcopy(infile, outfile,
     run("dmcopy", args)
 
 
-# TODO: Is this still needed in CIAO 4.6?
-def update_column_range(infile, verbose=0):
-    """Runs update_column_range on the sky column of
-    infile with round set to yes.
-    """
-
-    punlearn('update_column_range')
-    run('update_column_range',
-        ["infile=" + infile,
-         "columns=sky",
-         "round=yes",
-         "verbose={}".format(verbose),
-         "mode=h"])
-
-
 def dmmerge(infile, outfile,
             clobber=False,
             verbose=0,
-            skyupdate=False,
             lookupTab=None,
             ):
-    """Run dmmerge. If skyupdate is True then also runs
-    update_column_range on the sky column of outfile
-    with round set to yes). If lookupTab is not None then
+    """Run dmmerge. If lookupTab is not None then
     use it as the lookupTab parameter value in the call.
     """
 
@@ -171,9 +152,6 @@ def dmmerge(infile, outfile,
     add_defargs(args, clobber, verbose)
     punlearn('dmmerge')
     run('dmmerge', args)
-
-    if skyupdate:
-        update_column_range(outfile)
 
 
 def dmimgcalc2(infile1, infile2, outfile, op,
