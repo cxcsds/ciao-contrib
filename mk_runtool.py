@@ -355,9 +355,9 @@ def add_output(funcinfo, parname):
     """
 
     dirname, toolname = os.path.split(parname)
-    if dirname is '':
+    if dirname == '':
         raise ValueError("Unexpected: dirname='' in parname={}".format(parname))
-    if toolname is '' or not toolname.endswith('.par'):
+    if toolname == '' or not toolname.endswith('.par'):
         raise ValueError("Unexpected: toolname={} in parname={}".format(toolname, parname))
 
     toolname = toolname[:-4]
