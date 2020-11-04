@@ -19,7 +19,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "29 September 2020"
+__revision__ = "04 November 2020"
 
 import os
 
@@ -1906,7 +1906,7 @@ def merge_modelflux( stk_params, myparams ):
 
         for p_a_r in zip(pi_files, arf_files, rmf_files):
             ondisk = [ os.path.exists(x) for x in p_a_r]
-            if all(ondisk) == False:
+            if not all(ondisk):
                 continue
             p_good.append(p_a_r[0])
             a_good.append(p_a_r[1])
@@ -2005,7 +2005,7 @@ def merge_aprates( cts, conf, rate=False ):
     alpha  = np.array(cts["psffrac"])[good]
     beta   = np.array(cts["bg_psffrac"] )[good]
     exptime = np.array(cts["exptime"])[good]
-    if True == rate:
+    if rate:
         exp_s  = exptime
         exp_b  = exptime
     else:
@@ -2084,7 +2084,7 @@ def merge_aprates( cts, conf, rate=False ):
         delme(outfile.name)
         return badval
     
-    if wtaf == False:
+    if not wtaf:
         delme(outfile.name)
         return badval
 
@@ -2677,13 +2677,7 @@ def process_single_obi( myparams, pars ):
         mfluxfiles = get_model_flux( taskrunner, myparams, at_energy, src, bkg, (at_energy == with_bands[0]) )        
         photfluxfiles = get_fluximage_flux( taskrunner, myparams, at_energy, src, bkg )
 
-        # ---
-        try:
-            taskrunner.run_tasks( processes=myparams.nproc )
-        except Exception as ee:
-            print(ee)
-            raise
-        # ---
+        taskrunner.run_tasks( processes=myparams.nproc )
       
         add_aprates_to_output( myparams, at_energy, outfiles )
         add_effevt_to_outfile( myparams, at_energy, srcfiles, bkgfiles )
@@ -2721,7 +2715,7 @@ def obi_main(pars):
         obipars["bpixfile"] = infile[4]
         obipars["dtffile"] = infile[5]
 
-        if False == is_single_obi:
+        if not is_single_obi:
             obipars["outroot"] = "{}obi{:03d}_".format( pars["outroot"], ii+1)
 
         set_bands(obipars)        
