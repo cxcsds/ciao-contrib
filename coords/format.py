@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2011, 2013, 2015, 2016, 2019
+#  Copyright (C) 2011, 2013, 2015, 2016, 2019, 2020
 #            Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -759,27 +759,30 @@ def _check_float_(n):
 # place all the tests in a single class
 class TestModule(unittest.TestCase):
 
-    def _test_fmtconvert(self, val, formatter, results):
+    def _test_fmtconvert(self, val, formatter, results, ndp):
         for fmt, expval in results.items():
-            gotval = formatter(val, fmt)
-            # ignore floating-point differences for now
-            self.assertEqual(expval, gotval,
-                             msg="format='{}'".format(fmt))
+
+            # Want dfferent ndp for the hour/degree case
+            if fmt in ['hour', 'degree']:
+                xndp = ndp + 4
+            else:
+                xndp = ndp
+
+            gotval = formatter(val, fmt, ndp=xndp)
+            assert gotval == expval, (gotval, expval, f'format=[{fmt}]')
 
     def _test_convert(self, expval, converter, results):
         for _, val in results.items():
             gotval = converter(val)
-            # for now use string conversion to try and work around
-            # floating-point differences
-            self.assertEqual(str(expval), str(gotval),
-                             msg="val='{}'".format(val))
+            assert gotval == pytest.approx(expval), (gotval, expval, f'val={val}')
 
     def _test_invalid_string(self, converter, expected, ignore):
         for fmt, val in expected.items():
             if fmt in ignore:
                 continue
 
-            self.assertRaises(ValueError, converter, val)
+            with pytest.raises(ValueError):
+                converter(val)
 
     def _test_partial(self, converter, expected):
         for strval, numval in expected.items():
@@ -792,23 +795,23 @@ class TestModule(unittest.TestCase):
                          ':': '6:45:9.2496',
                          'hms': '6h 45m 9.2496s',
                          'HMS': '6H 45M 9.2496S',
-                         'hour': '6.75256933333h'}
+                         'hour': '6.75256933h'}
 
     _test_dec = -16.71314
     _test_expected_dec = {' ': '-16 42 47.304',
                           ':': '-16:42:47.304',
                           'dms': '-16d 42\' 47.304"',
-                          'degree': '-16.71314d'}
+                          'degree': '-16.7131400d'}
 
     def test_deg2ra(self):
         self._test_fmtconvert(self._test_ra,
                               deg2ra,
-                              self._test_expected_ra)
+                              self._test_expected_ra, ndp=4)
 
     def test_deg2dec(self):
         self._test_fmtconvert(self._test_dec,
                               deg2dec,
-                              self._test_expected_dec)
+                              self._test_expected_dec, ndp=3)
 
     def test_ra2deg(self):
         self._test_convert(self._test_ra,
@@ -824,11 +827,11 @@ class TestModule(unittest.TestCase):
         numval = -0.00138888888889
         strval = '-0:0:5.0'
 
-        out = deg2dec(numval, ':')
-        self.assertEqual(out, strval, msg='to string')
+        out = deg2dec(numval, ':', ndp=1)
+        assert out == strval
 
         out = dec2deg(strval)
-        self.assertEqual(str(out), str(numval), msg='from string')
+        assert out == pytest.approx(numval)
 
     def test_ra2deg_partial(self):
         expected = {'6 45': 101.25,
@@ -862,6 +865,7 @@ class TestModule(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    import pytest
     unittest.main()
 
 # End
