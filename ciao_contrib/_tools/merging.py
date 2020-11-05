@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019
+#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020
 #    Smithsonian Astrophysical Observatory
 #
 #
@@ -24,7 +24,6 @@ Routines used when merging and combining data.
 
 import os
 import tempfile
-import math
 
 import numpy as np
 
@@ -1074,7 +1073,7 @@ def validate_obsinfo(infiles, colcheck=True):
             continue
 
         # Sort primary second, secondary (longer) first, HRC is None.
-        sort_order = { 'P' : 2, 'S' : 1, None: 0 } 
+        sort_order = { 'P' : 2, 'S' : 1, None: 0 }
 
         sort_tag = sort_order[obs.obsid.cycle]
         time_tag= (obs.tstart,sort_tag) # tuples sort too
@@ -1551,36 +1550,10 @@ def merge_event_files(infiles,
     run.dmhedit_file(outfile, tfile.name)
 
 
-def normalize_value(ival, ndp=None):
-    """If ndp is not None then limit ival to ndp
-    decimal places.
-    """
-
-    if ndp is None:
-        return ival
-
-    if ndp < 0:
-        raise ValueError("ndp must be None or >= 0, but sent {}".format(ndp))
-
-    norm = math.pow(10, ndp)
-    if ival >= 0:
-        sgn = 1.0
-    else:
-        sgn = -1.0
-
-    return int(math.fabs(ival) * norm + 0.5) * sgn / norm
-
-
-def process_reference_position(refpos, obsinfos,
-                               rdp=4, ddp=5):
+def process_reference_position(refpos, obsinfos):
     """If refpos is given, extract the reference position from it,
     otherwise use the tangent points of the observations to calculate a
     "mean" location.
-
-    When *displaying* the position, the ra is limited to rdp decimal
-    places (unless set to None) and dec is limited to ddp decimal
-    places (unless set to None). The return values are *not* limited
-    to the rdp/ddp settings.
 
     The return value is the tuple
         (refcoordval, ra, dec)
@@ -1619,16 +1592,9 @@ def process_reference_position(refpos, obsinfos,
     if ra < 0:
         ra += 360.0
 
-    # TODO: it would be nice to restrict the accuracy of the seconds
-    #  conversion here. The simplest way is to restrict the
-    #  number of decimal places in the input. This is *only* for
-    #  the screen view.
-    #
-    ra2 = normalize_value(ra, rdp)
-    dec2 = normalize_value(dec, ddp)
-    rastr = coords.format.deg2ra(ra2, 'hms')
-    decstr = coords.format.deg2dec(dec2, 'dms')
-    v1("New tangent point: RA={} Dec={}".format(rastr, decstr))
+    rastr = coords.format.deg2ra(ra, 'hms', ndp=3)
+    decstr = coords.format.deg2dec(dec, 'dms', ndp=2)
+    v1(f"New tangent point: RA={rastr} Dec={decstr}")
 
     if rval is None:
         rval = "{0} {1}".format(ra, dec)
@@ -1898,6 +1864,30 @@ def list_observations(instrume, ranom, decnom, obsinfos):
     return warnings
 
 
+def number_decimal_places(x):
+    """Return the number of decimal places in the value.
+
+    There's probably a more-standardised way of doing this.
+
+    Parameters
+    ----------
+    x : value
+        The value
+
+    Returns
+    -------
+    ndp : int
+        The number of decimal places in x (can be 0).
+    """
+
+    xs = str(x)
+    decimal = xs.find('.')
+    if decimal == -1:
+        return 0
+
+    return len(xs) - decimal - 1
+
+
 def display_merging_warnings(warnings, evtfile, obsinfos):
     """Display any warnings about the use of the merged event
     file (evtfile) with the 'response' tools.
@@ -1927,29 +1917,42 @@ def display_merging_warnings(warnings, evtfile, obsinfos):
     # The handling of keywords here is beginning to get a bit special-cased
     # and not generic/clean.
     #
-    v1("Warning: the merged event file {}".format(evtfile))
+    v1(f"Warning: the merged event file {evtfile}")
     v1("   should not be used to create ARF/RMF/exposure maps because")
     spacer = "      "
     for warnvals in warnings:
         if len(warnvals) == 3:
             (key, mdiff, diff) = warnvals
-            v1("{}the {} keyword varies by {} (limit is {})".format(spacer, key, diff, mdiff))
+
+            # Restrict the difference to the number of decimal places
+            # of the limit (mdiff). Assumption is that mdiff is positive.
+            #
+            ndp = number_decimal_places(mdiff)
+            if ndp > 0:
+                fmt = "{{:.{}f}}".format(ndp)
+                diff = fmt.format(diff)
+
+            msg = f"{spacer}the {key} keyword varies by {diff} " + \
+                f"(limit is {mdiff})"
+            v1(msg)
 
         elif len(warnvals) == 2:
             (key, diffvals) = warnvals
-            v1("{}the {} keyword contains: {}".format(spacer, key, ' '.join(diffvals)))
+            msg = f"{spacer}the {key} keyword contains: {' '.join(diffvals)}"
+            v1(msg)
 
             if key == "EXPTIME":
-                v1("{}  which means that the DTCOR value, and hence LIVETIME/EXPOSURE".format(spacer))
-                v1("{}  keywords are wrong".format(spacer))
+                v1(f"{spacer}  which means that the DTCOR value, " +
+                   "and hence LIVETIME/EXPOSURE")
+                v1(f"{spacer}  keywords are wrong")
 
         else:
-            v1("{}[internal error] unrecognized warning {}".format(spacer, warnvals))
+            v1(f"{spacer}[internal error] unrecognized warning {warnvals}")
 
     if len(aimpoints) > 1:
         v1("{}the aim points fall on CCDs: {}".format(spacer, ' '.join([str(a) for a in aimpoints])))
-        v1("{}  which means that the ONTIME/LIVETIME/EXPOSURE keywords".format(spacer))
-        v1("{}  do not reflect the full observation length.".format(spacer))
+        v1(f"{spacer}  which means that the ONTIME/LIVETIME/EXPOSURE keywords")
+        v1(f"{spacer}  do not reflect the full observation length.")
 
     v1("")
 

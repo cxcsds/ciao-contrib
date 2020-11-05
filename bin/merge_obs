@@ -49,7 +49,7 @@ from ciao_contrib._tools.aspsol import AspectSolution
 from ciao_contrib._tools.taskrunner import TaskRunner
 
 toolname = 'merge_obs'
-__revision__ = '01 April 2020'
+__revision__ = '05 November 2020'
 
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
@@ -67,7 +67,7 @@ def handle_background_override(argv):
 
     If there are multiple entries then the last one is used.
 
-    The backfround map file should be an ascii file with two columns;
+    The background map file should be an ascii file with two columns;
     the first is the event file name (no path) and the second the
     full path to the HRC-I background file to use.
     """
@@ -79,7 +79,8 @@ def handle_background_override(argv):
     mapname = None
     for arg in argv:
         if arg == marker:
-            raise IOError("The {} option must be followed by a file name!")
+            raise IOError(f"The {marker} option must be followed by a " +
+                          "file name!")
 
         if arg.startswith(marker):
             mapname = arg[len(marker):]
@@ -90,8 +91,8 @@ def handle_background_override(argv):
     if mapname is not None:
         cr = pycrates.read_file(mapname)
         if cr.get_ncols() != 2:
-            raise IOError("Expected 2 columns in {}".format(mapname) +
-                          ", found {}".format(cr.get_ncols()))
+            raise IOError(f"Expected 2 columns in {mapname}, " +
+                          f"found {cr.get_ncols()}")
 
         # convert from np.string_ to string to avoid later oddities
         keys = map(str, cr.get_column(0).values.copy())
@@ -100,15 +101,15 @@ def handle_background_override(argv):
 
         _background_override = {}
         for (k, v) in zip(keys, vals):
-            v3("Storing map from {} to {}".format(k, v))
+            v3(f"Storing map from {k} to {v}")
             (dmname, dmfilter) = fileio.get_file_filter(v)
             v = os.path.abspath(dmname) + dmfilter
             try:
                 pycrates.read_file(v + "[#row=1]")
                 _background_override[k] = v
             except IOError:
-                v1("WARNING: skipping map from {}".format(k) +
-                   " to {} as the latter is missing".format(v))
+                v1(f"WARNING: skipping map from {k} to {v} " +
+                   "as the latter is missing")
 
     return out
 
@@ -236,7 +237,7 @@ def get_par(argv):
     elif instrume == 'HRC':
         pars['dtffiles'] = paramio.pgetstr(pfile, 'dtffiles')
     else:
-        raise ValueError("Internal error: unrecognized INSTRUME keyword {}".format(instrume))
+        raise ValueError(f"Internal error: unrecognized INSTRUME keyword {instrume}")
 
     pars['refcoord'] = params['refcoord'] = paramio.pgetstr(pfile, 'refcoord')
 
@@ -348,20 +349,23 @@ def data_products(taskrunner,
     nargs = len(args)
 
     if nargs == 1:
-        v1("\nCreating the fluxed image.")
+        msg = "\nCreating the fluxed image."
 
     elif parallel:
-        v1("\nCreating the fluxed images for {} observations in parallel.".format(nargs))
+        msg = f"\nCreating the fluxed images for {nargs} observations in " + \
+            "parallel."
 
     else:
-        v1("\nCreating the fluxed images for {} observations.".format(nargs))
+        msg = f"\nCreating the fluxed images for {nargs} observations."
+
+    v1(msg)
 
     for (obs, bkgfile, chips, xygrid) in args:
 
-        outroot = "{}{}{}_".format(outdir, outhead, obs.obsid)
+        outroot = f"{outdir}{outhead}{obs.obsid}_"
 
         (xrng, yrng) = xygrid
-        grid = "x={},y={}".format(xrng, yrng)
+        grid = f"x={xrng},y={yrng}"
         # ox = xrng.nbins
         # oy = yrng.nbins
         binsize = xrng.size
@@ -374,7 +378,7 @@ def data_products(taskrunner,
         asolobj = AspectSolution(obs.get_asol(), tmpdir=tmpdir)
 
         fi.run_fluximage_tasks(taskrunner,
-                               lambda s: "{}-obsid{}".format(s, obs.obsid),
+                               lambda s: f"{s}-obsid{obs.obsid}",
                                obs,
                                bkginfo,
                                chips,
