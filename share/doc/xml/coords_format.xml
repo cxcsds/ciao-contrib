@@ -25,13 +25,14 @@
       <LINE>(rad, decd) = sex2deg(ras, decs)</LINE>
       <LINE>rad = ra2deg(ras)</LINE>
       <LINE>decd = dec2deg(decs)</LINE>
-      <LINE>ras = deg2ra(rad, fmt)</LINE>
-      <LINE>decs = deg2dec(decd, fmt)</LINE>
+      <LINE>ras = deg2ra(rad, fmt, ndp=None)</LINE>
+      <LINE>decs = deg2dec(decd, fmt, ndp=None)</LINE>
       <LINE/>
       <LINE>rad and decd are in decimal degrees, ras and decs are strings.</LINE>
       <LINE>fmt is a string and can be one of: " ", "space", ":", "colon", and then
             either "hms", "HMS", "hour" or "dms", "degree" for deg2ra() and deg2dec()
             respectively</LINE>
+      <LINE>ndp gives the number of decimal places, if not None.</LINE>
       <LINE/>
       <LINE>The Python help command - e.g. help(deg2ra) - can be used.</LINE>
     </SYNTAX>
@@ -57,24 +58,39 @@ from coords.format import *
 	<SYNTAX>
 	  <LINE>&pr; from coords.format import *</LINE>
 	  <LINE>&pr; (ra, dec) = (101.28854, -16.71314)</LINE>
-          <LINE>&pr; def doit1(fmt): print("Format={} ra={}".format(fmt, deg2ra(ra,fmt)))</LINE>
+          <LINE>&pr; def doit1(fmt): print(f"Format={fmt:6s} ra={deg2ra(ra,fmt)}")</LINE>
           <LINE>&pr; for fmt in [" ", ":", "hms", "HMS", "hour"]: doit1(fmt)</LINE>
-          <LINE>Format=  ra=6 45 9.2496</LINE>
-          <LINE>Format=: ra=6:45:9.2496</LINE>
-          <LINE>Format=hms ra=6h 45m 9.2496s</LINE>
-          <LINE>Format=HMS ra=6H 45M 9.2496S</LINE>
-          <LINE>Format=hour ra=6.75256933333h</LINE>
-          <LINE>&pr; def doit2(fmt): print("Format={} dec={}".format(fmt, deg2dec(dec,fmt)))</LINE>
+          <LINE>Format=       ra=6 45 9.249599999997713</LINE>
+          <LINE>Format=:      ra=6:45:9.249599999997713</LINE>
+          <LINE>Format=hms    ra=6h 45m 9.249599999997713s</LINE>
+          <LINE>Format=HMS    ra=6H 45M 9.249599999997713S</LINE>
+          <LINE>Format=hour   ra=6.752569333333333h</LINE>
+          <LINE>&pr; def doit2(fmt): print(f"Format={fmt:6s} dec={deg2dec(dec,fmt)}")</LINE>
           <LINE>&pr; for fmt in [" ", ":", "dms", "degree"]: doit2(fmt)</LINE>
-          <LINE>Format=  dec=-16 42 47.304</LINE>
-          <LINE>Format=: dec=-16:42:47.304</LINE>
-          <LINE>Format=dms dec=-16d 42' 47.304"</LINE>
+          <LINE>Format=       dec=-16 42 47.30399999999719</LINE>
+          <LINE>Format=:      dec=-16:42:47.30399999999719</LINE>
+          <LINE>Format=dms    dec=-16d 42' 47.30399999999719"</LINE>
           <LINE>Format=degree dec=-16.71314d</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
             The deg2ra() and deg2dec() routines are used to convert decimal values
             into strings, showing the various different formatting options.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; print(deg2ra(ra, 'hms', ndp=3))</LINE>
+	  <LINE>6h 45m 9.250s</LINE>
+          <LINE>&pr; print(deg2dec(dec, 'dms', ndp=2))</LINE>
+	  <LINE>-16d 42' 47.30"</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Here we use the oprional ndp argument to deg2ra() and deg2dec() to
+	    restrict the number of decimal places in the output.
 	  </PARA>
 	</DESC>
       </QEXAMPLE>
@@ -95,6 +111,13 @@ from coords.format import *
 
     </QEXAMPLELIST>
 
+    <ADESC title="Changes in the scripts 4.13.0 (December 2020) release">
+      <PARA>
+	The optional argument ndp has been added to the deg2ra and deg2dec
+	routines.
+      </PARA>
+    </ADESC>
+
     <ADESC title="Changes in the scripts 4.8.1 (December 2015) release">
       <PARA>
         The code has been updated to avoid warning messages from
@@ -102,7 +125,7 @@ from coords.format import *
         script behaves.
       </PARA>
     </ADESC>
-    
+
     <ADESC title="Changes in the scripts 4.5.5 (October 2013) release">
       <PARA>
 	The deg2dec routine now correctly handles small negative declinations;
@@ -131,7 +154,7 @@ from coords.format import *
       </PARA>
     </ADESC>
 
-    <LASTMODIFIED>November 2015</LASTMODIFIED>
+    <LASTMODIFIED>December 2020</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>

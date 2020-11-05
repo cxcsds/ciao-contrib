@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2011, 2013, 2015, 2016,2019
+#  Copyright (C) 2011, 2013, 2015, 2016, 2019
 #            Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -191,7 +191,7 @@ def dec2deg(dec):
     return deg
 
 
-def deg2ra(deg, format):
+def deg2ra(deg, format, ndp=None):
     """
     Converts degrees to an RA format. Optional formats include:
        space or ' ' -- 1 2 3
@@ -199,16 +199,27 @@ def deg2ra(deg, format):
        hms          -- 1h 2m 3s
        HMS          -- 1H 2M 3S
        hour         -- 23.5h
+
+    If ndp is not None then it is used to limit the number of decimal
+    places in the last token
     """
 
     # a dictionary of supported formats
-    formats = {"space": "{0} {1} {2}",
-               " ": "{0} {1} {2}",
-               "colon": "{0}:{1}:{2}",
-               ":": "{0}:{1}:{2}",
-               "hms": "{0}h {1}m {2}s",
-               "HMS": "{0}H {1}M {2}S",
-               "hour": "{0}h"}
+    #
+    if ndp is None or ndp == 0:
+        lval = ""
+    elif ndp > 0:
+        lval = f":.{ndp}f"
+    else:
+        raise ValueError("ndp must be None or >= 0")
+
+    formats = {"space": "{0} {1} {2" + lval + "}",
+               " ": "{0} {1} {2" + lval + "}",
+               "colon": "{0}:{1}:{2" + lval + "}",
+               ":": "{0}:{1}:{2" + lval + "}",
+               "hms": "{0}h {1}m {2" + lval + "}s",
+               "HMS": "{0}H {1}M {2" + lval + "}S",
+               "hour": "{0" + lval + "}h"}
 
     # verify the format is an expected format
     if format not in formats.keys():
@@ -250,24 +261,35 @@ def deg2ra(deg, format):
     return ra
 
 
-def deg2dec(deg, format):
+def deg2dec(deg, format, ndp=None):
     """
     Converts degrees to a Dec format. Optional formats include:
        space or ' ' -- 1 2 3
        colon or :   -- 1:2:3
        dms          -- 1d 2' 3"
        degree       -- 89.99d
+
+    If ndp is not None then it is used to limit the number of decimal
+    places in the last token
     """
 
     # TODO: there should be some way to force a sign character.
 
     # a dictionary of supported formats
-    formats = {"space": "{0} {1} {2}",
-               " ": "{0} {1} {2}",
-               "colon": "{0}:{1}:{2}",
-               ":": "{0}:{1}:{2}",
-               "dms": "{0}d {1}' {2}\"",
-               "degree": "{0}d"}
+    #
+    if ndp is None or ndp == 0:
+        lval = ""
+    elif ndp > 0:
+        lval = f":.{ndp}f"
+    else:
+        raise ValueError("ndp must be None or >= 0")
+
+    formats = {"space": "{0} {1} {2" + lval + "}",
+               " ": "{0} {1} {2" + lval + "}",
+               "colon": "{0}:{1}:{2" + lval + "}",
+               ":": "{0}:{1}:{2" + lval + "}",
+               "dms": "{0}d {1}' {2" + lval + "}\"",
+               "degree": "{0" + lval + "}d"}
 
     # format the hours minutes and seconds as requested
     if format not in formats.keys():

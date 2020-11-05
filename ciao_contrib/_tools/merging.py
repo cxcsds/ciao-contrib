@@ -24,7 +24,6 @@ Routines used when merging and combining data.
 
 import os
 import tempfile
-import math
 
 import numpy as np
 
@@ -1551,36 +1550,10 @@ def merge_event_files(infiles,
     run.dmhedit_file(outfile, tfile.name)
 
 
-def normalize_value(ival, ndp=None):
-    """If ndp is not None then limit ival to ndp
-    decimal places.
-    """
-
-    if ndp is None:
-        return ival
-
-    if ndp < 0:
-        raise ValueError("ndp must be None or >= 0, but sent {}".format(ndp))
-
-    norm = math.pow(10, ndp)
-    if ival >= 0:
-        sgn = 1.0
-    else:
-        sgn = -1.0
-
-    return int(math.fabs(ival) * norm + 0.5) * sgn / norm
-
-
-def process_reference_position(refpos, obsinfos,
-                               rdp=4, ddp=5):
+def process_reference_position(refpos, obsinfos):
     """If refpos is given, extract the reference position from it,
     otherwise use the tangent points of the observations to calculate a
     "mean" location.
-
-    When *displaying* the position, the ra is limited to rdp decimal
-    places (unless set to None) and dec is limited to ddp decimal
-    places (unless set to None). The return values are *not* limited
-    to the rdp/ddp settings.
 
     The return value is the tuple
         (refcoordval, ra, dec)
@@ -1619,16 +1592,9 @@ def process_reference_position(refpos, obsinfos,
     if ra < 0:
         ra += 360.0
 
-    # TODO: it would be nice to restrict the accuracy of the seconds
-    #  conversion here. The simplest way is to restrict the
-    #  number of decimal places in the input. This is *only* for
-    #  the screen view.
-    #
-    ra2 = normalize_value(ra, rdp)
-    dec2 = normalize_value(dec, ddp)
-    rastr = coords.format.deg2ra(ra2, 'hms')
-    decstr = coords.format.deg2dec(dec2, 'dms')
-    v1("New tangent point: RA={} Dec={}".format(rastr, decstr))
+    rastr = coords.format.deg2ra(ra, 'hms', ndp=3)
+    decstr = coords.format.deg2dec(dec, 'dms', ndp=2)
+    v1(f"New tangent point: RA={rastr} Dec={decstr}")
 
     if rval is None:
         rval = "{0} {1}".format(ra, dec)
