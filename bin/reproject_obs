@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2019
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2019, 2020
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -43,25 +43,6 @@ import tempfile
 
 import paramio
 
-# path HACK
-try:
-    if not __file__.startswith(os.environ['ASCDS_INSTALL']):
-        _thisdir = os.path.dirname(__file__)
-        _libname = "python{}.{}".format(sys.version_info.major,
-                                        sys.version_info.minor)
-        _pathdir = os.path.normpath(os.path.join(_thisdir, '../lib', _libname, 'site-packages'))
-        if os.path.isdir(_pathdir):
-            os.sys.path.insert(1, _pathdir)
-        else:
-            print("*** WARNING: no {}".format(_pathdir))
-
-        del _libname
-        del _pathdir
-        del _thisdir
-
-except KeyError:
-    raise IOError('Unable to find ASCDS_INSTALL environment variable.\nHas CIAO been started?')
-
 import ciao_contrib.logger_wrapper as lw
 
 from ciao_contrib.param_wrapper import open_param_file
@@ -75,7 +56,7 @@ import ciao_contrib._tools.utils as utils
 from ciao_contrib._tools.taskrunner import TaskRunner
 
 toolname = 'reproject_obs'
-__revision__ = '11 June 2019'
+__revision__ = '05 November 2020'
 
 lgr = lw.initialize_logger(toolname)
 v1 = lgr.verbose1
@@ -180,7 +161,7 @@ def link_or_copy_file(infile, outfile, linkfile=True):
     if _link_or_copy_file(infile + '.gz', outfile + '.gz', linkfile=linkfile):
         return
 
-    raise IOError("Input file {} not found (also tried .gz)".format(infile))
+    raise IOError(f"Input file {infile} not found (also tried .gz)")
 
 
 def _link_or_copy_file(infile, outfile, linkfile=True):
@@ -190,7 +171,7 @@ def _link_or_copy_file(infile, outfile, linkfile=True):
         return False
 
     if os.path.exists(outfile):
-        v3("File already exists at {}".format(outfile))
+        v3(f"File already exists at {outfile}")
         return True
 
     cwd = os.getcwd()
@@ -198,15 +179,15 @@ def _link_or_copy_file(infile, outfile, linkfile=True):
     ofile = os.path.join(cwd, outfile)
 
     if linkfile:
-        v3("Soft linking {} to {}".format(outfile, infile))
+        v3(f"Soft linking {outfile} to {infile}")
         try:
             os.symlink(ifile, ofile)
         except Exception:
-            v3("Soft link failed; copying file to {}".format(ofile))
+            v3(f"Soft link failed; copying file to {ofile}")
             shutil.copyfile(ifile, ofile)
 
     else:
-        v3("Copying {} to {}".format(infile, outfile))
+        v3(f"Copying {infile} to {outfile}")
         shutil.copyfile(ifile, ofile)
 
     return True
@@ -217,7 +198,7 @@ def dmhedit_line(key, value):
     file sent to dmhedit to change key to value.
     """
 
-    out = "{} = ".format(key)
+    out = f"{key} = "
     if isinstance(value, bool):
         if bool:
             out += "T"
@@ -226,7 +207,7 @@ def dmhedit_line(key, value):
 
     elif isinstance(value, str):
         if '/' in value:
-            out += "'{}'".format(value)
+            out += f"'{value}'"
         else:
             out += value
 
@@ -247,13 +228,13 @@ def update_ancillary_header(infile, adict, tmpdir="/tmp/"):
     if len(adict) == 0:
         return
 
-    v3("Updating ancillary file keywords of {}".format(infile))
+    v3(f"Updating ancillary file keywords of {infile}")
     tfile = tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+',
                                         suffix=".dmhedit")
     try:
         tfile.write("#add\n")
         for (k, v) in adict.items():
-            tfile.write(dmhedit_line("{}FILE".format(k), v))
+            tfile.write(dmhedit_line(f"{k}FILE", v))
 
         tfile.flush()
         run.dmhedit_file(infile, tfile.name)
@@ -308,11 +289,10 @@ def link_ancillary_files(taskrunner,
         """
 
         if obsid.is_multi_obi:
-            key = (obsid.obsid, obsid.obi)
-            label = "{}_{:03d}".format(*key)
+            label = f"{obsid.obsid}_{obsid.obi:03d}"
         else:
             key = obsid.obsid
-            label = "{}".format(key)
+            label = f"{key}"
 
         return (key, label)
 
@@ -345,8 +325,8 @@ def link_ancillary_files(taskrunner,
                 raise IOError("*Internal error* ObsId {} has no aspect solution.".format(obsid))
 
             elif nfiles == 1:
-                newname = "{}{}.asol".format(outroot, label)
-                taskname = "link-asol-{}".format(label)
+                newname = f"{outroot}{label}.asol"
+                taskname = f"link-asol-{label}"
                 taskrunner.add_task(taskname, [stask],
                                     link_or_copy_file,
                                     afiles[0],
@@ -360,17 +340,17 @@ def link_ancillary_files(taskrunner,
                 # what the code should do here since continue is a bit
                 # dangerous. Really it should error out
                 #
-                v1("WARNING: too many aspect solutions" +
-                   " ({}) for obsid {}".format(nfiles, obsid))
+                v1("WARNING: too many aspect solutions " +
+                   f"({nfiles}) for obsid {obsid}")
                 continue
 
             else:
                 newnames = []
                 for (idx, afile) in enumerate(afiles):
                     idval = chr(97 + idx)
-                    newname = "{}{}{}.asol".format(outroot, label, idval)
+                    newname = f"{outroot}{label}{idval}.asol"
                     newnames.append(os.path.basename(newname))
-                    taskname = "link-asol-{}-{}".format(label, idval)
+                    taskname = f"link-asol-{label}-{idval}"
                     taskrunner.add_task(taskname, [stask],
                                         link_or_copy_file,
                                         afile,
@@ -418,8 +398,8 @@ def link_ancillary_files(taskrunner,
             newname = instcache[key]
 
         except KeyError:
-            newname = "{}{}.{}".format(outroot, label, filetype)
-            taskname = labelconv("link-{}-{}".format(filetype, label))
+            newname = f"{outroot}{label}.{filetype}"
+            taskname = labelconv(f"link-{filetype}-{label}")
             taskrunner.add_task(taskname, [stask],
                                 link_or_copy_file,
                                 filename,
@@ -468,10 +448,10 @@ def link_ancillary_files(taskrunner,
     for (filetype, mobsids) in missing.items():
         nmiss += len(mobsids)
         if len(mobsids) == 1:
-            v1("Unable to find {} file for ObsId ".format(filetype) +
-               "{}.".format(mobsids[0]))
+            v1(f"Unable to find {filetype} file for ObsId " +
+               f"{mobsids[0]}.")
         else:
-            v1("Unable to find {} file for ObsIds ".format(filetype) +
+            v1(f"Unable to find {filetype} file for ObsIds " +
                "{}.".format(" ".join([str(mobsid) for mobsid in mobsids])))
 
     if nmiss > 0:
@@ -481,7 +461,7 @@ def link_ancillary_files(taskrunner,
             mlabel = "files"
 
         v1("")
-        v1("NOTE: The missing ancillary {} may affect the ".format(mlabel) +
+        v1(f"NOTE: The missing ancillary {mlabel} may affect the " +
            "reliability of further")
         v1("      analysis, such as the output of flux_obs.\n")
 
@@ -496,7 +476,7 @@ def link_ancillary_files(taskrunner,
             raise IOError("*Internal error* no header updates for " +
                           "ObsId {} ({})".format(obsid, reprofile))
 
-        taskname = labelconv("update-header-{}".format(obsid))
+        taskname = labelconv(f"update-header-{obsid}")
         taskrunner.add_task(taskname, [etask],
                             update_ancillary_header, reprofile, adict,
                             tmpdir=tmpdir)
@@ -654,7 +634,7 @@ def reproject_obsids():
 
     if params['evtmerge']:
         v1("The merged event file:")
-        v1("{}{}\n".format(spacer, mevtfile))
+        v1(f"{spacer}{mevtfile}\n")
         merging.display_merging_warnings(warnings,
                                          mevtfile,
                                          params['obsinfos'])
