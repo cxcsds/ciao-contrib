@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019
+#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020
 #    Smithsonian Astrophysical Observatory
 #
 #
@@ -1074,7 +1074,7 @@ def validate_obsinfo(infiles, colcheck=True):
             continue
 
         # Sort primary second, secondary (longer) first, HRC is None.
-        sort_order = { 'P' : 2, 'S' : 1, None: 0 } 
+        sort_order = { 'P' : 2, 'S' : 1, None: 0 }
 
         sort_tag = sort_order[obs.obsid.cycle]
         time_tag= (obs.tstart,sort_tag) # tuples sort too
@@ -1898,6 +1898,30 @@ def list_observations(instrume, ranom, decnom, obsinfos):
     return warnings
 
 
+def number_decimal_places(x):
+    """Return the number of decimal places in the value.
+
+    There's probably a more-standardised way of doing this.
+
+    Parameters
+    ----------
+    x : value
+        The value
+
+    Returns
+    -------
+    ndp : int
+        The number of decimal places in x (can be 0).
+    """
+
+    xs = str(x)
+    decimal = xs.find('.')
+    if decimal == -1:
+        return 0
+
+    return len(xs) - decimal - 1
+
+
 def display_merging_warnings(warnings, evtfile, obsinfos):
     """Display any warnings about the use of the merged event
     file (evtfile) with the 'response' tools.
@@ -1927,29 +1951,42 @@ def display_merging_warnings(warnings, evtfile, obsinfos):
     # The handling of keywords here is beginning to get a bit special-cased
     # and not generic/clean.
     #
-    v1("Warning: the merged event file {}".format(evtfile))
+    v1(f"Warning: the merged event file {evtfile}")
     v1("   should not be used to create ARF/RMF/exposure maps because")
     spacer = "      "
     for warnvals in warnings:
         if len(warnvals) == 3:
             (key, mdiff, diff) = warnvals
-            v1("{}the {} keyword varies by {} (limit is {})".format(spacer, key, diff, mdiff))
+
+            # Restrict the difference to the number of decimal places
+            # of the limit (mdiff). Assumption is that mdiff is positive.
+            #
+            ndp = number_decimal_places(mdiff)
+            if ndp > 0:
+                fmt = "{{:.{}f}}".format(ndp)
+                diff = fmt.format(diff)
+
+            msg = f"{spacer}the {key} keyword varies by {diff} " + \
+                f"(limit is {mdiff})"
+            v1(msg)
 
         elif len(warnvals) == 2:
             (key, diffvals) = warnvals
-            v1("{}the {} keyword contains: {}".format(spacer, key, ' '.join(diffvals)))
+            msg = f"{spacer}the {key} keyword contains: {' '.join(diffvals)}"
+            v1(msg)
 
             if key == "EXPTIME":
-                v1("{}  which means that the DTCOR value, and hence LIVETIME/EXPOSURE".format(spacer))
-                v1("{}  keywords are wrong".format(spacer))
+                v1(f"{spacer}  which means that the DTCOR value, " +
+                   "and hence LIVETIME/EXPOSURE")
+                v1(f"{spacer}  keywords are wrong")
 
         else:
-            v1("{}[internal error] unrecognized warning {}".format(spacer, warnvals))
+            v1(f"{spacer}[internal error] unrecognized warning {warnvals}")
 
     if len(aimpoints) > 1:
         v1("{}the aim points fall on CCDs: {}".format(spacer, ' '.join([str(a) for a in aimpoints])))
-        v1("{}  which means that the ONTIME/LIVETIME/EXPOSURE keywords".format(spacer))
-        v1("{}  do not reflect the full observation length.".format(spacer))
+        v1(f"{spacer}  which means that the ONTIME/LIVETIME/EXPOSURE keywords")
+        v1(f"{spacer}  do not reflect the full observation length.")
 
     v1("")
 
