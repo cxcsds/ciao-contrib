@@ -1,7 +1,5 @@
-from __future__ import absolute_import
-
 #
-#  Copyright (C) 2011, 2015, 2016, 2019
+#  Copyright (C) 2011, 2015, 2016, 2019, 2020
 #                Smithsonian Astrophysical Observatory
 #
 #
@@ -75,7 +73,7 @@ def task(func, arg_queue, result_queue):
             pass
 
 
-def parallel_pool(func, args, ncores=None):
+def parallel_pool(func, args, ncores=None, context='fork'):
     """Process func in parallel, once for each argument in args.
 
     func takes a single parameter, so you will normally need to write
@@ -89,6 +87,9 @@ def parallel_pool(func, args, ncores=None):
     arguments.
 
     If ncores is None then uses multiprocessing.cpu_count().
+
+    The context argument decides how, when multiprocessing is in use,
+    the multiprocessing is run.
 
     The return value is an array of the return values of func,
     in the order of the args array.
@@ -104,10 +105,12 @@ def parallel_pool(func, args, ncores=None):
     if nc > narg:
         nc = narg
 
-    v3("# Parallel processing: {0} processes with {1} cores".format(narg, nc))
+    v3(f"# Parallel processing: {narg} processes with {nc} cores")
+    v3(f"#   with multiprocessing context: {context}")
+    ctx = multiprocessing.get_context(context)
 
-    job_queue = multiprocessing.Queue()
-    result_queue = multiprocessing.Queue()
+    job_queue = ctx.Queue()
+    result_queue = ctx.Queue()
 
     for i, arg in enumerate(args):
         job_queue.put((i, arg))
@@ -118,8 +121,8 @@ def parallel_pool(func, args, ncores=None):
     workers = []
     for i in range(nc):
         v5("# Starting parallel worker: {0}".format(i + 1))
-        w = multiprocessing.Process(target=task,
-                                    args=(func, job_queue, result_queue))
+        w = ctx.Process(target=task,
+                        args=(func, job_queue, result_queue))
         w.start()
         workers.append(w)
 

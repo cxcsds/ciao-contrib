@@ -1,7 +1,5 @@
-from __future__ import absolute_import
-
 #
-# Copyright (C) 2012, 2015, 2016, 2019
+# Copyright (C) 2012, 2015, 2016, 2019, 2020
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -25,6 +23,11 @@ from __future__ import absolute_import
 An attempt at a simple task runner, supporting a pool-style
 system where tasks wait for preconditions to be passed
 before being run.
+
+Changes in multiprocessing in Python 3.8 means that on macOS the
+spawn method is used by default. This gives subtly-different results
+(e.g. screen output is different) so we attempt to force the fork
+style approach, but this (is dangerous*.
 
 """
 
@@ -53,78 +56,6 @@ v1 = lgr.verbose1
 v2 = lgr.verbose2
 v3 = lgr.verbose3
 v4 = lgr.verbose4
-
-
-class TaskHandler(multiprocessing.Process):
-    """A worker that waits for tasks from the
-    task queue, runs it, then sends the name of
-    the task to the results queue once finished.
-    """
-
-    def __init__(self, task_queue, result_queue):
-        multiprocessing.Process.__init__(self)
-        self.task_queue = task_queue
-        self.result_queue = result_queue
-
-    def run(self):
-        """Remove a task from the task queue, call
-        it, and once finished add the task name to
-        the result queue.
-        """
-
-        name = self.name
-        try:
-            while True:
-                taskinfo = self.task_queue.get()
-                v3("TaskHandler {} retrieved taskinfo={}".format(name, taskinfo))
-
-                if taskinfo is None:
-                    v3("TaskHandler {} told to quit".format(name))
-                    self.task_queue.task_done()
-                    break
-
-                elif len(taskinfo) == 4:
-                    v3("TaskHandler {} running taskinfo={}".format(name, taskinfo))
-                    (taskname, func, args, kwargs) = taskinfo
-                    try:
-                        v3("TaskHandler {} starting task {}".format(name, taskname))
-                        func(*args, **kwargs)
-                        v3("TaskHandler {} finshed task {}".format(name, taskname))
-                    except BaseException as be:
-                        v3("TaskHandler {} task {} - caught exception {}/{}".format(name, taskname, type(be), be))
-                        self.task_queue.task_done()
-                        self.result_queue.put((True, be))
-                        break
-
-                elif len(taskinfo) == 2:
-                    v3("TaskHandler {} sent barrier: {}".format(name, taskinfo))
-                    (taskname, taskmsg) = taskinfo
-                    if taskmsg is not None:
-                        v1(taskmsg)
-
-                else:
-                    v3("TaskHandler {} sent invalid taskinfo={}".format(name, taskinfo))
-                    self.task_queue.task_done()
-                    self.result_queue.put((True,
-                                           ValueError("Task queue argument: {}".format(taskinfo))))
-                    break
-
-                v3("TaskHandler {} reporting that task={} is finished.".format(name, taskname))
-                self.task_queue.task_done()
-                self.result_queue.put((False, taskname))
-
-        except BaseException as be:
-            # This was added whilst tracking down an error with send/receive
-            # as it was found to reduce the trace backs when a control-c
-            # was needed after the system had essentially hung.
-            #
-            # I do not send a task_done message to self.task_queue
-            # as I no idea what the state is here.
-            #
-            v3("TaskHandler {} - caught exception {}/{}".format(name, type(be), be))
-            self.result_queue.put((True, be))  # possibly excessive
-
-        v3("TaskHandler {} exiting.".format(name))
 
 
 class TaskRunner:
@@ -230,7 +161,7 @@ class TaskRunner:
         self._torun[name] = (name, preconditions, msg)
         self._names.add(name)
 
-    def run_tasks(self, processes=None, label=True):
+    def run_tasks(self, processes=None, label=True, context='fork'):
         """Run the tasks, waiting until all the tasks have finished.
 
         The processes argument
@@ -244,6 +175,9 @@ class TaskRunner:
         The label lag indicates if the informational message
         describing the number of processors used to run the tasks
         is displayed at verbose=1 (True) or verbose=2 (False).
+
+        The context argument decides how, when multiprocessing is
+        in use, the multiprocessing is run.
         """
 
         if len(self._torun) == 0:
@@ -260,21 +194,96 @@ class TaskRunner:
             self._run_serial()
         else:
             f("Running tasks in parallel with {} processors.".format(processes))
-            self._run_parallel(processes)
+            self._run_parallel(processes, context=context)
 
         self._clean()
 
-    def _run_parallel(self, processes):
+    def _run_parallel(self, processes, context='fork'):
         "Run the tasks in parallel"
 
         stime = time.localtime()
         v4("TaskRunner (parallel, processes={}): started {}".format(processes, time.asctime(stime)))
 
         ntasks = len(self._torun)
-
         finished = set()
-        queue = multiprocessing.Queue()
-        task_queue = multiprocessing.JoinableQueue()
+
+        ctx = multiprocessing.get_context(context)
+
+        class TaskHandler(ctx.Process):
+            """A worker that waits for tasks from the
+            task queue, runs it, then sends the name of
+            the task to the results queue once finished.
+
+            Does this need to be derived from ctx.Process>
+            """
+
+            def __init__(self, task_queue, result_queue):
+                ctx.Process.__init__(self)
+                self.task_queue = task_queue
+                self.result_queue = result_queue
+
+            def run(self):
+                """Remove a task from the task queue, call
+                it, and once finished add the task name to
+                the result queue.
+                """
+
+                name = self.name
+                try:
+                    while True:
+                        taskinfo = self.task_queue.get()
+                        v3("TaskHandler {} retrieved taskinfo={}".format(name, taskinfo))
+
+                        if taskinfo is None:
+                            v3("TaskHandler {} told to quit".format(name))
+                            self.task_queue.task_done()
+                            break
+
+                        elif len(taskinfo) == 4:
+                            v3("TaskHandler {} running taskinfo={}".format(name, taskinfo))
+                            (taskname, func, args, kwargs) = taskinfo
+                            try:
+                                v3("TaskHandler {} starting task {}".format(name, taskname))
+                                func(*args, **kwargs)
+                                v3("TaskHandler {} finshed task {}".format(name, taskname))
+                            except BaseException as be:
+                                v3("TaskHandler {} task {} - caught exception {}/{}".format(name, taskname, type(be), be))
+                                self.task_queue.task_done()
+                                self.result_queue.put((True, be))
+                                break
+
+                        elif len(taskinfo) == 2:
+                            v3("TaskHandler {} sent barrier: {}".format(name, taskinfo))
+                            (taskname, taskmsg) = taskinfo
+                            if taskmsg is not None:
+                                v1(taskmsg)
+
+                        else:
+                            v3("TaskHandler {} sent invalid taskinfo={}".format(name, taskinfo))
+                            self.task_queue.task_done()
+                            self.result_queue.put((True,
+                                                   ValueError("Task queue argument: {}".format(taskinfo))))
+                            break
+
+                        v3("TaskHandler {} reporting that task={} is finished.".format(name, taskname))
+                        self.task_queue.task_done()
+                        self.result_queue.put((False, taskname))
+
+                except BaseException as be:
+                    # This was added whilst tracking down an error with send/receive
+                    # as it was found to reduce the trace backs when a control-c
+                    # was needed after the system had essentially hung.
+                    #
+                    # I do not send a task_done message to self.task_queue
+                    # as I no idea what the state is here.
+                    #
+                    v3("TaskHandler {} - caught exception {}/{}".format(name, type(be), be))
+                    self.result_queue.put((True, be))  # possibly excessive
+
+                v3("TaskHandler {} exiting.".format(name))
+
+        queue = ctx.Queue()
+        task_queue = ctx.JoinableQueue()
 
         # what tasks can be run now?
         deltasks = []
