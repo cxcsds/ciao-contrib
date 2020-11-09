@@ -3392,6 +3392,13 @@ parinfo['r4_header_update'] = {
     }
 
 
+parinfo['rank_roi'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image file",None),ParValue("roifiles","f","Stack of ROI files",None),ParValue("outfile","f","Output file name temple, must include {:04d}",None)],
+    'opt': [ParSet("method","s","Metric to use to assign overlap area",'max',["max","min","big","small","bright","faint"]),ParValue("clobber","b","OK to overwrite existing output files?",False),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
+    }
+
+
 parinfo['readout_bkg'] = {
     'istool': True,
     'req': [ParValue("indir","f","Input directory; should contain primary/ and secondary/ subdirs",None),ParValue("outfile","f","Output background file",None)],
@@ -3403,6 +3410,13 @@ parinfo['reg2tgmask'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input ds9 region file",None),ParValue("srcfile","f","Input original FITS region file",'CALDB'),ParValue("outfile","f","Output FITS region file",None)],
     'opt': [ParValue("clobber","b","Clobber existing output if it exists?",False),ParRange("verbose","i","Tool chatter level",0,0,5)],
+    }
+
+
+parinfo['regphystocel'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input region file in physical coordinates",None),ParValue("outfile","f","Output ds9 format region file in celestial coordinates",None)],
+    'opt': [ParValue("wcsfile","f","Image or event file with WCS if not in infile",None),ParValue("text","s","Column or keyword to use for region title",None),ParValue("tag","s","Columns or keywords to use for region tags",None),ParValue("clobber","b","Remove outfile if it already exists?",False),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
     }
 
 
@@ -3514,7 +3528,7 @@ parinfo['srcextent'] = {
 parinfo['srcflux'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input event file",None),ParValue("pos","s","Input source position: filename or RA,Dec",None),ParValue("outroot","f","Output root name",None)],
-    'opt': [ParValue("bands","s","Energy bands",'broad'),ParValue("srcreg","f","Stack of source regions",None),ParValue("bkgreg","f","Stack of background regions",None),ParValue("bkgresp","b","Create background ARF and RMF?",True),ParSet("psfmethod","s","PSF calibration method",'ideal',["ideal","psffile","arfcorr","quick","marx"]),ParValue("psffile","f","Input psf image",None),ParRange("conf","r","Confidence interval",0.9,0,1),ParRange("binsize","r","Image bin sizes",1,0,None),ParValue("rmffile","f","RMF file, if blank or none will be created with specextract",None),ParValue("arffile","f","ARF file, if blank or none will be created with specextract",None),ParValue("model","s","Sherpa model definition string",'xspowerlaw.pow1'),ParValue("paramvals","s","';' delimited string of (parameter=value) pairs",'pow1.PhoIndex=2.0'),ParValue("absmodel","s","Absorption model for calculating unabsorbed flux",'xsphabs.abs1'),ParValue("absparams","s","';' delimited string of (parameter=value) pairs for absorption model used to calculate unabsorbed flux",'abs1.nH=%GAL%'),ParSet("abund","s","set XSpec solar abundance",'angr',["angr","feld","aneb","grsa","wilm","lodd"]),ParValue("fovfile","f","Field of view file",None),ParValue("asolfile","f","Aspect solution file(s)",None),ParValue("mskfile","f","Mask file",None),ParValue("bpixfile","f","Bad pixel file",None),ParValue("dtffile","f","Live Time Correction List Files for HRC",None),ParValue("ecffile","f","REEF calibration file",'CALDB'),ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use",None),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Verbosity level",1,0,5)],
+    'opt': [ParValue("bands","s","Energy bands",'default'),ParValue("srcreg","f","Stack of source regions",None),ParValue("bkgreg","f","Stack of background regions",None),ParValue("bkgresp","b","Create background ARF and RMF?",True),ParSet("psfmethod","s","PSF calibration method",'ideal',["ideal","psffile","arfcorr","quick","marx"]),ParValue("psffile","f","Input psf image",None),ParRange("conf","r","Confidence interval",0.9,0,1),ParRange("binsize","r","Image bin sizes",1,0,None),ParValue("rmffile","f","RMF file, if blank or none will be created with specextract",None),ParValue("arffile","f","ARF file, if blank or none will be created with specextract",None),ParValue("model","s","Sherpa model definition string",'xspowerlaw.pow1'),ParValue("paramvals","s","';' delimited string of (parameter=value) pairs",'pow1.PhoIndex=2.0'),ParValue("absmodel","s","Absorption model for calculating unabsorbed flux",'xsphabs.abs1'),ParValue("absparams","s","';' delimited string of (parameter=value) pairs for absorption model used to calculate unabsorbed flux",'abs1.nH=%GAL%'),ParSet("abund","s","set XSpec solar abundance",'angr',["angr","feld","aneb","grsa","wilm","lodd"]),ParValue("fovfile","f","Field of view file",None),ParValue("asolfile","f","Aspect solution file(s)",None),ParValue("mskfile","f","Mask file",None),ParValue("bpixfile","f","Bad pixel file",None),ParValue("dtffile","f","Live Time Correction List Files for HRC",None),ParValue("ecffile","f","REEF calibration file",'CALDB'),ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use",None),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("random_seed","i","PSF random seed, -1: current time",-1),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Verbosity level",1,0,5)],
     }
 
 
