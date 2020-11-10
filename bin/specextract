@@ -31,10 +31,10 @@ Script:
 	command line, within the CIAO environment.
 """
 
-__version__ = "CIAO 4.12"
+__version__ = "CIAO 4.13"
 
 toolname = "specextract"
-__revision__ = "02 November 2020"
+__revision__ = "10 November 2020"
 
 
 ##########################################################################
@@ -460,11 +460,9 @@ def set_badpix(evtfile, bpixfile, instrument, verbose):
         try:
             setattr(ardlib,bpixpar.replace("-","_"),bpix)
             ardlib.write_params()
-
+            
         finally:
-            if os.path.isfile(bpixfile) and getattr(ardlib,bpixpar.replace("-","_")).rstrip("[BADPIX]") == bpixfile:
-                pass
-            else:
+            if not os.path.isfile(bpixfile) or getattr(ardlib,bpixpar.replace("-","_")).rstrip("[BADPIX]") != bpixfile:
                 raise IOError("Failed to set {0} bad pixel file in ardlib.par for {1}.".format(bpixfile,evtfile))
 
 
@@ -703,7 +701,7 @@ def clip_wmap(wmapfile,threshold,tmpdir):
     im = cr.get_image().values
     threshold = float(threshold)
 
-    cr.__del__()
+    del(cr)
 
     # sort pixel values
 
@@ -1055,7 +1053,7 @@ def event_stats(file, colname):
         mode = numpy.where(n_elements==numpy.max(n_elements))[0]
         return mode[0]
 
-    elif str(colname) in ["x","y","chipx","chipy"]:
+    elif colname in ["x","y","chipx","chipy"]:
 
         if colname in ["x","y"]:
             bin_setting="[bin sky=2]"
@@ -1082,7 +1080,7 @@ def event_stats(file, colname):
         elif colname == "chipy":
             return int(float(src_y))
 
-    cr.__del__()
+    del(cr)
         
 
 
@@ -1994,7 +1992,7 @@ def specextract(args):
 
                 cr_fef = pcr.read_file(fef)
                 fef_energy = cr_fef.get_column("ENERGY").values
-                cr_fef.__del__()
+                del(cr_fef)
 
                 fef_emin = min(fef_energy)
                 fef_emax = max(fef_energy)
@@ -2997,7 +2995,7 @@ def specextract(args):
                     binwmap_val = binwmap.split("=")[1]
                     binwmap = "det="+binwmap_val
 
-                    cr.__del__()
+                    del(cr)
 
             try:
                 phafile = extract_spectra(full_outroot, fullfile, ptype, channel, ewmap, binwmap, instrument, clobber, verbose)
@@ -3034,7 +3032,7 @@ def specextract(args):
             #     if bsky_status is not None:
             #         src_cr = pcr.read_file("{}[#row=1]".format(get_filename(src_stk[ii])))
             #         ccdid = src_cr.get_column("CCD_ID").values[0]
-            #         src_cr.__del__()
+            #         del(src_cr)
 
             #         bkgscale = fileio.get_keys_from_file(fullfile)["BKGSCAL{}".format(ccdid)]
 
