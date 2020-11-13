@@ -138,7 +138,7 @@ def error_out(params,msg,val):
     raise ValueError("%s" % val)
 
 
-def filter_aspsolobi_from_aspsol(asol_list,mydir):
+def filter_aspsolobi_from_aspsol(asol_list,mydir,params):
     """As of DS10.8.3, there are now two flavors of aspect solution 
     files, per OBI (CONTENT=ASPSOLOBI) and the original per-constant
     aspect interval (cai) (CONTENT=ASPSOL).  Users should only ever
@@ -190,11 +190,85 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir):
         return content_values["ASPSOLOBI"]
 
     if "ASPSOL" in content_values:
-        return content_values["ASPSOL"]
+        new_asol = update_aspsol_to_aspsolobi(content_values["ASPSOL"], mydir, params)
+        return new_asol
     
     error_out("Unknown CONTENT keywords found in the aspect solution files")
     
 
+def update_aspsol_to_aspsolobi(asol_list,mydir, params):
+    """CIAO 4.13 includes the new asp_offaxis_corr tool which 
+    applies the dy,dz,dtheta offsets to the ra/dec/roll + quaternions.
+    
+    If we only found ASPSOL files, we upgrade them to ASPSOLOBI files
+    
+    asp_offaxis_corr also updates the _PNT keywords in the asol file.
+    Those need to get to foo_p_e to update the pointing and
+    tangent point.
+    """
+    
+    from ciao_contrib.runtool import make_tool
+    from pycrates import read_file
+
+    assert len(asol_list) > 0, "ERROR: No aspect solution files found"
+
+    # remove \n
+    instk = [a.strip() for a in asol_list] 
+
+    # if more than one file in stack, better all have the same obsid.
+    tab = read_file(instk[0])
+    obsid = tab.get_key_value("OBS_ID")
+    outfile = "pcadf{:05d}_repro_asol1.fits".format(int(obsid))
+    outfile = os.path.join(mydir, outfile)
+        
+    dmmerge = make_tool("dmmerge")
+    dmmerge.infile = instk
+    dmmerge.outfile = outfile
+    dmmerge.clobber = params["clobber"]
+    dmmerge()
+    
+    # Updates the outfile in place
+    asp_offaxis_corr = make_tool("asp_offaxis_corr")
+    asp_offaxis_corr(outfile, "acis")  # instrume doesn't matter
+    
+    dmhedit.infile = outfile
+    dmhedit.file = ""
+    dmhedit.operation = "add"
+    dmhedit.key = "CONTENT"
+    dmhedit.value = "ASPSOLOBI"
+    dmhedit()
+    
+    params["pnt_obspar"] = make_overide_pointing_obspar(outfile, params)
+    
+    return [outfile+"\n",]
+
+def make_overide_pointing_obspar(asolfile,params):
+    
+    from pycrates import read_file
+    tab = read_file(asolfile)
+    
+    ra = tab.get_key_value("RA_PNT")
+    dec = tab.get_key_value("DEC_PNT")
+    roll = tab.get_key_value("ROLL_PNT")
+    
+    outfile = asolfile.replace("asol1.fits", "obs.par")
+
+    evtfile = params["evt1_file"]
+    dmmakepar(evtfile, outfile, clobber=params["clobber"])
+
+    import paramio as pio
+    obspar = pio.paramopen(outfile, "rwL") # force Learn mode
+    pio.pputd(obspar, "ra_pnt", ra)
+    pio.pputd(obspar, "dec_pnt", dec)
+    pio.pputd(obspar, "roll_pnt", roll)
+    pio.pputd(obspar, "ra_nom", ra)
+    pio.pputd(obspar, "dec_nom", dec)
+    pio.pputd(obspar, "roll_nom", roll)
+    pio.pputd(obspar, "dy_avg", 0.0)
+    pio.pputd(obspar, "dz_avg", 0.0)
+    pio.pputd(obspar, "dth_avg", 0.0)
+    pio.paramclose(obspar)        
+    return(outfile)
 
 
 def _verify_have_list(myfile,mylist,mydir,params):
@@ -245,7 +319,7 @@ def _verify_have_list(myfile,mylist,mydir,params):
         # sort files
         asol_files.sort()
 
-        asol_files = filter_aspsolobi_from_aspsol(asol_files,mydir)
+        asol_files = filter_aspsolobi_from_aspsol(asol_files,mydir,params)
 
         # write out sorted list
         try:
@@ -1400,7 +1474,11 @@ def process_acis_events(params, eventdef=None):
         v1("\nWARNING: pix_adj=CENTROID is not supported for GRADED mode data;\n    setting pix_adj=NONE.")
         acis_process_events.pix_adj="NONE"
 
-
+    # If we had to recompute the asol file,then we need to change 
+    # pointing keywords via obsfile.
+    if 'pnt_obspar' in params and os.path.exists(params['pnt_obspar']):
+        acis_process_events.obsfile = params['pnt_obspar']
+    
     #!### Execute acis_process_events command we built above ###
     out=acis_process_events()
 
