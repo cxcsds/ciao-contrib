@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # 
-# Copyright (C) 2013,2016-2018 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013,2016-2018, 2020 Smithsonian Astrophysical Observatory
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@
 from __future__ import print_function
 
 toolname = "mktgresp"
-__revision__ = "01 August 2018"
+__revision__ = "13 November 2020"
 
 
 import os
@@ -217,10 +217,12 @@ def make_tg_rmf( obsinfo, pha, spectrum, outroot, wvgrid_arf, wvgrid_chan):
 
     mkgrmf = make_tool("mkgrmf")
     det = determine_src_chip( spectrum.xx, spectrum.yy, obsinfo )
+    part = map_part_to_name( spectrum.part )
     if det == "HRC-I":
         verb0("WARNING: There are no grating RMF calibration products for HRC-I.  Will create a diagonal RMF")
         mkgrmf.diagonalrmf = True
-        det="ACIS-7"  # ACIS-7 is flat so that is kinda like HRC
+        if part.lower() != "leg":
+            det="ACIS-7"  # ACIS-7 for HETG
 
     mkgrmf.outfile     = get_outfile_name( outroot, spectrum, "rmf" )
     mkgrmf.obsfile     = obsinfo.evt
@@ -230,7 +232,7 @@ def make_tg_rmf( obsinfo, pha, spectrum, outroot, wvgrid_arf, wvgrid_chan):
     mkgrmf.order       = spectrum.order
     mkgrmf.srcid       = spectrum.tgid
     mkgrmf.detsubsys   = det
-    mkgrmf.grating_arm = map_part_to_name( spectrum.part )
+    mkgrmf.grating_arm = part
     mkgrmf.clobber     = True
     oo = mkgrmf()
     if oo:
