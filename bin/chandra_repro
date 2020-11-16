@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "30 September 2020"
+version = "16 November 2020"
 
 # import standard python modules as required
 #
@@ -211,6 +211,8 @@ def update_aspsol_to_aspsolobi(asol_list,mydir, params):
     from ciao_contrib.runtool import make_tool
     from pycrates import read_file
 
+    v1("Applying boresite update to aspect solution file")
+
     if len(asol_list) == 0:
         error_out("ERROR: No aspect solution files found")
 
@@ -311,7 +313,6 @@ def make_obspar(infile, outfile):
     with open(outfile, "w") as fp:
         tab = read_file(infile)
         for key_name in tab.get_keynames():
-
             key = tab.get_key(key_name)
             val = "{}".format(key.value)
             unit = key.unit
@@ -320,21 +321,16 @@ def make_obspar(infile, outfile):
             else:
                 comment = '"{}"'.format(key.desc)
             
-            if isinstance(key.value, type("cat")):
+            if isinstance(key.value, (str,np.str)):
                 dtype="s"
                 val='"{}"'.format(val)
-            elif isinstance(key.value, type(34)):
+            elif isinstance(key.value, (int,np.integer)):
                 dtype="i"
-            elif isinstance(key.value, type(np.int64(34))):
-                dtype="i"
-            elif isinstance(key.value, type(np.uint64(34))):
-                dtype="i"
-            elif isinstance(key.value, type(3.141592)):
+            elif isinstance(key.value, (float,)):
                 dtype="r"
-            elif isinstance(key.value, type(True)):
+            elif isinstance(key.value, (bool,np.bool_)):
                 dtype="b"
-            elif isinstance(key.value, type(np.bool_(True))):
-                dtype="b"
+                val = "yes" if val == True else "no"
             else:
                 print((key_name.lower(),key.value,type(key.value)))
                 print("Unknown data type. Using string")
