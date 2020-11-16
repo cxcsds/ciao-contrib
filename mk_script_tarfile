@@ -63,12 +63,13 @@ def get_ciao_version():
              "version_dotted": "%s.%s" % (majver, minver),
              "root": dnames[0] }
 
-def build_dist( rel_num, prefix ):
+def build_dist( rel_num, ver, prefix ):
     """Build contrib scripts package into a separate temp dir"""
     
     install_dir = "{}/ciao-{}/contrib".format(prefix,rel_num)
     
     build_cmd = ["python", "setup.py", 
+        "--version={}.{}".format(rel_num,ver),
         "build", "--executable", "/usr/bin/env python",
         "install", "--prefix", install_dir]
     sbp.check_call( build_cmd)
@@ -142,7 +143,7 @@ if __name__ == "__main__":
     nargs = len(sys.argv)
     if nargs != 3:
         sys.stderr.write("Usage: %s <release> <number or dev>\n" % sys.argv[0])
-        sys.stderr.write("Example: %s 4.12 1\n" % sys.argv[0])
+        sys.stderr.write("Example: %s 4.13 1\n" % sys.argv[0])
         sys.exit(1)
 
     rel_num = sys.argv[1]
@@ -157,8 +158,8 @@ if __name__ == "__main__":
     if ver != "dev":
         try:
             ver = int(ver)
-            if ver <= 0:
-                sys.stderr.write("Error: version number must be >= 1, not %d\n" % ver)
+            if ver < 0:
+                sys.stderr.write("Error: version number must be >= 0, not %d\n" % ver)
                 sys.exit(1)
 
         except ValueError:
@@ -167,7 +168,7 @@ if __name__ == "__main__":
 
     from tempfile import TemporaryDirectory
     with TemporaryDirectory( prefix="ciao-"+rel_num ) as tmpdir:
-        build_dist(rel_num, tmpdir)
+        build_dist(rel_num, ver, tmpdir)
         cwd = os.getcwd()
         os.chdir(tmpdir)
         make_tarfile(ver, cwd)

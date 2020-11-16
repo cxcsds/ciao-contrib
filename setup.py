@@ -10,6 +10,14 @@ datum = sorted(glob.glob("data/*"))
 configs = sorted(glob.glob("config/*"))
 etc = sorted(glob.glob("etc/conda/activate.d/*"))
 
+VERSION="4.13.0"
+for val in sys.argv:
+    if val.startswith("--version="):
+        VERSION = val.split("=")[1]
+        sys.argv.remove(val)
+        break
+
+
 mods = [ "ciao_contrib",
     "ciao_contrib/region",
     "ciao_contrib/_tools",
@@ -25,7 +33,7 @@ mods = [ "ciao_contrib",
 
 from distutils.core import setup
 setup( name='ciao-contrib',
-        version='4.12.2',
+        version=VERSION,
         license='GNU GPL v3',
         description='CIAO Contributed scripts',
         author='CXCSDS and Friends',
