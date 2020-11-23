@@ -256,13 +256,15 @@ class DaxModelEditor():
             mx.append(_m.xhi[-1])
             my = list(_m.y)
             my.append(_m.y[-1])
+            step = True
         else:
             mx = _m.x
             my = _m.y
+            step = False
 
         dax_plot.blt_plot_model(self.xpa, mx, my,
                            "Dax Model Editor Plot",                            
-                           xlab, ylab,
+                           xlab, ylab, step=step,
                            new=newplot, winname="dax_model_editor")
 
         dax_plot.blt_plot_data(self.xpa, _d.x, _d.xerr/2.0, _d.y, _d.yerr)
