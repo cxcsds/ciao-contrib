@@ -235,9 +235,10 @@ class DaxModelEditor():
         _f = sherpa.get_fit_plot()
         _d = _f.dataplot
         _m = _f.modelplot
+
         if _d.xerr is None:
             _d.xerr = (_d.x-_d.x)  # zeros
-
+            
         if self.x_label is None:
             xlab = _f.dataplot.xlabel
         else:
@@ -249,7 +250,17 @@ class DaxModelEditor():
             ylab = self.y_label
 
         import dax.dax_plot_utils as dax_plot
-        dax_plot.blt_plot_model(self.xpa, _m.x, _m.y,
+
+        if hasattr(_m, "xlo"):
+            mx = list(_m.xlo)
+            mx.append(_m.xhi[-1])
+            my = list(_m.y)
+            my.append(_m.y[-1])
+        else:
+            mx = _m.x
+            my = _m.y
+
+        dax_plot.blt_plot_model(self.xpa, mx, my,
                            "Dax Model Editor Plot",                            
                            xlab, ylab,
                            new=newplot, winname="dax_model_editor")
@@ -258,7 +269,7 @@ class DaxModelEditor():
 
         delta = (_d.y-_m.y)/_d.yerr
         ones = _d.yerr*0.0+1.0
-        dax_plot.blt_plot_delchisqr( self.xpa, _d.x, _d.x, delta, ones, "")
+        dax_plot.blt_plot_delchisqr( self.xpa, _d.x, _d.xerr/2.0, delta, ones, "")
 
 
 class DaxModelParameter():

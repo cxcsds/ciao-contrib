@@ -309,7 +309,12 @@ _f = sherpa.get_fit_plot()
 _d = _f.dataplot
 _m = _f.modelplot
 
-blt_plot_model( "${ds9}", _m.x, _m.y,
+mx = list(_m.xlo)
+mx.append(_m.xhi[-1])
+my = list(_m.y)
+my.append(_m.y[-1])
+
+blt_plot_model( "${ds9}", mx, my,
     "${spi}", "Energy [keV]", "Count Rate [counts/sec/keV]")
 
 blt_plot_data( "${ds9}", _d.x, _d.xerr/2.0, _d.y, _d.yerr)
@@ -318,7 +323,7 @@ blt_plot_data( "${ds9}", _d.x, _d.xerr/2.0, _d.y, _d.yerr)
 delta = (_d.y-_m.y)/_d.yerr
 ones = _d.yerr*0.0+1.0
 
-blt_plot_delchisqr( "${ds9}", _d.x, _d.x, delta, ones, "")
+blt_plot_delchisqr( "${ds9}", _d.x, _d.xerr/2.0, delta, ones, "")
 
 
 EOF
