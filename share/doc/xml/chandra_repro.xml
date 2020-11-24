@@ -708,6 +708,31 @@ acisf084244478N003_2_bias0.fits.gz
       
       </PARAM>
 
+      <PARAM name="asol_update" def="no" type="boolean" reqd="no">
+        <SYNOPSIS>
+        Apply boresite correction to aspect solution file(s), if necessary.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+           If this parameter is set to "yes" and the input aspect solution
+           file has not already had the boresite correction applied, 
+           then chandra_repro will run the asp_offaxis_corr tool 
+           script to create an updated aspect solution file.          
+           If the aspect solution file has already been corrected then
+           this step is skipped.          
+          </PARA>
+          <PARA>
+            The effect of the boresite correction is to update the 
+            location of the aimpoint while preserving the celestial
+            coordinates (RA and Dec) of the events.  The sky coordinates
+            (X,Y) and detector coordinates (DETX, DETY) may change
+            by as much as 30 arcsec based (typical changes are much
+            smaller).          
+          </PARA>          
+        </DESC>
+      
+      </PARAM>
+
 
       <PARAM name="cleanup" def="yes" type="boolean" reqd="no">
         <SYNOPSIS>
@@ -722,6 +747,7 @@ acisf084244478N003_2_bias0.fits.gz
           </PARA>
         </DESC>
       </PARAM>
+
 
       <PARAM name="clobber" def="yes" type="boolean" reqd="no">
         <SYNOPSIS>
@@ -753,12 +779,13 @@ acisf084244478N003_2_bias0.fits.gz
 
 <ADESC title="Changes in the scripts 4.13.0 (December 2020) release">
   <PARA title="Update boresite correction in aspect solution files">
-  If the script can only find original-format aspect solution files
-  (those with CONTENT=ASPSOL), it will now run the new asp_offaxis_corr
-  tool to apply the DY,DZ, and DTHETA boresite corrections directly
-  to the RA, Dec, ROLL, and quaternion values.  This new aspect
-  solution file will have CONTENT=ASPSOLOBI and should be used for 
-  all data analysis.
+    If the script can only find original-format aspect solution files
+    (those with CONTENT=ASPSOL) and with the new parameter 
+    "asol_update=yes", then chandra_repro will run the new 
+    asp_offaxis_corr tool to apply the DY,DZ, and DTHETA boresite 
+    corrections directly to the RA, Dec, ROLL, and quaternion values.  
+    This new aspect solution file will have CONTENT=ASPSOLOBI and should
+    be used for all data analysis.
   </PARA>
 
   <PARA title="Internal changes for parameter cleanup">

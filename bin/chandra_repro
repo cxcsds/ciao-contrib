@@ -187,6 +187,8 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir,params):
 
 
     if "ASPSOLOBI" in content_values:
+        if params["asol_update"] is True:
+            v1("No boresite correction update to asol file is needed.")
         return content_values["ASPSOLOBI"]
 
     if "ASPSOL" in content_values:
@@ -210,6 +212,10 @@ def update_aspsol_to_aspsolobi(asol_list,mydir, params):
     
     from ciao_contrib.runtool import make_tool
     from pycrates import read_file
+
+    if params["asol_update"] is False:
+        v1("Skipping boresite update to aspect solution file")
+        return asol_list
 
     v1("Applying boresite update to aspect solution file")
 
@@ -623,6 +629,7 @@ def process_command_line(argv):
     pix_adj_value   = pio.pgetstr(fp, "pix_adj")
     pix_adj_str     = pio.pgetstr(fp, "pix_adj")
     recreate_tg_mask  = pio.pgetstr( fp, "recreate_tg_mask") == "yes"  # make True / False
+    boresite        = pio.pgetstr(fp, "asol_update") == "yes"
     cleanup         = pio.pgetb(fp, "cleanup")
     verbose         = pio.pgeti(fp, "verbose")
     clobber         = pio.pgetstr(fp, "clobber")
@@ -658,6 +665,7 @@ def process_command_line(argv):
         pp["pix_adj_value"] =   pix_adj_value
         pp["pix_adj_str"] =     pix_adj_str
         pp["recreate_tg_mask"] = recreate_tg_mask
+        pp["asol_update"] =     boresite
         pp["cleanup"] =         cleanup
         pp["clobber"] =         clobber
         pp["verbose"] =         verbose
