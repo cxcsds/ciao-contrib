@@ -66,7 +66,7 @@ def blt_plot_model(access_point,x_vals, y_vals, title, x_label, y_label,
         new=True, winname="dax", step=True):
     """Plot the model"""
     
-    if new is False:
+    if not new:
         cmd = xpa_plot_cmd(access_point, "{} close".format(winname))
 
     cmd = ["xpaset", access_point, "plot", "new"]            
@@ -95,7 +95,7 @@ def blt_plot_model(access_point,x_vals, y_vals, title, x_label, y_label,
     xpa_plot_cmd(access_point, "color orange")
     xpa_plot_cmd(access_point, "shape color orange")
     xpa_plot_cmd(access_point, "width 2")
-    if step is True:
+    if step:
         xpa_plot_cmd(access_point, "smooth step")
     xpa_plot_cmd(access_point, "name Model")
 
