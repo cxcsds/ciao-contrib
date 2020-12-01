@@ -1,0 +1,2195 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020
+#           Smithsonian Astrophysical Observatory
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 USA.
+#
+
+"""Usage:
+
+  convert_xspec_user_model <name> <model.dat>
+
+    --help
+    --clobber  or -c
+    --verbose n  or -v n where n is 0, 1, 2, 3, 4, 5
+    --local
+    --prefix [p]  where p is the prefix for the user model names
+    --version
+    --copyright
+
+The script should be run in the directory containing the source code;
+it follows the XSPEC initpackage command and will compile files that
+match
+
+  Fortran: *.f *.f03 *.f90
+  C:       *.c
+  C++:     *.cxx *.C *.cc      (*.cpp files are ignored, unlike XSPEC)
+
+Unlike most CIAO tools and scripts this does not use the CIAO
+parameter interface, instead it uses the standard UNIX command-line
+paradigm.  Use --help for more information.
+
+Requires:
+
+  The XSPEC include files are assumed to have been copied over from
+  the XSPEC xspec-modelsonly tar file - e.g.
+
+      cd xspec-modelsonly/Xspec/src
+      find . -name \*h > includes
+      tar czf includes.tgz -T includes
+
+  and then unpacked into
+
+    <script location>/../share/xspec/build/
+    $ASCDS_INSTALL/contrib/share/xspec/build/
+
+  We also need the installation directories copied over (note the
+  addition of the h option to follow symlinks):
+
+      cd $HEADAS/include
+      find . -name \*h > includes
+      tar czhf includes.tgz -T includes
+
+  and then unpacked into
+
+    <script location>/../share/xspec/install/
+    $ASCDS_INSTALL/contrib/share/xspec/install/
+
+Aim:
+
+Convert an XSPEC user model (written in Fortran, C, or C++) into a
+Python module that can be used by Sherpa.
+
+It is based in part on information from the create_xspec_extension
+script (provided as part of the Sherpa source distribution) and the
+initpackage command from the XSPEC source distribution.
+
+See
+http://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSappendixLocal.html
+for a description of the model.dat format.
+
+"""
+
+toolname = "convert_xspec_user_model"
+toolver  = "01 December 2020"
+
+import sys
+import os
+import string
+import subprocess as sbp
+import time
+import glob
+import argparse
+import importlib
+import shutil
+
+import sherpa
+import sherpa.astro.ui as ui
+
+import ciao_version
+
+import ciao_contrib.logger_wrapper as lw
+
+lgr = lw.initialize_logger(toolname)
+v0 = lgr.verbose0
+v1 = lgr.verbose1
+v2 = lgr.verbose2
+v3 = lgr.verbose3
+
+valid_chars = string.ascii_letters + string.digits + '_'
+
+help_str = f"""
+Convert XSPEC user models into a form usable by Sherpa.
+
+This is *experimental* code and has seen limited testing. It does not
+support all possible XSPEC user models at this time; please contact
+the CXC HelpDesk at https://cxc.harvard.edu/helpdesk/ if you are
+unable to compile a model.
+
+The required arguments are
+
+  1) The name to use for the Python module name; this will be used
+     in the 'import <module name>.ui' line to load the models into
+     Sherpa. It should not match the name of one of the models.
+
+  2) The XSPEC definition file for the model (or models), which
+     is often called model.dat or lmodel.dat
+
+Files that match
+
+  Fortran: *.f *.f03 *.f90
+  C:       *.c
+  C++:     *.cxx *.C *.cc   (*.cpp files are ignored, unlike XSPEC)
+
+are automatically compiled. To include other files on the link line
+- e.g. .o files - add there names on the command line.
+
+So, if the model is defined in lmodel.dat and the source code is in
+mdl1.f and mdl2.f then you could run this script as
+
+  {toolname} mymodel lmodel.dat
+
+and, once it has finished, you would say, within a Sherpa session,
+
+  sherpa> import mymodel.ui
+
+to load the models. The default behavior is to install the models into
+your global set of Python packages, so the above can be run from any
+directory. If you use the --local flag then you need to either
+
+  a) be in the directory from which you ran {toolname}
+
+  b) you have changed the Python path - by editing the PYTHONPATH
+     environment variable or the os.sys.path array - to include this
+     directory.
+
+Note that some models may require data files in the working directory,
+or for you to set up environment variables.
+
+If the models fail to compile then you can get more information by
+running
+
+  python setup.py build
+
+"""
+
+copyright_str = """
+Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020
+Smithsonian Astrophysical Observatory
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
+"""
+
+
+PYTHON_HEADER = """#
+# This code is placed into the PUBLIC DOMAIN.
+# Please contact the CXC Helpdesk if you have problems
+# https://cxc.harvard.edu/helpdesk/
+#
+"""
+
+CXX_HEADER = """//
+// This code is placed into the PUBLIC DOMAIN.
+// Please contact the CXC Helpdesk if you have problems
+// https://cxc.harvard.edu/helpdesk/
+//
+"""
+
+
+# ASCDS_OTS is not set for all shells (it is for csh/tcsh but not
+# for bash), so use ASCDS_INSTALL/ots instead. By this point
+# we know ASCDS_INSTALL exists, so don't bother providing a nice
+# error message if os.getenv returns None
+#
+ASCDS_INSTALL = os.getenv("ASCDS_INSTALL")
+
+
+def mkdir(outdir):
+    """Create the output directory if it doesn't exist"""
+
+    if os.path.isdir(outdir):
+        return
+
+    v3(f"Creating directory: {outdir}")
+    os.mkdir(outdir)
+
+
+def check_clobber(fname):
+    """Error out if we can't clobber the file."""
+
+    if not os.path.exists(fname):
+        return
+
+    raise IOError(f"The file {fname} exists and --clobber is not set.")
+
+
+def save(outfile, txt):
+    """Save the text to the file.
+
+    Parameters
+    ----------
+    outfile : str
+        The file name.
+    txt : str
+        The file contents.
+    """
+
+    v3(f"Creating {outfile}")
+    with open(outfile, 'w') as fh:
+        fh.write(txt)
+
+
+def find_xspec_includes():
+    """Where are the XSPEC include files found?
+
+    The script returns the first match to the directory
+
+      <script location>/../share/xspec
+      <$ASCDS_INSTALL>/contrib/share/xspec
+
+    but it does not check that the directory contains anything.
+    """
+
+    # At present there's only one path looked for
+    v3("Looking for XSPEC includes in:")
+    thisdir = os.path.dirname(__file__)
+    for dname in ["../share/xspec"]:
+        path = os.path.normpath(os.path.join(thisdir, dname))
+        v3("  - {}".format(path))
+        if os.path.isdir(path):
+            return path
+
+    path = os.path.join(ASCDS_INSTALL, "contrib/share/xspec")
+    path = os.path.normpath(path)
+    v3("  - {}".format(path))
+    if os.path.isdir(path):
+        return path
+
+    # only report the non-development version
+    raise IOError("Unable to find the XSPEC include directory: {}".format(path))
+
+
+def validate_namefunc(namefunc):
+    """Raise a ValueError if namefunc does not capitalize the return string."""
+    inval = 'bob'
+    outval = namefunc(inval)
+    if not outval[0].isupper():
+        raise ValueError("The namefunc routine does not capitalize the return value - e.g. '{}' -> '{}'.".format(inval, outval))
+
+
+def add_prefix(prefix, inval):
+    """Returns prefix prepended to inval (converting it to a string if
+    necessary)."""
+    return "{}{}".format(prefix, inval)
+
+
+def add_xs_prefix(inval):
+    """Returns XS prepended to inval (converting it to a string if
+    necessary)."""
+    return add_prefix("XS", inval)
+
+
+def no_prefix(inval):
+    """Returns inval converted to a string, after converting
+    the first character to upper case.
+    """
+    return str(inval).capitalize()
+
+
+class ModelDefinition():
+    """Represent the model definition from an XSPEC model file.
+
+    Do not instantiate this class directly.
+
+    The clname attribute gives the class name used to represent
+    this model - so must start with a capital letter - and is
+    also used (in lower-case form) as the model name that users
+    enter when creating an instance.
+
+    The language field determines the interface type - e.g.
+    Fortran, C, or C++. It is possible to have C code labelled
+    as using the Fortran interface.
+    """
+
+    modeltype = None
+    language = None
+
+    def __init__(self, name, clname, funcname, flags, elo, ehi, pars,
+                 initString=None):
+        assert self.modeltype is not None, \
+            "ModelDefinition should not be directly created."
+        self.name = name
+        self.clname = clname
+        self.funcname = funcname
+        self.flags = flags
+        self.elo = elo
+        self.ehi = ehi
+        self.pars = pars
+
+        # This will probably need to be changed if mixing models
+        # (mix or amx) are supported.
+        #
+        # The use of strings for the language is not ideal; really
+        # should use some form of an enumeration.
+        if self.funcname.startswith('F_'):
+            self.language = 'Fortran - double precision'
+            self.funcname = self.funcname[2:]
+        elif self.funcname.startswith('c_'):
+            self.language = 'C style'
+            self.funcname = self.funcname[2:]
+        elif self.funcname.startswith('C_'):
+            self.language = 'C++ style'
+            self.funcname = self.funcname[2:]
+        else:
+            self.language = 'Fortran - single precision'
+
+        if initString is not None and self.language.startswith('F'):
+            v1("WARNING: initString={} ignored as {} is fortran".format(initString, self.name))
+            initString = None
+
+        self.initString = initString
+
+
+    def __str__(self):
+        pstr = "\n".join([str(p) for p in self.pars])
+        return "{}.{} function={}\n{}\n{}".format(self.modeltype,
+                                                  self.name,
+                                                  self.funcname,
+                                                  self.language,
+                                                  pstr)
+
+
+class AddModelDefinition(ModelDefinition):
+    """XSPEC additive models. See
+    http://heasarc.gsfc.nasa.gov/docs/software/lheasoft/xanadu/xspec/manual/Additive.html
+    for examples."""
+    modeltype = "Add"
+
+
+class MulModelDefinition(ModelDefinition):
+    """XSPEC multiplicative models. See
+    http://heasarc.gsfc.nasa.gov/docs/software/lheasoft/xanadu/xspec/manual/Multiplicative.html
+    for examples."""
+    modeltype = "Mul"
+
+
+class ConModelDefinition(ModelDefinition):
+    """XSPEC convolution models. See
+    http://heasarc.gsfc.nasa.gov/docs/software/lheasoft/xanadu/xspec/manual/Convolution.html
+    for examples."""
+    modeltype = "Con"
+
+
+class MixModelDefinition(ModelDefinition):
+    """XSPEC mixing models. See
+    http://heasarc.gsfc.nasa.gov/docs/software/lheasoft/xanadu/xspec/manual/Mixing.html
+    for examples."""
+    modeltype = "Mix"
+
+
+class AcnModelDefinition(ModelDefinition):
+    """XSPEC Acn models: pile up models"""
+    modeltype = "Acn"
+
+
+# Found in looking through
+#   heasoft-6.16/Xspec/src/tools/initpackage/ModelMap.cxx
+class AmxModelDefinition(ModelDefinition):
+    """XSPEC Amx models: """
+    modeltype = "Amx: apparently a combination of mixing and pile-up models"
+
+
+class ParameterDefinition():
+
+    paramtype = None
+
+    def __init__(self, name, default, units=None,
+                 softmin=None, softmax=None,
+                 hardmin=None, hardmax=None, delta=None):
+        assert self.paramtype is not None, \
+            'ParameterDefinition should not be directly created'
+
+        self.name = name
+        self.default = default
+        self.units = units
+
+        self.softmin = softmin
+        self.softmax = softmax
+        self.hardmin = hardmin
+        self.hardmax = hardmax
+        if delta is None:
+            self.delta = None
+        else:
+            self.delta = abs(delta)
+
+    def param_string(self):
+        raise NotImplementedError("param_string has not been overridden for name={} paramtype={}".format(self.name, self.paramtype))
+
+
+class SwitchParameterDefinition(ParameterDefinition):
+
+    paramtype = "Switch"
+
+    def __str__(self):
+        return "{} = {}".format(self.name, self.default)
+
+    def param_string(self):
+        out = "Parameter(name, '{}', {}".format(self.name, self.default)
+
+        for (pval, pname) in [(self.softmin, "min"),
+                              (self.softmax, "max"),
+                              (self.hardmin, "hard_min"),
+                              (self.hardmax, "hard_max")]:
+            if pval is not None:
+                out += ",{}={}".format(pname, pval)
+
+        if self.units is not None:
+            out += ",units='{}'".format(self.units)
+
+        out += ",alwaysfrozen=True)"
+        return out
+
+
+class ScaleParameterDefinition(ParameterDefinition):
+
+    paramtype = "Scale"
+
+    def __str__(self):
+        out = "{} = {}".format(self.name, self.default)
+        if self.units is not None:
+            out += " units={}".format(self.units)
+        return out
+
+    def param_string(self):
+        out = "Parameter(name, '{}', {}".format(self.name, self.default)
+
+        for (pval, pname) in [(self.softmin, "min"),
+                              (self.softmax, "max"),
+                              (self.hardmin, "hard_min"),
+                              (self.hardmax, "hard_max")]:
+            if pval is not None:
+                out += ",{}={}".format(pname, pval)
+
+        if self.units is not None:
+            out += ",units='{}'".format(self.units)
+
+        out += ",alwaysfrozen=True)"
+        return out
+
+
+class BasicParameterDefinition(ParameterDefinition):
+
+    modeltype = "Basic"
+
+    def __init__(self, name, default, units, softmin, softmax,
+                 hardmin, hardmax, delta):
+
+        self.name = name
+
+        self.units = units
+        self.softmin = softmin
+        self.softmax = softmax
+
+        if self.softmin < 0.0:
+            self.hardmin = "-hugeval"
+        else:
+            self.hardmin = "0.0"
+
+        self.hardmax = "hugeval"
+
+        if default < self.softmin:
+            self.default = softmin
+        elif default > self.softmax:
+            self.default = softmax
+        else:
+            self.default = default
+
+        if delta < 0.0:
+            self.frozen = True
+            self.delta = abs(delta)
+        else:
+            self.frozen = False
+            self.delta = delta
+
+    def __str__(self):
+        out = "{} = {} ({} to {})".format(self.name, self.default,
+                                          self.softmin, self.softmax)
+        if self.units is not None:
+            out += " units={}".format(self.units)
+        if self.frozen:
+            out += " frozen"
+        return out
+
+    def param_string(self):
+        args = (self.name, self.default, self.softmin, self.softmax,
+                self.hardmin, self.hardmax)
+        out = "Parameter(name, '{}', {}, min={}, max={}, hard_min={}, hard_max={}".format(*args)
+        if self.frozen:
+            out += ", frozen=True"
+        if self.units is not None:
+            out += ", units='{}'".format(self.units)
+        out += ")"
+        return out
+
+
+def read_model_definition(fh, namefunc=add_xs_prefix):
+    """Represent the model definition from an XSPEC model file.
+    The format supported here is defined in
+    http://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSappendixLocal.html
+
+    A single model definition is read in and returned to the
+    user, or None if the end of file has been reached.
+
+    If an error occurs during parsing then the location of the
+    file handle is left at the point of the error - i.e. it
+    does not try to continue reading in the rest of this model
+    definition.
+
+    The namnefunc routine takes the model name (taken from the
+    XSPEC file) and returns the Python class name for the
+    model; at the least it should ensure the first character
+    is capitalized. The default is to prepend with XS, which
+    means that a user would create an instance of the model
+    foobar with xsfoobar.mdl
+    """
+
+    hdrline = ''
+    while hdrline == '':
+        hdrline = fh.readline()
+        if hdrline == '':
+            return None
+
+        hdrline = hdrline.strip()
+
+    v3("processing hdr line '{}'".format(hdrline))
+    toks = hdrline.split()
+    ntoks = len(toks)
+    if ntoks < 7 or ntoks > 9:
+        raise ValueError("Expected: modelname npars elo ehi funcname modeltype i1 [i2 [initString]] but sent:\n{}".format(hdrline))
+
+    name = toks[0]
+    clname = namefunc(name)
+    npars = int(toks[1])
+    if npars < 0:
+        raise ValueError("Number of parameters is {}:\n{}".format(npars, hdrline))
+
+    elo = float(toks[2])
+    ehi = float(toks[3])
+    funcname = toks[4]
+    modeltype = toks[5]
+
+    if ntoks == 9:
+        initString = toks.pop()
+    else:
+        initString = None
+
+    flags = [int(t) for t in toks[6:]]
+
+    v3("-> function={} {} ".format(funcname, modeltype) +
+       "npars={} elo={} ehi={} ".format(npars, elo, ehi) +
+       "flags={} initString={}".format(flags, initString))
+
+    pars = []
+    while len(pars) < npars:
+        pline = fh.readline().strip()
+        # not sure if it's technically valid to have a blank line here,
+        # but allow it for now
+        if pline == '':
+            continue
+
+        v3(" parameter #{}/{}: {}".format(len(pars) + 1, npars, pline))
+
+        pars.append(process_parameter_definition(pline, model=name))
+
+    if modeltype == "add":
+        nstr = 'norm " " 1.0 0.0 0.0 1.0e24 1.0e24 0.1'
+        pars.append(process_parameter_definition(nstr))
+        factory = AddModelDefinition
+
+    elif modeltype == "mul":
+        factory = MulModelDefinition
+
+    elif modeltype == "con":
+        factory = ConModelDefinition
+
+    elif modeltype == "mix":
+        factory = MixModelDefinition
+
+    elif modeltype == "acn":
+        factory = AcnModelDefinition
+
+    elif modeltype == "amx":
+        factory = AmxModelDefinition
+
+    else:
+        raise ValueError("Unexpected model type {} in:\n{}".format(modeltype,
+                                                                   hdrline))
+
+    # safety check on the parameter names.
+    #
+    pnames = [(par.name.lower(), par.name) for par in pars]
+    lnames = set(pnames)
+    if len(lnames) != len(pars):
+        from collections import defaultdict
+        d = defaultdict(list)
+        for (k, v) in pnames:
+            d[k].append(v)
+
+        multiple = [vs for (k, vs) in d.items() if len(vs) > 1]
+        mstr = [" and ".join(v) for v in multiple]
+        raise ValueError("The parameters in model={}".format(name) +
+                         " do not have unique names:\n  " +
+                         "{}".format("\n  ".join(mstr)))
+
+    return factory(name, clname, funcname, flags, elo, ehi, pars,
+                   initString=initString)
+
+
+def mpop(array, defval=None):
+    """Pop first element from array (converting to float),
+    returning defval if empty.
+    """
+
+    try:
+        return float(array.pop(0))
+    except IndexError:
+        return defval
+
+
+def process_parameter_definition(pline, model=None):
+    """process a parameter definition from the input line (pline)
+    and return the appropriate ParameterDefinition object.
+
+    The model argument is the name of the model to which the
+    parameter definition belongs, and is only used in error
+    messages.
+    """
+
+    if pline.endswith("P"):
+        raise ValueError("Periodic parameters are unsupported; model={}:\n{}\n".format(model, pline))
+
+    toks = pline.split()
+    orig_parname = toks.pop(0)
+
+    if orig_parname.startswith('<') and orig_parname.endswith('>'):
+        name = orig_parname[1:-1] + "_ave"
+    else:
+        name = orig_parname
+
+    name = name.replace('@', 'At')
+
+    # replace foo(bar) with foo_bar
+    # (do this before the following, otherwise have foo_bar_)
+    #
+    if name.endswith(')'):
+        lpos = name.rfind('(')
+        if lpos != -1:
+            name = name[:lpos] + "_" + name[lpos + 1:-1]
+
+    # Remove unsupported characters
+    # name = "".join([t for t in name if t in valid_chars])
+
+    # Replace unsupported characters with '_'. I'd like
+    # to use .translate(), but I am too lazy to see how
+    # this works.
+    def cconv(c):
+        if c in valid_chars:
+            return c
+        else:
+            return '_'
+
+    name = "".join(map(cconv, name))
+
+    if name in ["break", "lambda", "type"]:
+        name += "_"
+
+    if orig_parname != name:
+        v3("Original parameter name: {} -> new name: {}".format(orig_parname,
+                                                                name))
+
+    if orig_parname.startswith('$'):
+        # switch parameter
+        # the XSPEC documentation say that switches only have 2
+        # arguments but the model.dat from it's own model definitions
+        # includes these cases:
+        #
+        # $switch    1     0       0     1      1       -1
+        # $method   " "   1       1       1       3       3     -0.01
+        # $model    " "     0
+        #
+        ntoks = len(toks)
+        if ntoks == 1:
+            default = int(toks[0])
+            return SwitchParameterDefinition(name, default)
+
+        elif ntoks == 6:
+            default = int(toks.pop(0))
+            hardmin = float(toks.pop(0))
+            softmin = float(toks.pop(0))
+            softmax = float(toks.pop(0))
+            hardmax = float(toks.pop(0))
+            delta   = float(toks.pop(0))
+            return SwitchParameterDefinition(name, default, None,
+                                             softmin, softmax,
+                                             hardmin, hardmax, delta)
+
+        elif ntoks > 6:
+            # ignore units for now
+            delta   = float(toks.pop())
+            hardmax = float(toks.pop())
+            softmax = float(toks.pop())
+            softmin = float(toks.pop())
+            hardmin = float(toks.pop())
+            default = int(toks.pop())
+            return SwitchParameterDefinition(name, default, None,
+                                             softmin, softmax,
+                                             hardmin, hardmax, delta)
+
+        elif toks[0].startswith('"'):
+            # assume something like '$model " " val'
+            v3("Switch parameter with pline = {}".format(pline))
+            default = int(toks.pop())
+            return SwitchParameterDefinition(name, default)
+
+        else:
+            raise NotImplementedError("(switch) model={} pline=\n{}".format(model, pline))
+
+    # Handle units
+    val = toks.pop(0)
+    if val.startswith('"'):
+        units = val[1:]
+        if units.endswith('"'):
+            units = units[:-1]
+
+        else:
+            flag = True
+            units = [units]
+            while flag:
+                try:
+                    val = toks.pop(0)
+                except IndexError as e:
+                    raise ValueError("Unable to parse units; model={}\n{}".format(model, pline)) from e
+
+                if val.endswith('"'):
+                    val = val[:-1]
+                    flag = False
+
+                units.append(val)
+
+            units = ' '.join(units).strip()
+
+    else:
+        units = val
+
+    if units.strip() == '':
+        units = None
+
+    if orig_parname.startswith('*'):
+        # scale parameter
+        default = float(toks.pop(0))
+
+        hardmin = mpop(toks)
+        softmin = mpop(toks)
+        softmax = mpop(toks)
+        hardmax = mpop(toks)
+        delta   = mpop(toks)
+
+        return ScaleParameterDefinition(name, default, units,
+                                        softmin, softmax,
+                                        hardmin, hardmax, delta)
+
+    if len(toks) != 6:
+        v3("len(toks) = {}".format(len(toks)))
+        v3("toks = {}".format(toks))
+        raise ValueError("Expected 6 values after units; model={}\n{}".format(model, pline))
+
+    default = float(toks.pop(0))
+    hardmin = float(toks.pop(0))
+    softmin = float(toks.pop(0))
+    softmax = float(toks.pop(0))
+    hardmax = float(toks.pop(0))
+    delta = float(toks.pop(0))
+
+    return BasicParameterDefinition(name, default, units,
+                                    softmin, softmax,
+                                    hardmin, hardmax, delta)
+
+
+def parse_model_file(modelfile, namefunc=add_xs_prefix):
+    """Given an XSPEC model file - e.g. the lmodel.dat file -
+    return inforamtion about the models it contains.
+
+    The namefunc argument is used to convert the XSPEC
+    model name into a class name.
+    """
+
+    out = []
+    with open(modelfile, "r") as fh:
+
+        while True:
+            # If there is a problem reading in a model definition then
+            # we do not try to recover - e.g. by wrapping this in a
+            # try/except block - since it is not clear how to skip over
+            # the "invalid" model definiton so that we can move to the
+            # next model (well, some simple heuristics could be applied,
+            # but leave off developing these until it turns out to be
+            # a problem).
+            #
+            # A simple option would be to just stop parsing as soon as
+            # there is a problem, but process any parsed model.
+            #
+            mdl = read_model_definition(fh, namefunc=namefunc)
+
+            if mdl is None:
+                break
+            else:
+                v3("Read in model definition: {}".format(mdl.name))
+                out.append(mdl)
+
+    return out
+
+
+def simple_wrap(modelname, mdl):
+    """Create the Python class wrapping this model."""
+
+    v3(f" - model={mdl.name} type={modelname}")
+
+    t1 = ' ' * 4
+    t2 = ' ' * 8
+    out = f"\nclass {mdl.clname}(XS{modelname}):\n"
+    out += f"{t1}'XSPEC local {modelname}: {mdl.name}'\n"
+
+    if mdl.language == 'C++ style':
+        funcname = f"C_{mdl.funcname}"
+    else:
+        funcname = mdl.funcname
+
+    out += f"{t1}_calc = _models.{funcname}\n"
+
+    out += "\n"
+    out += f"{t1}def __init__(self, name='{mdl.name}'):\n"
+    parnames = []
+    for par in mdl.pars:
+        out += f"{t2}self.{par.name} = {par.param_string()}\n"
+        parnames.append(f"self.{par.name}")
+
+    assert len(parnames) > 0, f'Expected at least 1 parameter for {modelname} model'
+    if len(parnames) == 1:
+        pstr = f"({parnames[0]},)"
+    else:
+        pstr = f"({','.join(parnames)})"
+
+    # warn about untested models?
+    nflags = len(mdl.flags)
+    if nflags > 0:
+        if mdl.flags[0] == 1:
+            out += f"{t2}warnings.warn('support for models like {mdl.clname.lower()} "
+            out += "(variances are calculated by the model) is untested.')\n"
+
+        if nflags > 1 and mdl.flags[1] == 1:
+            out += "{t2}warnings.warn('support for models like {mdl.clname.lower()} "
+            out += "(recalculated per spectrum) is untested.')\n"
+
+    out += f"{t2}XS{modelname}.__init__(self, name, {pstr})\n"
+    out += "\n"
+    return out
+
+
+def additive_wrap(mdl):
+    """Return a string representing the Python code used to wrap
+    up access to an Additive user model.
+    """
+
+    return simple_wrap('AdditiveModel', mdl)
+
+
+def multiplicative_wrap(mdl):
+    """Return a string representing the Python code used to wrap
+    up access to an Multiplicative user model.
+    """
+
+    return simple_wrap('MultiplicativeModel', mdl)
+
+
+def convolution_wrap(mdl):
+    """Return a string representing the Python code used to wrap
+    up access to a Convolution user model.
+    """
+
+    return simple_wrap('ConvolutionKernel', mdl)
+
+
+def model_to_python(mdl):
+    """Return a string representing the Python code used to wrap
+    up access to the given user model.
+
+    The return value is a string.
+    """
+
+    if mdl.modeltype == "Add":
+        return additive_wrap(mdl)
+
+    elif mdl.modeltype == "Mul":
+        return multiplicative_wrap(mdl)
+
+    elif mdl.modeltype == "Con":
+        return convolution_wrap(mdl)
+
+    else:
+        raise ValueError("No wrapper for model={} type={}".format(mdl.name, mdl.modeltype))
+
+
+def find_file_types(types):
+    """Return a dictionary listing the types of
+    files in the types dictionary, which has
+    key as the type name and value as the glob
+    pattern - e.g.
+
+      types = { "generic": "*.f", "90": "*.f90" }
+
+    Only those types that contain a match are
+    included; if there are no matches then None
+    is returned.
+
+    At present it turns out that it is possible to
+    create the pattern from the typename, ie a
+    dictionary is not needed as input, but leave
+    as is as there is no need to "optimise" this.
+    """
+
+    out = {}
+    for (typename, pattern) in types.items():
+        match = glob.glob(pattern)
+        if len(match) > 0:
+            out[typename] = match
+
+    if len(out) == 0:
+        return None
+    else:
+        return out
+
+
+def find_fortran_files():
+    """Return the Fortran files found in the current
+    directory, labelled by "type".
+
+      "f":   *.f
+      "f03": *.f03
+      "f90": *.f90
+
+    The dictionary only contains keys if there was a
+    match for that pattern; if there are no matches
+    then None is returned.
+    """
+
+    return find_file_types({"f": "*.f",
+                            "f03": "*.f03",
+                            "f90": "*.f90"})
+
+
+def find_c_files():
+    """Return the C files found in the current
+    directory, labelled by "type".
+
+      "c": *.c
+
+    The dictionary only contains keys if there was a
+    match for that pattern; if there are no matches
+    then None is returned.
+
+    Note that on case-insensitive file systems, this
+    will match the same files as find_c_files() for
+    the "C" and "c" options.
+    """
+
+    return find_file_types({"c": "*.c"})
+
+
+def find_cplusplus_files():
+    """Return the Fortran files found in the current
+    directory, labelled by "type".
+
+      "cxx": *.cxx
+      "C"  : *.C
+      "cc" : *.cc
+
+    Note that .cpp files are ignored, unlike in XSPEC.
+
+    The dictionary only contains keys if there was a
+    match for that pattern; if there are no matches
+    then None is returned.
+
+    Note that on case-insensitive file systems, this
+    will match the same files as find_c_files() for
+    the "C" and "c" options.
+    """
+
+    return find_file_types({"cxx": "*.cxx",
+                            "C": "*.C",
+                            "cc": "*.cc"})
+
+
+def count_nfiles(label, fileinfo):
+    """Display, at verbose=1, the number of files
+    found for this file type (combining all the
+    different types). At verbose=2 lists the files found.
+
+    Returns the number.
+    """
+
+    if fileinfo is None:
+        v1("Found no {} files.".format(label))
+        return 0
+
+    ntot = 0
+    for (k, vs) in fileinfo.items():
+        n = len(vs)
+        ntot += n
+        if n == 1:
+            v2("Found one *.{} file".format(k))
+        else:
+            v2("Found {} *.{} files".format(n, k))
+        for v in vs:
+            v2("  {}".format(v))
+
+    v2("")
+    if ntot == 1:
+        v1("Found one {} file.".format(label))
+    else:
+        v1("Found {} {} files.".format(ntot, label))
+
+    return ntot
+
+
+def build_setup(modname, sources, fortransources, extrafiles,
+                version,
+                clobber=False,
+                license='License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication'):
+    """Create the setup.py file.
+
+    This is based on the work done in [1]_.
+
+    Parameters
+    ----------
+    modname : str
+        The module name.
+    sources : list of str
+        The paths to the source files, excluding the FORTRAN files.
+        It can be the empty list, but then fortransources must not be
+        empty.
+    fortransources : list of str
+        The paths to the FORTRAN source files.  It can be the empty
+        list, but then sources must not be empty.
+    extrafiles : list of str
+        Extra files. What are we to do with these?
+    version : str
+        The version number (dotted values).
+    clobber : bool, optional
+        Do we over-write existing files or error out if they exist.
+    license : str, optional
+        The license for the module for the setup.py file.
+
+    Notes
+    -----
+    A rather hacky way to build the XSPEC local model code, which is a
+    collection of C++ and FORTRAN, and take advantage of the interface
+    that the Sherpa XSPEC model uses (that handles the conversion from
+    the user-supplied grid to the one that XSPEC needs).
+
+    It is also complicated by the need to access the XSPEC model
+    include files, which in the HEASARC environment requires access to
+    the build directory. As we don't have this in an installed version
+    of the XSPEC model library (the header files seem to get installed
+    but all in the same directory, which means that paths like
+    XSFunctions/Utilities/FunctionUtulity.h can't be resolved), I have
+    just included the full set of headers from XSPEC 12.10.1 - patch
+    level s - in this repository (as used for CIAO 4.13).  Hopefully
+    there aren't any significant changes in these over time ;-) There
+    is also the fact that the XSPEC library requires linking to a set
+    of versioned libraries, so this is also version dependent.
+
+    A large complication is that I want to compile FORTRAN code and
+    link it into the extension, but do not want any Python interface
+    to this code. My experiments to stop f2py from creating such an
+    interface have been fruitless so far. So this module manually
+    compiles the FORTRAN code and then tells the Extension to link in
+    the object file. I have tried to integrate this into the "command"
+    system of the build process, but perhaps I should just treat the
+    FORTRAN code as creating a separate library that needs to be
+    compiled as part of the build?
+
+    References
+    ----------
+
+    .. [1] https://github.com/DougBurke/xspeclmodels
+
+    """
+
+    if extrafiles != []:
+        raise ValueError("Unable to support extrafiles at this time")
+
+    setupname = "setup.py"
+    if not clobber:
+        check_clobber(setupname)
+
+    modname_slashes = modname.replace('.', '/')
+
+    # Copy over the source files
+    #
+    mkdir('src')
+    outdir = 'src/_xspeclmodels'
+    mkdir(outdir)
+
+    srcnames = []
+    fortnames = []
+    for f in sources:
+        v3(f" - copying over source file {f}")
+        if not os.path.isfile(f):
+            raise OSError(f"Unable to find source name '{f}'")
+
+        outname = os.path.join(outdir, os.path.basename(f))
+        if not clobber:
+            check_clobber(outname)
+
+        shutil.copy(f, outname)
+        srcnames.append(outname)
+
+    for f in fortransources:
+        v3(f" - copying over FORTRAN file {f}")
+        if not os.path.isfile(f):
+            raise OSError(f"Unable to find FORTRAN file '{f}'")
+
+        outname = os.path.join(outdir, os.path.basename(f))
+        if not clobber:
+            check_clobber(outname)
+
+        shutil.copy(f, outname)
+        fortnames.append(outname)
+
+    if len(srcnames) == 0 and len(fortnames) == 0:
+        raise ValueError("Should not have got here as no source/FORTRAN files to process")
+
+    # Where are the XSPEC include files we may need? These are
+    # included in the contrib code.
+    #
+    xspec_basedir = find_xspec_includes()
+    v2(f"  xspec inc:  {xspec_basedir}")
+
+    # We could send in the sherpa.get_include path, but it
+    # doesn't seem worth it.
+    #
+    out = f"""
+import os
+
+import setuptools
+
+from distutils.core import Extension
+from distutils.command.build_ext import build_ext
+
+from distutils import log
+
+import numpy
+from numpy.distutils import fcompiler
+
+import sherpa
+
+this_incpath = os.getcwd()
+numpy_incpath = numpy.get_include()
+sherpa_incpath = sherpa.get_include()
+
+# Where do we take the XSPEC includes from?
+#
+xspec_basedir = "{xspec_basedir}"
+
+xspec_builddir = os.path.join(xspec_basedir, 'build')
+xspec_installdir = os.path.join(xspec_basedir, 'install')
+
+includes = [this_incpath, numpy_incpath, sherpa_incpath, xspec_builddir]
+
+# Add in the XSPEC directories; this is based on the output of
+# initpackage run on XSPEC local models using heasoft-6.26.1
+# to match the XSPEC installation used in CIAO 4.13.
+# I am trying to maintain the same order as initpackage.
+#
+for dname in ["include", "XSFit", "XSFit/FitMethod", "XSFunctions",
+              "xslib", "XSModel", "XSModel/Model", "XSPlot",
+              "XSUser", "XSUtil"]:
+    dname = os.path.join(xspec_builddir, dname)
+    includes.append(dname)
+
+includes.append(xspec_installdir)
+
+# Check the includes
+#
+for include in includes:
+    if not os.path.isdir(include):
+        raise IOError("Unable to find {{}}".format(include))
+
+# Where are the XSPEC libraries?
+#
+# They are located in different places in ciao-install vs conda,
+# but for now concentrating on conda and - on Linux at least -
+# the path doesn't appear to be needed
+#
+libs = []
+
+# The choice of libs depends on the XSPEC model library version,
+# which makes this harder to write than I'd like. So Let's just
+# hard code it at the moment.
+#
+# These should be valid for CIAO 4.12 and 4.13.
+#
+# The list is based on
+# - Appendix F: Using the XSPEC Models Library in Other Programs
+#   https://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/
+# - looking at the link line created by XSPEC initpackage
+#
+libnames = ["XSModel", "XSFunctions", "XSUtil", "XS",
+            "hdsp_6.26", "CCfits_2.5", "cfitsio"]
+
+# What FORTRAN code needs compiling?
+#
+FORTRANFILES = {fortnames}
+
+# Seems to be needed on macOS, otherwise link time creates this
+# message:
+#
+# ld: warning: could not create compact unwind for _zrunkbb_: stack subq instruction is too different from dwarf stack size
+#
+# No idea if this breaks anything (more likely to slow the execution of
+# the code, from what the internet tells me).
+#
+if os.uname().sysname == 'Darwin':
+    cargs = ['-Wl,-no_compact_unwind']
+else:
+    cargs = []
+
+# Do we need this?
+# cargs.append('-lgfortran')
+
+mod = Extension('{modname}._models',
+                include_dirs=includes,
+                library_dirs=libs,
+                libraries=libnames,
+                sources=['src/{modname_slashes}/src/_models.cxx']
+                        +
+                        {srcnames},
+                extra_link_args=cargs,
+                depends=FORTRANFILES
+                )
+
+# TODO:
+#
+# This could be made more generic by inspecting the sources sent
+# in to it, and pulling out the FORTRAN code from it. It also always
+# recompiles the FORTRAN code, even if it hasn't changed, but then
+# doesn't do anything with it.
+#
+# Should I really be looking at build_clib for inspiration, guidance,
+# and fashion tips?
+#
+class ExtBuild(build_ext):
+
+    def run(self):
+
+        # Manually compile the FORTRAN code; this is all a bit too
+        # hand coded
+        #
+        cmplr = fcompiler.new_fcompiler()
+        cmplr.customize()
+
+        # Try to let included files work
+        cmplr.add_include_dir(this_incpath)
+
+        self.announce('Compiling FORTRAN code', level=log.INFO)
+        fobjs = cmplr.compile(FORTRANFILES,
+                              output_dir=self.build_temp,
+                              debug=self.debug)
+
+        # Could just append if set, but for now expect not to be
+        # set, so error out if this changes
+        #
+        assert self.link_objects is None, \
+            'unexpected: link_objects={{}}'.format(self.link_objects)
+        self.link_objects = fobjs
+
+        super().run()
+
+
+kwargs = {{
+    'name': '{modname}',
+    'author': 'Douglas Burke',
+    'version': '{version}',
+    'description': 'XSPEC user models in Sherpa',
+
+    'packages': ['{modname}'],
+    'package_dir': {{'': 'src/'}},
+
+    'ext_modules': [mod],
+
+    'classifiers': [
+        '{license}',
+        'Intended Audience :: Science/Research',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: Implementation :: CPython',
+        'Topic :: Scientific/Engineering :: Astronomy',
+        'Topic :: Scientific/Engineering :: Physics',
+        'Development Status :: 3 - Alpha'
+    ],
+}}
+
+# Only bother if we have any FORTRAN files to compile
+if len(FORTRANFILES) > 0:
+    kwargs['cmdclass'] = {{'build_ext': ExtBuild}}
+
+# I don't know how to do this ni the brave-new-world of
+# Python Packaging, so stick with setuptools.
+#
+setuptools.setup(**kwargs)
+"""
+
+    save(setupname, out)
+
+
+def build_module_ui(modname, clobber=False):
+    """Create the ui module for the module."""
+
+    modname_slashes = modname.replace('.', '/')
+    outfile = f"src/{modname_slashes}/ui.py"
+    if not clobber:
+        check_clobber(outfile)
+
+    out = PYTHON_HEADER
+    out += f'''
+"""
+Provide access to the local models when using the Sherpa UI
+layer.
+
+The added models are reported to the user using Sherpa's logger
+at the logging.INFO level. If the model exists in Sherpa's XSPEC
+module then we skip it here.
+
+"""
+
+import logging
+
+import sherpa.astro.ui
+import sherpa.astro.xspec
+
+import {modname}
+
+logger = logging.getLogger('sherpa')
+
+# What models do we know about?
+#
+xsmodels = {{n for n in dir(sherpa.astro.xspec)
+            if n.startswith('XS')}}
+
+for name in {modname}.__all__:
+    if name in xsmodels:
+        logger.info(f"Skipping local model as clashes with XSPEC {{name.lower()}}")
+        continue
+
+    cls = getattr({modname}, name)
+    sherpa.astro.ui.add_model(cls)
+
+    # Change the message based on the model type
+    if issubclass(cls, sherpa.astro.xspec.XSAdditiveModel):
+        mtype = "additive"
+    elif issubclass(cls, sherpa.astro.xspec.XSConvolutionKernel):
+        mtype = "convolution"
+    elif issubclass(cls, sherpa.astro.xspec.XSMultiplicativeModel):
+        mtype = "multiplicative"
+    else:
+        mtype = "unknown"
+
+    msg = f"Adding {{mtype:14s}} XSPEC local model: {{name.lower()}}"
+    logger.info(msg)
+'''
+
+    save(outfile, out)
+
+
+def build_module_init(modname, mdls,
+                      modelfile,
+                      infiles,
+                      extrafiles,
+                      version,
+                      clobber=False):
+    """Create the module initalization code.
+
+    Parameters
+    ----------
+    modname : str
+        The Python module name.
+    mdls : sequence of ModelDefintion objects
+        The models to process.
+    modelfile : str
+        The name of the XSPEC model file.
+    infiles : lst of str
+        The model files.
+    extrafiles : list of str
+        ny extra files
+    version : str
+        The version number (dotted values).
+    clobber : bool, optional
+        Do we over-write existing files or error out if they exist.
+
+    """
+
+    modname_slashes = modname.replace('.', '/')
+    outfile = f"src/{modname_slashes}/__init__.py"
+    if not clobber:
+        check_clobber(outfile)
+
+    mdlnames = []
+    atypes = []
+    mtypes = []
+    ctypes = []
+    modeltypes = set()
+    languages = set()
+    for mdl in mdls:
+        if mdl.modeltype == 'Add':
+            modeltypes.add('XSAdditiveModel')
+            ary = atypes
+        elif mdl.modeltype == 'Con':
+            modeltypes.add('XSConvolutionKernel')
+            ary = ctypes
+        elif mdl.modeltype == 'Mul':
+            modeltypes.add('XSMultiplicativeModel')
+            ary = mtypes
+        else:
+            raise ValueError(f"Unsupported model type {mdl.modeltype}")
+
+        languages.add(mdl.language)
+        mdlnames.append(f"'{mdl.clname}'")  # want to display strings im Python
+        ary.append(mdl.clname.lower())
+
+    if len(mdlnames) == 0:
+        raise ValueError("Somehow got this far with no models to process!")
+    elif len(mdlnames) == 1:
+        mdlnames = f"{mdlnames[0]},"
+    else:
+        mdlnames = ', '.join(mdlnames)
+
+    xsnames = ", ".join(list(modeltypes))
+
+    # Store the system info in case a user tries to run on
+    # a different system to how it was built (this is for
+    # diagnostic purposes only; it is not used as a test
+    # anywhere). It is also only set for ciao-install installs
+    #
+    system_name = os.path.join(ASCDS_INSTALL, "ciao-type")
+    try:
+        system_info = open(system_name, "r").read()
+    except IOError:
+        system_info = "unknown"
+
+    system_info = system_info.split('\n')[0]
+
+    out = PYTHON_HEADER
+    out += f'''
+"""Sherpa interfaces to XSPEC models."""
+
+from sherpa.models.parameter import Parameter, hugeval
+from sherpa.astro.xspec import {xsnames}, get_xsversion
+
+from . import _models
+
+__all__ = ({mdlnames})
+
+# We need to ensure that the XSPEC model library has been initialized
+# before the model is evaluated. This could be handled in the
+# Python<->C++ bridge, as it is with the XSPEC module that is
+# distributed with CIAO, but here we just ensure that the library
+# has been initialized when this module is imported.
+#
+get_xsversion()
+
+# Provenance
+#
+'''
+
+    # Note: the separation between "build info" and the rest is
+    #       not clear
+    out += "\n".join(["provenance = {",
+                      f"  'date': '{time.asctime()}'",
+                      f"  , 'buildinfo': {{ 'tool': '{toolname}', ",
+                      f"'version': '{toolver}', ",
+                      f"'sherpaversion': '{sherpa.__version__}', ",
+                      f"'ASCDS_INSTALL': '{ASCDS_INSTALL}', ",
+                      f"'ciaotype': '{system_info}', ",
+                      f"'machine': '{os.uname()[1]}' }}",
+                      f"  , 'modulename': '{modname}'",
+                      f"  , 'moduleversion': '{version}'",
+                      f"  , 'modelfile': '{modelfile}'",
+                      f"  , 'files': {infiles}",
+                      f"  , 'extrafiles': {extrafiles}",
+                      f"  , 'dir': '{os.getcwd()}'",
+                      f"  , 'additive': {atypes}",
+                      f"  , 'multiplicative': {mtypes}",
+                      f"  , 'convolve': {ctypes}",
+                      f"  , 'langs': {list(languages)}",
+                      "}"])
+
+    out += '''
+
+# Class definitions
+#
+'''
+
+    for mdl in mdls:
+        v2(f"Adding Python model for {mdl.name}")
+        out += model_to_python(mdl)
+
+    save(outfile, out)
+
+
+def build_module_cxx(modname, mdls, clobber=False):
+    """Create the C++ module code.
+
+    Parameters
+    ----------
+    modname : str
+        The Python module name.
+    mdls : sequence of ModelDefintion objects
+        The models to process.
+    clobber : bool, optional
+        Do we over-write existing files or error out if they exist.
+
+    """
+
+    modname_slashes = modname.replace('.', '/')
+    outdir = f"src/{modname_slashes}/src"
+    mkdir(outdir)
+
+    outfile = f"{outdir}/_models.cxx"
+    if not clobber:
+        check_clobber(outfile)
+
+    out = CXX_HEADER
+    out += '''
+// Provide the Python interface to XSPEC local models using Sherpa.
+
+#include <iostream>
+
+#include <xsTypes.h>
+
+#include "sherpa/astro/xspec_extension.hh"
+'''
+
+    # Do we need the cppModelWrapper function?
+    #
+    have_cxx = False
+    for mdl in mdls:
+        if mdl.language == 'C++ style':
+            have_cxx = True
+            break
+
+    if have_cxx:
+        v3("We need the cppModelWrapper routine.""")
+
+        out += '''
+// We need a wrapper to convert from the C++ interface to the C-style
+// interface (which is used by Sherpa). This code is taken from
+// the XSPEC wrappers it generates for functions:
+//  <heasoft>/Xspec/src/XSFunctions/funcWrappers.cxx
+//
+void cppModelWrapper(const double* energy, int nFlux, const double* params,
+        int spectrumNumber, double* flux, double* fluxError, const char* initStr,
+        int nPar, void (*cppFunc)(const RealArray&, const RealArray&,
+        int, RealArray&, RealArray&, const string&))
+{
+   // Assumes energy points to arrays of size nFlux+1, flux and fluxError
+   // point to arrays of size nFlux (though they need not be initialized),
+   // and params points to an array of size nPar.
+   RealArray energy_C(energy, (size_t)nFlux+1);
+   RealArray params_C(params, nPar);
+   RealArray flux_C(flux, (size_t)nFlux);
+   RealArray fluxError_C(fluxError, (size_t)nFlux);
+   string cppStr;
+   if(initStr && strlen(initStr))
+      cppStr = initStr;
+   (*cppFunc)(energy_C, params_C, spectrumNumber, flux_C, fluxError_C, cppStr);
+   for (int i=0; i<nFlux; ++i)
+   {
+      flux[i] = flux_C[i];
+   }
+   if (fluxError_C.size())
+   {
+      for (int i=0; i<nFlux; ++i)
+      {
+         fluxError[i] = fluxError_C[i];
+      }
+   }
+}
+'''
+
+    out += 'extern "C" {\n'
+    for mdl in mdls:
+        v2(f" - creating compiled interface to {mdl.name}")
+
+        cpp_wrap = False
+        out += f'  void {mdl.funcname}'
+        if mdl.language == 'Fortran - single precision':
+            # Note add _ (assume this is needed)
+            out += '_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);'
+        elif mdl.language == 'Fortran - double precision':
+            # Note add _ (assume this is needed)
+            out += '_(double* ear, int* ne, double* param, int* ifl, double* photar, double* photer);'
+        elif mdl.language == 'C style':
+            out += '(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr);'
+        elif mdl.language == 'C++ style':
+            out += '(const RealArray& energyArray, const RealArray& params, int spectrumNumber, RealArray& flux, RealArray& fluxErr, const string& initString);'
+            cpp_wrap = True
+        else:
+            raise ValueError(f"Unsupported language type: {mdl.language}")
+
+        out += '\n'
+
+        # Do we need the C to C++ wrapper needed by Sherpa?
+        #
+        if cpp_wrap:
+            npars = len(mdl.pars)
+            if mdl.modeltype == 'Add':
+                npars -= 1
+
+            out += f'  void C_{mdl.funcname}'
+            out += '(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr) {\n'
+            out += f'    const size_t nPar = {npars};\n'
+            out += '    cppModelWrapper(energy, nFlux, params, spectrumNumber, flux, fluxError, initStr, nPar, '
+            out += f'{mdl.funcname});\n'
+            out += '  }\n'
+
+    out += '''}
+
+static PyMethodDef Wrappers[] = {
+'''
+
+    for mdl in mdls:
+        v3(f" - adding wrapped definition for {mdl.name}")
+
+        out += '  XSPECMODELFCT'
+
+        is_fortran = mdl.language.startswith('Fortran')
+
+        if mdl.modeltype == "Con":
+            out += '_CON'
+            # only have to deal with F77 or not
+            if mdl.language == 'Fortran - single precision':
+                out += '_F77'
+
+        elif mdl.modeltype == "Add":
+            if not is_fortran:
+                out += '_C'
+
+            out += '_NORM'
+
+        elif mdl.modeltype == "Mul":
+            if not is_fortran:
+                out += '_C'
+
+        else:
+            raise ValueError("How did I get here?")
+
+        funcname = mdl.funcname
+        if mdl.language == 'C++ style':
+            funcname = f'C_{funcname}'
+
+        out += f'({funcname}, {len(mdl.pars)}),\n'
+
+    out += '''  { NULL, NULL, 0, NULL }
+};
+
+static struct PyModuleDef wrapper_module = {
+  PyModuleDef_HEAD_INIT,
+  "_models",
+  NULL,
+  -1,
+  Wrappers,
+};
+
+// Note that we are going to assume that the XSPEC model has
+// already been initialized. The XSPECMODELFCT_C macro/template
+// does not guarantee this (it does when building the Sherpa
+// XSPEC module, but not for external code, since INIT_XSPEC
+// may not be defined).
+//
+PyMODINIT_FUNC PyInit__models(void) {
+  import_array();
+  return PyModule_Create(&wrapper_module);
+}
+'''
+
+    save(outfile, out)
+
+
+def build_module(modname, mdls, modelfile, infiles, extrafiles,
+                 version,
+                 clobber=False):
+    """Create the module files.
+
+    This does not copy over the source files as that is done by
+    build_setup().
+
+    Parameters
+    ----------
+    modname : str
+        The Python module name.
+    mdls : sequence of ModelDefintion objects
+        The models to process.
+    modelfile : str
+        The name of the XSPEC model file.
+    infiles : lst of str
+        The model files.
+    extrafiles : list of str
+        ny extra files
+    version : str
+        The version number (dotted values).
+    clobber : bool, optional
+        Do we over-write existing files or error out if they exist.
+
+    """
+
+    outdir = 'src'
+    mkdir(outdir)
+
+    for cpt in modname.split('.'):
+        outdir += f'/{cpt}'
+        mkdir(outdir)
+
+    build_module_ui(modname, clobber=clobber)
+    build_module_init(modname, mdls, modelfile, infiles, extrafiles, version,
+                      clobber=clobber)
+    build_module_cxx(modname, mdls, clobber=clobber)
+
+
+def compile_module(local=False):
+    """Build the module calling out to setup.py.
+
+    Parameters
+    ----------
+    local : bool, optional
+        If set then only build "locally" - i.e. a develop build -
+        rather than installing into the Python packaging system.
+
+    """
+
+    args = ['pip', 'install']
+    if local:
+        args.append('-e')
+
+    args.append('.')
+
+    v3(f"Bilding with: {' '.join(args)}")
+    rval = sbp.call(args)
+    if rval != 0:
+        raise ValueError(f"Unable to run {args}\n")
+
+
+@lw.handle_ciao_errors(toolname, toolver)
+def convert_xspec_user_model(modulename, modelfile,
+                             extrafiles=None,
+                             clobber=False,
+                             local=False,
+                             version='1.0',
+                             namefunc=add_xs_prefix):
+    """Create a Python module called modulename that allows the
+    XSPEC user model - defined by the model file (e.g.
+    modelfile='lmodel.dat') - using the code found in the following
+    files in the directory:
+
+      Fortran: *.f *.f03 *.f90
+      C:       *.c
+      C++:     *.cxx *.C *.cc  (*.cpp files are ignored, unlike XSPEC)
+
+    It creates (using the clobber to determine whether to continue if
+    the files already exist):
+
+        src/<modulename>/__init__.py
+        src/<modulename>/ui.py
+
+    and, when local=True
+
+        build/ (and contents)
+        src/<modulename>/_models.cpython-xxx.so
+
+    Parameters
+    ----------
+    modulename : str
+        The Python module name. It is assumed to normally be a single
+        term but it can include "." such as "xspec.galactic".
+    modelfile : str
+        The name of the XSPEC model file (e.g. "lmodel.dat").
+    extrafiles : list of str or None, optional
+        At the moment this is unused. The idea is to be able to send in
+        extra files, but for the moment we require them to be in the
+        local directory (so picked up automatically).
+    clobber : bool, optional
+        Do we over-write existing files or error out if they exist.
+    local : bool, optional
+        If True then use a "develop" build (pip install -e .) and if
+        False a full install (pip install .).
+    version : str, optional
+        The version number (dotted values). The default is '1.0'.
+    namefunc : function reference, optional
+        The function that is used to convert the XSPEC model name to the
+        Sherpa model class name. The default is add_xs_prefix but
+        options are no_prefix and add_prefix, which would need to be
+        partialy applied. The first character of the returned string
+        must be in upper case.
+
+    """
+
+    # Although extrafiles is sent in, at the moment we do not use it. This means
+    # that we expect to use only files in the worknig directory.
+    #
+    if extrafiles is not None:
+        raise NotImplementedError("extrafiles is not currently supported")
+
+    extrafiles = []
+
+    v2(f"{toolname}: {toolver}")
+    v2(f"  name:       {modulename}")
+    v2(f"  modelfile:  {modelfile}")
+    # v2(f"  extrafiles: {extrafiles}")
+    v2(f"  clobber:    {clobber}")
+    v2("")
+
+    # When local is False ensure that the modulename is "unique". We
+    # want to allow the user to re-use the same module name (e.g.
+    # when developing or updating code), so we use the provenance
+    # field in the module to check if this is the case.
+    #
+    if not local:
+        v2(f"Checking if import {modulename} already exists")
+        try:
+            module = importlib.import_module(modulename)
+            try:
+                known = module.provenance['buildinfo']['tool'] == toolname
+                modver = module.provenance['moduleversion']
+            except (AttributeError, KeyError):
+                known = False
+
+            if known:
+                v2(f" - found version {modver}")
+            else:
+                raise ValueError(f"The module name '{modulename}' appears to " +
+                                 "already exist. Please use a different name.")
+
+        except ImportError:
+            pass
+
+    # find source-code files; perhaps the cpp_files check should be
+    # done before the c_files one to ensure that .c/.C files always
+    # get treated as C++ on case-insensitive systems; not clear what
+    # order XSPEC/initpackage does this since it depends on the
+    # Makefile rules
+    #
+    fortran_files = find_fortran_files()
+    c_files = find_c_files()
+    cpp_files = find_cplusplus_files()
+    n_fortran = count_nfiles("Fortran", fortran_files)
+    n_c = count_nfiles("C", c_files)
+    n_cpp = count_nfiles("C++", cpp_files)
+
+    if sum([n_fortran, n_c, n_cpp]) == 0:
+        raise IOError(f"No Fortran/C/C++ files found in {os.getcwd()}")
+
+    # for now do not treat the different types differently; this may change
+    allfiles = []
+    for d in [fortran_files, c_files, cpp_files]:
+        if d is None:
+            continue
+
+        for vs in d.values():
+            allfiles.extend(vs)
+
+    v3(f"Processing the following {len(allfiles)} source code file(s):")
+    v3("  {}".format("\n  ".join(allfiles)))
+    v3("")
+
+    for f in extrafiles:
+        if not os.path.exists(f):
+            raise IOError(f"Unable to find file {f}")
+
+    validate_namefunc(namefunc)
+
+    # Unlike earlier versions of convert_xspec_user_model we do not
+    # check compiled files when clobber is not set.
+
+    mdlinfo = parse_model_file(modelfile, namefunc=namefunc)
+
+    # Strip out models that call the same function. This is a somewhat
+    # odd check, and could perhaps be done after other checks, but I
+    # do it first. It could just ignore those models for which the
+    # number of parameters is different, but as in that case it's
+    # really just an alias for the model it doesn't seem worth it,
+    # and better to skip the possible error.
+    #
+    # This was added to handle processing the XSPEC model file from
+    # 12.8.2, which has the eplogpar model (2 params) calling the
+    # logpar model - presumably by accident (bug report has been sent
+    # to Keith) - which accepts 3 parameters. Since the wrapper code
+    # includes an invariant on the number of parameters, this would
+    # complicate things, so for now exclude them. This particular
+    # model has since been fixed in XSPEC, but the check remains.
+    #
+    funcnames = {}
+    for mdl in mdlinfo:
+        try:
+            funcnames[mdl.funcname] += 1
+        except KeyError:
+            funcnames[mdl.funcname] = 1
+
+    invalidnames = [k for (k, v) in funcnames.items() if v > 1]
+    if len(invalidnames) > 0:
+        mdls = []
+        for mdl in mdlinfo:
+            if mdl.funcname in invalidnames:
+                v1(f"Skipping model {mdl.name} as it calls " +
+                   f"{mdl.funcname} which is used by " +
+                   f"{funcnames[mdl.funcname]} different models")
+            else:
+                mdls.append(mdl)
+
+        mdlinfo = mdls
+
+    # Strip out unsupported models and check on the model names.
+    #
+    known_models = ui.list_models()
+    known_symbols = dir(ui)
+
+    mdls = []
+    mnames = []
+    probs = []
+    langs = set()
+    for mdl in mdlinfo:
+        v3(f" - checking model {mdl.name}")
+
+        if mdl.modeltype in ['Mix', 'Acn']:
+            v1(f"Skipping {mdl.name} as model type = {mdl.modeltype}")
+            continue
+
+        # The following check should never fire, but leave in
+        if mdl.language not in ['Fortran - single precision',
+                                'Fortran - double precision',  # un-tested
+                                'C style', 'C++ style']:
+            v1(f"Skipping {mdl.name} as language = {mdl.language}")
+            continue
+
+        # TODO: should there be a more-extensive naming scheme, and
+        #       should this error out?
+        lname = mdl.clname.lower()
+        if lname == modulename:
+            pstr = f"model class {mdl.clname} has the " + \
+                   "same name as the module, which may cause problems"
+            v1("WARNING: " + pstr)
+            probs.append(pstr)
+
+        if lname in known_models:
+            pstr = f"model {mdl.name} has the same name as the existing model {lname}"
+            v1("WARNING: " + pstr)
+            probs.append(pstr)
+
+        nflags = len(mdl.flags)
+        if nflags > 0:
+            v3(f" - at least one model flag; [0] = {mdl.flags[0]}")
+            if mdl.flags[0] == 1:
+                probs.append(f"model {mdl.name} calculates model variances; this is untested/unsupported in Sherpa")
+
+            if nflags > 1 and mdl.flags[1] == 1:
+                v3(f" - at least two model flags; [1] = {mdl.flags[1]}")
+                probs.append(f"model {mdl.name} needs to be re-calculated per spectrum; this is untested.")
+
+        langs.add(mdl.language)
+        mdls.append(mdl)
+        mnames.append(lname)
+
+    nmdl = len(mdls)
+    if nmdl == 0:
+        raise ValueError("No supported models were found!")
+
+    if nmdl == 1:
+        v1("Processing one model.")
+    else:
+        v1(f"Processing {nmdl} models.")
+
+    langs = sorted(list(langs))
+    if len(langs) == 1:
+        v1(f"Using language interface: {langs[0]}")
+    else:
+        v1(f"Using language interfaces: {', '.join(langs)}")
+
+    srcfiles = []
+    for d in [c_files, cpp_files]:
+        if d is None:
+            continue
+
+        for vs in d.values():
+            srcfiles.extend(vs)
+
+    fortfiles = []
+    for d in [fortran_files]:
+        if d is None:
+            continue
+
+        for vs in d.values():
+            fortfiles.extend(vs)
+
+    build_setup(modulename,
+                srcfiles,
+                fortfiles,
+                extrafiles,
+                version,
+                clobber=clobber)
+    build_module(modulename, mdls, modelfile, allfiles, extrafiles,
+                 version,
+                 clobber=clobber)
+    compile_module(local=local)
+
+    # Test out whether we can import the model
+    v1("")
+    v1("Testing out importing the model ...")
+    ierr = None
+    try:
+        v2(f"Trying to import {modulename}")
+
+        if local:
+            # Just in case the current directory is not in the path
+            os.sys.path.insert(0, "src")
+
+        importlib.import_module(modulename)
+        v1("Import succeeded")
+
+    except ImportError as exc:
+        v0("")
+        v0("Error: unable to import the module; possible reasons are:")
+        v0("  - incompatible version of gcc/gfortran used.")
+        v0("  - the model uses the udmget set of routines which are currently")
+        v0("    unsupported")
+        v0("  - missing a library or include directory")
+        v0("")
+        ierr = exc
+
+    if ierr is None:
+        v1("")
+        v1("------------------------------------------------------------------")
+        v1("")
+        v1("Finished. You should be able to now say")
+        v1(f"    import {modulename}.ui")
+        v1("from Sherpa.")
+        v1("")
+
+        n = len(mnames)
+        if n == 1:
+            v1("The following model is available:")
+        else:
+            v1("The following {} models are available:".format(n))
+
+        v1("  {}".format("\n  ".join(mnames)))
+        v1("")
+
+    # report any problems
+    if probs != []:
+        n = len(probs)
+        if n == 1:
+            v1("Please note the following problem:")
+        else:
+            v1("Please note the following {} problems:".format(n))
+
+        v1("  {}".format("\n  ".join(probs)))
+        v1("")
+
+    if ierr is not None:
+        raise ImportError("Unable to import model:\n{}".format(ierr))
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description=help_str,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument("name",
+                        help="Name of Sherpa module")
+    parser.add_argument("modelfile",
+                        help="The XSPEC model definition file (eg lmodel.dat)")
+    # parser.add_argument("extrafiles", nargs='*',
+    #                     help="Additional files")
+
+    parser.add_argument("--local", "-l", dest="local", action="store_true",
+                        default=False,
+                        help="Build the package locally rather than globally?; default is %(default)s")
+
+    parser.add_argument("--prefix", "-p", dest="prefix", nargs='?',
+                        default="XS", const=None,
+                        help="Prefix for model names (empty or must start with a capital letter; default is %(default)s")
+
+    parser.add_argument("--pyver", dest="pyver", type=str,
+                        default="1.0",
+                        help="The module version; default is %(default)s")
+
+    parser.add_argument("--clobber", "-c", dest="clobber", action="store_true",
+                        default=False,
+                        help="Set to overwrite output files, otherwise script exits")
+    parser.add_argument("--verbose", "-v", dest="verbose", type=int,
+                        choices=range(0, 6), default=1,
+                        help="Verbose level; higher for more screen output")
+
+    parser.add_argument("--version", action="version",
+                        version=toolver,
+                        help="List the version date for the script and exit")
+    parser.add_argument("--copyright", action="version",
+                        version=copyright_str,
+                        help="List the copyright for the script and exit")
+
+    # support some development options
+    arglist = lw.preprocess_arglist(sys.argv[1:])
+    args = parser.parse_args(arglist)
+
+    lw.set_verbosity(args.verbose)
+
+    # Perhaps should do something else; eg namefunc=None means
+    # use no_prefix (so that this can then be displayed at verbose=2
+    # from within convert_xspec_user_model rather than here)?
+    #
+    if args.prefix is None:
+        namefunc = no_prefix
+    else:
+        if not args.prefix[0].isupper():
+            # would like to make this appear the same as other errors
+            # but this is outside the handle_ciao_errors wrapper.
+            #
+            sys.stderr.write(f"# {toolname} ({toolver}): " +
+                             "ERROR the prefix argument must start with a " +
+                             f"capital letter; sent {args.prefix}\n")
+            sys.exit(1)
+
+        def namefunc(inval):
+            return add_prefix(args.prefix, inval)
+
+    # for some reason sys.tracebacklimit is 0, meaning no backtraces
+    # when using --tracebackdebug/--debug
+    sys.tracebacklimit = None
+
+    convert_xspec_user_model(args.name,
+                             args.modelfile,
+                             # extrafiles=args.extrafiles,
+                             extrafiles=None,
+                             clobber=args.clobber,
+                             local=args.local,
+                             version=args.pyver,
+                             namefunc=namefunc)
+
+# End
