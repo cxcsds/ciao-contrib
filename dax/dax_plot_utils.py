@@ -63,10 +63,10 @@ def blt_plot_data(access_point,xx, ex, yy, ey):
 
 
 def blt_plot_model(access_point,x_vals, y_vals, title, x_label, y_label, 
-        new=True, winname="dax"):
+        new=True, winname="dax", step=True):
     """Plot the model"""
     
-    if new is False:
+    if not new:
         cmd = xpa_plot_cmd(access_point, "{} close".format(winname))
 
     cmd = ["xpaset", access_point, "plot", "new"]            
@@ -95,6 +95,8 @@ def blt_plot_model(access_point,x_vals, y_vals, title, x_label, y_label,
     xpa_plot_cmd(access_point, "color orange")
     xpa_plot_cmd(access_point, "shape color orange")
     xpa_plot_cmd(access_point, "width 2")
+    if step:
+        xpa_plot_cmd(access_point, "smooth step")
     xpa_plot_cmd(access_point, "name Model")
 
 
@@ -107,10 +109,11 @@ def blt_plot_delchisqr(access_point,xx, ex, yy, ey, y_label):
     
 
     # Add line through 0
-    zero = [0 for x in xx]
+    x0 = [xx[0]-ex[0], xx[-1]+ex[-1]]
+    y0 = [0, 0]
     cmd = ["xpaset", access_point, "plot", "data", "xy"]    
     xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-    for vv in zip(xx, zero):
+    for vv in zip(x0, y0):
         pair = " ".join( [str(x) for x in vv])+"\n"        
         pb = pair.encode()
         xpa.stdin.write(pb)        
@@ -124,9 +127,9 @@ def blt_plot_delchisqr(access_point,xx, ex, yy, ey, y_label):
 
         
     # Plot the data
-    cmd = ["xpaset", access_point, "plot", "data", "xyey"]    
+    cmd = ["xpaset", access_point, "plot", "data", "xyexey"]    
     xpa = subprocess.Popen( cmd, stdin=subprocess.PIPE ) 
-    for vv in zip(xx, yy, ey):
+    for vv in zip(xx, yy, ex, ey):
         pair = " ".join( [str(x) for x in vv])+"\n"        
         pb = pair.encode()
         xpa.stdin.write(pb)        

@@ -36,11 +36,25 @@ def blt_plot_fit(sherpa_plot_fit_obj, xpa="ds9",
 
     _dchi = (_d.y-_m.y)/_d.yerr
     _ones = _dchi*0+1.0
+    if _d.xerr is None:
+        _d.xerr = (_d.x-_d.x)  # zeros
 
-    blt_plot_model( xpa, _m.x, _m.y, tle, xlb, ylb, new=True, 
+    if hasattr(_m, "xlo"):
+        mx = list(_m.xlo)
+        mx.append(_m.xhi[-1])
+        my = list(_m.y)
+        my.append(_m.y[-1])
+        step = True
+    else:
+        mx = _m.x
+        my = _m.y
+        step = False
+
+    blt_plot_model( xpa, mx, my,
+      tle, xlb, ylb, new=True, step=step,
       winname="dax_model_editor")
     blt_plot_data( xpa, _d.x, None, _d.y, _d.yerr)
-    blt_plot_delchisqr(xpa, _d.x, _d.x, _dchi, _ones, "")
+    blt_plot_delchisqr(xpa, _d.x,  _d.xerr/2.0, _dchi, _ones, "")
 
 
 # -----------------------------------------
@@ -54,9 +68,9 @@ ROOT=os.path.join( os.environ["DAX_OUTDIR"], "rprof_fit", str(os.getpid()))
 
 def translate_units(units):
     if 'physical' == units:
-        rcol = 'rmid'
+        rcol = 'r'
     elif 'arcsec' == units:
-        rcol = 'cel_rmid'
+        rcol = 'cel_r'
     else:
         raise ValueError("Unknown units: {}".format(units))
 
@@ -151,7 +165,17 @@ def run_dmextract( infile, stack, bkg):
 
     
 def fit_profile( xpa, infile, model, xcol, method, ycol="sur_bri", ycol_err="sur_bri_err" ):
-    sherpa.load_data( 1, infile, colkeys=[xcol, ycol, ycol_err])
+
+    # ~ from pycrates import read_file
+    # ~ tab = read_file(infile)
+    # ~ radcol = tab.get_column(xcol).values
+    # ~ xlo = radcol[:,0]
+    # ~ xhi = radcol[:,1]
+    # ~ yy = tab.get_column(ycol).values
+    # ~ yerr = tab.get_column(ycol_err).values
+    # ~ sherpa.load_arrays(1, xlo, xhi, yy, yerr, sherpa.Data1DInt)
+
+    sherpa.load_data( 1, infile, colkeys=[xcol+"mid", ycol, ycol_err])
     sherpa.set_model(model)
     sherpa.set_method(method)
 
