@@ -219,6 +219,17 @@ def update_aspsol_to_aspsolobi(asol_list,mydir, params):
 
     v1("Applying boresite update to aspect solution file")
 
+    print(params["grating"])
+    if params["grating"].lower() in ["hetg", "letg"]:
+        print(params["recreate_tg_mask"])
+        if not params["recreate_tg_mask"]:
+            v0("WARNING: The grating 0th order location must be "+
+               "recomputed when asol_update=yes.  Changing "+
+               "recreate_tg_mask=yes.")
+
+            # each obsid has separate params so OK to change here.
+            params["recreate_tg_mask"] = True
+
     if len(asol_list) == 0:
         error_out("ERROR: No aspect solution files found")
 
@@ -743,6 +754,9 @@ def event1_inputs(params):
             params["datamode"] = keys["DATAMODE"].value
             params["date-obs"] = keys["DATE-OBS"].value
             params["grating"]  = keys["GRATING"].value
+
+            params["ra_targ"] = keys["RA_TARG"].value
+            params["dec_targ"] = keys["DEC_TARG"].value
 
             # Only standard datasets taken in KALMAN lock are supported.
             # Other modes such as OBC use the on-board-computer
@@ -1714,11 +1728,46 @@ def run_tgdetect2_and_create_mask(params):
     src1a = os.path.join(outdir, root + '_src1a.fits')
     params["cleanup_files"].append(src1a)
 
+    # tgdetect2 requires a clean event file to work correctly.
+    # It also works best when you supply the approx coordinates,
+    # eg the TARGs.
+    from ciao_contrib.runtool import dmcoords, dmcopy
+    dmcoords.punlearn()
+    dmcoords.infile=params["evt1_file"]
+    dmcoords.op="cel"
+    dmcoords.celfmt="deg"
+    dmcoords.ra=params["ra_targ"]
+    dmcoords.dec=params["dec_targ"]
+    dmcoords()
+    x_targ = dmcoords.x
+    y_targ = dmcoords.y
+
+    goodevt = os.path.join(outdir, root + '_goodevt1.fits')
+    params["cleanup_files"].append(goodevt)
+
+    # standard L2 filters
+    if params["detnam"].startswith("ACIS"):
+        evtfilter = "[status=0,grade=0,2,3,4,6]"
+    elif params["detnam"] == "HRC-I":
+        evtfilter = "[status=xxxxxx00xxxx0xxx00000000x0000000]"
+    elif params["detnam"] == "HRC-S":
+        evtfilter = "[status=xxxxxx00xxxx0xxx0000x000x00000xx]"
+    else:
+        error_out("Bad detnam")  # should have crashed long before this
+        
+    dmcopy.infile = "{}[@{}]{}".format(params["evt1_file"],
+                                       params["flt1_file"],
+                                       evtfilter)
+    dmcopy.outfile = goodevt
+    dmcopy(clobber=params["clobber"])
+
     v1("Getting the zero-order source position with tgdetect2...")
     from ciao_contrib.runtool import tgdetect2, tg_create_mask
     tgdetect2.punlearn()
-    tgdetect2.infile=params["evt1_file"]
+    tgdetect2.infile=goodevt
     tgdetect2.outfile = src1a
+    tgdetect2.zo_pos_x = x_targ
+    tgdetect2.zo_pos_y = y_targ
     tgdetect2.temproot = os.path.join(outdir, root )
     tgdetect2.verbose = params["verbose"]
     tgdetect2.clobber = params["clobber"]
