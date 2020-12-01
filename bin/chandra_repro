@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "16 November 2020"
+version = "01 December 2020"
 
 # import standard python modules as required
 #
@@ -2031,6 +2031,27 @@ def l2_acis_events(params):
 
     return params
 
+
+def lookup_hrc_pi_filter(evtfile):
+    '''Lookup background PI filter to use with HRC-S+LETG'''
+    import caldb4 as caldb
+    cdb = caldb.Caldb(infile=evtfile, product="TGPIMASK2")
+    calfiles = cdb.search
+    
+    if not calfiles or len(calfiles) == 0:
+        error_out("No TGPIMASK2 CALDB files found for this dataset")
+    
+    if len(calfiles) > 1:
+        error_out("Too many TGPIMASK2 CALDB files found for this dataset")
+
+    retval = calfiles[0]
+    retval = retval.split("[")   # remove block name
+    retval = retval[0]
+    v2("Using TGPIMASK2 file: "+retval)
+
+    return retval
+
+
 def l2_hrc_events(params):
     '''Thread to create new L2 products
        Executes: dmcopy, hrc_dtfstats
@@ -2053,7 +2074,8 @@ def l2_hrc_events(params):
     params["cleanup_files"].append(bg_filtered_evt1a)
     if detnam == 'HRC-S' and grating =="LETG":
         v1("Applying the HRC-S/LETG background filter...")
-        filtname = os.path.expandvars("$CALDB/data/chandra/hrc/tgpimask2/letgD1999-07-22pireg_tgmap_N0001.fits")
+        # filtname = os.path.expandvars("$CALDB/data/chandra/hrc/tgpimask2/letgD1999-07-22pireg_tgmap_N0001.fits")
+        filtname = lookup_hrc_pi_filter(evt1a)
         dmcopy.punlearn()
         dmcopy.infile=evt1a+"[EVENTS][(tg_mlam,pi)=region("+filtname+")]"
         dmcopy.outfile=bg_filtered_evt1a
