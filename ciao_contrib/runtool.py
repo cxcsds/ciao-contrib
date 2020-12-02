@@ -3658,13 +3658,6 @@ parinfo['tgsplit'] = {
     }
 
 
-parinfo['update_column_range'] = {
-    'istool': True,
-    'req': [ParValue("infile","f","File to edit",None)],
-    'opt': [ParValue("columns","s","Column names (includes vector columns)",'sky'),ParValue("round","b","Should data ranges be rounded to nearest mid-integer?",True),ParRange("verbose","i","Debug Level (0-5)",1,0,5)],
-    }
-
-
 parinfo['vtpdetect'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input file name",None),ParValue("expfile","f","Exposure map file name",'none'),ParValue("outfile","f","Source list output file name",None),ParRange("scale","r","Threshold scale factor",1,0,None),ParRange("limit","r","Max. probability of being a false source",1e-06,0,1),ParRange("coarse","i","Minimum number of events per source",10,0,None),ParRange("maxiter","i","Maximum number of iterations to allow",10,0,100)],

@@ -431,78 +431,6 @@ def update_ancillary_keywords(infile, outfile, asolfile):
                                asolfile=",".join(relasol))
 
 
-# def reproject_events_task_old(infile, ra0, dec0, asolfile, outfile,
-#                              tmpdir="/tmp/",
-#                              verbose=0,
-#                              clobber=False):
-#    """Reproject (or copy) the event file.
-#
-#    This is left in as a reference copy whilst we check that the
-#    new technique (reprojecting without the aspect solution) is
-#    okay.
-#    """
-#
-#    if clobber:
-#        clstr = "yes"
-#    else:
-#        clstr = "no"
-#
-#    # reproject_events may produce invalid output if the RA
-#    # of the reference location is < 0.
-#    if ra0 < 0.0:
-#        ra0 += 360.0
-#
-#    with rt.new_pfiles_environment(ardlib=False):
-#
-#        (ra, dec) = fileio.get_tangent_point(infile)
-#        if ra == ra0 and dec == dec0:
-#            v3("No need to reproject {}, so copying.".format(infile))
-#            run.dmcopy(infile, outfile, clobber=clobber)
-#
-#        else:
-#            # what is the TIME range of the aspect file(s)
-#            atimes = []
-#            for afile in stk.build(asolfile):
-#                v3("Finding time range of aspect file: {}".format(afile))
-#                (t1, t2) = fileio.get_minmax_times(afile)
-#                atimes.append("{}:{}".format(t1, t2))
-#                v3(" >> {}".format(atimes[-1]))
-#
-#            if len(atimes) == 0:
-#                v1("Unexpected: no time ranges found from aspect solution for {}".format(infile))
-#                timefilter = ""
-#            else:
-#                timefilter = "[time={}]".format(",".join(atimes))
-#
-#            # It looks like the [subspace -sky] filter has to be done on a
-#            # separate dmcopy call, which is annoying
-#            v3("Copying evt file to clear out subspace and filter times")
-#            tmpfile1 = tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".evt")
-#            tmpfile2 = tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".evt")
-#            run.dmcopy("{}{}".format(infile, timefilter),
-#                       tmpfile1.name, clobber=True)
-#            run.dmcopy("{}[subspace -sky]".format(tmpfile1.name),
-#                       tmpfile2.name, clobber=True)
-#            tmpfile1.close()
-#
-#            v3("About to reproject events file.")
-#            run.punlearn('reproject_events')
-#            run.run('reproject_events',
-#                    ['infile=' + tmpfile2.name,
-#                     #   "infile={}{}[subspace -sky]".format(infile, timefilter),
-#                     'outfile=' + outfile,
-#                     "match={} {}".format(ra0, dec0),
-#                     'aspect=' + asolfile,
-#                     'clobber=' + clstr,
-#                     "verbose={}".format(verbose)
-#                     ])
-#
-#            run.update_column_range(outfile, verbose=verbose)
-#
-#            # Since this adds relative paths we have decided not to
-#            # do this.
-#            # update_ancillary_keywords(infile, outfile, asolfile)
-
 def reproject_events_task(infile, ra0, dec0, outfile,
                           tmpdir="/tmp/",
                           verbose=0,
@@ -566,8 +494,6 @@ def reproject_events_task(infile, ra0, dec0, outfile,
                      'clobber=' + clstr,
                      "verbose={}".format(verbose)
                      ])
-
-            run.update_column_range(outfile, verbose=verbose)
 
 
 def reproject_event_files(taskrunner,
@@ -1494,8 +1420,7 @@ def merge_event_files(infiles,
                     merge_outfile,
                     clobber=clobber_merge,
                     verbose=verbose,
-                    lookupTab=ltab,
-                    skyupdate=True
+                    lookupTab=ltab
                     )
 
     finally:
