@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 #
 # Copyright (C) 2013-2020 Smithsonian Astrophysical Observatory
 #
@@ -19,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "04 November 2020"
+__revision__ = "30 November 2020"
 
 import os
 
@@ -591,8 +590,11 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
         ra = get_single_keyword( myroot+"{}[#row={}]".format(__osuf__,ii), "rapos")
         dec = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "decpos")
         rate = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "count_rate")
-        if float(rate) == 0:
-            rate = 1.0e-6
+
+        # We want to generate a PSF with more counts than source.
+        # (generally by a lot).
+        if float(rate) < 1.0e-3:
+            rate = 1.0e-3
 
         outroot = "{}{:04d}_{}".format( myparams.outroot, ii, suffix)
         simulate_psf = make_tool("simulate_psf")
@@ -700,12 +702,30 @@ def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
     # Check values <= 1
     dmstat.punlearn()
     dmstat( infile=outfile+"[cols COUNTS]" )
-    if float(dmstat.out_min) < 0 or float(dmstat.out_max) > 1:
+    if float(dmstat.out_min) < 0:
+        raise ValueError("PSF fraction cannot be negative")
+        
+    if float(dmstat.out_max) > 1.01:
+        # Why 1.01?  The MARX generated PSFs are normalized correctly
+        # but are stored in single precision. This can lead to 
+        # PSFs which sum to something just above unity, eg 1.00000081
+        #
+        # That would be OK, since we threshold for this in aprates.
+        # But, if user supplied own PSF created w/ chart and they 
+        # have not normalized PSFs (ie integer counts), then we need
+        # to catch this and error out.
+        #
+        # So then, 1.01, is meant to allow the marx type FPE "noise" 
+        # while preventing users from supplying truly poorly
+        # normalized images. 
         raise ValueError("PSF must be normalized to sum less than 1")
-    
+
     dmstat.punlearn()
     dmstat( infile=outfile+"[cols BG_COUNTS]" )
-    if float(dmstat.out_min) < 0 or float(dmstat.out_max) > 1:
+    if float(dmstat.out_min) < 0:
+        raise ValueError("PSF fraction cannot be negative")
+        
+    if float(dmstat.out_max) > 1.01:
         raise ValueError("PSF must be normalized to sum less than 1")
     
         
@@ -919,50 +939,61 @@ def run_aprates( c_s, a_s, alpha, c_b, a_b, beta, exposure, conf, outfile ):
 
     if 0 == c_s and 0 == c_b:
         write_null( outfile )
-    elif 0 == a_s:
+        return
+        
+    if 0 == a_s:
         write_null( outfile )
-    elif 0 == alpha:
+        return
+        
+    if 0 == alpha:
         write_null( outfile )
-    else:
-        aprates.n = c_s
-        aprates.A_s = a_s
-        aprates.alpha = alpha
-        aprates.T_s = exposure
-        aprates.E_s = 1
-        aprates.eng_s = 1
-        aprates.flux_s = 1
-        aprates.m = c_b
-        aprates.A_b = a_b
-        aprates.beta = beta
-        aprates.T_b = exposure
-        aprates.E_b = 1
-        aprates.eng_b = 1
-        aprates.flux_b = 1
-        aprates.conf = conf
-        aprates.outfile = outfile
-        aprates.clobber = True
-        aprates.verbose=1
+        return
+
+    aprates.n = c_s
+    aprates.A_s = a_s
+    aprates.alpha = alpha if alpha < 1 else 1.0
+    aprates.T_s = exposure
+    aprates.E_s = 1
+    aprates.eng_s = 1
+    aprates.flux_s = 1
+    aprates.m = c_b
+    aprates.A_b = a_b
+    aprates.beta = beta if beta < 1 else 1.0
+    aprates.T_b = exposure
+    aprates.E_b = 1
+    aprates.eng_b = 1
+    aprates.flux_b = 1
+    aprates.conf = conf
+    aprates.outfile = outfile
+    aprates.clobber = True
+    aprates.verbose=1
+
+    try:
         aa = aprates()
-        if aa:
-            verb4(aa)
-            
-            pdf = outfile.replace(".par", ".prob")
-            pdata = aa.split("\n")
+    except Exception as ee:
+        write_null(outfile)
+        return
 
-            pdata = list(filter( lambda x: len(x.strip())>0 , pdata ))
-            pdata = list(filter( lambda x: 'warning' not in x.lower(), pdata ))
+    if aa:
+        verb4(aa)
+        
+        pdf = outfile.replace(".par", ".prob")
+        pdata = aa.split("\n")
 
-            startat = list(filter( lambda x: "PDF for 'src_cnts_aper' distribution" in x[1], enumerate(pdata)))
-            startat = startat[0][0]
+        pdata = list(filter( lambda x: len(x.strip())>0 , pdata ))
+        pdata = list(filter( lambda x: 'warning' not in x.lower(), pdata ))
 
-            stopat = list(filter( lambda x: x[1].startswith('#---') ,  enumerate(pdata[startat:])))
-            stopat = stopat[0][0]+startat
+        startat = list(filter( lambda x: "PDF for 'src_cnts_aper' distribution" in x[1], enumerate(pdata)))
+        startat = startat[0][0]
+
+        stopat = list(filter( lambda x: x[1].startswith('#---') ,  enumerate(pdata[startat:])))
+        stopat = stopat[0][0]+startat
 
 
-            with open(pdf, "w") as fp:
-                fp.write("#net_count_rate\tprobability\n")
-                for pp in pdata[startat+1:stopat]:
-                    fp.write(pp.replace(" ","\t")+"\n")
+        with open(pdf, "w") as fp:
+            fp.write("#net_count_rate\tprobability\n")
+            for pp in pdata[startat+1:stopat]:
+                fp.write(pp.replace(" ","\t")+"\n")
 
 def get_livetime_keywords( infile ):
     """
@@ -1169,7 +1200,18 @@ def run_fluximage( infile, outroot, at_energy, src, bkg, myparams ):
     fluximage.background = "none"
     
     try:
-        verb2(fluximage())
+        # Note: something odd happens when fluximage throws an
+        # exception and is wrapped in one of the loggers, eg
+        # verb2(fluximage()).  What ends up happening is that the thread
+        # that is running stops (well, maybe it hangs) -- basically, no
+        # other processes can use that thread anymore.  If more 
+        # fluximage's throw exceptions than there are CPUs, then 
+        # srcflux just hangs.  So I need to run and report the 
+        # output in two separate actions.
+        ff = fluximage()
+        if ff:
+            verb2(ff)
+
         if at_energy in ['broad', 'soft', 'medium', 'hard', 'wide', 'ultrasoft']:
             myroot = outroot+"_"+at_energy
         else:
