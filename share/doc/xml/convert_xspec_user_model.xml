@@ -99,6 +99,20 @@
 	<HREF link="https://cxc.harvard.edu/sherpa/ahelp/load_table_model.html">load_table_model</HREF>
         command.
       </PARA>
+
+      <PARA title="Removing the models">
+	The models can be removed by running the following
+	command (replacing name with the value used when
+	running &tool;):
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>&upr; pip uninstall name</LINE>
+	</SYNTAX>
+      </PARA>
+      <PARA>
+	This step is not needed if you used the --local flag.
+      </PARA>
     </DESC>
 
     <QEXAMPLELIST>
@@ -114,9 +128,8 @@
 	    defined in the file lmodel.dat and with code in mdl.f.
 	    In this example it defines two models called, imaginatively
 	    enough, mdl1 (additive) and mdl2 (multiplicative).
-	    If the script completes successfully then it will have
-	    created the directory mymodel/, and you can then load
-	    it into Sherpa with the command:
+	    If the script completes successfully then you can then load
+	    the models into Sherpa with the command:
 	  </PARA>
 	  <PARA>
 	    <SYNTAX>
@@ -126,7 +139,7 @@
 	    </SYNTAX>
 	  </PARA>
 	  <PARA>
-	    At this point any additive, convolutionn, and multiplicative models
+	    At this point any additive, convolution, and multiplicative models
 	    will be available using the &xspec; name with the prefix
 	    "xsum". So, (assuming mdl2 has an alpha component), we can
 	    use them as any other XSPEC model:
@@ -231,39 +244,38 @@ import foo.ui
 
     </QEXAMPLELIST>
 
-    <!--
-some of this isn't really relevant anymore and some of it needs rewriting
-
     <ADESC title="Loading the module">
-      <PARA title="Loading a model from a different directory">
-	Since the code generates a Python module, you can
-	load in modules from different directories by
-	adjusting your PYTHONPATH environment variable or
-	the os.sys.path array. We provide a simple wrapper
-	routine, lmod, in the sherpa_contrib.xspec.local
-	package, which can be used in a similar manner to the
-	&xspec; lmod command. For example, after
+      <PARA>
+	The default behavior is to add the module to the
+	Python installation, in which case the module
+	can be installed with just the command (replacing
+	name with the name given when runnnig &tool;):
       </PARA>
       <PARA>
 	<SYNTAX>
-	  <LINE>&upr; cd /data/models</LINE>
-	  <LINE>&upr; &tool; mymod model.dat</LINE>
+	  <LINE>&spr; install name.ui</LINE>
 	</SYNTAX>
       </PARA>
       <PARA>
-	you can load in the model package with the following:
+	If you used the --local option then you either have
+	to run Python (or sherpa) from the directory where
+	you ran &tool;, or adjust the python path by
+	setting the PYTHONPATH environment variable or
+	changing the os.sys.path array. For example, the
+	following will allow models defined in /data/models/
+	to be loaded:
       </PARA>
       <PARA>
 	<SYNTAX>
-	  <LINE>&spr; from sherpa_contrib.xspec.local import lmod</LINE>
-	  <LINE>&spr; lmod("mymod", "/data/models")</LINE>
+	  <LINE>&upr; setenv PYTHONPATH /data/models</LINE>
 	</SYNTAX>
       </PARA>
+      <PARA>or</PARA>
       <PARA>
-	which will also display the models contained in the
-	module; see
-	<HREF link="https://cxc.harvard.edu/ciao/ahelp/lmod.html">ahelp lmod</HREF>
-	for more information.
+	<SYNTAX>
+	  <LINE>&spr; import os</LINE>
+	  <LINE>&spr; os.sys.path.insert(0, "/data/models")</LINE>
+	</SYNTAX>
       </PARA>
       <PARA title="Automatically loading the module into Sherpa">
 	Models can automatically be loaded into Sherpa by taking
@@ -277,49 +289,45 @@ some of this isn't really relevant anymore and some of it needs rewriting
 <VERBATIM>
 import os
 
-from sherpa_contrib.xspec.local import lmod
-# This assumes that &tool; was run in the two directories
-# given in the lmod command:
-lmod("carbatm", "/data/models/carbatm", verbose=False)
-lmod("relxill", "/data/models/relxill", verbose=False)
+# If needed, set the path with commands like
+#   os.sys.path.insert(0, "/data/models/carbatm")
+#
+import carbatm.ui
+import relxill.ui
 
 # The carbatm model needs to know where the data files are
 # via &xspec; settings; relxill via an environment variable:
+#
 set_xsxset("CARBATM", "/data/models/carbatm")
 os.environ["RELLINE_TABLES"] = "/data/models/relxill"
-
-# display a screen message to remind me what I have loaded
-print("&xspec; models: carbatm and relxill")
 </VERBATIM>
       <PARA>
-        Starting Sherpa will display the message before the
-	first prompt:
+        Starting Sherpa will display a line for each message, which can
+	be useful but quickly gets annoying. To hide these messages
+	use:
       </PARA>
 <VERBATIM>
-&upr; sherpa -n
-&xspec; models: carbatm and relxill
-sherpa-1&gt;
+import logging
+
+lgr = logging.getLogger('sherpa')
+olvl = lgr.level
+lgr.level = logging.WARN
+
+import carbatm.ui
+import relxill.ui
+
+lgr.level = logging.INFO
+
+del olvl, lgr
 </VERBATIM>
-      <PARA>
-	The verbose flag is set to False when calling lmod()
-	to avoid the model names always being displayed
-	when Sherpa is started.
-      </PARA>
 
       <PARA title="Notes">
 	This only works for the Sherpa application. If you
-	have loaded up Sherpa into ChIPS, an IPython session,
+	have loaded up Sherpa into an IPython session
 	or a script then you wil have to manually load in the
 	models you need.
       </PARA>
-
-      <PARA title="Change in the IPython configuration directory">
-	The location of the IPython configuration directory changed
-	in CIAO 4.8 to $HOME/.ipython-ciao/. In CIAO 4.5 to 4.7,
-	inclusive, it was $HOME/.ipython-ciao45/.
-      </PARA>
     </ADESC>
-    -->
 
     <ADESC title="Known Problems">
       <PARA>
@@ -329,7 +337,9 @@ sherpa-1&gt;
 	feature, such as platform or language.
       </PARA>
       <PARA title="Platform support">
-	The OS-X support is limited.
+	The macOS support is limited. If possible the conda installation
+	of CIAO is to be preferred (as the compiler versions are likely
+	to better match those used to build CIAO).
       </PARA>
       <PARA title="Language support">
 	All the languages supported by &xspec; user models - i.e.
@@ -521,7 +531,7 @@ undefined symbol: _gfortran_copy_string
 	models into a Sherpa session.
 	The model class names are created by appending the
 	model name from the definition file to the prefix
-	value (which defaults to "XS"); since Python class
+	value (which defaults to "XSUM"); since Python class
 	names have to start with a capital letter the prefix
 	must be capitalised (or, if blank, then the first
 	character of the model name is capitalized).
