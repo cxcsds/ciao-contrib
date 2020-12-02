@@ -297,10 +297,10 @@ def add_prefix(prefix, inval):
     return "{}{}".format(prefix, inval)
 
 
-def add_xs_prefix(inval):
-    """Returns XS prepended to inval (converting it to a string if
+def add_xsum_prefix(inval):
+    """Returns XSUM prepended to inval (converting it to a string if
     necessary)."""
-    return add_prefix("XS", inval)
+    return add_prefix("XSUM", inval)
 
 
 def no_prefix(inval):
@@ -546,7 +546,7 @@ class BasicParameterDefinition(ParameterDefinition):
         return out
 
 
-def read_model_definition(fh, namefunc=add_xs_prefix):
+def read_model_definition(fh, namefunc=add_xsum_prefix):
     """Represent the model definition from an XSPEC model file.
     The format supported here is defined in
     http://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSappendixLocal.html
@@ -562,9 +562,9 @@ def read_model_definition(fh, namefunc=add_xs_prefix):
     The namnefunc routine takes the model name (taken from the
     XSPEC file) and returns the Python class name for the
     model; at the least it should ensure the first character
-    is capitalized. The default is to prepend with XS, which
+    is capitalized. The default is to prepend with XSUM, which
     means that a user would create an instance of the model
-    foobar with xsfoobar.mdl
+    foobar with xsumfoobar.mdl
     """
 
     hdrline = ''
@@ -829,7 +829,7 @@ def process_parameter_definition(pline, model=None):
                                     hardmin, hardmax, delta)
 
 
-def parse_model_file(modelfile, namefunc=add_xs_prefix):
+def parse_model_file(modelfile, namefunc=add_xsum_prefix):
     """Given an XSPEC model file - e.g. the lmodel.dat file -
     return inforamtion about the models it contains.
 
@@ -1809,7 +1809,7 @@ def convert_xspec_user_model(modulename, modelfile,
                              clobber=False,
                              local=False,
                              version='1.0',
-                             namefunc=add_xs_prefix):
+                             namefunc=add_xsum_prefix):
     """Create a Python module called modulename that allows the
     XSPEC user model - defined by the model file (e.g.
     modelfile='lmodel.dat') - using the code found in the following
@@ -1850,7 +1850,7 @@ def convert_xspec_user_model(modulename, modelfile,
         The version number (dotted values). The default is '1.0'.
     namefunc : function reference, optional
         The function that is used to convert the XSPEC model name to the
-        Sherpa model class name. The default is add_xs_prefix but
+        Sherpa model class name. The default is add_xsum_prefix but
         options are no_prefix and add_prefix, which would need to be
         partialy applied. The first character of the returned string
         must be in upper case.
@@ -2138,7 +2138,7 @@ if __name__ == "__main__":
                         help="Build the package locally rather than globally?; default is %(default)s")
 
     parser.add_argument("--prefix", "-p", dest="prefix", nargs='?',
-                        default="XS", const=None,
+                        default="XSUM", const=None,
                         help="Prefix for model names (empty or must start with a capital letter; default is %(default)s")
 
     parser.add_argument("--pyver", dest="pyver", type=str,
@@ -2170,7 +2170,7 @@ if __name__ == "__main__":
     # from within convert_xspec_user_model rather than here)?
     #
     if args.prefix is None:
-        namefunc = no_prefix
+        mkname = no_prefix
     else:
         if not args.prefix[0].isupper():
             # would like to make this appear the same as other errors
@@ -2181,7 +2181,7 @@ if __name__ == "__main__":
                              f"capital letter; sent {args.prefix}\n")
             sys.exit(1)
 
-        def namefunc(inval):
+        def mkname(inval):
             return add_prefix(args.prefix, inval)
 
     # for some reason sys.tracebacklimit is 0, meaning no backtraces
@@ -2195,6 +2195,6 @@ if __name__ == "__main__":
                              clobber=args.clobber,
                              local=args.local,
                              version=args.pyver,
-                             namefunc=namefunc)
+                             namefunc=mkname)
 
 # End
