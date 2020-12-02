@@ -254,25 +254,30 @@ def find_xspec_includes():
     The script returns the first match to the directory
 
       <script location>/../share/xspec
+      <$ASCDS_INSTALL>/share/xspec
       <$ASCDS_INSTALL>/contrib/share/xspec
 
     but it does not check that the directory contains anything.
+
+    The path is guaranteed to be an absolute path.
     """
 
     # At present there's only one path looked for
     v3("Looking for XSPEC includes in:")
     thisdir = os.path.dirname(__file__)
     for dname in ["../share/xspec"]:
-        path = os.path.normpath(os.path.join(thisdir, dname))
-        v3("  - {}".format(path))
+        path = os.path.join(thisdir, dname)
+        path = os.path.normpath(os.path.abspath(path))
+        v3("  - [LOCAL] {}".format(path))
         if os.path.isdir(path):
             return path
 
-    path = os.path.join(ASCDS_INSTALL, "contrib/share/xspec")
-    path = os.path.normpath(path)
-    v3("  - {}".format(path))
-    if os.path.isdir(path):
-        return path
+    for pname in ["", "contrib/"]:
+        path = os.path.join(ASCDS_INSTALL, f"{pname}share/xspec")
+        path = os.path.normpath(os.path.abspath(path))
+        v3("  - [INSTALLED] {}".format(path))
+        if os.path.isdir(path):
+            return path
 
     # only report the non-development version
     raise IOError("Unable to find the XSPEC include directory: {}".format(path))
