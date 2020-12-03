@@ -1,14 +1,19 @@
+"""
+Create the CIAO contributed package. Options include:
+
+  --version=4.13.0
+
+"""
 
 import glob
-import os
 import sys
 
-scripts = sorted( glob.glob( "bin/*"))
-params = sorted(glob.glob("param/*.par"))
-docs = sorted(glob.glob("share/doc/xml/*.xml"))
-datum = sorted(glob.glob("data/*"))
-configs = sorted(glob.glob("config/*"))
-etc = sorted(glob.glob("etc/conda/activate.d/*"))
+from distutils.core import setup
+
+def list_files(pattern):
+    "Return the giles in a directory, in a sorted list"
+    return sorted(glob.glob(pattern))
+
 
 VERSION="4.13.0"
 for val in sys.argv:
@@ -17,6 +22,20 @@ for val in sys.argv:
         sys.argv.remove(val)
         break
 
+
+scripts = list_files("bin/*")
+params = list_files("param/*.par")
+docs = list_files("share/doc/xml/*.xml")
+datum = list_files("data/*")
+configs = list_files("config/*")
+# etc = list_files("etc/conda/activate.d/*")
+
+data_files = [("param", params),
+              ("share/doc/xml", docs),
+              ("config", configs),
+              ("data", datum),
+              (".", ["Changes.CIAO_scripts", "README_CIAO_scripts"])
+]
 
 mods = [ "ciao_contrib",
     "ciao_contrib/region",
@@ -30,22 +49,18 @@ mods = [ "ciao_contrib",
     "sherpa_contrib/tests",
     "sherpa_contrib/xspec"]
 
+setup(name='ciao-contrib',
+      version=VERSION,
+      license='GNU GPL v3',
+      description='CIAO Contributed scripts',
+      author='CXCSDS and Friends',
+      author_email='cxchelp@cfa.harvard.edu',
+      url='https://github.com/cxcsds/ciao-contrib/',
+      scripts=scripts,
 
-from distutils.core import setup
-setup( name='ciao-contrib',
-        version=VERSION,
-        license='GNU GPL v3',
-        description='CIAO Contributed scripts',
-        author='CXCSDS and Friends',
-        author_email='cxchelp@cfa.harvard.edu',
-        url='https://github.com/cxcsds/ciao-contrib/',
-        scripts = scripts,
-        data_files = [ ("param", params ),
-                       ("share/doc/xml", docs ),
-                       ("config", configs),
-                       ("data", datum),
-                       (".", ["Changes.CIAO_scripts", "README_CIAO_scripts"]),
-                       ],
-        packages=mods,
-        py_modules=["lightcurves",]
-        )
+      # Note that data_files is deprecated
+      data_files=data_files,
+
+      packages=mods,
+      py_modules=["lightcurves",]
+)
