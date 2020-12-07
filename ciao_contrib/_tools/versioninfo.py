@@ -27,7 +27,9 @@ the CXC website.
 """
 
 import glob
+import json
 import os
+import subprocess
 
 from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
@@ -61,14 +63,13 @@ def package_name(fname):
     if fname == "VERSION":
         return "CIAO"
 
-    elif fname == "contrib/VERSION.CIAO_scripts":
+    if fname == "contrib/VERSION.CIAO_scripts":
         return "contrib"
 
-    elif fname.find("_") != -1:
+    if fname.find("_") != -1:
         return fname.split("_")[-1]
 
-    else:
-        raise ValueError("Unrecognized file name: {0}".format(fname))
+    raise ValueError(f"Unrecognized file name: {fname}")
 
 
 def get_installed_versions(ciao):
@@ -117,12 +118,12 @@ def parse_version_file(lines):
             continue
         idx = l.find(" ")
         if idx == -1:
-            raise IOError("Unable to parse line: '{0}'".format(l))
+            raise IOError(f"Unable to parse line: '{l}'")
 
         k = l[:idx]
         v = l[idx + 1:]
         if k in out:
-            raise ValueError("Multiple copies of {0} found.".format(k))
+            raise ValueError(f"Multiple copies of {k} found.")
 
         out[k] = v
 
@@ -233,14 +234,14 @@ def get_latest_versions(timeout=None, system=None):
     if system is None:
         system = find_ciao_system()
 
-    v3("get_latest_versions for system={}".format(system))
+    v3(f"get_latest_versions for system={system}")
 
     # To allow for a system-agnostic version file, check for
     # the version-specific and then drop back to the
     # version-agnostic only if it does not exist. Is this OTT?
     #
     base_url = "https://cxc.harvard.edu/ciao/download/"
-    system_url = base_url + "ciao_versions.{}.dat".format(system)
+    system_url = base_url + f"ciao_versions.{system}.dat"
     simple_url = base_url + "ciao_versions.dat"
 
     # Which URL to use? Note that the SSL context is explicitly
@@ -250,14 +251,14 @@ def get_latest_versions(timeout=None, system=None):
     #
     context = ssl._create_unverified_context()
     def download(url):
-        v3(" - trying to download {}".format(url))
+        v3(f" - trying to download {url}")
         try:
             if timeout is None:
                 res = urlopen(url, context=context)
             else:
                 res = urlopen(url, timeout=timeout, context=context)
         except HTTPError as he:
-            v3(" - caught HTTP error {} for {}".format(he, url))
+            v3(f" - caught HTTP error {he} for {url}")
             if he.code == 404:
                 return None
 
@@ -272,12 +273,12 @@ def get_latest_versions(timeout=None, system=None):
             rsp = download(simple_url)
 
     except HTTPError as he:
-        v3("Re-caught HTTP error {}".format(he))
-        raise IOError("Unable to download the CIAO version file")
+        v3(f"Re-caught HTTP error {he}")
+        raise IOError("Unable to download the CIAO version file") from he
 
     except URLError as ue:
-        v3("Caught URLError {}".format(ue))
-        raise IOError("Unable to download the CIAO version file")
+        v3(f"Caught URLError {ue}")
+        raise IOError("Unable to download the CIAO version file") from ue
 
     if rsp is None:
         raise IOError("Unable to download the CIAO version file")
@@ -306,17 +307,14 @@ def check_conda_versions(ciao):
     not refer to other packages (e.g. openssl).
     """
 
-    import subprocess
-    import json
-
     # Assume we are in a conda environment
     #
     v3("About to run 'conda list'")
     try:
-        out = subprocess.run(["conda", "list", "--json"],
+        out = subprocess.run(["conda", "list", "--json"], check=True,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except FileNotFoundError:
-        raise IOError("Unable to run the conda tool. Was CIAO installed with conda?")
+    except FileNotFoundError as fe:
+        raise IOError("Unable to run the conda tool. Was CIAO installed with conda?") from fe
 
     js = json.loads(out.stdout)
 
@@ -332,15 +330,23 @@ def check_conda_versions(ciao):
     # writing, the exact name has not been finalized, and also it
     # could change over time.
     #
+    # Note that we skip any with platform==pypi to catch the (internal)
+    # use case of using 'python setup.py install' to install a test
+    # version of the contrib code into a conda environment.
+    #
     found = {}
     for found_package in js:
         name = found_package['name']
         if name not in packages:
             continue
 
+        if found_package['platform'] == 'pypi':
+            v3(f" - skipping {name} as platform=pypi")
+            continue
+
         channel = found_package['base_url']
         version = found_package['version']
-        v3(" - found {} {} {}".format(name, version, channel))
+        v3(f" - found {name} {version} {channel}")
         found[name] = {'channel': channel, 'version': version}
 
     if len(found) == 0:
@@ -351,8 +357,8 @@ def check_conda_versions(ciao):
     names = sorted(list(found.keys()))
 
     channels = []
-    for c in set([v['channel'] for v in found.values()]):
-        channels.extend(["-c", c])
+    for chan in {v['channel'] for v in found.values()}:
+        channels.extend(["-c", chan])
 
     # We use --no-update-deps since the expected users of this
     # functionality are likely to want to know just if the CIAO packages
@@ -360,22 +366,22 @@ def check_conda_versions(ciao):
     #
     command = ["conda", "update", "--json", "--dry-run", "--no-update-deps"] + \
               channels + names
-    v3("Trying to run {}".format(command))
+    v3(f"Trying to run {command}")
 
     # we've already run conda so assume it is still around
-    out = subprocess.run(command, stdout=subprocess.PIPE,
+    out = subprocess.run(command, check=True, stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE)
 
     js = json.loads(out.stdout)
 
     # map a missing key to a failure (as indicates schema has changed)
     if not js.get('success', False):
-        v3("- call failed: {}".format(js))
+        v3(f"- call failed: {js}")
         msg = js.get('message', None)
         if msg is None:
             raise IOError("Unable to run conda dependency check")
-        else:
-            raise IOError("Unable to run conda dependency check:\n{}".format(msg))
+
+        raise IOError(f"Unable to run conda dependency check:\n{msg}")
 
     # perhaps could just check to see message exists, since if it does
     # it *probably* indicates success, which would be a simpler check
@@ -400,20 +406,20 @@ def check_conda_versions(ciao):
     #
     unlink = actions.get('UNLINK', None)
     if unlink is not None:
-        v3(" - found {} UNLINK actions".format(len(unlink)))
+        v3(f" - found {len(unlink)} UNLINK actions")
         for n, v in get_names(unlink):
-            v3("   - {} {}".format(n, v))
+            v3(f"   - {n} {v}")
 
     link = actions.get('LINK', None)
     if link is not None:
-        v3(" - found {} LINK actions".format(len(link)))
+        v3(f" - found {len(link)} LINK actions")
         for n, v in get_names(link):
-            v3("   - {} {}".format(n, v))
+            v3(f"   - {n} {v}")
 
     # Report on the updates
     fetch = actions.get('FETCH', None)
     if fetch is None:
-        v3(" - unable to find actions/FETCH in {}".format(js))
+        v3(f" - unable to find actions/FETCH in {js}")
         print("It looks like a CIAO package needs to be updated by CIAO but I can't find which.")
         return False
 
@@ -422,7 +428,7 @@ def check_conda_versions(ciao):
     names = []
     for name, version in get_names(fetch):
         if name not in packages:
-            v3(" - skipping {} {} from FETCH list".format(name, version))
+            v3(f" - skipping {name} {version} from FETCH list")
             continue
 
         names.append((name, version))
@@ -441,10 +447,10 @@ def check_conda_versions(ciao):
     if nnames == 1:
         print("There is one package that needs updating:")
     else:
-        print("There are {} packages that need updating:".format(nnames))
+        print(f"There are {nnames} packages that need updating:")
 
     for name, version in names:
-        print("  {} : {} -> {}".format(name, found[name]['version'], version))
+        print(f"  {name} : {found[name]['version']} -> {version}")
 
     print("")
     return False
