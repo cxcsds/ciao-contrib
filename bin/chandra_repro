@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "30 September 2020"
+version = "01 December 2020"
 
 # import standard python modules as required
 #
@@ -138,7 +138,7 @@ def error_out(params,msg,val):
     raise ValueError("%s" % val)
 
 
-def filter_aspsolobi_from_aspsol(asol_list,mydir):
+def filter_aspsolobi_from_aspsol(asol_list,mydir,params):
     """As of DS10.8.3, there are now two flavors of aspect solution 
     files, per OBI (CONTENT=ASPSOLOBI) and the original per-constant
     aspect interval (cai) (CONTENT=ASPSOL).  Users should only ever
@@ -173,7 +173,7 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir):
           "CONTENT=ASPSOLOBI files. Only the ASPSOLOBI file "+
           "{} will be used".format(content_values["ASPSOLOBI"]))
 
-        # Wwant to go ahead and remove the old files from the
+        # Want to go ahead and remove the old files from the
         # output directory.
         for oldasp in content_values["ASPSOL"]:
             old = os.path.join(mydir, os.path.basename(oldasp.strip()))
@@ -187,13 +187,173 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir):
 
 
     if "ASPSOLOBI" in content_values:
+        if params["asol_update"]:
+            v1("No boresight correction update to asol file is needed.")
         return content_values["ASPSOLOBI"]
 
     if "ASPSOL" in content_values:
-        return content_values["ASPSOL"]
+        new_asol = update_aspsol_to_aspsolobi(content_values["ASPSOL"], 
+                                              mydir, params)
+        return new_asol
     
     error_out("Unknown CONTENT keywords found in the aspect solution files")
     
+
+def update_aspsol_to_aspsolobi(asol_list,mydir, params):
+    """CIAO 4.13 includes the new asp_offaxis_corr tool which 
+    applies the dy,dz,dtheta offsets to the ra/dec/roll + quaternions.
+    
+    If we only found ASPSOL files, we upgrade them to ASPSOLOBI files
+    
+    asp_offaxis_corr also updates the _PNT keywords in the asol file.
+    Those need to get to foo_p_e to update the pointing and
+    tangent point.
+    """
+    
+    from ciao_contrib.runtool import make_tool
+    from pycrates import read_file
+
+    if not params["asol_update"]:
+        v1("Skipping boresight update to aspect solution file")
+        return asol_list
+
+    v1("Applying boresight update to aspect solution file")
+
+    if params["grating"].lower() in ["hetg", "letg"]:
+        if not params["recreate_tg_mask"]:
+            v0("WARNING: The grating 0th order location must be "+
+               "recomputed when asol_update=yes.  Changing "+
+               "recreate_tg_mask=yes.")
+
+            # each obsid has separate params so OK to change here.
+            params["recreate_tg_mask"] = True
+
+    if len(asol_list) == 0:
+        error_out("ERROR: No aspect solution files found")
+
+    # remove \n
+    instk = [a.strip() for a in asol_list] 
+
+    # if more than one file in stack, better all have the same obsid.
+    obsid=None
+    for pcad in instk:
+        tab = read_file(pcad)
+        if obsid is None:
+            obsid = tab.get_key_value("OBS_ID")
+        elif obsid != tab.get_key_value("OBS_ID"):
+            error_out("ERROR: The OBS_ID values in the aspect solution "+
+                      "files are different")
+
+    outfile = "pcadf{:05d}_repro_asol1.fits".format(int(obsid))
+    outfile = os.path.join(mydir, outfile)
+
+    # The ASOL file from the archive has a time filter applied
+    # so we better apply the same tstart/tstop filter here too.
+    tab = read_file(params["flt1_file"]) # small file
+    tstart = tab.get_key_value("tstart")
+    tstop = tab.get_key_value("tstop")
+    good_time = "[time={}:{}]".format(tstart,tstop)
+
+    instk = [s+good_time for s in instk]
+
+    dmmerge = make_tool("dmmerge")
+    dmmerge.infile = instk
+    dmmerge.outfile = outfile
+    dmmerge.clobber = params["clobber"]
+    dmmerge()
+    
+    # This tool updates the outfile in place
+    asp_offaxis_corr = make_tool("asp_offaxis_corr")
+    asp_offaxis_corr(outfile, "acis")  # instrume doesn't matter
+    
+    dmhedit.infile = outfile
+    dmhedit.file = ""
+    dmhedit.operation = "add"
+    dmhedit.key = "CONTENT"
+    dmhedit.value = "ASPSOLOBI"
+    dmhedit()
+    
+    # We need to pass in an obs.par file to get the new tangent
+    # point and pointing (otherwise it is taken from the evt1_file.
+    params["pnt_obspar"] = make_overide_pointing_obspar(outfile, params)
+    
+    return [outfile+"\n",]
+
+def make_overide_pointing_obspar(asolfile,params):
+    """We create an obs.par file where we will be updating the
+    _PNT, _NOM, and _AVG files so that they will get used by
+    foo_process_events.    
+    """
+
+    # Get new _PNT values
+    from pycrates import read_file
+    tab = read_file(asolfile)
+    ra = tab.get_key_value("RA_PNT")
+    dec = tab.get_key_value("DEC_PNT")
+    roll = tab.get_key_value("ROLL_PNT")
+    
+    # Create obs.par from evt1 file header
+    outfile = asolfile.replace("asol1.fits", "obs.par")
+    make_obspar(params["evt1_file"], outfile)
+
+    # Now update value in .par w/ values from new asol
+    import paramio as pio
+    obspar = pio.paramopen(outfile, "rwL") # force Learn mode
+    pio.pputd(obspar, "ra_pnt", ra)
+    pio.pputd(obspar, "dec_pnt", dec)
+    pio.pputd(obspar, "roll_pnt", roll)
+    pio.pputd(obspar, "ra_nom", ra)
+    pio.pputd(obspar, "dec_nom", dec)
+    pio.pputd(obspar, "roll_nom", roll)
+    pio.pputd(obspar, "dy_avg", 0.0)
+    pio.pputd(obspar, "dz_avg", 0.0)
+    pio.pputd(obspar, "dth_avg", 0.0)
+    pio.paramclose(obspar)        
+
+    params["cleanup_files"].append(outfile)
+
+    return(outfile)
+
+
+def make_obspar(infile, outfile):
+    """
+    I need to make my own `dmmakepar` equivalent here because
+    dmmakepar does not set the comment value "correctly".  It puts the 
+    units at the end of the comment; but the DM and the real obs.par
+    files needs to have the comment at the beginning of the comment.    
+    """
+    from pycrates import read_file
+    import numpy as np
+
+    with open(outfile, "w") as fp:
+        tab = read_file(infile)
+        for key_name in tab.get_keynames():
+            key = tab.get_key(key_name)
+            val = "{}".format(key.value)
+            unit = key.unit
+            if len(unit) > 0:
+                comment = '"[{}] {}"'.format(unit,key.desc)
+            else:
+                comment = '"{}"'.format(key.desc)
+            
+            if isinstance(key.value, (str,np.str)):
+                dtype="s"
+                val='"{}"'.format(val)
+            elif isinstance(key.value, (int,np.integer)):
+                dtype="i"
+            elif isinstance(key.value, (float,)):
+                dtype="r"
+            elif isinstance(key.value, (bool,np.bool_)):
+                dtype="b"
+                val = "yes" if key.value else "no"
+            else:
+                print((key_name.lower(),key.value,type(key.value)))
+                print("Unknown data type. Using string")
+                dtype="s"
+                val='"{}"'.format(val)
+        
+            param=",".join([key_name.lower(), dtype, "h",val,"","",comment])+"\n"
+            fp.write(param)
 
 
 
@@ -245,7 +405,7 @@ def _verify_have_list(myfile,mylist,mydir,params):
         # sort files
         asol_files.sort()
 
-        asol_files = filter_aspsolobi_from_aspsol(asol_files,mydir)
+        asol_files = filter_aspsolobi_from_aspsol(asol_files,mydir,params)
 
         # write out sorted list
         try:
@@ -478,6 +638,7 @@ def process_command_line(argv):
     pix_adj_value   = pio.pgetstr(fp, "pix_adj")
     pix_adj_str     = pio.pgetstr(fp, "pix_adj")
     recreate_tg_mask  = pio.pgetstr( fp, "recreate_tg_mask") == "yes"  # make True / False
+    boresight       = pio.pgetstr(fp, "asol_update") == "yes"
     cleanup         = pio.pgetb(fp, "cleanup")
     verbose         = pio.pgeti(fp, "verbose")
     clobber         = pio.pgetstr(fp, "clobber")
@@ -513,6 +674,7 @@ def process_command_line(argv):
         pp["pix_adj_value"] =   pix_adj_value
         pp["pix_adj_str"] =     pix_adj_str
         pp["recreate_tg_mask"] = recreate_tg_mask
+        pp["asol_update"] =     boresight
         pp["cleanup"] =         cleanup
         pp["clobber"] =         clobber
         pp["verbose"] =         verbose
@@ -590,6 +752,9 @@ def event1_inputs(params):
             params["datamode"] = keys["DATAMODE"].value
             params["date-obs"] = keys["DATE-OBS"].value
             params["grating"]  = keys["GRATING"].value
+
+            params["ra_targ"] = keys["RA_TARG"].value
+            params["dec_targ"] = keys["DEC_TARG"].value
 
             # Only standard datasets taken in KALMAN lock are supported.
             # Other modes such as OBC use the on-board-computer
@@ -1400,7 +1565,11 @@ def process_acis_events(params, eventdef=None):
         v1("\nWARNING: pix_adj=CENTROID is not supported for GRADED mode data;\n    setting pix_adj=NONE.")
         acis_process_events.pix_adj="NONE"
 
-
+    # If we had to recompute the asol file,then we need to change 
+    # pointing keywords via obsfile.
+    if 'pnt_obspar' in params and os.path.exists(params['pnt_obspar']):
+        acis_process_events.obsfile = params['pnt_obspar']
+    
     #!### Execute acis_process_events command we built above ###
     out=acis_process_events()
 
@@ -1517,6 +1686,11 @@ def process_hrc_events(params):
     if pix_adj_value != 'default':
         hrc_process_events.rand_pix_size=pix_adj_value
 
+    # If we had to recompute the asol file,then we need to change 
+    # pointing keywords via obsfile.
+    if 'pnt_obspar' in params and os.path.exists(params['pnt_obspar']):
+        hrc_process_events.obsfile = params['pnt_obspar']
+
     #!### Execute hrc_process_events command we built above ###
     out=hrc_process_events()
     v5("hrc_process_events returned")
@@ -1552,11 +1726,46 @@ def run_tgdetect2_and_create_mask(params):
     src1a = os.path.join(outdir, root + '_src1a.fits')
     params["cleanup_files"].append(src1a)
 
+    # tgdetect2 requires a clean event file to work correctly.
+    # It also works best when you supply the approx coordinates,
+    # eg the TARGs.
+    from ciao_contrib.runtool import dmcoords, dmcopy
+    dmcoords.punlearn()
+    dmcoords.infile=params["evt1_file"]
+    dmcoords.op="cel"
+    dmcoords.celfmt="deg"
+    dmcoords.ra=params["ra_targ"]
+    dmcoords.dec=params["dec_targ"]
+    dmcoords()
+    x_targ = dmcoords.x
+    y_targ = dmcoords.y
+
+    goodevt = os.path.join(outdir, root + '_goodevt1.fits')
+    params["cleanup_files"].append(goodevt)
+
+    # standard L2 filters
+    if params["detnam"].startswith("ACIS"):
+        evtfilter = "[status=0,grade=0,2,3,4,6]"
+    elif params["detnam"] == "HRC-I":
+        evtfilter = "[status=xxxxxx00xxxx0xxx00000000x0000000]"
+    elif params["detnam"] == "HRC-S":
+        evtfilter = "[status=xxxxxx00xxxx0xxx0000x000x00000xx]"
+    else:
+        error_out("Bad detnam")  # should have crashed long before this
+        
+    dmcopy.infile = "{}[@{}]{}".format(params["evt1_file"],
+                                       params["flt1_file"],
+                                       evtfilter)
+    dmcopy.outfile = goodevt
+    dmcopy(clobber=params["clobber"])
+
     v1("Getting the zero-order source position with tgdetect2...")
     from ciao_contrib.runtool import tgdetect2, tg_create_mask
     tgdetect2.punlearn()
-    tgdetect2.infile=params["evt1_file"]
+    tgdetect2.infile=goodevt
     tgdetect2.outfile = src1a
+    tgdetect2.zo_pos_x = x_targ
+    tgdetect2.zo_pos_y = y_targ
     tgdetect2.temproot = os.path.join(outdir, root )
     tgdetect2.verbose = params["verbose"]
     tgdetect2.clobber = params["clobber"]
@@ -1869,6 +2078,27 @@ def l2_acis_events(params):
 
     return params
 
+
+def lookup_hrc_pi_filter(evtfile):
+    '''Lookup background PI filter to use with HRC-S+LETG'''
+    import caldb4 as caldb
+    cdb = caldb.Caldb(infile=evtfile, product="TGPIMASK2")
+    calfiles = cdb.search
+    
+    if not calfiles or len(calfiles) == 0:
+        error_out("No TGPIMASK2 CALDB files found for this dataset")
+    
+    if len(calfiles) > 1:
+        error_out("Too many TGPIMASK2 CALDB files found for this dataset")
+
+    retval = calfiles[0]
+    retval = retval.split("[")   # remove block name
+    retval = retval[0]
+    v2("Using TGPIMASK2 file: "+retval)
+
+    return retval
+
+
 def l2_hrc_events(params):
     '''Thread to create new L2 products
        Executes: dmcopy, hrc_dtfstats
@@ -1891,7 +2121,8 @@ def l2_hrc_events(params):
     params["cleanup_files"].append(bg_filtered_evt1a)
     if detnam == 'HRC-S' and grating =="LETG":
         v1("Applying the HRC-S/LETG background filter...")
-        filtname = os.path.expandvars("$CALDB/data/chandra/hrc/tgpimask2/letgD1999-07-22pireg_tgmap_N0001.fits")
+        # filtname = os.path.expandvars("$CALDB/data/chandra/hrc/tgpimask2/letgD1999-07-22pireg_tgmap_N0001.fits")
+        filtname = lookup_hrc_pi_filter(evt1a)
         dmcopy.punlearn()
         dmcopy.infile=evt1a+"[EVENTS][(tg_mlam,pi)=region("+filtname+")]"
         dmcopy.outfile=bg_filtered_evt1a

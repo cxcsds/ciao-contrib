@@ -708,6 +708,31 @@ acisf084244478N003_2_bias0.fits.gz
       
       </PARAM>
 
+      <PARAM name="asol_update" def="yes" type="boolean" reqd="no">
+        <SYNOPSIS>
+        Apply boresight correction to aspect solution file(s), if necessary.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+           If this parameter is set to "yes" and the input aspect solution
+           file has not already had the boresight correction applied, 
+           then chandra_repro will run the asp_offaxis_corr tool 
+           script to create an updated aspect solution file.          
+           If the aspect solution file has already been corrected then
+           this step is skipped.          
+          </PARA>
+          <PARA>
+            The effect of the boresight correction is to update the 
+            location of the aimpoint while preserving the celestial
+            coordinates (RA and Dec) of the events.  The sky coordinates
+            (X,Y) and detector coordinates (DETX, DETY) may change
+            by as much as 30 arcsec based (typical changes are much
+            smaller).          
+          </PARA>          
+        </DESC>
+      
+      </PARAM>
+
 
       <PARAM name="cleanup" def="yes" type="boolean" reqd="no">
         <SYNOPSIS>
@@ -722,6 +747,7 @@ acisf084244478N003_2_bias0.fits.gz
           </PARA>
         </DESC>
       </PARAM>
+
 
       <PARAM name="clobber" def="yes" type="boolean" reqd="no">
         <SYNOPSIS>
@@ -752,11 +778,35 @@ acisf084244478N003_2_bias0.fits.gz
 
 
 <ADESC title="Changes in the scripts 4.13.0 (December 2020) release">
-  <PARA>
-  Updates for CIAO 4.13.  This includes changes in the hrc_process_events
-  and tg_resolve_events parameter files (several defunct parameters
-  have been removed).
+  <PARA title="Update boresight correction in aspect solution files">
+    If the script can only find original-format aspect solution files
+    (those with CONTENT=ASPSOL) and with the new parameter 
+    "asol_update=yes", then chandra_repro will run the new 
+    asp_offaxis_corr tool to apply the DY,DZ, and DTHETA boresight 
+    corrections directly to the RA, Dec, ROLL, and quaternion values.  
+    This new aspect solution file will have CONTENT=ASPSOLOBI and should
+    be used for all data analysis.
   </PARA>
+
+  <PARA title="Other">
+  Updates for tool changes in CIAO 4.13.  This includes changes in the hrc_process_events
+  and tg_resolve_events parameter files (several defunct parameters
+  have been removed).  HRC gratings datasets will also have additional
+  columns including: AU|AV 1-3 and SUMAMPS.
+  </PARA>
+
+  <PARA>
+    Update for HRS-S+LETG to use automatic CALDB lookup to locate 
+    latest PI background filter file.    
+  </PARA>
+
+  <PARA>
+    Update the recreate_tg_mask=yes option to use a clean event file 
+    (GTI, status, and grade filtered) with tgdetect2.  The earlier
+    behavior of using the Level 1 event file could lead to a poor 
+    zeroth order location.  
+  </PARA>
+
 </ADESC>
 
 
@@ -1129,6 +1179,6 @@ The script now runs tgdetect2 for grating data when recreate_tg_mask=yes
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>June 2019</LASTMODIFIED>
+    <LASTMODIFIED>December 2020</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
