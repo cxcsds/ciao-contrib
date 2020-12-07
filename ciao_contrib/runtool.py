@@ -2482,6 +2482,13 @@ parinfo['acis_build_badpix'] = {
     }
 
 
+parinfo['acis_check_pha_range'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input ACIS event file",None)],
+    'opt': [ParValue("mskfile","f","ACIS mask file, *_msk1.fits",None),ParSet("binsize","i","Block size used to estimate gain",128,[1,2,4,8,16,32,64,128,256]),ParRange("verbose","i","Tool chatter",1,0,5)],
+    }
+
+
 parinfo['acis_detect_afterglow'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input event file or stack",None),ParValue("outfile","f","Output event file",None)],
@@ -2653,7 +2660,7 @@ parinfo['celldetect'] = {
 parinfo['chandra_repro'] = {
     'istool': True,
     'req': [ParValue("indir","f","Input directory",'./'),ParValue("outdir","f","Output directory (default = $indir/repro)",None)],
-    'opt': [ParValue("root","s","Root for output filenames",None),ParValue("badpixel","b","Create a new bad pixel file?",True),ParValue("process_events","b","Create a new level=2 event file?",True),ParValue("destreak","b","Destreak the ACIS-8 chip?",True),ParValue("set_ardlib","b","Set ardlib.par with the bad pixel file?",True),ParValue("check_vf_pha","b","Clean ACIS background in VFAINT data?",False),ParSet("pix_adj","s","Pixel randomization: default|edser|none|randomize",'default',["default","edser","none","randomize","centroid"]),ParValue("recreate_tg_mask","b","Re-run tgdetect and tg_create_mask rather than use the Level 2 region extension?",False),ParValue("cleanup","b","Cleanup intermediate files on exit",True),ParValue("clobber","b","Clobber existing file",False),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
+    'opt': [ParValue("root","s","Root for output filenames",None),ParValue("badpixel","b","Create a new bad pixel file?",True),ParValue("process_events","b","Create a new level=2 event file?",True),ParValue("destreak","b","Destreak the ACIS-8 chip?",True),ParValue("set_ardlib","b","Set ardlib.par with the bad pixel file?",True),ParValue("check_vf_pha","b","Clean ACIS background in VFAINT data?",False),ParSet("pix_adj","s","Pixel randomization: default|edser|none|randomize",'default',["default","edser","none","randomize","centroid"]),ParValue("recreate_tg_mask","b","Re-run tgdetect and tg_create_mask rather than use the Level 2 region extension?",False),ParValue("asol_update","b","If necessary, apply boresight correction to aspect solution file?",True),ParValue("cleanup","b","Cleanup intermediate files on exit",True),ParValue("clobber","b","Clobber existing file",False),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
     }
 
 
