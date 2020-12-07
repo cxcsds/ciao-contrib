@@ -34,7 +34,7 @@ Script:
 __version__ = "CIAO 4.13"
 
 toolname = "specextract"
-__revision__ = "10 November 2020"
+__revision__ = "8 December 2020"
 
 
 ##########################################################################
@@ -3060,27 +3060,28 @@ def specextract(args):
                     
             if instrument == "ACIS":
                 try:
-                    if True in [weight == "yes", srcbkg == "bkg" and dobkgresp]: # force background to always be weighted
+                    if True in [srcbkg == "src" and weight == "yes", srcbkg == "bkg" and dobkgresp]: # force background to always be weighted
                         ancrfile, weightfile, fef_file, tdetwmap = create_arf_ext(full_outroot, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, ewmap, bintwmap, wmap_clip, wmap_threshold, pars, tmpdir)
 
                         add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
 
                     else:
-                        try:
-                            ancrfile, weightfile = create_arf_ps(full_outroot, filename, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, chip_id, skyx, skyy, chipx, chipy)
-
-                            add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
-
-                        except OSError:
-                            raise IOError("Failed to create ARF for {}".format(fullfile))
-
-                        if correct == "yes":
-                            v1("Calculating aperture correction for {0} ARF {1}".format(srcbkg,iteminfostr))
-
+                        if True in [srcbkg == "src", srcbkg == "bkg" and dobkgresp]:
                             try:
-                                ancrfile = correct_arf(full_outroot, fullfile, filename, ancrfile, skyx, skyy, binarfcorr, clobber)
+                                ancrfile, weightfile = create_arf_ps(full_outroot, filename, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, chip_id, skyx, skyy, chipx, chipy)
+
+                                add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
+
                             except OSError:
-                                raise IOError("Failed to PSF correct the ARF: {}".format(ancrfile))
+                                raise IOError("Failed to create ARF for {}".format(fullfile))
+
+                            if correct == "yes":
+                                v1("Calculating aperture correction for {0} ARF {1}".format(srcbkg,iteminfostr))
+                                
+                                try:
+                                    ancrfile = correct_arf(full_outroot, fullfile, filename, ancrfile, skyx, skyy, binarfcorr, clobber)
+                                except OSError:
+                                    raise IOError("Failed to PSF correct the ARF: {}".format(ancrfile))
 
                 except (OSError,IOError):
                     #doexit("Failed to create ARF for " + fullfile, outroot, srcbkg, str(ii+1),full_outroot)
