@@ -1460,7 +1460,7 @@ def get_region(full_filename):
 def valid_regstr(inf):
     regfilter = fileio.get_filter(inf)
 
-    if True in ["=(" in regfilter,"(" not in regfilter]:
+    if any(["=(" in regfilter,"(" not in regfilter]):
         raise IOError("There is a problem with the extraction region syntax in: {}".format(inf))
 
     
@@ -2478,7 +2478,7 @@ def specextract(args):
             src_obsid_stk = get_keyvals(src_stk, "OBS_ID")
             asol_obsid_stk = get_keyvals(asol_stk, "OBS_ID")
 
-            if True in [None in src_obsid_stk, None in asol_obsid_stk]:
+            if any([None in src_obsid_stk, None in asol_obsid_stk]):
                 raise ValueError("OBS_ID information could not be found in source and/or aspect solution files; cannot properly match source files to aspect solution files. Try entering aspect histogram files into 'asp' to work around this requirement.")
 
 
@@ -3060,13 +3060,13 @@ def specextract(args):
                     
             if instrument == "ACIS":
                 try:
-                    if True in [srcbkg == "src" and weight == "yes", srcbkg == "bkg" and dobkgresp]: # force background to always be weighted
+                    if any([srcbkg == "src" and weight == "yes", srcbkg == "bkg" and dobkgresp]): # force background to always be weighted
                         ancrfile, weightfile, fef_file, tdetwmap = create_arf_ext(full_outroot, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, ewmap, bintwmap, wmap_clip, wmap_threshold, pars, tmpdir)
 
                         add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
 
                     else:
-                        if True in [srcbkg == "src", srcbkg == "bkg" and dobkgresp]:
+                        if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
                             try:
                                 ancrfile, weightfile = create_arf_ps(full_outroot, filename, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, chip_id, skyx, skyy, chipx, chipy)
 
@@ -3099,7 +3099,7 @@ def specextract(args):
                     except OSError:
                         v3("skip writing file history to RMF")
 
-                    if srcbkg == "src" and correct == "yes":
+                    if all([srcbkg == "src",correct == "yes"]):
                         try:
                             v1("Calculating aperture correction for {0} ARF {1}".format(srcbkg,iteminfostr))
                             
@@ -3136,8 +3136,8 @@ def specextract(args):
                 rmftool = determine_rmf_tool(phafile, rmffile_ccd, verbose)
 
                 try:
-                    if True in [srcbkg == "src", srcbkg == "bkg" and dobkgresp]:
-                        if weight == "yes" and weight_rmf == "yes":
+                    if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
+                        if all([weight == "yes",weight_rmf == "yes"]):
                             respfile = build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, wmap_clip, tdetwmap.name)
                             
                             if wmap_clip:
