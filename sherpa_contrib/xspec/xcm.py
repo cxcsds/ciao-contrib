@@ -627,15 +627,19 @@ def parse_ranges(ranges):
     for r in ranges.split(','):
         rs = r.split('-')
         if len(rs) == 1:
-            end = rs
-            start = 1
+            end = convert(rs[0])
+            start = end
+            #if len(out) == 0:
+            #    start = 1  # is this correct?
+            #else:
+            #    start = end
         elif len(rs) == 2:
-            start = rs[0]
-            end = rs[1]
+            start = convert(rs[0])
+            end = convert(rs[1])
         else:
             raise ValueError(f"Unexpected range in '{ranges}'")
 
-        out.append((convert(start), convert(end)))
+        out.append((start, end))
 
     return chantype, out
 
@@ -1321,15 +1325,26 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
 
             # Process all the parameter values for each data group.
             #
+            escape = False  # NEED TO REFACTOR THIS CODE!
             for expr in exprs:
+                if escape:
+                    break
+
                 for mdl in [t[1] for t in expr if t[1] is not None]:
+                    if escape:
+                        break
 
                     for par in mdl.pars:
                         if par.hidden:
                             continue
 
                         # Grab the parameter line
-                        pline = intext.pop(0).strip()
+                        try:
+                            pline = intext.pop(0).strip()
+                        except IndexError:
+                            print(f"Unable to find parameter value for {par.name} - skipping other parameters")
+                            escape = True
+                            break
 
                         if pline.startswith('='):
                             parse_tie(state['allpars'], add_import, add, par, pline)
@@ -1386,14 +1401,22 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
         if list(exprs.keys()) != [None]:
             raise RuntimeError("Unexpected state when processing the model expressions in the XCM file!")
 
-        if len(exprs[None]) != 1:
-            raise RuntimeError("Unexpected state when processing the model expressions in the XCM file!")
+        # Do we use the same model or separate models?
+        #
+        if len(exprs[None]) == 1:
+            cpts = [conv(t) for t in exprs[None][0]]
+            sexpr = "".join(cpts)
+            for did in state['datasets']:
+                add('set_source', did, sexpr)
 
-        assert len(exprs[None]) == 1
-        cpts = [conv(t) for t in exprs[None][0]]
-        sexpr = "".join(cpts)
-        for did in state['datasets']:
-            add('set_source', did, sexpr)
+        else:
+            if len(state['datasets']) != len(exprs[None]):
+                raise RuntimeError("Unexpected state when handling source models!")
+
+            for did, expr in zip(state['datasets'], exprs[None]):
+                cpts = [conv(t) for t in expr]
+                sexpr = "".join(cpts)
+                add('set_source', did, sexpr)
 
     else:
         # What "specnums" do we have to deal with?
