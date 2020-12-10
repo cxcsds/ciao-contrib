@@ -627,15 +627,19 @@ def parse_ranges(ranges):
     for r in ranges.split(','):
         rs = r.split('-')
         if len(rs) == 1:
-            end = rs
-            start = 1
+            end = convert(rs[0])
+            start = end
+            #if len(out) == 0:
+            #    start = 1  # is this correct?
+            #else:
+            #    start = end
         elif len(rs) == 2:
-            start = rs[0]
-            end = rs[1]
+            start = convert(rs[0])
+            end = convert(rs[1])
         else:
             raise ValueError(f"Unexpected range in '{ranges}'")
 
-        out.append((convert(start), convert(end)))
+        out.append((start, end))
 
     return chantype, out
 
