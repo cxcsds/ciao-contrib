@@ -1,0 +1,154 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2020
+#           Smithsonian Astrophysical Observatory
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 USA.
+#
+
+
+"""
+Usage:
+
+  convert_xspec_script infile outfile
+
+      --clean
+      --clobber
+
+      --version
+      --help
+
+
+Aim:
+
+Convert the XSPEC save file to Sherpa and print out the results.
+This is **experimental** and is not guaranteed to create the
+exact same output in Sherpa as it does in XSPEC.
+
+"""
+
+import argparse
+import os
+import sys
+
+import ciao_contrib.logger_wrapper as lw
+from sherpa_contrib.xspec import xcm
+
+
+TOOLNAME = "convert_xspec_script"
+TOOLVER = "09 December 2020"
+
+lw.initialize_logger(TOOLNAME, verbose=1)
+V1 = lw.make_verbose_level(TOOLNAME, 1)
+
+HELP_STR = """
+Convert an XSPEC save file (normally ends in .xcm) to Sherpa.
+
+The converted script is written to the output file.
+
+The conversion is not guaranteed to match XSPEC perfectly.
+
+"""
+
+COPYRIGHT_STR = """
+Copyright (C) 2020
+          Smithsonian Astrophysical Observatory
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+"""
+
+def check_clobber(fname):
+    """Error out if we can't clobber the file."""
+
+    if not os.path.exists(fname):
+        return
+
+    raise OSError(f"The file {fname} exists and --clobber is not set.")
+
+
+@lw.handle_ciao_errors(TOOLNAME, TOOLVER)
+def convert(infile, outfile, clean=False, clobber=False):
+
+    if not clobber:
+        check_clobber(outfile)
+
+    try:
+        cts = open(infile, 'r')
+    except OSError as oe:
+        raise OSError(f"Unable to read from '{infile}'") from oe
+
+    out = xcm.convert(cts, clean=clean)
+    with open(outfile, 'w') as fh:
+        fh.write(out)
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description=HELP_STR,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument("infile", help="XCM file to convert")
+    parser.add_argument("outfile", help="Sherpa file to create")
+
+    parser.add_argument("--clean", dest="clean", action="store_true",
+                        default=False,
+                        help="Should the script start with a call to clean?")
+
+    parser.add_argument("--clobber", dest="clobber", action="store_true",
+                        default=False,
+                        help="Set to overwrite output files, otherwise script exits")
+
+    # Ideally you could use these without giving any of the required options,
+    # but I do not want to support that just now.
+    #
+    parser.add_argument("--version", "-v", dest="list_version",
+                        action="store_true",
+                        help="List the version of the script and exit.")
+    parser.add_argument("--copyright", dest="list_copyright",
+                        action="store_true",
+                        help="List the copyright for the script and exit.")
+
+    # support some development options
+    arglist = lw.preprocess_arglist(sys.argv[1:])
+    args = parser.parse_args(arglist)
+
+    # lw.set_verbosity(args.verbose)
+
+    if args.list_version:
+        V1(TOOLVER)
+        sys.exit(0)
+
+    if args.list_copyright:
+        V1(COPYRIGHT_STR)
+        sys.exit(0)
+
+    convert(args.infile, args.outfile,
+            clean=args.clean,
+            clobber=args.clobber)
