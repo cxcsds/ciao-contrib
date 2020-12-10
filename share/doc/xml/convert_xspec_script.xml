@@ -1,0 +1,311 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+ <!ENTITY tool "convert_xspec_script">
+
+ <!ENTITY upr "unix&#37;">
+ <!ENTITY spr "sherpa>">
+ <!ENTITY xspec "XSPEC">
+
+]>
+<cxchelptopics>
+  <ENTRY key="convert_xspec_script" context="tools"
+	 refkeywords="xspec x-spec xcm script save
+		      "
+         seealsogroups=""
+	 >
+
+    <SYNOPSIS>
+      Convert a &xspec; save file to Sherpa commands *experimental*
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>&tool; infile outfile</LINE>
+      <LINE/>
+      <LINE>Unlike most CIAO contributed scripts, there is no parameter file.</LINE>
+      <LINE/>
+      <LINE>The supported command-line flags can be found using -h/--help:</LINE>
+      <LINE/>
+      <LINE>--clean     if the script should start with a call to clean</LINE>
+      <LINE>--clobber   will overwrite existing files</LINE>
+      <LINE>--version   prints the script version</LINE>
+      <LINE>--copyright prints the script copyright</LINE>
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The &tool; tool will attempt to convert a XSPEC save file
+	(often ending in .xcm) into Sherpa commands. The resulting
+	file can then be run from sherpa or modified for further
+	analysis.
+      </PARA>
+
+      <PARA>
+	This script is *experimental* and will not work for all XSPEC
+	commands or datasets. The results should be considered as
+	the start of a Sherpa analysis, as further work may be needed.
+	Please contact the
+	<HREF link="https://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	if you find there are scripts which this tool will not convert.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; &tool; savespec.xcm example.py</LINE>
+	  <LINE>model  phabs*powerlaw</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The script displays each model line it processes. With an
+	    input file (savexspec.xcm) containing:
+	  </PARA>
+<VERBATIM>
+method leven 10 0.01
+abund angr
+xsect vern
+cosmo 70 0 0.73
+xset delta 0.01
+systematic 0
+model  phabs*powerlaw
+      0.0115491      0.001          0          0     100000      1e+06
+        1.98713       0.01         -3         -2          9         10
+    0.000185474       0.01          0          0      1e+20      1e+24
+bayes off
+</VERBATIM>
+	  <PARA>
+	    then the script will produce:
+	  </PARA>
+<VERBATIM>
+from sherpa.astro.ui import *
+
+set_method('levmar')
+set_xsabund('angr')
+set_xsxsect('vern')
+set_xscosmo(70, 0, 0.73)
+
+# model  phabs*powerlaw
+m1 = create_model_component('xsphabs', 'm1')
+m2 = create_model_component('xspowerlaw', 'm2')
+set_par(m1.nH, 0.0115491)
+set_par(m2.PhoIndex, 1.98713)
+set_par(m2.norm, 0.000185474, max=1e+20)
+
+# Set up the model expressions
+#
+set_source(1, m1 * m2)
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; &tool; bestfit.xcm bestfit.py</LINE>
+	  <LINE>model  phabs*apec</LINE>
+	  <LINE>&upr; sherpa</LINE>
+	  <LINE>...</LINE>
+	  <LINE>sherpa In [1]: %run bestfit</LINE>
+	  <LINE>sherpa In [2]: plot_fit(1, ylog=True, alpha=0.5)</LINE>
+	  <LINE>sherpa In [2]: plot_fit(2, overplot=True, alpha=0.5)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The example above shows how the converted script can be used
+	    in Sherpa. In this particular case the XSPEC save file was:
+	  </PARA>
+<VERBATIM>
+&upr; cat bestfit.xcm
+statistic chi
+data 1:1 obs1.pi
+
+data 1:2 obs2.pi
+ignore 1:1-3,76-301 2:1-2,110-376
+
+method leven 10 0.01
+abund angr
+xsect vern
+cosmo 70 0 0.73
+xset delta 0.01
+systematic 0
+model  phabs*apec
+       0.252632      0.001          0          0     100000      1e+06
+        0.85796       0.01      0.008      0.008         64         64
+       0.359129      0.001          0          0          5          5
+         0.0175      -0.01     -0.999     -0.999         10         10
+    0.000618978       0.01          0          0      1e+20      1e+24
+bayes off
+</VERBATIM>
+	  <PARA>
+	    and the converted file is
+	  </PARA>
+<VERBATIM>
+&upr; cat bestfit.py
+from sherpa.astro.ui import *
+from sherpa_contrib.xspec import xcm
+
+set_stat('chi2datavar')
+load_pha(1, 'obs1.pi', use_errors=True)
+load_pha(2, 'obs2.pi', use_errors=True)
+xcm.ignore(1, 1, 3)
+xcm.ignore(1, 76, 301)
+xcm.ignore(2, 1, 2)
+xcm.ignore(2, 110, 376)
+
+set_method('levmar')
+set_xsabund('angr')
+set_xsxsect('vern')
+set_xscosmo(70, 0, 0.73)
+
+xcm.subtract(1)
+xcm.subtract(2)
+
+# model  phabs*apec
+m1 = create_model_component('xsphabs', 'm1')
+m2 = create_model_component('xsapec', 'm2')
+set_par(m1.nH, 0.252632)
+set_par(m2.kT, 0.85796)
+set_par(m2.Abundanc, 0.359129)
+set_par(m2.redshift, 0.0175, frozen=True)
+set_par(m2.norm, 0.000618978, max=1e+20)
+
+# Set up the model expressions
+#
+set_source(1, m1 * m2)
+set_source(2, m1 * m2)
+</VERBATIM>
+	  <PARA>
+	    Note that the conversion uses several routines from sherpa_contrib.xspec.xcm,
+	    which provide some Sherpa-like functions which simplify the conversion of
+	    the XSPEC script.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<DESC>
+	  <PARA>
+	    CIAO 4.13 adds support for XSPEC convolution models, so
+	    the model expression
+	  </PARA>
+<VERBATIM>
+model phabs*cflux*powerlaw
+</VERBATIM>
+	  <PARA>
+	    will be converted to
+	  </PARA>
+<VERBATIM>
+# model  phabs*cflux*powerlaw
+m1 = create_model_component('xsphabs', 'm1')
+m2 = create_model_component('xscflux', 'm2')
+m3 = create_model_component('xspowerlaw', 'm3')
+
+# Set up the model expressions
+#
+set_source(1, m1 * m2(m3))
+</VERBATIM>
+
+	  <PARA>
+	    and
+	  </PARA>
+
+<VERBATIM>
+model cflux*phabs*powerlaw
+</VERBATIM>
+
+	  <PARA>
+	    will create
+	  </PARA>
+
+<VERBATIM>
+# model  cflux*phabs*powerlaw
+m1 = create_model_component('xscflux', 'm1')
+m2 = create_model_component('xsphabs', 'm2')
+m3 = create_model_component('xspowerlaw', 'm3')
+
+# Set up the model expressions
+#
+set_source(1, m1(m2 * m3))
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+    <ADESC title="Known Problems">
+      <PARA>
+	This script is intended to simplify analysis in Sherpa,
+	but is not guaranteed to produce the same results. In part
+	this is due to missing functionality, but other differences
+	include
+      </PARA>
+      <LIST>
+	<ITEM>differences in how Sherpa and XSPEC work,</ITEM>
+	<ITEM>possible differences in your ~/.xspec/Xspec.init file
+	(as of CIAO 4.12 Sherpa now uses this file),</ITEM>
+	<ITEM>and differences between the XSPEC version and that of
+	CIAO (12.10.1s for CIAO 4.13).</ITEM>
+      </LIST>
+      <PARA>
+	The script is also designed to parse the output of the
+	SAVE command from XSPEC. It can handle hand-edited files but
+	it is more likely to fail or work incorrectly.
+      </PARA>
+      <PARA title="Tied parameters">
+	Comlplicated tie expressions, in particular those involving
+	functions, are not guaranteed to be converted correctly.
+      </PARA>
+      <PARA title="Unsupported models">
+	Only additive, multiplicative, and convolution models are
+	recognized. Models added in XSPEC 12.11.0 will produce
+	an output but the resulting code can will fail when a
+	model is evaluated (as CIAO 4.13 uses XSPEC 12.10.1).
+      </PARA>
+      <PARA title="Unsupported commands">
+	Some commands are ignored by the script, but others will
+	cause the message
+	<EQUATION>SKIPPING '...'</EQUATION>
+	to be displayed while converting the file.
+      </PARA>
+      <PARA title="Multiple files">
+	There is currently no support for files containing multiple
+	data sets (e.g. PHA-II format files). In particular the {}
+	syntax is not support for commands like DATA and RESPONSE.
+      </PARA>
+      <PARA title="Further help">
+	Please contact the
+	<HREF link="https://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	if you have a problem with the script.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.13.0 (December 2020) release">
+      <PARA>
+	The script is new in this release.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Notes">
+      <PARA>
+	This script is not an official part of the CIAO release but is
+	made available as "contributed" software via the
+	<HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+	Please see the
+	<HREF link="https://cxc.harvard.edu/ciao/download/scripts/instructions.html">installation
+	instructions page</HREF> for help on installing the package.
+      </PARA>
+    </ADESC>
+
+<!--
+    <BUGS>
+      <PARA>
+	See the
+	<HREF link="https://cxc.harvard.edu/ciao/bugs/convert_xspec_script.html">bugs page
+	for this script</HREF> on the CIAO website for an up-to-date
+	listing of known bugs.
+      </PARA>
+    </BUGS>
+-->
+
+    <LASTMODIFIED>December 2020</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
