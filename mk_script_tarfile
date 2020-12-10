@@ -65,20 +65,20 @@ def get_ciao_version():
 
 def build_dist( rel_num, ver, prefix ):
     """Build contrib scripts package into a separate temp dir"""
-    
+
     install_dir = "{}/ciao-{}/contrib".format(prefix,rel_num)
-    
-    build_cmd = ["python", "setup.py", 
+
+    build_cmd = ["python", "setup.py",
         "--version={}.{}".format(rel_num,ver),
         "build", "--executable", "/usr/bin/env python",
         "install", "--prefix", install_dir]
     sbp.check_call( build_cmd)
-    
+
 
 
 def make_tarfile(ver, cwd):
     """Create versioned tar file"""
-    
+
     cver = get_ciao_version()
 
     if ver == "dev":
@@ -126,7 +126,7 @@ def make_tarfile(ver, cwd):
     # sbp.check_call(["tar", "chf", tarfile, "./" + cver["root"]])
     #
     args = ["tar"]
-    for ename in [".gitignore", "tests"]:
+    for ename in [".gitignore", "tests", "__pycache__"]:
         args.append("--exclude={}".format(ename))
 
     args.extend(["-cf", tarfile, "./" + cver["root"]])
@@ -148,7 +148,7 @@ if __name__ == "__main__":
 
     rel_num = sys.argv[1]
     try:
-        release_number = float(rel_num)    
+        release_number = float(rel_num)
     except ValueError:
         sys.stderr.write("ERROR: CIAO release must be a real number not %s\n" % rel_num)
         sys.exit(1)
