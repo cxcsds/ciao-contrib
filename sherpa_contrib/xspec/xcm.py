@@ -736,8 +736,6 @@ def convert_model(expr, postfix, groups, names):
 
     """
 
-    assert len(groups) > 0
-
     # Create our own session object to make it easy to
     # find out XSPEC models and the correct naming scheme.
     #
@@ -756,14 +754,18 @@ def convert_model(expr, postfix, groups, names):
         groups = [None]
         def mkname(ctr, grp):
             n = f"m{ctr}{postfix}"
-            assert n not in names
+            if n in names:
+                raise RuntimeError("Unable to handle model names with this input script")
+
             names.add(n)
             return n
 
     else:
         def mkname(ctr, grp):
             n = f"m{ctr}{postfix}g{grp}"
-            assert n not in names
+            if n in names:
+                raise RuntimeError("Unable to handle model names with this input script")
+
             names.add(n)
             return n
 
@@ -1290,9 +1292,11 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
                 postfix = f"s{sourcenum}"
                 groups = sorted(state['sourcenum'][sourcenum])
 
+            if len(groups) == 0:
+                raise RuntimeError("The script is currently unable to handle the input file")
+
             exprs = convert_model(rest, postfix, groups, state['names'])
 
-            assert len(groups) > 0
             assert sourcenum not in state['exprs'], sourcenum
             state['exprs'][sourcenum] = exprs
 
