@@ -1325,15 +1325,26 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
 
             # Process all the parameter values for each data group.
             #
+            escape = False  # NEED TO REFACTOR THIS CODE!
             for expr in exprs:
+                if escape:
+                    break
+
                 for mdl in [t[1] for t in expr if t[1] is not None]:
+                    if escape:
+                        break
 
                     for par in mdl.pars:
                         if par.hidden:
                             continue
 
                         # Grab the parameter line
-                        pline = intext.pop(0).strip()
+                        try:
+                            pline = intext.pop(0).strip()
+                        except IndexError:
+                            print(f"Unable to find parameter value for {par.name} - skipping other parameters")
+                            escape = True
+                            break
 
                         if pline.startswith('='):
                             parse_tie(state['allpars'], add_import, add, par, pline)
