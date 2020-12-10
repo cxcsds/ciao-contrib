@@ -1390,14 +1390,22 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
         if list(exprs.keys()) != [None]:
             raise RuntimeError("Unexpected state when processing the model expressions in the XCM file!")
 
-        if len(exprs[None]) != 1:
-            raise RuntimeError("Unexpected state when processing the model expressions in the XCM file!")
+        # Do we use the same model or separate models?
+        #
+        if len(exprs[None]) == 1:
+            cpts = [conv(t) for t in exprs[None][0]]
+            sexpr = "".join(cpts)
+            for did in state['datasets']:
+                add('set_source', did, sexpr)
 
-        assert len(exprs[None]) == 1
-        cpts = [conv(t) for t in exprs[None][0]]
-        sexpr = "".join(cpts)
-        for did in state['datasets']:
-            add('set_source', did, sexpr)
+        else:
+            if len(state['datasets']) != len(exprs[None]):
+                raise RuntimeError("Unexpected state when handling source models!")
+
+            for did, expr in zip(state['datasets'], exprs[None]):
+                cpts = [conv(t) for t in expr]
+                sexpr = "".join(cpts)
+                add('set_source', did, sexpr)
 
     else:
         # What "specnums" do we have to deal with?
