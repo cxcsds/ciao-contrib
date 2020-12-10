@@ -501,12 +501,25 @@ def convert_model(expr, postfix, groups, names):
 
             out[i - 1].append((mdl.name.split('.'), mdl))
 
-            if isinstance(mdl, xspec.XSConvolutionKernel):
-                if storage['convolution'] is not None:
-                    print("Convolution found within a convolution expession. This is not handled correctly.")
+            # This only needs to be checked for the first group.
+            #
+            if i == 1:
+                if isinstance(mdl, xspec.XSConvolutionKernel):
+                    if storage['convolution'] is not None:
+                        print("Convolution found within a convolution expession. This is not handled correctly.")
+                    else:
+                        storage['convolution'] = storage['depth']
+                        storage['lastterm'] = 'convolution'
+                        out[i - 1].append(("(", None))
+
+                elif isinstance(mdl, xspec.XSMultiplicativeModel):
+                    storage['lastterm'] = 'multiplicative'
+
+                elif isinstance(mdl, xspec.XSAdditiveModel):
+                    storage['lastterm'] = 'additive'
+
                 else:
-                    storage['convolution'] = storage['depth']
-                    out[i - 1].append(("(", None))
+                    raise RuntimeError(f"Unrecognized XSPEC model: {mdl.__class__}")
 
         return ctr + 1
 
@@ -536,7 +549,7 @@ def convert_model(expr, postfix, groups, names):
     start = 0
     end = 0
     mnum = 1
-    storage = {'convolution': None, 'depth': 0}
+    storage = {'convolution': None, 'depth': 0, 'lastterm': None}
     for end, char in enumerate(expr):
 
         # Not completely sure of the supported language.
@@ -550,8 +563,12 @@ def convert_model(expr, postfix, groups, names):
             else:
                 mnum = add_term(start, end, mnum, storage)
                 # We want to leave ( alone for convolution models.
-                if expr[end - 1] in "+*-/" or in_convolution(storage):
+                # This is a bit messy.
+                #
+                if expr[end - 1] in "+*-/":
                     add_sep(" (")
+                elif storage['lastterm'] == 'convolution':
+                    add_sep("(")
                 else:
                     add_sep(" * (")
 
@@ -594,14 +611,15 @@ def convert_model(expr, postfix, groups, names):
 
         start = end + 1
 
-    check_end_convolution(storage)
-
-    # Last name, which is not always present. Note that for there to
-    # be a term here it can not be part of a convolution model
-    # (unless we have leading/trailing brackets?).
+    # Last name, which is not always present.
     #
     if start < end:
         add_term(start, None, mnum, storage)
+
+    # I'm not sure whether this should only be done if start < end.
+    # I am concerned we may have a case where this is needed.
+    #
+    check_end_convolution(storage)
 
     if storage['convolution'] is not None:
         print("WARNING: convolution model may not be handled correctly.")
