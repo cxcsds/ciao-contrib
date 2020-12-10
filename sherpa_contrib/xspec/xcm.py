@@ -31,12 +31,15 @@ import logging
 
 from collections import defaultdict
 
+import numpy as np
+
 from sherpa.astro import ui
 from sherpa.astro.ui.utils import Session
 from sherpa.astro import xspec
 from sherpa.utils.err import ArgumentErr, DataErr
 
 import sherpa.astro.instrument
+import sherpa.models.parameter
 
 
 __all__ = ("convert", )
@@ -175,6 +178,180 @@ def subtract(spectrum):
         print(f"Dataset {spectrum} has no background data!")
 
 
+def _mklabel(func):
+    """Create a 'nice' symbol for the function.
+
+    Is this worth it over just using __name__?
+
+    Parameters
+    ----------
+    func : function reference
+
+    Returns
+    -------
+    label : str
+        A representation of the function.
+    """
+
+    if isinstance(func, np.ufunc):
+        return 'np.'
+
+    try:
+        lbl = f'{func.__module__}.'
+    except AttributeError:
+        return ''
+
+    if lbl == 'builtins.':
+        return ''
+
+    return lbl
+
+
+class FunctionParameter(sherpa.models.parameter.CompositeParameter):
+    """Store a function of a single argument.
+
+    We need to only evalate the function when required.
+    """
+
+    @staticmethod
+    def wrapobj(obj):
+        if isinstance(obj, sherpa.models.parameter.Parameter):
+            return obj
+        return sherpa.models.parameter.ConstantParameter(obj)
+
+    def __init__(self, arg, func):
+
+        if not callable(func):
+            raise ValueError("func argument is not callable!")
+
+        self.arg = self.wrapobj(arg)
+        self.func = func
+
+        # Would like to be able to add the correct import symbol here
+        lbl = _mklabel(func)
+        lbl += f'{func.__name__}({self.arg.fullname})'
+        sherpa.models.parameter.CompositeParameter.__init__(self, lbl,
+                                                            (self.arg,))
+
+    def eval(self):
+        return self.func(self.arg.val)
+
+
+class Function2Parameter(sherpa.models.parameter.CompositeParameter):
+    """Store a function of two arguments.
+
+    We need to only evalate the function when required.
+    """
+
+    @staticmethod
+    def wrapobj(obj):
+        if isinstance(obj, sherpa.models.parameter.Parameter):
+            return obj
+        return sherpa.models.parameter.ConstantParameter(obj)
+
+    def __init__(self, arg1, arg2, func):
+
+        if not callable(func):
+            raise ValueError("func argument is not callable!")
+
+        self.arg1 = self.wrapobj(arg1)
+        self.arg2 = self.wrapobj(arg2)
+        self.func = func
+
+        # Would like to be able to add the correct import symbol here
+        lbl = _mklabel(func)
+        lbl += f'{func.__name__}({self.arg1.fullname}, {self.arg2.fullname})'
+        sherpa.models.parameter.CompositeParameter.__init__(self, lbl,
+                                                            (self.arg1, self.arg2))
+
+    def eval(self):
+        return self.func(self.arg1.valm, self.arg2.val)
+
+
+def exp(x):
+    """exp(x)"""
+    return FunctionParameter(x, np.exp)
+
+
+def sin(x):
+    """sin where x is in radians."""
+    return FunctionParameter(x, np.sin)
+
+
+def cos(x):
+    """cos where x is in radians."""
+    return FunctionParameter(x, np.cos)
+
+
+def tan(x):
+    """tan where x is in radians."""
+    return FunctionParameter(x, np.tan)
+
+
+def sqrt(x):
+    """sqrt(x)"""
+    return FunctionParameter(x, np.sqrt)
+
+
+def abs(x):
+    """abs(x)"""
+    return FunctionParameter(x, np.abs)
+
+
+def sind(x):
+    """sin where x is in degrees."""
+    # could use np.deg2rad but would need to wrap that
+    return FunctionParameter(x * np.pi / 180, np.sin)
+
+
+def cosd(x):
+    """cos where x is in degrees."""
+    # could use np.deg2rad but would need to wrap that
+    return FunctionParameter(x * np.pi / 180, np.cos)
+
+
+def tand(x):
+    """tan where x is in degrees."""
+    # could use np.deg2rad but would need to wrap that
+    return FunctionParameter(x * np.pi / 180, np.tan)
+
+
+def asin(x):
+    """arcsin where x is in radians."""
+    return FunctionParameter(x, np.arcsin)
+
+
+def acos(x):
+    """arccos where x is in radians."""
+    return FunctionParameter(x, np.arccos)
+
+
+def ln(x):
+    """natural logarithm"""
+    return FunctionParameter(x, np.log)
+
+
+def log(x):
+    """logarithm base 10"""
+    return FunctionParameter(x, np.log10)
+
+
+# It's not entirely clear that int maps to floor
+def xint(x):
+    """floor(x)"""
+    return FunctionParameter(x, np.floor)
+
+
+def xmin(x, y):
+    """Return the minimum value"""
+    return Function2Parameter(x, y, min)
+
+
+def xmax(x, y):
+    """Return the maximum value"""
+    return Function2Parameter(x, y, max)
+
+
 # Routines used in converting a script.
 #
 def set_subtract(add_import, add_spacer, add, state):
@@ -196,27 +373,25 @@ def set_subtract(add_import, add_spacer, add, state):
     state['subtracted'] = True
 
 
-def parse_tie(pline):
+def parse_tie(pars, add_import, add, par, pline):
     """Parse a tie line.
 
-    Supported formats include:
-      - '= n' or '= pn'
-      - '= number*n' or '= number*pn' (ditto for +-/)
-      - '= label:n'
-      - '= number*label:n' (ditto for +-/)
+    The idea is to convert p<integer> or <integer> to the
+    correct parameter name. We should support multiple
+    substitutions and also <modelname><integer>.
 
     Parameters
     ----------
+    pars : dict
+        The parameters for each "label".
+    add_import : function reference
+        Add an import
+    add : function reference
+        Add a command to the record
+    par : Parameter instance
+        The parameter being linked
     pline : str
         The tie line.
-
-    Returns
-    -------
-    label, ctr, prefix : str, int, str
-         The label used to identify the parameter settings
-         ('unnamed' or the label value), the parameter
-         number (1 based), and any prefix (the 'number*'
-         segment).
 
     """
 
@@ -230,46 +405,153 @@ def parse_tie(pline):
     #
     line = line.translate({32: None})
 
-    # Perhaps it would be better to parse the term backwards,
-    # to extract just the [a:]b syntax
+    # Build up the link expression. The state token indicates
+    # whether we are processing a function like abs or sin.
     #
-    # What values can be included here?
-    #
-    mul = line.find('*')
-    div = line.find('/')
-    add = line.find('+')
-    sub = line.find('-')
-    idx = max(mul, div, add, sub)
-    if idx > -1:
-        prefix = line[:idx + 1]
-        line = line[idx + 1:]
-    else:
-        prefix = ''
+    expr = ''
+    state = 'normal'
+    token = ''
+    exponentiation = False
+    while line != '':
+        fchar = line[0]
 
-    if ':' in line:
-        toks = line.split(':')
+        # The * character can be an exponentiation
+        #
+        if fchar == '*' and len(line) > 1 and line[1] == '*':
+            if exponentiation:
+                raise ValueError(f"Unable to parse {pline}")
+
+            exponentiation = True
+            continue
+
+        # The +/- characters can be in a numeric expresion
+        #
+        if fchar in "+-" and token != '' and token[-1].lower() == 'e':
+            token += fchar
+            line = line[1:]
+            continue
+
+        # Have we ended the token?
+        #
+        if fchar in "()+*/-^":
+            if token != '':
+                token = expand_token(add_import, pars, par.fullname, token)
+                expr += token
+                token = ''
+
+            if exponentiation or fchar == '^':
+                expr += "**"
+                exponentiation = False
+            else:
+                expr += fchar
+
+            line = line[1:]
+            continue
+
+        if exponentiation:
+            raise ValueError(f"Unable to parse {pline}")
+
+        token += fchar
+        line = line[1:]
+
+    if exponentiation:
+        raise ValueError(f"Unable to parse {pline}")
+
+    if token != '':
+        token = expand_token(add_import, pars, par.fullname, token)
+        expr += token
+
+    add('link', f"{par.fullname}", expr)
+
+
+def expand_token(add_import, pars, pname, token):
+    """Is this a reference to a parameter?
+
+    Ideally we'd add a '.val' to the parameter value when we
+    know we are in a function.
+    """
+
+    def import_xcm():
+        add_import('from sherpa_contrib.xspec import xcm')
+
+    # Hard code the function names. This allows us to replace
+    # symbols if needed (such as the degree variants of the
+    # trigonometric functions).
+    #
+    # We assume that the token is used correctly (e.g. that
+    # "min" is followed by "(").
+    #
+    ltoken = token.lower()
+
+    if ltoken == 'mean':
+        print(f"Use of MEAN found in parameter tie for {pname}: please review")
+        return 'mean'
+
+    if ltoken in ["exp", "sin", "cos", "tan", "sqrt", "abs",
+                  "sind", "cosd", "tand", "asin", "acos",
+                  "ln", "log"]:
+        import_xcm()
+        return f'xcm.{ltoken}'
+
+    if ltoken in ["int", "min", "max"]:
+        import_xcm()
+        return f'xcm.x{ltoken}'
+
+    # We want to look for
+    #   a:b
+    #   p<int>
+    #   int
+    #
+    if ':' in token:
+        # I don't think this can be anything but a parameter reference
+        #
+        toks = token.split(':')
         if len(toks) != 2:
-            raise ValueError(f"Unsupported parameter tie: '{pline}'")
+            raise ValueError(f"Unsupported parameter tie: '{token}'")
 
-        tlabel = toks[0]
-        tie = toks[1]
-    else:
-        tlabel = 'unnamed'
-        tie = line
+        try:
+            plist = pars[toks[0]]
+        except KeyError:
+            raise ValueError(f"Unrecognized model name {toks[0]} in '{token}'") from None
 
-    # I don't know what the rule is with the parameter
-    # number, I assume that "23" and "p23" have the
-    # same meaning.
+        try:
+            tie = int(toks[1])
+        except ValueError:
+            raise ValueError(f"Not a parameter number in '{token}'") from None
+
+        try:
+            tpar = plist[tie - 1]
+        except IndexError:
+            raise ValueError(f"Invalid parameter number in '{token}'") from None
+
+        return tpar.fullname
+
+    # See if we can convert the token to an integer (beginnnig with
+    # p or not). If we can't we just return the token.
     #
-    if tie.startswith('p'):
-        tie = tie[1:]
+    if token.startswith('p'):
+        tie = token[1:]
+    else:
+        tie = token
 
     try:
         tie = int(tie)
     except ValueError:
-        raise ValueError(f"Unsupported parameter tie: '{pline}'") from None
+        return token
 
-    return tlabel, tie, prefix
+    # At this point we are sure we have a parameter reference.
+    #
+    try:
+        plist = pars['unnamed']
+    except KeyError:
+        raise RuntimeError("Internal error accessing parameter names") from None
+
+    try:
+        tpar = plist[tie - 1]
+    except IndexError:
+        raise ValueError(f"Invalid parameter number in '{token}'") from None
+
+    return tpar.fullname
 
 
 def parse_dataid(token):
@@ -1050,13 +1332,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
                         pline = intext.pop(0).strip()
 
                         if pline.startswith('='):
-                            tlabel, tienum, tprefix = parse_tie(pline)
-                            try:
-                                tpar = state['allpars'][tlabel][tienum - 1]
-                            except IndexError:
-                                raise ValueError(f"Invalid tie in '{pline}'") from None
-
-                            add('link', f"{par.fullname}", f"{tprefix}{tpar.fullname}")
+                            parse_tie(state['allpars'], add_import, add, par, pline)
                             continue
 
                         toks = pline.split()
