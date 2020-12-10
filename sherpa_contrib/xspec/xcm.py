@@ -25,9 +25,6 @@ session into Sherpa, but without a guarantee of 100% fidelity.
 The idea is that further work may be needed to allow full
 analysis in Sherpa.
 
-TODO:
-  - handling of convolution-style models
-
 """
 
 import logging
@@ -486,7 +483,9 @@ def convert_model(expr, postfix, groups, names):
 
     out = [[] for _ in groups]
 
-    def add_term(start, end, ctr):
+    def add_term(start, end, ctr, storage):
+        """storage tracks the convolution state."""
+
         # It's not ideal we need this
         if start == end:
             return ctr
@@ -502,16 +501,42 @@ def convert_model(expr, postfix, groups, names):
 
             out[i - 1].append((mdl.name.split('.'), mdl))
 
+            if isinstance(mdl, xspec.XSConvolutionKernel):
+                if storage['convolution'] is not None:
+                    print("Convolution found within a convolution expession. This is not handled correctly.")
+                else:
+                    storage['convolution'] = storage['depth']
+                    out[i - 1].append(("(", None))
+
         return ctr + 1
 
     def add_sep(sep):
         for i, grp in enumerate(groups, 1):
             out[i - 1].append((sep, None))
 
+    def check_end_convolution(storage):
+        if storage['convolution'] is None:
+            return
+
+        if storage['convolution'] > storage['depth']:
+            return
+
+        if storage['convolution'] == storage['depth']:
+            add_sep(")")
+        elif storage['convolution'] > storage['depth']:
+            print("WARNING: convolution model may not be handled correctly.")
+
+        storage['convolution'] = None
+
+    def in_convolution(storage):
+        return storage['convolution'] is not None \
+            and storage['convolution'] == storage['depth']
+
     maxchar = len(expr) - 1
     start = 0
     end = 0
     mnum = 1
+    storage = {'convolution': None, 'depth': 0}
     for end, char in enumerate(expr):
 
         # Not completely sure of the supported language.
@@ -523,17 +548,23 @@ def convert_model(expr, postfix, groups, names):
             if end == 0:
                 add_sep('(')
             else:
-                mnum = add_term(start, end, mnum)
-                if expr[end - 1] in "+*-/":
+                mnum = add_term(start, end, mnum, storage)
+                # We want to leave ( alone for convolution models.
+                if expr[end - 1] in "+*-/" or in_convolution(storage):
                     add_sep(" (")
                 else:
                     add_sep(" * (")
 
             start = end + 1
+            storage['depth'] += 1
             continue
 
         if char == ")":
-            mnum = add_term(start, end, mnum)
+            mnum = add_term(start, end, mnum, storage)
+
+            # Check to see whether we can close out the convolution.
+            #
+            check_end_convolution(storage)
 
             if end == maxchar:
                 add_sep(")")
@@ -543,21 +574,40 @@ def convert_model(expr, postfix, groups, names):
                 add_sep(") * ")
 
             start = end + 1
+            storage['depth'] -= 1
             continue
 
-        mnum = add_term(start, end, mnum)
+        mnum = add_term(start, end, mnum, storage)
 
-        # Add space characters to separate out the expression,
-        # even if start==end.
+        # conv*a1+a2 is conv(s1) + a2
+        if char == '+':
+            check_end_convolution(storage)
+
+        # If we had conv*mdl then we want to drop the *
+        # but conv*m1*a1 is conv(m1*a1)
         #
-        add_sep(f" {char} ")
+        if not(char == '*' and in_convolution(storage) and out[0][-1][1] is None and out[0][-1][0] == "("):
+            # Add space characters to separate out the expression,
+            # even if start==end.
+            #
+            add_sep(f" {char} ")
 
         start = end + 1
 
-    # Last name, which is not always present
+    check_end_convolution(storage)
+
+    # Last name, which is not always present. Note that for there to
+    # be a term here it can not be part of a convolution model
+    # (unless we have leading/trailing brackets?).
     #
     if start < end:
-        add_term(start, None, mnum)
+        add_term(start, None, mnum, storage)
+
+    if storage['convolution'] is not None:
+        print("WARNING: convolution model may not be handled correctly.")
+
+    if storage['depth'] != 0:
+        print("WARNING: unexpected issues handling brackets in the model")
 
     return out
 
