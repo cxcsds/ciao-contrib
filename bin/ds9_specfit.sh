@@ -270,8 +270,8 @@ if "${addmodel}" == "none":
 else:
     sherpa.set_source("(${model}.mdl1 + ${addmodel}.mdl2) * ${absmodel}.abs1")
 
-
-abs1.nH = $nH
+if hasattr(abs1,"nH"):
+    abs1.nH = $nH
 
 sherpa.set_method("${method}")
 sherpa.set_stat("${stat}")
@@ -298,8 +298,8 @@ except:
   pass
 
 print( "\n"+str(sherpa.get_source()))
-print( "\nPhoton Flux = %s photon/cm^2/s\n" % sherpa.calc_photon_flux())
-print( "Energy Flux = %s ergs/cm^2/s\n" % sherpa.calc_energy_flux())
+print( "\nPhoton Flux = %s photon/cm^2/s\n" % sherpa.calc_photon_flux(${elo},${ehi}))
+print( "Energy Flux = %s ergs/cm^2/s\n" % sherpa.calc_energy_flux(${elo},${ehi}))
 
 sherpa.save("$sav", clobber=True)
 
