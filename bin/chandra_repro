@@ -266,12 +266,16 @@ def update_aspsol_to_aspsolobi(asol_list,mydir, params):
     asp_offaxis_corr = make_tool("asp_offaxis_corr")
     asp_offaxis_corr(outfile, "acis")  # instrume doesn't matter
     
-    dmhedit.infile = outfile
-    dmhedit.file = ""
-    dmhedit.operation = "add"
-    dmhedit.key = "CONTENT"
-    dmhedit.value = "ASPSOLOBI"
-    dmhedit()
+    # Update asol header with updated content and NOM values
+    from pycrates import read_file, set_key, get_keyval
+    tab = read_file(outfile, mode="rw")
+    set_key(tab, "CONTENT", "ASPSOLOBI")
+    for key in ['RA', 'Dec', 'Roll']:
+        val = get_keyval(tab, "{}_PNT".format(key))
+        set_key(tab, "{}_NOM".format(key), val, unit="deg", 
+                desc="Nominal "+key)
+    
+    tab.write()
     
     # We need to pass in an obs.par file to get the new tangent
     # point and pointing (otherwise it is taken from the evt1_file.
