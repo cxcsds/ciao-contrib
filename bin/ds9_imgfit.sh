@@ -22,9 +22,8 @@
 ds9=$1
 model=$2
 modelbkg=$3
-getconf=$4
-method=$5
-stat=$6
+method=$4
+stat=$5
 
 echo "# -------------------"
 echo ""
@@ -60,12 +59,12 @@ then
 fi
 
 
-if test x$getconf = x1
-then
-  conf="sherpa.conf()"
-else
-  conf=""
-fi
+#~ if test x$getconf = x1
+#~ then
+  #~ conf="sherpa.conf()"
+#~ else
+  #~ conf=""
+#~ fi
 
 DAX_OUTDIR=$DAX_OUTDIR/imgfit/$$/
 mkdir -p $DAX_OUTDIR
@@ -121,13 +120,13 @@ if hasattr(mdl1,"xpos") and hasattr(mdl1,"ypos"):
 
 from dax.dax_model_editor import *
 mod_edit = DaxModelEditor([mdl1,bkg1], hide_plot_button=True)
-mod_edit.run(mod_edit.quit)
+mod_edit.run(sherpa.fit, sherpa.conf)
 
 
-try:
-  sherpa.fit()
-except:
-  pass
+#~ try:
+  #~ sherpa.fit()
+#~ except:
+  #~ pass
 
 
 sherpa.notice()
