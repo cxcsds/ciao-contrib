@@ -290,7 +290,7 @@ else:
 
 from dax.dax_model_editor import *
 
-DaxModelEditor(mdls, "${ds9}").run(sherpa.fit)
+DaxModelEditor(mdls, "${ds9}").run(sherpa.fit,sherpa.conf)
 
 try:
   sherpa.conf()
