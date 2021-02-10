@@ -219,10 +219,38 @@ def make_tg_rmf( obsinfo, pha, spectrum, outroot, wvgrid_arf, wvgrid_chan):
     det = determine_src_chip( spectrum.xx, spectrum.yy, obsinfo )
     part = map_part_to_name( spectrum.part )
     if det == "HRC-I":
-        verb0("WARNING: There are no grating RMF calibration products for HRC-I.  Will create a diagonal RMF")
-        mkgrmf.diagonalrmf = True
-        if part.lower() != "leg":
+        if part.lower() in ["meg", "heg"]:
             det="ACIS-7"  # ACIS-7 for HETG
+            verb0("WARNING: There are no grating RMF calibration products for HRC-I.  Will create a diagonal RMF")
+            mkgrmf.diagonalrmf = True
+
+        else:    # leg
+            # Need to check if lsfparm file is available in CALDB 
+            from caldb4 import Caldb
+            cc = Caldb("chandra", "hrc", "lsfparm")
+            cc.detnam = det
+            cc.grating = obsinfo.keywords["GRATING"]
+            cc.grattype = part
+            cc.order = spectrum.order
+            n_files = len(cc.search)
+            
+            if 0 == n_files:
+                # CALDB not upgraded
+                mkgrmf.diagonalrmf = True
+                verb0("WARNING: Please consider upgrading CALDB versions. There are no grating RMF calibration products for HRC-I.  Will create a diagonal RMF")
+            else:
+                msg="""WARNING: There are no grating RMF calibration 
+                products for HRC-I. An RMF will be created using 
+                LETG+HRC-S calibration products. This should be 
+                accurate for wavelengths < 60 A. For longer LETG+HRC-I 
+                wavelengths, the observed line widths can be increasingly 
+                broad compared with the RMF generated here owing to the 
+                flat HRC-I detector not following the geometry of the 
+                LETG Rowland torus."""
+                
+                msg = " ".join([x.strip() for x in msg.split("\n")])
+                verb0(msg)
+
 
     mkgrmf.outfile     = get_outfile_name( outroot, spectrum, "rmf" )
     mkgrmf.obsfile     = obsinfo.evt
