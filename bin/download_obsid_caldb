@@ -1,11 +1,11 @@
 #! /usr/bin/env python
 
 #
-# Copyright (C) 2013-2018, 2019 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2021 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -28,7 +28,7 @@ import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "download_obsid_caldb"
-__revision__ = "06 February 2020"
+__revision__ = "18 February 2021"
 
 lw.initialize_logger(toolname)
 
@@ -429,6 +429,11 @@ def get_tools(infile):
 
     """
 
+    from pycrates import read_file
+    in_crate = read_file(infile,mode='r')
+    grating = in_crate.get_key_value("GRATING")
+    
+
     acis_process_events = { 'grade' : None,        # 'gradefile'
                             'grdimg' : None,       # 'grade_image_file'
                             'det_gain' : None,     # 'gainfile'
@@ -478,11 +483,23 @@ def get_tools(infile):
     misc = {
         'GTI_LIM' : None,  # dmgti (mtl_build_gti)
         'MATRIX' : None,    # HRC RMF files
+        }
+
+    misc_tg = {
         'lsfparm' : { 'grattype' : 'HEG' },
         'TGPIMASK2' : None
         }
 
-    return [pixlib, ardlib, acis_process_events, mkwarf, mkarf, mkpsfmap, mkacisrmf, tg_create_mask, tg_resolve_events, tgextract, tgextract2, hrc_process_events, misc]
+
+    retval = [pixlib, ardlib, acis_process_events, mkwarf, mkarf, 
+              mkpsfmap, mkacisrmf, hrc_process_events, misc]
+
+    if grating.lower() in ['hetg', 'letg']:
+        tgtools = [tg_create_mask, tg_resolve_events, tgextract,
+                   tgextract2, misc_tg]
+        retval.extend(tgtools)
+
+    return retval
 
 
 def create_config_files(baseurl, rootdir, outdir):
