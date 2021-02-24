@@ -1,6 +1,6 @@
 #
-# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2018, 2019
-#           Smithsonian Astrophysical Observatory
+# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2018, 2019, 2021
+# Smithsonian Astrophysical Observatory
 #
 #
 #
@@ -50,8 +50,9 @@ section is going to get run first. For now I think it is worth it.
 import os
 import tempfile
 import shutil
-import numpy as np
 import subprocess as sbp
+
+import numpy as np
 
 import paramio
 import pycrates as pcr
@@ -1206,18 +1207,24 @@ def instrument_map_acis(obs, outpath, chips, energies, units):
     badpix = obs.get_ancillary('bpix')
 
     for j in chips:
-        detsubsys = "ACIS-{}".format(j)
+        detsubsys = f"ACIS-{j}"
         if units == "time":
             detsubsys += ";IDEAL"
+
+        # Add the frame-store bit (needed since, as of CIAO 4.12, it
+        # isn't excluded automatically even though the data has been
+        # filtered at the L2 level).
+        #
+        detsubsys += ";BPMASK=0x03ffff"
 
         obsfile = obs.get_evtfile_no_dmfilter()
 
         if badpix == "CALDB":
             ardlib = None
         elif badpix == "NONE":
-            ardlib = "AXAF_ACIS{0}_BADPIX_FILE=NONE".format(j)
+            ardlib = f"AXAF_ACIS{j}_BADPIX_FILE=NONE"
         else:
-            ardlib = "AXAF_ACIS{0}_BADPIX_FILE={1}[BADPIX{0}]".format(j, badpix)
+            ardlib = f"AXAF_ACIS{j}_BADPIX_FILE={badpix}[BADPIX{j}]"
 
         for energy in energies:
             # Arguments are: outfile, maskfile, obsfile, detsubsys, monoenergy, weightfile, ardlib
