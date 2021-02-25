@@ -67,7 +67,7 @@ class DaxModelEditor():
         for mdl in list_of_model_components:
             self.add_model_component(mdl)
         self.add_buttons(hide_plot_button)
-        self.cancel = False
+        self.cancel_clicked = False
         self.x_label = xlabel
         self.y_label = ylabel
 
@@ -102,20 +102,24 @@ class DaxModelEditor():
                   padx=(20, 20), pady=(5, 5))
 
         if hide_plot_button is False:
-            abtn = Button(myfrm, text="Exit", command=self.quit)
+            abtn = Button(myfrm, text="Plot", command=self.plot)
             abtn.grid(row=self.get_row(), column=1, columnspan=1,
                       padx=(20, 20), pady=(5, 5))
 
-            abtn = Button(myfrm, text="Plot", command=self.plot)
-            abtn.grid(row=self.get_row(), column=2, columnspan=1,
-                      padx=(20, 20), pady=(5, 5))
+        abtn = Button(myfrm, text="Conf", command=self.conf)
+        abtn.grid(row=self.get_row(), column=2, columnspan=1,
+                  padx=(20, 20), pady=(5, 5))
 
-        abtn = Button(myfrm, text="Reset", command=self.reset)
+        abtn = Button(myfrm, text="Quit", command=self.quit)
         abtn.grid(row=self.get_row(), column=3, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
 
-        abtn = Button(myfrm, text="Cancel", command=self.cancel)
+        abtn = Button(myfrm, text="Reset", command=self.reset)
         abtn.grid(row=self.get_row(), column=4, columnspan=1,
+                  padx=(20, 20), pady=(5, 5))
+
+        abtn = Button(myfrm, text="Cancel", command=self.cancel)
+        abtn.grid(row=self.get_row(), column=5, columnspan=1,
                   padx=(20, 20), pady=(5, 5))
 
     def add_column_headers(self, lab_frame):
@@ -150,20 +154,30 @@ class DaxModelEditor():
         'Increment row in the UI'
         self.row = self.row+1
 
-    def run(self, fit_command):
+    def run(self, fit_command, conf_command=None):
         'Start the event loop'
         from os import environ
         if 'DAXNOGUI' in environ:
             return
 
         self.fit_command = fit_command
+        self.conf_command = conf_command
         self.win.mainloop()
 
         # note to self, excpetions raised in the event loop are catch
         # and not raised to calling application.  So I have to set
         # a flag and raise exception after exit loop.
-        if self.cancel is True:
+        if self.cancel_clicked is True:
             raise DaxCancel("Cancel Button Pressed")
+
+    def conf(self):
+        'Run confidence command'
+        from sherpa.utils.err import EstErr
+        if self.conf_command:
+            try:
+                self.conf_command()
+            except EstErr as mybad:
+                messagebox.showerror("DAX Model Editor", str(mybad))
 
     def fit(self):
         '''Go ahead and fit the data
@@ -172,6 +186,7 @@ class DaxModelEditor():
         self.update()
 
     def quit(self):
+        'Continue on with rest of script'
         self.win.quit()
         self.win.destroy()
 
@@ -188,11 +203,10 @@ class DaxModelEditor():
             except:
                 pass
 
-
     def cancel(self):
         '''Stop the event loop and set cancel flag'''
         self.win.quit()
-        self.cancel=True
+        self.cancel_clicked = True
 
     @staticmethod
     def xpaget(ds9, cmd):
@@ -238,7 +252,7 @@ class DaxModelEditor():
 
         if _d.xerr is None:
             _d.xerr = (_d.x-_d.x)  # zeros
-            
+
         if self.x_label is None:
             xlab = _f.dataplot.xlabel
         else:
@@ -263,15 +277,16 @@ class DaxModelEditor():
             step = False
 
         dax_plot.blt_plot_model(self.xpa, mx, my,
-                           "Dax Model Editor Plot",                            
-                           xlab, ylab, step=step,
-                           new=newplot, winname="dax_model_editor")
+                                "Dax Model Editor Plot",
+                                xlab, ylab, step=step,
+                                new=newplot, winname="dax_model_editor")
 
         dax_plot.blt_plot_data(self.xpa, _d.x, _d.xerr/2.0, _d.y, _d.yerr)
 
         delta = (_d.y-_m.y)/_d.yerr
         ones = _d.yerr*0.0+1.0
-        dax_plot.blt_plot_delchisqr( self.xpa, _d.x, _d.xerr/2.0, delta, ones, "")
+        dax_plot.blt_plot_delchisqr(self.xpa, _d.x, _d.xerr/2.0, delta,
+                                    ones, "")
 
 
 class DaxModelParameter():
@@ -343,7 +358,7 @@ class DaxModelParameter():
         # and Enter on the keypad are different keysym's but both
         # generate CR. This makes sense since can remap keyboard
         # keys -- the action we want is CR, whichever key generates it.
-        # Update: Unfortunately the .char field is cleared 
+        # Update: Unfortunately the .char field is cleared
         # in newer versions of python in the KeyRelease callback, and
         # the Key callback doesn't work (order of callback doesn't change
         # text color correctly).  So, I'm back to using the keysym.
