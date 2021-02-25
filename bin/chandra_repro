@@ -266,12 +266,16 @@ def update_aspsol_to_aspsolobi(asol_list,mydir, params):
     asp_offaxis_corr = make_tool("asp_offaxis_corr")
     asp_offaxis_corr(outfile, "acis")  # instrume doesn't matter
     
-    dmhedit.infile = outfile
-    dmhedit.file = ""
-    dmhedit.operation = "add"
-    dmhedit.key = "CONTENT"
-    dmhedit.value = "ASPSOLOBI"
-    dmhedit()
+    # Update asol header with updated content and NOM values
+    from pycrates import read_file, set_key, get_keyval
+    tab = read_file(outfile, mode="rw")
+    set_key(tab, "CONTENT", "ASPSOLOBI")
+    for key in ['RA', 'Dec', 'Roll']:
+        val = get_keyval(tab, "{}_PNT".format(key))
+        set_key(tab, "{}_NOM".format(key), val, unit="deg", 
+                desc="Nominal "+key)
+    
+    tab.write()
     
     # We need to pass in an obs.par file to get the new tangent
     # point and pointing (otherwise it is taken from the evt1_file.
@@ -639,6 +643,7 @@ def process_command_line(argv):
     pix_adj_str     = pio.pgetstr(fp, "pix_adj")
     recreate_tg_mask  = pio.pgetstr( fp, "recreate_tg_mask") == "yes"  # make True / False
     boresight       = pio.pgetstr(fp, "asol_update") == "yes"
+    pi_filter       = pio.pgetb(fp, "pi_filter")
     cleanup         = pio.pgetb(fp, "cleanup")
     verbose         = pio.pgeti(fp, "verbose")
     clobber         = pio.pgetstr(fp, "clobber")
@@ -675,6 +680,7 @@ def process_command_line(argv):
         pp["pix_adj_str"] =     pix_adj_str
         pp["recreate_tg_mask"] = recreate_tg_mask
         pp["asol_update"] =     boresight
+        pp["pi_filter"] =       pi_filter
         pp["cleanup"] =         cleanup
         pp["clobber"] =         clobber
         pp["verbose"] =         verbose
@@ -2113,15 +2119,16 @@ def l2_hrc_events(params):
     detnam       = params["detnam"]
     grating      = params["grating"]
     clobber      = params["clobber"]
+    pifilter     = params["pi_filter"]
 
     v3("\nExecuting thread to create new evt2 using dmcopy")
 
     # HRC-S/LETG gets background filtering
-    bg_filtered_evt1a = os.path.join(outdir, root + '_repro_bgfilt_evt1a.fits')
-    params["cleanup_files"].append(bg_filtered_evt1a)
-    if detnam == 'HRC-S' and grating =="LETG":
+    if detnam == 'HRC-S' and grating == "LETG" and pifilter == 1:
         v1("Applying the HRC-S/LETG background filter...")
         # filtname = os.path.expandvars("$CALDB/data/chandra/hrc/tgpimask2/letgD1999-07-22pireg_tgmap_N0001.fits")
+        bg_filtered_evt1a = os.path.join(outdir, root + '_repro_bgfilt_evt1a.fits')
+        params["cleanup_files"].append(bg_filtered_evt1a)
         filtname = lookup_hrc_pi_filter(evt1a)
         dmcopy.punlearn()
         dmcopy.infile=evt1a+"[EVENTS][(tg_mlam,pi)=region("+filtname+")]"
@@ -2130,6 +2137,7 @@ def l2_hrc_events(params):
         out=dmcopy()
         v5("dmcopy returned")
         v5(out)
+        evt1a = bg_filtered_evt1a
 
     if grating == 'NONE':
         filtered_evt1 = os.path.join(outdir, root + '_repro_filt_evt1.fits')
@@ -2150,16 +2158,15 @@ def l2_hrc_events(params):
     status_str = ""
     if detnam == 'HRC-S':
         status_str = "xxxxxx00xxxx0xxx0000x000x00000xx"
-        if grating == 'NONE':
-            dmcopy.infile=evt1+"[EVENTS][status={}]".format(status_str)  # 6/26/13: pi=0:300 left to user to decide
-        else:
-            dmcopy.infile=bg_filtered_evt1a+"[EVENTS][status={}]".format(status_str)
     elif detnam == 'HRC-I':
         status_str = "xxxxxx00xxxx0xxx00000000x0000000"
-        if grating == 'NONE':
-            dmcopy.infile=evt1+"[EVENTS][status={}]".format(status_str)
-        else:
-            dmcopy.infile=evt1a+"[EVENTS][status={}]".format(status_str)
+    else:
+        raise ValueError("Unknown detnam '{}'".format(detnam))
+        
+    if grating == 'NONE':
+        dmcopy.infile=evt1+"[EVENTS][status={}]".format(status_str)  # 6/26/13: pi=0:300 left to user to decide
+    else:
+        dmcopy.infile=evt1a+"[EVENTS][status={}]".format(status_str)
 
     dmcopy.infile = dmcopy.infile+'[x=:,y=:]'
 
@@ -2185,9 +2192,10 @@ def l2_hrc_events(params):
     v5(out)
 
     #!## run dmappend to copy the REGION block from evt1a to evt2
+    # always use the original evt1a not pi filtered
     if grating != 'NONE':
         dmappend.punlearn()
-        dmappend.infile=evt1a+"[REGION][subspace -time]"
+        dmappend.infile=params["evt1a_file"]+"[REGION][subspace -time]"
         dmappend.outfile=evt2_file
         out=dmappend()
         v5("dmappend returned")
