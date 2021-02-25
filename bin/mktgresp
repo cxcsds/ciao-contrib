@@ -241,8 +241,6 @@ def make_tg_rmf( obsinfo, pha, spectrum, outroot, wvgrid_arf, wvgrid_chan):
                 msg="""WARNING: Please consider upgrading CALDB versions. 
                 There are no grating RMF calibration products for HRC-I.  
                 Will create a diagonal RMF"""
-                msg = " ".join(msg.split())    # remove xtra whitespace
-                verb0(msg)
             else:
                 msg="""WARNING: There are no grating RMF calibration 
                 products for HRC-I. An RMF will be created using 
@@ -252,9 +250,10 @@ def make_tg_rmf( obsinfo, pha, spectrum, outroot, wvgrid_arf, wvgrid_chan):
                 broad compared with the RMF generated here owing to the 
                 flat HRC-I detector not following the geometry of the 
                 LETG Rowland torus."""                
-                msg = " ".join(msg.split())
-                verb0(msg)
 
+            # remove white spaces
+            msg = " ".join([x.strip() for x in msg.split("\n")])
+            verb0(msg)
 
     mkgrmf.outfile     = get_outfile_name( outroot, spectrum, "rmf" )
     mkgrmf.obsfile     = obsinfo.evt
