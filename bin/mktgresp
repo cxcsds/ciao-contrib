@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 # 
-# Copyright (C) 2013,2016-2018, 2020 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013,2016-2018, 2020, 2021 
+# Smithsonian Astrophysical Observatory
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 # 
 # This program is distributed in the hope that it will be useful,
@@ -20,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "mktgresp"
-__revision__ = "13 November 2020"
+__revision__ = "10 February 2021"
 
 
 import os
@@ -219,10 +220,40 @@ def make_tg_rmf( obsinfo, pha, spectrum, outroot, wvgrid_arf, wvgrid_chan):
     det = determine_src_chip( spectrum.xx, spectrum.yy, obsinfo )
     part = map_part_to_name( spectrum.part )
     if det == "HRC-I":
-        verb0("WARNING: There are no grating RMF calibration products for HRC-I.  Will create a diagonal RMF")
-        mkgrmf.diagonalrmf = True
-        if part.lower() != "leg":
+        if part.lower() in ["meg", "heg"]:
             det="ACIS-7"  # ACIS-7 for HETG
+            verb0("WARNING: There are no grating RMF calibration products for HRC-I.  Will create a diagonal RMF")
+            mkgrmf.diagonalrmf = True
+
+        else:    # leg
+            # Need to check if lsfparm file is available in CALDB 
+            from caldb4 import Caldb
+            cc = Caldb("chandra", "hrc", "lsfparm")
+            cc.detnam = det
+            cc.grating = obsinfo.keywords["GRATING"]
+            cc.grattype = part
+            cc.order = spectrum.order
+            n_files = len(cc.search)
+            
+            if 0 == n_files:
+                # CALDB not upgraded
+                mkgrmf.diagonalrmf = True
+                msg="""WARNING: Please consider upgrading CALDB versions. 
+                There are no grating RMF calibration products for HRC-I.  
+                Will create a diagonal RMF"""
+            else:
+                msg="""WARNING: There are no grating RMF calibration 
+                products for HRC-I. An RMF will be created using 
+                LETG+HRC-S calibration products. This should be 
+                accurate for wavelengths < 60 A. For longer LETG+HRC-I 
+                wavelengths, the observed line widths can be increasingly 
+                broad compared with the RMF generated here owing to the 
+                flat HRC-I detector not following the geometry of the 
+                LETG Rowland torus."""                
+
+            # remove white spaces
+            msg = " ".join([x.strip() for x in msg.split("\n")])
+            verb0(msg)
 
     mkgrmf.outfile     = get_outfile_name( outroot, spectrum, "rmf" )
     mkgrmf.obsfile     = obsinfo.evt
@@ -333,6 +364,11 @@ def run_fullgarf( obsinfo, spectrum, outroot, dafile, osipfile ):
             mkgarf.asphistfile = outroot+"{}.asphist".format(ccd)
             mkgarf.outfile = get_outfile_name( outroot, spectrum, "{}.arf".format(ccd))
             mkgarf.detsubsys = "ACIS-{}".format(ccd)
+
+            # New ACIS badpix status bit 17 (frame store shadow) not
+            # included in standard bpixmask in 4.13.
+            mkgarf.detsubsys = mkgarf.detsubsys+";BPMASK=0x03ffff"
+
             oo = mkgarf()
             oo = filter_mkgarf_verbose(oo)
             if oo:
