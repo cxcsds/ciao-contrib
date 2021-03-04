@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2020  Smithsonian Astrophysical Observatory
+# Copyright (C) 2010-2021  Smithsonian Astrophysical Observatory
 #
 #
 #
@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "01 December 2020"
+version = "04 March 2021"
 
 # import standard python modules as required
 #
@@ -309,9 +309,13 @@ def make_overide_pointing_obspar(asolfile,params):
     pio.pputd(obspar, "ra_nom", ra)
     pio.pputd(obspar, "dec_nom", dec)
     pio.pputd(obspar, "roll_nom", roll)
-    pio.pputd(obspar, "dy_avg", 0.0)
-    pio.pputd(obspar, "dz_avg", 0.0)
-    pio.pputd(obspar, "dth_avg", 0.0)
+
+    # data before repro4 don't have these
+    for d_something in ["dy", "dz", "dth"]:
+        pname = d_something+"_avg"
+        if pio.paccess(obspar, pname):
+            pio.pputd(obspar, pname, 0.0)
+
     pio.paramclose(obspar)        
 
     params["cleanup_files"].append(outfile)
