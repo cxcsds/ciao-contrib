@@ -79,13 +79,13 @@ def get_mirror_location(useropt):
 
     if useropt is not None and useropt.strip() != "":
         useropt = useropt.strip()
-        V3("Using user-defined mirror: {}".format(useropt))
+        V3(f"Using user-defined mirror: {useropt}")
         return useropt
 
     try:
         ans = os.environ[__MIRROR_ENVIRON].strip()
         if ans != "":
-            V3("Using ${}={}".format(__MIRROR_ENVIRON, ans))
+            V3(f"Using ${__MIRROR_ENVIRON}={ans}")
             return ans
 
     except KeyError:
@@ -133,7 +133,7 @@ def extract_file_type(filename):
         return "vvref"
 
     for ftype in known_file_types:
-        suffix = '_{}'.format(ftype)
+        suffix = f'_{ftype}'
         if suffix in filename:
             return ftype
 
@@ -167,7 +167,7 @@ def create_directory(dname):
     if dname == "" or os.path.exists(dname):
         return
 
-    V3("Creating directory: '{}'".format(dname))
+    V3(f"Creating directory: '{dname}'")
     if dname[-1] == "/":
         parent = os.path.dirname(dname[:-1])
     else:
@@ -196,7 +196,7 @@ class ObsIdFile:
         toks = url.strip().split('/')
         filename = toks[-1]
         if filename == '':
-            raise ValueError("Sent a directory, not a file: {}".format(url))
+            raise ValueError(f"Sent a directory, not a file: {url}")
 
         self.obsid = str(obsid)
         self.url = url
@@ -211,13 +211,13 @@ class ObsIdFile:
             try:
                 tok = toks.pop(0)
             except IndexError:
-                raise ValueError('Expected URL to include /byobsid/ fragment: {}'.format(url))
+                raise ValueError(f'Expected URL to include /byobsid/ fragment: {url}')
 
             if tok == 'byobsid':
                 break
 
         if len(toks) < 3:
-            raise ValueError('Expected more directories: {}'.format(url))
+            raise ValueError(f'Expected more directories: {url}')
 
         toks.pop(0)
 
@@ -251,7 +251,7 @@ class ObsIdFile:
         if self.filesize is not None:
             return self.filesize
 
-        V3("Finding size of: {}".format(self.url))
+        V3(f"Finding size of: {self.url}")
 
         req = urllib.request.Request(self.url, headers=headers)
         try:
@@ -263,7 +263,7 @@ class ObsIdFile:
                     size = 0
 
         except urllib.error.URLError as uerr:
-            V3("Unable to get size of {} - {}".format(self.url, uerr))
+            V3(f"Unable to get size of {self.url} - {uerr}")
             size = 0
 
         self.filesize = size
@@ -279,9 +279,7 @@ class ObsIdFile:
         else:
             ftype = self.filetype
 
-        return "  {0:8s} {1:6s} {2:>9s}  ".format(ftype,
-                                                  self.fileformat,
-                                                  slabel)
+        return f"  {ftype:8s} {self.fileformat:6s} {slabel:>9s}  "
 
     def download(self, headers):
         """Download the file.
@@ -302,7 +300,7 @@ class ObsIdFile:
 
         verbose = LOGGER.getEffectiveVerbose() > 0
 
-        V3("Starting download of {}".format(self.filename))
+        V3(f"Starting download of {self.filename}")
         size = self.get_filesize(headers)
 
         if self.localpath != '':
@@ -343,42 +341,42 @@ class ObsId:
         self.header = hdr
 
         ostr = str(obsid)
-        urlname = "{}/{}/{}".format(base_url, ostr[-1], ostr)
-        V3("Looking for directory: {}".format(urlname))
+        urlname = f"{base_url}/{ostr[-1]}/{ostr}"
+        V3(f"Looking for directory: {urlname}")
 
         try:
             urls = downloadutils.find_all_downloadable_files(urlname, hdr)
 
         except urllib.error.HTTPError as herr:
-            V3("HTTPError for {}".format(urlname))
+            V3(f"HTTPError for {urlname}")
             V3(str(herr))
             if herr.code == 404:
-                emsg = "There is no directory {}".format(urlname)
+                emsg = f"There is no directory {urlname}"
             else:
-                emsg = "Unable to access {}\ncode={}".format(urlname,
-                                                             herr.code)
+                emsg = f"Unable to access {urlname}\ncode={herr.code}"
+
             raise IOError(emsg)
 
         except urllib.error.URLError as uerr:
-            V3("URLError for {}".format(urlname))
+            V3(f"URLError for {urlname}")
             V3(str(uerr))
-            emsg = "Unable to reach {}\n{}".format(urlname, uerr.reason)
+            emsg = f"Unable to reach {urlname}\n{uerr.reason}"
             raise IOError(emsg)
 
         self.files = [ObsIdFile(obsid, url) for url in urls]
-        V3("Found {} files".format(len(self.files)))
+        V3(f"Found {len(self.files)} files")
 
     def filter_files(self, types=None, formats=None):
         """Filter the list of files by the given types and/or formats.
         """
 
-        V3("Before filtering: {} files".format(len(self.files)))
+        V3(f"Before filtering: {len(self.files)} files")
         if types is not None:
             self.files = [f for f in self.files if f.is_type(types)]
         if formats is not None:
             self.files = [f for f in self.files if f.is_format(formats)]
 
-        V3("After filtering: {} files".format(len(self.files)))
+        V3(f"After filtering: {len(self.files)} files")
 
     def get_download_size(self):
         """Get the download size for the files in the ObsId,
@@ -403,14 +401,14 @@ class ObsId:
         changes in the HTML response from the archive.
         """
 
-        V3("Downloading {} files".format(len(self.files)))
+        V3(f"Downloading {len(self.files)} files")
         s = self.get_download_size()
         if s == 0:
-            V1("No files found for ObsId {}!".format(self.obsid))
+            V1(f"No files found for ObsId {self.obsid}!")
             return
 
         size_label = downloadutils.stringify_size(s)
-        V1("Downloading files for ObsId {}, total size is {}.\n".format(self.obsid, size_label))
+        V1(f"Downloading files for ObsId {self.obsid}, total size is {size_label}.\n")
         V1("  Type     Format      Size  0........H.........1  Download Time Average Rate")
         V1("  ---------------------------------------------------------------------------")
 
@@ -439,8 +437,8 @@ class ObsId:
         if LOGGER.getEffectiveVerbose() > 0:
             if len(self.files) > 1 and nbytes > 0:
                 sys.stdout.write("\n")
-                V1("      Total download size for ObsId {} = {}".format(self.obsid, downloadutils.stringify_size(nbytes)))
-                V1("      Total download time for ObsId {} = {}".format(self.obsid, downloadutils.stringify_dt(dtime)))
+                V1(f"      Total download size for ObsId {self.obsid} = {downloadutils.stringify_size(nbytes)}")
+                V1(f"      Total download time for ObsId {self.obsid} = {downloadutils.stringify_dt(dtime)}")
             sys.stdout.write("\n")
 
 
@@ -522,7 +520,7 @@ def download_chandra_obsids(obsids,
     # validate this URL
     check = urllib.parse.urlparse(base_url)
     if check.scheme not in ["https", "http"]:
-        raise ValueError("Require https/http URL, but sent {}".format(base_url))
+        raise ValueError(f"Require https/http URL, but sent {base_url}")
 
     # add on /byobsid
     if not base_url.endswith('/'):
@@ -533,12 +531,12 @@ def download_chandra_obsids(obsids,
     hdr = get_http_header()
 
     for obsid in obsids:
-        V3("Setting up for ObsId {}".format(obsid))
+        V3(f"Setting up for ObsId {obsid}")
         try:
             oid = ObsId(obsid, base_url, hdr)
         except IOError as ierr:
-            V3("Unable to cd to ObsId {}: msg={}".format(obsid, ierr))
-            V1("Skipping ObsId {} as it was not found on the {} site.".format(obsid, sitename))
+            V3(f"Unable to cd to ObsId {obsid}: msg={ierr}")
+            V1(f"Skipping ObsId {obsid} as it was not found on the {sitename} site.")
             out.append(False)
             continue
 
