@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2010, 2011, 2013, 2014, 2015, 2016, 2017, 2019, 2020
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010, 2011, 2013, 2014, 2015, 2016, 2017, 2019, 2020, 2021
+#  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -37,7 +37,7 @@ Example with screen output:
   import ciao_contrib.logger_wrapper as lw
   lw.initialize_logger("download", verbose=1)
   out = download_chandra_obsids([1843, 1844],
-             ["evt1", "asol", "bpix", "mtl"])
+             ["vv", "evt1", "asol", "bpix", "mtl"])
 
 """
 
@@ -109,6 +109,7 @@ known_file_types = [
     "osol", "aqual",
     "sum", "pha2", "dtf", "plt",
     "adat",  # adat71 are PCAD Level 1 ACA image data files,
+    "vvref",
     "readme"
 ]
 known_file_types_str = known_file_types[:]
@@ -126,8 +127,10 @@ def extract_file_type(filename):
         return "oif"
     if filename.lower() == "00readme":
         return "readme"
-    if 'vv' in filename:
+    if 'vv2' in filename:
         return "vv"
+    if 'vvref2' in filename:
+        return "vvref"
 
     for ftype in known_file_types:
         suffix = '_{}'.format(ftype)
