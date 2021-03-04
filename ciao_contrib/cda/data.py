@@ -368,10 +368,18 @@ class ObsId:
 
     def filter_files(self, types=None, formats=None):
         """Filter the list of files by the given types and/or formats.
+
+        If types is None then we exclude the vvref file type; that is if
+        you want to download the vvref2.pdf file you need to supply
+        a list of types and include the ''vvref' option. This is not
+        a great design!
         """
 
         V3(f"Before filtering: {len(self.files)} files")
-        if types is not None:
+        if types is None:
+            # exclude the vvref file
+            self.files = [f for f in self.files if not f.is_type(['vvref'])]
+        else:
             self.files = [f for f in self.files if f.is_type(types)]
         if formats is not None:
             self.files = [f for f in self.files if f.is_format(formats)]
@@ -459,11 +467,13 @@ def download_chandra_obsids(obsids,
     obsids should be a list of obsid values - e.g. [1843, 1557]
 
     If filetypes is None then all data for each obsid will be
-    downloaded, otherwise it is an array of strings determining which
-    files to download. See the known_file_types array in this module
-    for the list of supported types. An example would be ['evt2',
-    'bpix', 'asol'] to download just the level 2 event file, bad-pixel
-    file, and aspect solution files.
+    downloaded *EXCEPT* for the vvref file type, otherwise it is an
+    array of strings determining which files to download. See the
+    known_file_types array in this module for the list of supported
+    types. An example would be ['evt2', 'bpix', 'asol'] to download
+    just the level 2 event file, bad-pixel file, and aspect solution
+    files. This means that the only way to download the vvref file is
+    to expicitly ask for it.
 
     The mirror argument, if set to None (the default), means that the
     CDA HTTPS archive is used (the BASE_URL settign). Set it to the name
