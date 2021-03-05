@@ -366,21 +366,34 @@ class ObsId:
         self.files = [ObsIdFile(obsid, url) for url in urls]
         V3(f"Found {len(self.files)} files")
 
-    def filter_files(self, types=None, formats=None):
+    def filter_files(self, types=None, excludes=None, formats=None):
         """Filter the list of files by the given types and/or formats.
 
-        If types is None then we exclude the vvref file type; that is if
-        you want to download the vvref2.pdf file you need to supply
-        a list of types and include the ''vvref' option. This is not
-        a great design!
+        Parameters
+        ----------
+        types : sequence of str or None, optional
+            What file types to select. If None then all files are
+            selected, apart from the excludes setting.
+        excludes : sequence of str or None, optional
+            What file types to ignore. If None then the types setting
+            is used. It is an error to define both types and excludes.
+        formats : sequence of str or None, optinal
+            What formats to include. If None then all formats are
+            selected (after filtering by types or excludes).
+
         """
 
+        if types is not None and excludes is not None:
+            raise TypeError("types and excludes can not be both set")
+
         V3(f"Before filtering: {len(self.files)} files")
-        if types is None:
-            # exclude the vvref file
-            self.files = [f for f in self.files if not f.is_type(['vvref'])]
-        else:
+
+        if types is not None:
             self.files = [f for f in self.files if f.is_type(types)]
+
+        elif excludes is not None:
+            self.files = [f for f in self.files if not f.is_type(excludes)]
+
         if formats is not None:
             self.files = [f for f in self.files if f.is_format(formats)]
 
@@ -458,29 +471,50 @@ def get_http_header():
 
 
 def download_chandra_obsids(obsids,
-                            filetypes=None,
+                            filetypes=None, excludes=None,
                             mirror=None
                             ):
     """Download the obsids from the Chandra Data Archive -
     https://cxc.harvard.edu/cda/ - or a mirror site.
 
-    obsids should be a list of obsid values - e.g. [1843, 1557]
+    The data is written to the current working directory using the
+    archive layout, so each ObsId has its own directory.
 
-    If filetypes is None then all data for each obsid will be
-    downloaded *EXCEPT* for the vvref file type, otherwise it is an
-    array of strings determining which files to download. See the
-    known_file_types array in this module for the list of supported
-    types. An example would be ['evt2', 'bpix', 'asol'] to download
-    just the level 2 event file, bad-pixel file, and aspect solution
-    files. This means that the only way to download the vvref file is
-    to expicitly ask for it.
+    Parameters
+    ----------
+    obsids : sequence of int
+        The ObsId values to download.
+    filetypes : sequence of str or None, optional
+        If filetypes is None then all data for each obsid will be
+        downloaded, otherwise it is an array of strings determining
+        which files to download. See the known_file_types array in
+        this module for the list of supported types.
+    excludes : sequence of str or None, optional
+        Those file types to ignore. It is expected that either (or
+        both) filetypes or excludes is None. If they are both given
+        then the filetypes setting "wins out" if a filetype is listed
+        in both.
+    mirror : str or None, optional
+        If None then use the CDA HTTPS archive is used (the BASE_URL
+        settign), otherwise set it to the name of a mirror archive to
+        use that location instead. The value should refer to the
+        directory that contains the "byobsid" directory.  The default
+        value is equivalent to setting mirror to
+        https://cxc.cfa.harvard.edu/cdaftp/. Note that this is not
+        tested.
 
-    The mirror argument, if set to None (the default), means that the
-    CDA HTTPS archive is used (the BASE_URL settign). Set it to the name
-    of a mirror archive to use that location instead. The value should
-    refer to the directory that contains the "byobsid" directory.  The
-    default value is equivalent to setting mirror to
-    https://cxc.cfa.harvard.edu/cdaftp/
+    Returns
+    -------
+    flags : list of bool
+         The return value is an array of booleans that indicate
+         whether the ObsId was available in the archive (it does not
+         indicate whether any data was downloaded since files are
+         skipped if they exist on disk).
+
+    Notes
+    -----
+    With the move to HTTPS from FTP, the username and userpass
+    arguments have been removed as they are now unused.
 
     This routine does *not* check the CDA_MIRROR_SITE environment
     variable if mirror=None (this is assumed to have been resolved by
@@ -492,14 +526,6 @@ def download_chandra_obsids(obsids,
     data sets; i.e. *no* fall over to the CDA archive is provided in
     this case).
 
-    The return value is an array of booleans that indicate whether the
-    ObsId was available in the archive (it does not indicate whether
-    any data was downloaded since files are skipped if they exist on
-    disk).
-
-    The data is written to the current working directory using the
-    archive layout, so each ObsId has its own directory.
-
     Screen output is controlled by the logging instance. By default
     the logger has no output set up, so you will see no screen
     output. To see the progress bars get displayed as files get
@@ -508,15 +534,21 @@ def download_chandra_obsids(obsids,
       import ciao_contrib.logger_wrapper as lw
       lw.initalize_logger("download", verbose=1)
 
-    before calling this routine (the first argument can be
-    any string).
+    before calling this routine (the first argument can be any
+    string).
 
-    Notes
-    -----
-    With the move to HTTPS from FTP, the username and userpass
-    arguments have been removed as they are now unused.
+    Examples
+    --------
+
+    >>> download_chandra_obsid([1843, 1557])
+
+    >>> download_chandra_obsid([1843, 1557], filetypes=['evt2', 'asol'])
 
     """
+
+    if filetypes is not None and excludes is not None:
+        filetypes = list(set(filetypes).difference(set(excludes)))
+        excludes = None
 
     out = []
 
@@ -550,7 +582,7 @@ def download_chandra_obsids(obsids,
             out.append(False)
             continue
 
-        oid.filter_files(types=filetypes, formats=None)
+        oid.filter_files(types=filetypes, excludes=excludes, formats=None)
         oid.download()
         out.append(True)
 
