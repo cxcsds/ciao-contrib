@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2010, 2011, 2013, 2014, 2015, 2016, 2017, 2019, 2020
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010, 2011, 2013, 2014, 2015, 2016, 2017, 2019, 2020, 2021
+#  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -37,7 +37,7 @@ Example with screen output:
   import ciao_contrib.logger_wrapper as lw
   lw.initialize_logger("download", verbose=1)
   out = download_chandra_obsids([1843, 1844],
-             ["evt1", "asol", "bpix", "mtl"])
+             ["vv", "evt1", "asol", "bpix", "mtl"])
 
 """
 
@@ -79,13 +79,13 @@ def get_mirror_location(useropt):
 
     if useropt is not None and useropt.strip() != "":
         useropt = useropt.strip()
-        V3("Using user-defined mirror: {}".format(useropt))
+        V3(f"Using user-defined mirror: {useropt}")
         return useropt
 
     try:
         ans = os.environ[__MIRROR_ENVIRON].strip()
         if ans != "":
-            V3("Using ${}={}".format(__MIRROR_ENVIRON, ans))
+            V3(f"Using ${__MIRROR_ENVIRON}={ans}")
             return ans
 
     except KeyError:
@@ -109,6 +109,7 @@ known_file_types = [
     "osol", "aqual",
     "sum", "pha2", "dtf", "plt",
     "adat",  # adat71 are PCAD Level 1 ACA image data files,
+    "vvref",
     "readme"
 ]
 known_file_types_str = known_file_types[:]
@@ -126,11 +127,13 @@ def extract_file_type(filename):
         return "oif"
     if filename.lower() == "00readme":
         return "readme"
-    if 'vv' in filename:
+    if 'vv2' in filename:
         return "vv"
+    if 'vvref2' in filename:
+        return "vvref"
 
     for ftype in known_file_types:
-        suffix = '_{}'.format(ftype)
+        suffix = f'_{ftype}'
         if suffix in filename:
             return ftype
 
@@ -164,7 +167,7 @@ def create_directory(dname):
     if dname == "" or os.path.exists(dname):
         return
 
-    V3("Creating directory: '{}'".format(dname))
+    V3(f"Creating directory: '{dname}'")
     if dname[-1] == "/":
         parent = os.path.dirname(dname[:-1])
     else:
@@ -193,7 +196,7 @@ class ObsIdFile:
         toks = url.strip().split('/')
         filename = toks[-1]
         if filename == '':
-            raise ValueError("Sent a directory, not a file: {}".format(url))
+            raise ValueError(f"Sent a directory, not a file: {url}")
 
         self.obsid = str(obsid)
         self.url = url
@@ -208,13 +211,13 @@ class ObsIdFile:
             try:
                 tok = toks.pop(0)
             except IndexError:
-                raise ValueError('Expected URL to include /byobsid/ fragment: {}'.format(url))
+                raise ValueError(f'Expected URL to include /byobsid/ fragment: {url}')
 
             if tok == 'byobsid':
                 break
 
         if len(toks) < 3:
-            raise ValueError('Expected more directories: {}'.format(url))
+            raise ValueError(f'Expected more directories: {url}')
 
         toks.pop(0)
 
@@ -248,7 +251,7 @@ class ObsIdFile:
         if self.filesize is not None:
             return self.filesize
 
-        V3("Finding size of: {}".format(self.url))
+        V3(f"Finding size of: {self.url}")
 
         req = urllib.request.Request(self.url, headers=headers)
         try:
@@ -260,7 +263,7 @@ class ObsIdFile:
                     size = 0
 
         except urllib.error.URLError as uerr:
-            V3("Unable to get size of {} - {}".format(self.url, uerr))
+            V3(f"Unable to get size of {self.url} - {uerr}")
             size = 0
 
         self.filesize = size
@@ -276,9 +279,7 @@ class ObsIdFile:
         else:
             ftype = self.filetype
 
-        return "  {0:8s} {1:6s} {2:>9s}  ".format(ftype,
-                                                  self.fileformat,
-                                                  slabel)
+        return f"  {ftype:8s} {self.fileformat:6s} {slabel:>9s}  "
 
     def download(self, headers):
         """Download the file.
@@ -299,7 +300,7 @@ class ObsIdFile:
 
         verbose = LOGGER.getEffectiveVerbose() > 0
 
-        V3("Starting download of {}".format(self.filename))
+        V3(f"Starting download of {self.filename}")
         size = self.get_filesize(headers)
 
         if self.localpath != '':
@@ -340,42 +341,63 @@ class ObsId:
         self.header = hdr
 
         ostr = str(obsid)
-        urlname = "{}/{}/{}".format(base_url, ostr[-1], ostr)
-        V3("Looking for directory: {}".format(urlname))
+        urlname = f"{base_url}/{ostr[-1]}/{ostr}"
+        V3(f"Looking for directory: {urlname}")
 
         try:
             urls = downloadutils.find_all_downloadable_files(urlname, hdr)
 
         except urllib.error.HTTPError as herr:
-            V3("HTTPError for {}".format(urlname))
+            V3(f"HTTPError for {urlname}")
             V3(str(herr))
             if herr.code == 404:
-                emsg = "There is no directory {}".format(urlname)
+                emsg = f"There is no directory {urlname}"
             else:
-                emsg = "Unable to access {}\ncode={}".format(urlname,
-                                                             herr.code)
+                emsg = f"Unable to access {urlname}\ncode={herr.code}"
+
             raise IOError(emsg)
 
         except urllib.error.URLError as uerr:
-            V3("URLError for {}".format(urlname))
+            V3(f"URLError for {urlname}")
             V3(str(uerr))
-            emsg = "Unable to reach {}\n{}".format(urlname, uerr.reason)
+            emsg = f"Unable to reach {urlname}\n{uerr.reason}"
             raise IOError(emsg)
 
         self.files = [ObsIdFile(obsid, url) for url in urls]
-        V3("Found {} files".format(len(self.files)))
+        V3(f"Found {len(self.files)} files")
 
-    def filter_files(self, types=None, formats=None):
+    def filter_files(self, types=None, excludes=None, formats=None):
         """Filter the list of files by the given types and/or formats.
+
+        Parameters
+        ----------
+        types : sequence of str or None, optional
+            What file types to select. If None then all files are
+            selected, apart from the excludes setting.
+        excludes : sequence of str or None, optional
+            What file types to ignore. If None then the types setting
+            is used. It is an error to define both types and excludes.
+        formats : sequence of str or None, optinal
+            What formats to include. If None then all formats are
+            selected (after filtering by types or excludes).
+
         """
 
-        V3("Before filtering: {} files".format(len(self.files)))
+        if types is not None and excludes is not None:
+            raise TypeError("types and excludes can not be both set")
+
+        V3(f"Before filtering: {len(self.files)} files")
+
         if types is not None:
             self.files = [f for f in self.files if f.is_type(types)]
+
+        elif excludes is not None:
+            self.files = [f for f in self.files if not f.is_type(excludes)]
+
         if formats is not None:
             self.files = [f for f in self.files if f.is_format(formats)]
 
-        V3("After filtering: {} files".format(len(self.files)))
+        V3(f"After filtering: {len(self.files)} files")
 
     def get_download_size(self):
         """Get the download size for the files in the ObsId,
@@ -400,14 +422,14 @@ class ObsId:
         changes in the HTML response from the archive.
         """
 
-        V3("Downloading {} files".format(len(self.files)))
+        V3(f"Downloading {len(self.files)} files")
         s = self.get_download_size()
         if s == 0:
-            V1("No files found for ObsId {}!".format(self.obsid))
+            V1(f"No files found for ObsId {self.obsid}!")
             return
 
         size_label = downloadutils.stringify_size(s)
-        V1("Downloading files for ObsId {}, total size is {}.\n".format(self.obsid, size_label))
+        V1(f"Downloading files for ObsId {self.obsid}, total size is {size_label}.\n")
         V1("  Type     Format      Size  0........H.........1  Download Time Average Rate")
         V1("  ---------------------------------------------------------------------------")
 
@@ -436,8 +458,8 @@ class ObsId:
         if LOGGER.getEffectiveVerbose() > 0:
             if len(self.files) > 1 and nbytes > 0:
                 sys.stdout.write("\n")
-                V1("      Total download size for ObsId {} = {}".format(self.obsid, downloadutils.stringify_size(nbytes)))
-                V1("      Total download time for ObsId {} = {}".format(self.obsid, downloadutils.stringify_dt(dtime)))
+                V1(f"      Total download size for ObsId {self.obsid} = {downloadutils.stringify_size(nbytes)}")
+                V1(f"      Total download time for ObsId {self.obsid} = {downloadutils.stringify_dt(dtime)}")
             sys.stdout.write("\n")
 
 
@@ -449,27 +471,50 @@ def get_http_header():
 
 
 def download_chandra_obsids(obsids,
-                            filetypes=None,
+                            filetypes=None, excludes=None,
                             mirror=None
                             ):
     """Download the obsids from the Chandra Data Archive -
     https://cxc.harvard.edu/cda/ - or a mirror site.
 
-    obsids should be a list of obsid values - e.g. [1843, 1557]
+    The data is written to the current working directory using the
+    archive layout, so each ObsId has its own directory.
 
-    If filetypes is None then all data for each obsid will be
-    downloaded, otherwise it is an array of strings determining which
-    files to download. See the known_file_types array in this module
-    for the list of supported types. An example would be ['evt2',
-    'bpix', 'asol'] to download just the level 2 event file, bad-pixel
-    file, and aspect solution files.
+    Parameters
+    ----------
+    obsids : sequence of int
+        The ObsId values to download.
+    filetypes : sequence of str or None, optional
+        If filetypes is None then all data for each obsid will be
+        downloaded, otherwise it is an array of strings determining
+        which files to download. See the known_file_types array in
+        this module for the list of supported types.
+    excludes : sequence of str or None, optional
+        Those file types to ignore. It is expected that either (or
+        both) filetypes or excludes is None. If they are both given
+        then the filetypes setting "wins out" if a filetype is listed
+        in both.
+    mirror : str or None, optional
+        If None then use the CDA HTTPS archive is used (the BASE_URL
+        setting), otherwise set it to the name of a mirror archive to
+        use that location instead. The value should refer to the
+        directory that contains the "byobsid" directory.  The default
+        value is equivalent to setting mirror to
+        https://cxc.cfa.harvard.edu/cdaftp/. Note that this is not
+        tested.
 
-    The mirror argument, if set to None (the default), means that the
-    CDA HTTPS archive is used (the BASE_URL settign). Set it to the name
-    of a mirror archive to use that location instead. The value should
-    refer to the directory that contains the "byobsid" directory.  The
-    default value is equivalent to setting mirror to
-    https://cxc.cfa.harvard.edu/cdaftp/
+    Returns
+    -------
+    flags : list of bool
+         The return value is an array of booleans that indicate
+         whether the ObsId was available in the archive (it does not
+         indicate whether any data was downloaded since files are
+         skipped if they exist on disk).
+
+    Notes
+    -----
+    With the move to HTTPS from FTP, the username and userpass
+    arguments have been removed as they are now unused.
 
     This routine does *not* check the CDA_MIRROR_SITE environment
     variable if mirror=None (this is assumed to have been resolved by
@@ -481,14 +526,6 @@ def download_chandra_obsids(obsids,
     data sets; i.e. *no* fall over to the CDA archive is provided in
     this case).
 
-    The return value is an array of booleans that indicate whether the
-    ObsId was available in the archive (it does not indicate whether
-    any data was downloaded since files are skipped if they exist on
-    disk).
-
-    The data is written to the current working directory using the
-    archive layout, so each ObsId has its own directory.
-
     Screen output is controlled by the logging instance. By default
     the logger has no output set up, so you will see no screen
     output. To see the progress bars get displayed as files get
@@ -497,15 +534,21 @@ def download_chandra_obsids(obsids,
       import ciao_contrib.logger_wrapper as lw
       lw.initalize_logger("download", verbose=1)
 
-    before calling this routine (the first argument can be
-    any string).
+    before calling this routine (the first argument can be any
+    string).
 
-    Notes
-    -----
-    With the move to HTTPS from FTP, the username and userpass
-    arguments have been removed as they are now unused.
+    Examples
+    --------
+
+    >>> download_chandra_obsid([1843, 1557])
+
+    >>> download_chandra_obsid([1843, 1557], filetypes=['evt2', 'asol'])
 
     """
+
+    if filetypes is not None and excludes is not None:
+        filetypes = list(set(filetypes).difference(set(excludes)))
+        excludes = None
 
     out = []
 
@@ -519,7 +562,7 @@ def download_chandra_obsids(obsids,
     # validate this URL
     check = urllib.parse.urlparse(base_url)
     if check.scheme not in ["https", "http"]:
-        raise ValueError("Require https/http URL, but sent {}".format(base_url))
+        raise ValueError(f"Require https/http URL, but sent {base_url}")
 
     # add on /byobsid
     if not base_url.endswith('/'):
@@ -530,16 +573,16 @@ def download_chandra_obsids(obsids,
     hdr = get_http_header()
 
     for obsid in obsids:
-        V3("Setting up for ObsId {}".format(obsid))
+        V3(f"Setting up for ObsId {obsid}")
         try:
             oid = ObsId(obsid, base_url, hdr)
         except IOError as ierr:
-            V3("Unable to cd to ObsId {}: msg={}".format(obsid, ierr))
-            V1("Skipping ObsId {} as it was not found on the {} site.".format(obsid, sitename))
+            V3(f"Unable to cd to ObsId {obsid}: msg={ierr}")
+            V1(f"Skipping ObsId {obsid} as it was not found on the {sitename} site.")
             out.append(False)
             continue
 
-        oid.filter_files(types=filetypes, formats=None)
+        oid.filter_files(types=filetypes, excludes=excludes, formats=None)
         oid.download()
         out.append(True)
 

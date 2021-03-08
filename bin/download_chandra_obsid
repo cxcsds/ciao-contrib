@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2020
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2020, 2021
+#  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -71,7 +71,7 @@ import ciao_contrib.logger_wrapper as lw
 import ciao_contrib.cda.data as data
 
 TOOLNAME = "download_chandra_obsid"
-VERSION = "02 November 2020"
+VERSION = "05 March 2021"
 
 lw.initialize_logger(TOOLNAME, verbose=1)
 V1 = lw.make_verbose_level(TOOLNAME, 1)
@@ -90,6 +90,10 @@ can also be used for these arguments (e.g. @obsids.txt where
 obsids.txt is a text file with one obsid per line). See 'ahelp stack'
 for more information on stacks.
 
+The --exclude flag can be used to exclude one or more filetypes;
+for example '--exclude vvref' will avoid downloading the larger
+V&V file for the ObsId.
+
 The data is written to the current directory, with each obsid being
 saved to its own directory (following the layout used by the Chandra
 archive).
@@ -104,8 +108,8 @@ setting of https://cxc.cfa.harvard.edu/cdaftp/
 
 
 COPYRIGHT_STR = """
-Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2020
-          Smithsonian Astrophysical Observatory
+Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2020, 2021
+Smithsonian Astrophysical Observatory
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -173,6 +177,9 @@ def download_chandra_obsid():
     parser.add_argument("filetypes", nargs='?',  # todo: enforce valid
                         help="Optional comma-separated list (or stack) of file types")
 
+    parser.add_argument("--exclude",
+                        help="Optional comma-separated list (or stack) of file types")
+
     parser.add_argument("--quiet", "-q", action="store_true",
                         help="Download the files without any screen output? [default: %(default)s]")
     parser.add_argument("--version", "-v", dest="list_version",
@@ -233,9 +240,18 @@ def download_chandra_obsid():
         tlist = [t.lower() for t in stk.build(tlist)]
         for t in tlist:
             if t not in data.known_file_types:
-                raise ValueError("{} is not a valid file type".format(t) +
+                raise ValueError(f"{t} is not a valid file type" +
                                  " - must be one of:\n" +
-                                 "{}".format(data.known_file_types_str))
+                                 "{data.known_file_types_str}")
+
+    elist = args.exclude
+    if elist is not None:
+        elist = [t.lower() for t in stk.build(elist)]
+        for t in elist:
+            if t not in data.known_file_types:
+                raise ValueError(f"{t} is not a valid file type" +
+                                 " - must be one of:\n" +
+                                 "{data.known_file_types_str}")
 
     if args.mirror_site:
         mirror = args.mirror_site
@@ -243,7 +259,8 @@ def download_chandra_obsid():
         mirror = None
 
     mirror = data.get_mirror_location(mirror)
-    data.download_chandra_obsids(olist, filetypes=tlist, mirror=mirror)
+    data.download_chandra_obsids(olist, filetypes=tlist, excludes=elist,
+                                 mirror=mirror)
 
 
 if __name__ == "__main__":

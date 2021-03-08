@@ -2,7 +2,7 @@
 <!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
  <!ENTITY tool "download_chandra_obsid">
 
- <!ENTITY ftypes "adat aoff aqual arf asol bias bpix cntr_img dtf eph0 eph1 evt1 evt1a evt2 flt fov full_img msk mtl oif osol pbk pha2 plt readme rmf soff src2 src_img stat sum vv">
+ <!ENTITY ftypes "adat aoff aqual arf asol bias bpix cntr_img dtf eph0 eph1 evt1 evt1a evt2 flt fov full_img msk mtl oif osol pbk pha2 plt readme rmf soff src2 src_img stat sum vv vvref">
 
  <!ENTITY pr "unix&#37;">
 
@@ -15,7 +15,7 @@
 		      data archive cda mirror public chaser webchaser
 		      dco download_chandra_obsids
                       &cdaenv;
-		      &ftypes; 00readme"
+		      &ftypes; 00readme include exclude"
          seealsogroups="contrib.cda"
 	 >
 
@@ -32,6 +32,7 @@
       <LINE>The supported file types are:</LINE>
       <LINE>&ftypes;</LINE>
       <LINE/>
+      <LINE>The --exclude flag allows you to skip a file type.</LINE>
       <LINE>The -m or --mirror flags allow you to use a mirror of the Chandra Data Archive.</LINE>
       <LINE>The -h or --help flags displays information on the command-line options.</LINE>
       <LINE>The -q or --quiet flags is used to turn off screen output.</LINE>
@@ -157,6 +158,19 @@ pbk      fits     4 Kb  ####################          &lt; 1 s  81.4 kb/s
 
       <QEXAMPLE>
 	<SYNTAX>
+	  <LINE>&pr; download_chandra_obsid 1842 --exclude vvref</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Download all but the vvref2.pdf file for obsid 1842. This file
+	    contains the detailed V&amp;V data for the observation and
+	    can be large.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
 	  <LINE>&pr; download_chandra_obsid 1842,1843</LINE>
 	</SYNTAX>
 	<DESC>
@@ -261,6 +275,32 @@ pbk      fits     4 Kb  ####################          &lt; 1 s  81.4 kb/s
 	-->
     </ADESC>
 
+    <ADESC title="Changes in the scripts 4.13.1 (March 2021) release">
+      <PARA title="Validation and Verification files">
+	The Chandra archive contains two V&amp;V files for an observation:
+      </PARA>
+      <LIST>
+	<ITEM>axaff&lt;obsid&gt;N&lt;n&gt;_VV001_vv2.pdf</ITEM>
+	<ITEM>secondary/axaff&lt;obsid&gt;N&lt;n&gt;_VV001_vvref2.pdf.gz</ITEM>
+      </LIST>
+      <PARA>
+	where the first file is intended for users, and the second is
+	only needed in rare situations. The vvref filetype has been added
+	to select this file, and the vv filetype now only refers to
+	the vv2 file.
+      </PARA>
+      <PARA title="Excluding file types">
+	The --exclude flag has been added to allow you to ignore
+	certain file types, so to avoid downloading the vvref2 file
+	you can say
+      </PARA>
+      <PARA>
+	<SYNTAX>
+	  <LINE>download_chandra_obsid 1843 --exclude vvref</LINE>
+        </SYNTAX>
+      </PARA>
+    </ADESC>
+
     <ADESC title="Changes in the scripts 4.13.0 (December 2020) release">
       <PARA>
 	The script should be more robust to changes made to the
@@ -343,6 +383,6 @@ pbk      fits     4 Kb  ####################          &lt; 1 s  81.4 kb/s
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>December 2020</LASTMODIFIED>
+    <LASTMODIFIED>March 2021</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
