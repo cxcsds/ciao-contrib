@@ -496,7 +496,7 @@ def download_chandra_obsids(obsids,
         in both.
     mirror : str or None, optional
         If None then use the CDA HTTPS archive is used (the BASE_URL
-        settign), otherwise set it to the name of a mirror archive to
+        setting), otherwise set it to the name of a mirror archive to
         use that location instead. The value should refer to the
         directory that contains the "byobsid" directory.  The default
         value is equivalent to setting mirror to
