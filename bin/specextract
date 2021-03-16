@@ -34,7 +34,8 @@ Script:
 __version__ = "CIAO 4.13"
 
 toolname = "specextract"
-__revision__ = "25 Feb 2021"
+__revision__ = "09 Mar 2021"
+
 
 
 ##########################################################################
@@ -140,7 +141,8 @@ def check_files(stack, filetype):
         # str() should not be needed, but left in, just in case
         filename = str(s)
         v2(f"  validating file: {filename}")
-        if filename in ["CALDB", "None", "NONE", "none"]:
+
+        if filename.upper() in ["CALDB","NONE"]:
             v3("  ... skipping")
             continue
 
@@ -153,6 +155,19 @@ def check_files(stack, filetype):
 
         cxcdm.dmTableClose(table)
 
+
+def check_filename_set(filename):
+    if not filename:
+        return False
+
+    filename = str(filename).upper()
+
+    if filename in ["NULL","NONE",""," "]:
+        return False
+
+    return True
+
+        
 ################################################################################
 # Usage:
 #  check_file_pbkheader(infile_stack)
@@ -592,6 +607,7 @@ def group_by_obsid(file_stack, file_type):
         sorted_files[i] = orig_files[sort_ind]
 
 
+        
     if file_type != "aspsol":
 
         obsid_dict = {}
@@ -899,10 +915,15 @@ def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, spec
 #
 ################################################################
 
-def check_event_stats(file,refcoord,weights_check):
+def check_event_stats(file,refcoord,weights_check=None,ewmap_range_check=None):
 
     dmlist.punlearn()
-    dmlist.infile = file
+
+    if ewmap_range_check is None:
+        dmlist.infile = file
+    else:
+        dmlist.infile = f"{file}[energy={ewmap_range_check}]"
+        
     dmlist.opt = "counts"
     
     counts = dmlist()
@@ -914,12 +935,17 @@ def check_event_stats(file,refcoord,weights_check):
             else:
                 v1("WARNING: Using refcoord position to produce response files.\n")
         else:
+            if ewmap_range_check is not None:
+                # do we want to error out if the number of counts is smaller than some magic count, instead of just zero?
+                
+                raise IOError(f"{file} has zero counts in the 'energy_wmap={ewmap_range_check}' range needed to generate a weights map.")
+
+
             raise IOError(f"{file} has zero counts. Check that the region format is in sky pixels coordinates.")
 
         return False
-
-    else:
-        return True
+    
+    return True
 
 
 def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,verbose,mskfile,skyx,skyy,instrument,chip_id):
@@ -1012,7 +1038,7 @@ def resp_pos(infile,asol,refcoord,binimg=2):
     else:
         ## parse infile region
         if get_region(infile) == infile:
-            raise IOError("No region filter with the event file, nor a refcoords value, provided to produce response files.")
+            raise IOError("No region filter with the event file, nor a refcoord value, provided to produce response files.")
 
         else:
             # follow general procedures used in event_stats()
@@ -1160,7 +1186,7 @@ def create_arf_ps(full_outroot, evt_filename, infile, asp_param, ebin, clobber, 
 
     cti_app_val = fileio.get_keys_from_file(evt_filename)["CTI_APP"]
 
-    if cti_app_val == "NONE":
+    if cti_app_val.upper() == "NONE":
         raise IOError(f"File {evt_filename} is missing a CTI_APP header keyword, required by many CIAO tools; an ARF will not be created. Try re-running specextract after reprocessing your data.\n")
 
     acis_fef_lookup.punlearn()
@@ -1372,13 +1398,11 @@ def get_filename(full_filename):
     else:
         filename = full_filename.split(brack)[0]
 
-
-
-    if not filename or str(filename) in [None, "NULL", "NONE", "None",""," "]:
+    if not check_filename_set(filename):
         return None
 
-    else:
-        return filename
+    return filename
+
 
 
 
@@ -1460,11 +1484,10 @@ def get_region_filter(full_filename):
         region = full_filename
 
 
-    if not region or str(region) in [None, "NULL", "NONE", "None",""," "]:
+    if not check_filename_set(region):
         raise IOError(f"Please specify a valid spatial region filter for {full_filename} or use FOV region files.")
 
-    else:
-        return filter,region
+    return filter,region
 
 ########################################################
 # Usage:
@@ -1498,11 +1521,10 @@ def get_region(full_filename):
         region = get_region_filter(full_filename)[1]
 
 
-    if not region or str(region) in [None, "NULL", "NONE", "None",""," "]:
+    if not check_filename_set(region):
         return None
 
-    else:
-        return region
+    return region
 
 
 def valid_regstr(inf):
@@ -1821,7 +1843,7 @@ def specextract(args):
     # no need to duplicate responses, since src and bkg responses will be the same if refcoord!=""
 
     if refcoord != "" and  bkgresp == "yes":
-        v1(f"Responses for source and background are identical at {refcoords}, setting 'bkgresp=no' to avoid duplicate files.")
+        v1(f"Responses for source and background are identical at {refcoord}, setting 'bkgresp=no' to avoid duplicate files.")
 
         bkgresp = "no"
 
@@ -1840,7 +1862,7 @@ def specextract(args):
     #
     # a) source stack
 
-    if infile and infile not in [""," ","None","none","NONE"]:
+    if infile and infile.lower() not in [""," ","none"]:
 
         # handle a stack of regions, but single input file, in the format: "evt.fits[sky=@reg.lis]",
         # assume no other dmfilter included
@@ -1972,7 +1994,7 @@ def specextract(args):
     isoutstack = True
     outroot_tmp = outroot
 
-    if outroot and outroot not in [""," ","None","none","NONE"]:
+    if outroot and outroot.lower() not in [""," ","none"]:
         out_stk = stk.build(outroot)
 
     else:
@@ -1998,7 +2020,7 @@ def specextract(args):
     # c) background stack; ensure it has the same
     #    number of elements as the source stack.
 
-    if bkgfile and bkgfile not in [""," ","None","none","NONE"]:
+    if bkgfile and bkgfile.lower() not in [""," ","none"]:
 
         # handle a stack of regions, but single input file, in the format: "evt.fits[sky=@reg.lis]",
         # assume no other dmfilter included
@@ -2123,7 +2145,20 @@ def specextract(args):
 
     # check counts in input files, and exit if necessary, or produce responses for upper-limits
     for src in src_stk:
-        check_event_stats(src,refcoord,False)
+        check_event_stats(src,refcoord,weights_check=False)
+
+    # check if there are counts in energy_wmap range for weighted ARFs/sky2tdet creation
+    ewmap_srcbg_stk = []
+
+    if weight == "yes":
+        ewmap_srcbg_stk.extend(src_stk)
+
+    if dobkgresp:
+        ewmap_srcbg_stk.extend(bkg_stk)
+
+    for fn in ewmap_srcbg_stk:
+        if fileio.get_keys_from_file(inf)["INSTRUME"] == "ACIS":
+            check_event_stats(fn,refcoord,ewmap_range_check=ewmap)
 
     # find ancillary files, if exists, add to stack
     ancil = {}
@@ -2207,7 +2242,7 @@ def specextract(args):
     #    e) dafile stack; ensure it has
     #       either 1 or src_count elements
 
-    if dafile and dafile not in [""," ","None","none","NONE"]:
+    if dafile and dafile.lower() not in [""," ","none"]:
         da_stk = stk.build(dafile)
         check_files(da_stk, "dead area")
         da_count = len(da_stk)
@@ -2224,7 +2259,7 @@ def specextract(args):
     #    f) mskfile stack; ensure it has
     #       either 1 or src_count elements
 
-    if mask and mask not in [""," ","None","none","NONE"]:
+    if mask and mask.lower() not in [""," ","none"]:
         mask_stk = stk.build(mask)
         check_files(mask_stk, "mask")
         mask_count = len(mask_stk)
@@ -2241,7 +2276,7 @@ def specextract(args):
     #    g) badpixfile file stack; ensure it has
     #       either 1 or src_count elements
 
-    if bpixfile and bpixfile not in [""," ","None","none","NONE"]:
+    if bpixfile and bpixfile.lower() not in [""," ","none"]:
         bpix_stk = stk.build(bpixfile)
         check_files(bpix_stk,"bad pixel")
         bpix_count = len(bpix_stk)
@@ -2264,7 +2299,7 @@ def specextract(args):
     #       If solution, it can have
     #       1 or more elements per source file.
 
-    if asp and asp not in [""," ","None","none","NONE"]:
+    if asp and asp.lower() not in [""," ","none"]:
         asp_stk = stk.build(asp)
         check_files(asp_stk,"aspect")
         asp_count = len(asp_stk)
@@ -2274,7 +2309,7 @@ def specextract(args):
     #    i)  dtffile stack; ensure it has
     #        either 1 or src_count elements
 
-    if dtffile and dtffile not in [""," ","None","none","NONE"]:
+    if dtffile and dtffile.lower() not in [""," ","none"]:
         dtf_stk = stk.build(dtffile)
         check_files(dtf_stk,"dead time factor")
         dtf_count = len(dtf_stk)
@@ -2291,29 +2326,20 @@ def specextract(args):
     #
     # check that there are no spaces in ancillary file paths, if specified
     #
-    for path in asp_stk:
-        if " " in os.path.abspath(path):
-            raise IOError(f"The absolute path for the asol file, '{os.path.abspath(path)}', cannot contain any spaces")
 
-    for path in bpix_stk:
-        if " " in os.path.abspath(path):
-            raise IOError(f"The absolute path for the badpix file, '{os.path.abspath(path)}', cannot contain any spaces")
+    stk_dict = {"asol":asp_stk,
+                "badpix":bpix_stk,
+                "mask":mask_stk,
+                "DTF":dtf_stk,
+                "dead area":da_stk}
+
+    for key in stk_dict.keys():
+        for path in stk_dict[key]:
+            if " " in os.path.abspath(path):
+                raise IOError(f"The absolute path for the {key} file, '{os.path.abspath(path)}', cannot contain any spaces")
 
     if bpix_stk == [""]:
         del(bpix_stk)
-
-    for path in mask_stk:
-        if " " in os.path.abspath(path):
-            raise IOError(f"The absolute path for the mask file, '{os.path.abspath(path)}', cannot contain any spaces")
-
-    for path in dtf_stk:
-        if " " in os.path.abspath(path):
-            raise IOError(f"The absolute path for the DTF file, '{os.path.abspath(path)}', cannot contain any spaces")
-
-    for path in da_stk:
-        if " " in os.path.abspath(path):
-            raise IOError(f"The absolute path for the dead area file, '{os.path.abspath(path)}', cannot contain any spaces")
-
 
     # Determine if asphist or asol files were input
     # to the 'asp' parameter and build the appropriate
@@ -2625,13 +2651,13 @@ def specextract(args):
             if fcount == 1:
                 iteminfostr = "\n"
             else:
-                iteminfostr = f"[{str(ii+1)} of {str(fcount)}]\n"
+                iteminfostr = f"[{ii+1} of {fcount}]\n"
 
             if instrument == "HRC" and weight == "yes":
                 weight = "no"
                 v1("HRC responses will be unweighted.")
 
-            if not check_event_stats(fullfile,refcoord,True):
+            if not check_event_stats(fullfile,refcoord,weights_check=True):
                 weight = "no"
 
             #  If we're using an output stack, then grab an item off of the stack
@@ -2851,7 +2877,8 @@ def specextract(args):
 
                         v1(f"Converting source region to physical coordinates {iteminfostr}")
 
-                        outreg = tempfile.NamedTemporaryFile(suffix=f"_phys_coords_{srcbkg}{str(ii+1)}.reg",dir=tmpdir)
+                        outreg = tempfile.NamedTemporaryFile(suffix=f"_phys_coords_{srcbkg}{ii+1}.reg",dir=tmpdir)
+
                         fullfile = convert_region(fullfile, filename, outreg.name, "yes", verbose)
 
             ###########################
@@ -2939,7 +2966,8 @@ def specextract(args):
                 except OSError:
                     #doexit("Failed to create aspect histogram file for " + fullfile, outroot, srcbkg, str(ii+1),full_outroot)
 
-                    raise IOError(f"Failed to create aspect histogram file for {fullfile}")
+                    if dobkgresp:
+                        raise IOError(f"Failed to create aspect histogram file for {fullfile}")
                     
             if instrument == "ACIS":
                 try:
