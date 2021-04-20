@@ -182,7 +182,10 @@ class DaxModelEditor():
     def fit(self):
         '''Go ahead and fit the data
         '''
-        self.fit_command()
+        try:
+            self.fit_command()
+        except Exception as mybad:
+            messagebox.showerror("DAX Model Editor", str(mybad))
         self.update()
 
     def quit(self):
