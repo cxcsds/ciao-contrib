@@ -34,7 +34,7 @@ Script:
 __version__ = "CIAO 4.13"
 
 toolname = "specextract"
-__revision__ = "09 Mar 2021"
+__revision__ = "26 May 2021"
 
 
 
@@ -273,12 +273,14 @@ def extract_spectra(full_outroot, infile, ptype, channel, ewmap, binwmap, instru
 #
 ##########################################################################
 
-def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, specfile, weightfile, wmap_clip, wmap_sky2tdet):
+def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, specfile, weightfile, wmap_clip, wmap_sky2tdet, infostr):
 
     """
     RMF filename to return
     """
-	
+
+    v1(infostr)
+    
     rmffile = f"{full_outroot}.rmf"
 
     if "mkrmf" == rmftool:
@@ -342,11 +344,13 @@ def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, 
 #
 ##########################################################################
 
-def build_rmf_ps(rmftool, evt_filename, infile, ptype, full_outroot, ebin, rmfbin, clobber, verbose, specfile, weightfile, ccd_id, chipx, chipy):
+def build_rmf_ps(rmftool, evt_filename, infile, ptype, full_outroot, ebin, rmfbin, clobber, verbose, specfile, weightfile, ccd_id, chipx, chipy, infostr):
 	
     """
     RMF filename to return
     """
+
+    v1(infostr)
     
     rmffile = f"{full_outroot}.rmf"
 
@@ -837,7 +841,7 @@ def clip_wmap(wmapfile,threshold,tmpdir):
 #
 ##########################################################################
 
-def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, specfile, dafile, mskfile, ewmap_param, bintwmap_param, wmap_clip, wmap_thresh, pars, tmpdir):
+def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, specfile, dafile, mskfile, ewmap_param, bintwmap_param, wmap_clip, wmap_thresh, pars, tmpdir, infostr):
     
     """
     output TDET WMAP filename
@@ -845,6 +849,8 @@ def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, spec
 	
     tdetwmap = tempfile.NamedTemporaryFile(suffix="_tdet",dir=tmpdir)
 
+    v1(infostr)
+    
     try:
         try:
             sky2tdet.punlearn()
@@ -948,7 +954,7 @@ def check_event_stats(file,refcoord,weights_check=None,ewmap_range_check=None):
     return True
 
 
-def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,verbose,mskfile,skyx,skyy,instrument,chip_id):
+def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,verbose,mskfile,skyx,skyy,instrument,chip_id,infostr):
 
     # use caldb4 module to query for the appropriate, latest HRC RMF in CALDB; can use calquiz
     # instead as well, output is a string rather than list
@@ -986,6 +992,8 @@ def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,ve
             detname = f"HRC-S{chip_id}"
 
     # ARF output file
+    v1(infostr)
+    
     arffile = f"{full_outroot}.arf"
 
     mkarf.punlearn()
@@ -1173,7 +1181,7 @@ def event_stats(file, colname):
 #
 ##########################################################################
 
-def create_arf_ps(full_outroot, evt_filename, infile, asp_param, ebin, clobber, verbose, specfile, dafile, mskfile, ccd_id, skyx, skyy, chipx, chipy):
+def create_arf_ps(full_outroot, evt_filename, infile, asp_param, ebin, clobber, verbose, specfile, dafile, mskfile, ccd_id, skyx, skyy, chipx, chipy, infostr):
 
     """
     Use acis_fef_lookup to locate the appropriate FEF file for input
@@ -1184,6 +1192,8 @@ def create_arf_ps(full_outroot, evt_filename, infile, asp_param, ebin, clobber, 
     # If file does not have a CTI_APP header keyword, issue
     # a warning that the data should probably be reprocessed.
 
+    v1(infostr)
+    
     cti_app_val = fileio.get_keys_from_file(evt_filename)["CTI_APP"]
 
     if cti_app_val.upper() == "NONE":
@@ -2911,15 +2921,18 @@ def specextract(args):
                 phafile = extract_spectra(full_outroot, fullfile, ptype, channel, ewmap, binwmap, instrument, clobber, verbose)
 
             except OSError:
-                if docombine:
-                    if "src" == srcbkg:
-                        cs_src_spectra[ii] = 1
-                        sphafiles[ii] = phafile
+                raise IOError(f"Failed to extract spectrum for {fullfile}")
 
-                    elif "bkg" == srcbkg:
-                        cs_bkg_spectra[ii] = 1
-                        bphafiles[ii] = phafile
+            if docombine:
+                if srcbkg == "src":
+                    cs_src_spectra[ii] = 1
+                    sphafiles[ii] = phafile
 
+                elif srcbkg == "bkg":
+                    cs_bkg_spectra[ii] = 1
+                    bphafiles[ii] = phafile
+                        
+            
             # add nH values to phafile header
             if nrao_nh not in [None,"-",0.0]:
                 edit_headers(verbose, phafile, "NRAO_nH", nrao_nh, unit="10**22 cm**-2", comment="galactic HI column density") #comment="galactic neutral hydrogen column density at the source position using the NRAO all-sky interpolation, via COLDEN."
@@ -2955,31 +2968,32 @@ def specextract(args):
             #
             ###########################
 
-            v1(f"Creating {srcbkg} ARF {iteminfostr}")
+            infostr = f"Creating {srcbkg} ARF {iteminfostr}"
 
             if asol:
-                try:
-                    asp_arg, asp_arg_tempfile = mk_asphist(asol_arg, fullfile, full_outroot, dtf_arg, instrument, chip_id, verbose, clobber, tmpdir)
+                with suppress_stdout_stderr():
+                    try:
+                        asp_arg, asp_arg_tempfile = mk_asphist(asol_arg, fullfile, full_outroot, dtf_arg, instrument, chip_id, verbose, clobber, tmpdir)
 
-                    add_tool_history(asp_arg,toolname,pars,toolversion=__revision__)
+                        add_tool_history(asp_arg,toolname,pars,toolversion=__revision__)
 
-                except OSError:
-                    #doexit("Failed to create aspect histogram file for " + fullfile, outroot, srcbkg, str(ii+1),full_outroot)
+                    except OSError:
+                        #doexit("Failed to create aspect histogram file for " + fullfile, outroot, srcbkg, str(ii+1),full_outroot)
 
-                    if dobkgresp:
-                        raise IOError(f"Failed to create aspect histogram file for {fullfile}")
+                        if dobkgresp:
+                            raise IOError(f"Failed to create aspect histogram file for {fullfile}")
                     
             if instrument == "ACIS":
                 try:
                     if any([srcbkg == "src" and weight == "yes", srcbkg == "bkg" and dobkgresp]): # force background to always be weighted
-                        ancrfile, weightfile, fef_file, tdetwmap = create_arf_ext(full_outroot, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, ewmap, bintwmap, wmap_clip, wmap_threshold, pars, tmpdir)
+                        ancrfile, weightfile, fef_file, tdetwmap = create_arf_ext(full_outroot, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, ewmap, bintwmap, wmap_clip, wmap_threshold, pars, tmpdir, infostr)
 
                         add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
 
                     else:
                         if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
                             try:
-                                ancrfile, weightfile = create_arf_ps(full_outroot, filename, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, chip_id, skyx, skyy, chipx, chipy)
+                                ancrfile, weightfile = create_arf_ps(full_outroot, filename, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, chip_id, skyx, skyy, chipx, chipy, infostr)
 
                                 add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
 
@@ -3001,7 +3015,7 @@ def specextract(args):
             else:
                 # make HRC ARF and copy RMF from CalDB
                 try:
-                    ancrfile, respfile = create_hrc_resp(phafile,rmffile,refcoord,full_outroot,asp_arg,clobber,verbose,msk_arg,skyx,skyy,instrument,chip_id)
+                    ancrfile, respfile = create_hrc_resp(phafile,rmffile,refcoord,full_outroot,asp_arg,clobber,verbose,msk_arg,skyx,skyy,instrument,chip_id, infostr)
 
                     add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
 
@@ -3039,7 +3053,7 @@ def specextract(args):
             ###########################
             
             if instrument == "ACIS":
-                v1(f"Creating {srcbkg} RMF {iteminfostr}")
+                infostr = f"Creating {srcbkg} RMF {iteminfostr}"
 
                 if null_rmffile:
                     v1(f"WARNING: Setting rmffile parameter (and calquiz calfile) to 'CALDB{ccdid_val}'.\n")
@@ -3049,13 +3063,13 @@ def specextract(args):
                 try:
                     if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
                         if all([weight == "yes",weight_rmf == "yes"]):
-                            respfile = build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, wmap_clip, tdetwmap.name)
+                            respfile = build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, wmap_clip, tdetwmap.name, infostr)
                             
                             if wmap_clip:
                                 tdetwmap.close()
 
                         else:
-                            respfile = build_rmf_ps(rmftool, filename, fullfile, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, chip_id, chipx, chipy)
+                            respfile = build_rmf_ps(rmftool, filename, fullfile, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, chip_id, chipx, chipy, infostr)
 
                         try:
                             add_tool_history(respfile,toolname,pars,toolversion=__revision__)
