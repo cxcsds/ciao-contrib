@@ -22,8 +22,10 @@
 ds9=$1
 model=$2
 modelbkg=$3
-method=$4
-stat=$5
+psf=$4
+exp=$5
+method=$6
+stat=$7
 
 echo "# -------------------"
 echo ""
@@ -59,12 +61,6 @@ then
 fi
 
 
-#~ if test x$getconf = x1
-#~ then
-  #~ conf="sherpa.conf()"
-#~ else
-  #~ conf=""
-#~ fi
 
 DAX_OUTDIR=$DAX_OUTDIR/imgfit/$$/
 mkdir -p $DAX_OUTDIR
@@ -94,15 +90,34 @@ sherpa.set_coord("physical")
 sherpa.set_method("${method}")
 sherpa.set_stat("${stat}")
 
+sherpa.create_model_component("${model}", "mdl1")
+mdl=mdl1
+dax_mdls = [mdl1]
+sherpa.thaw(mdl1)
+sherpa.guess(mdl1)
 
+if "${modelbkg}" != "none":
+    sherpa.create_model_component("${modelbkg}","mdl2")
+    mdl += mdl2
+    dax_mdls.append(mdl2)
+    sherpa.thaw(mdl2)
+    sherpa.guess(mdl2)
 
-sherpa.set_source("${model}.mdl1+${modelbkg}.bkg1")
+if "${exp}" != "x":
+    sherpa.load_table_model("expmap", "${exp}"[1:])
+    mdl = expmap*mdl
+    dax_mdls.append(expmap)
+
+sherpa.set_source(mdl)
+
+if "${psf}" != "x":
+    sherpa.load_psf("psf1","${psf}"[1:])
+    sherpa.set_psf(psf1)
+    # This doesn't work, psf1.pars is empty tuple
+    # dax_mdls.append(psf1)
+
 sherpa.ignore2d()
 sherpa.notice2d("${src}")
-sherpa.thaw(mdl1)
-sherpa.thaw(bkg1)
-sherpa.guess(mdl1)
-sherpa.guess(bkg1)
 
 
 if hasattr(mdl1, "theta"):
@@ -119,18 +134,12 @@ if hasattr(mdl1,"xpos") and hasattr(mdl1,"ypos"):
   mdl1.ypos=$yy
 
 from dax.dax_model_editor import *
-mod_edit = DaxModelEditor([mdl1,bkg1], hide_plot_button=True)
+mod_edit = DaxModelEditor(dax_mdls, hide_plot_button=True)
 mod_edit.run(sherpa.fit, sherpa.conf)
 
 
-#~ try:
-  #~ sherpa.fit()
-#~ except:
-  #~ pass
-
-
 sherpa.notice()
-sherpa.save_source("${DAX_OUTDIR}/out.fits", clobber=True)
+sherpa.save_model("${DAX_OUTDIR}/out.fits", clobber=True)
 EOF
 
 echo "  (3/3) Doing fit"

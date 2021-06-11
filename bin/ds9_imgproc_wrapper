@@ -1183,6 +1183,9 @@ class Simulatepsf(ImageProcTaskImgOut):
         if 'MARX_ROOT' not in environ:
             raise RuntimeError("This tasks requires that you setup for MARX before starting ds9")
 
+        import paramio as pio
+        randseed = pio.pget("dax", "random_seed")
+
         xpos, ypos = self.get_coords()
         auxfiles = self.find_aux()
 
@@ -1206,6 +1209,7 @@ class Simulatepsf(ImageProcTaskImgOut):
         self.tool.extended = ("1" == args[7])
         self.tool.keep = True
         self.tool.asolfile = auxfiles["asol"]
+        self.tool.random_seed = randseed
         self.img2display = self.tool.outroot + ".psf"
 
 
