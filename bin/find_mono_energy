@@ -72,7 +72,12 @@ def compute_metric(metric):
     dater = get_model_plot(DATASET_ID)
 
     emid = (dater.xlo+dater.xhi)/2.0
+    delta_e = dater.xhi - dater.xlo
+    if np.any(delta_e == 0):
+        raise ValueError("Energy bins cannot have 0 width")
+
     flux = dater.y
+    flux = flux / delta_e
 
     if metric == "mean":
         mean_e = np.sum(flux*emid)/np.sum(flux)
@@ -84,19 +89,17 @@ def compute_metric(metric):
     return mean_e
 
 
-def pset_ouput(mono_energy):
+def pset_output(mono_energy):
     "Save output back to own parameter file"
 
-    pfile = paramopen(TOOLNAME, "rwL")
+    pfile = paramopen(TOOLNAME, "rwL", sys.argv)   # allow @@
     pset(pfile, "energy", str(mono_energy))
     paramclose(pfile)
 
 
 def clear_output():
     "Clear output at startup"
-    pfile = paramopen(TOOLNAME, "rwL")
-    pset(pfile, "energy", "")
-    paramclose(pfile)
+    pset_output("")
 
 
 @lw.handle_ciao_errors(TOOLNAME, __REVISION__)
@@ -123,7 +126,7 @@ def main():
 
     verb1(f"Characteristic Energy = {mono_energy}")
 
-    pset_ouput(mono_energy)
+    pset_output(mono_energy)
 
 
 if __name__ == "__main__":
