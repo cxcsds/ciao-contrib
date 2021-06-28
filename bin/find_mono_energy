@@ -38,10 +38,16 @@ def setup_dataspace(arf, rmf):
 def setup_model(model, model_params):
     "Set the source model"
 
-    # pylint: disable=exec-used
+    try:
+        set_model(DATASET_ID, model)
+    except Exception as mybad:
+        raise ValueError(f"ERROR in model '{model}'\n{mybad}")
 
-    set_model(DATASET_ID, model)
-    exec(model_params)
+    try:
+        # pylint: disable=exec-used
+        exec(model_params)
+    except Exception as mybad:
+        raise ValueError(f'Error in paramvals={model_params}]\n{mybad}')
 
 
 def setup_band(band):
@@ -93,6 +99,7 @@ def clear_output():
     paramclose(pfile)
 
 
+@lw.handle_ciao_errors(TOOLNAME, __REVISION__)
 def main():
     "Main routine"
 
@@ -113,9 +120,9 @@ def main():
     setup_model(pars["model"], pars["paramvals"])
     setup_band(pars["band"])
     mono_energy = compute_metric(pars["metric"])
-    
+
     verb1(f"Characteristic Energy = {mono_energy}")
-    
+
     pset_ouput(mono_energy)
 
 
