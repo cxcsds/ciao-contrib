@@ -27,8 +27,6 @@ analysis in Sherpa.
 
 """
 
-import logging
-
 from collections import defaultdict
 
 import numpy as np
@@ -41,12 +39,13 @@ from sherpa.utils.err import ArgumentErr, DataErr
 import sherpa.astro.instrument
 import sherpa.models.parameter
 
+from ciao_contrib.logger_wrapper import get_module_logger
+
 
 __all__ = ("convert", )
 
-lgr = logging.getLogger(__name__)
-dbg = lgr.debug
-del lgr
+
+dbg = get_module_logger(__name__).debug
 
 
 # Helper classes and functions that can be used by the converted

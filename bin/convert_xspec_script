@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2020
+# Copyright (C) 2020, 2021
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -51,7 +51,7 @@ from sherpa_contrib.xspec import xcm
 
 
 TOOLNAME = "convert_xspec_script"
-TOOLVER = "09 December 2020"
+TOOLVER = "01 July 2021"
 
 lw.initialize_logger(TOOLNAME, verbose=1)
 V1 = lw.make_verbose_level(TOOLNAME, 1)
@@ -66,7 +66,7 @@ The conversion is not guaranteed to match XSPEC perfectly.
 """
 
 COPYRIGHT_STR = """
-Copyright (C) 2020
+Copyright (C) 2020, 2021
           Smithsonian Astrophysical Observatory
 
 This program is free software; you can redistribute it and/or modify
@@ -139,7 +139,11 @@ if __name__ == "__main__":
     arglist = lw.preprocess_arglist(sys.argv[1:])
     args = parser.parse_args(arglist)
 
-    # lw.set_verbosity(args.verbose)
+    # Overload the --debug/--tracebackdebug hidden setting to also
+    # change the verbosity.
+    #
+    if '--debug' in sys.argv[1:] or '--tracebackdebug' in sys.argv[1:]:
+        lw.set_verbosity(5)  # what should we set?
 
     if args.list_version:
         V1(TOOLVER)
