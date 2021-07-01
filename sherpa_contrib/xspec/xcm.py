@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2020  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2020, 2021  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -405,11 +405,9 @@ def parse_tie(pars, add_import, add, par, pline):
     #
     line = line.translate({32: None})
 
-    # Build up the link expression. The state token indicates
-    # whether we are processing a function like abs or sin.
+    # Build up the link expression.
     #
     expr = ''
-    state = 'normal'
     token = ''
     exponentiation = False
     while line != '':
