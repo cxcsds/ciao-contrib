@@ -725,7 +725,9 @@ def convert_model(expr, postfix, groups, names):
         The model expression for each group (if groups was None then
         for a single group). Each list contains a pair of
         (str, None) or ((str, str), Model), where for the Model
-        case the two names are the model type and the instance name.
+        case the two names are the model type and the instance name,
+        unless we have a table model in which it stores
+        ('tablemodel', name, filename, tabletype).
 
     Notes
     -----
@@ -766,6 +768,39 @@ def convert_model(expr, postfix, groups, names):
             names.add(n)
             return n
 
+
+    def try_tablemodel(basename, gname):
+        """Depends if we have a Sherpa with https://github.com/sherpa/sherpa/pull/1113
+        fixed whether we can support etable models."""
+
+        if not basename.startswith('etable{') and \
+           not basename.startswith('mtable{') and \
+           not basename.startswith('atable{'):
+            return None, None
+
+        if not basename.endswith('}'):
+            raise ValueError(f"No }} in {basename}")
+
+        dbg(f"Handling TABLE model: {basename} for {gname}")
+        tbl = basename[7:-1]
+        kwargs = {}
+        if basename[0] == 'e':
+            kwargs['etable'] = True
+
+        try:
+            session.load_xstable_model(gname, tbl, **kwargs)
+        except FileNotFoundError:
+            raise ValueError(f"Unable to find XSPEC table model: {basename}")
+        except TypeError as t:
+            if basename[0] == 'e':
+                raise ValueError(f"XSPEC etable models are not supported in this version of Sherpa: {basename}")
+
+            # should not happen but just in case
+            raise t
+
+        mdl = session.get_model_component(gname)
+        return mdl, (['tablemodel', gname, tbl, basename[:7]], mdl)
+
     out = [[] for _ in groups]
 
     def add_term(start, end, ctr, storage):
@@ -775,18 +810,28 @@ def convert_model(expr, postfix, groups, names):
         if start == end:
             return ctr
 
-        name = f"xs{expr[start:end]}"
-        dbg(f"Identified model expression '{name}'")
+        basename = expr[start:end]
+        dbg(f"Identified model expression '{basename}'")
 
+        name = f"xs{basename}"
         for i, grp in enumerate(groups, 1):
-            try:
-                mdl = session.create_model_component(name, mkname(ctr, grp))
-            except ArgumentErr:
-                raise ValueError(f"Unrecognized XSPEC model '{name[2:]}' in {expr}") from None
+            gname = mkname(ctr, grp)
 
-            out[i - 1].append((mdl.name.split('.'), mdl))
+            mdl, store = try_tablemodel(basename, gname)
+            if mdl is None:
+                try:
+                    mdl = session.create_model_component(name, gname)
+                except ArgumentErr:
+                    raise ValueError(f"Unrecognized XSPEC model '{basename}' in {expr}") from None
+
+                out[i - 1].append((mdl.name.split('.'), mdl))
+            else:
+                out[i - 1].append(store)
 
             # This only needs to be checked for the first group.
+            #
+            # TODO: do we need to record when the convolution depth decreases
+            #       (ie we are nolonger in a convolution)?
             #
             if i == 1:
                 if isinstance(mdl, xspec.XSConvolutionKernel):
@@ -803,14 +848,57 @@ def convert_model(expr, postfix, groups, names):
                 elif isinstance(mdl, xspec.XSAdditiveModel):
                     storage['lastterm'] = 'additive'
 
+                elif isinstance(mdl, xspec.XSTableModel):
+                    if mdl.addmodel:
+                        storage['lastterm'] = 'additive'
+                    else:
+                        storage['lastterm'] = 'multiplicative'
+
                 else:
                     raise RuntimeError(f"Unrecognized XSPEC model: {mdl.__class__}")
 
         return ctr + 1
 
-    def add_sep(sep):
+    def add_token(storage, token):
+        "Not sure about this"
+        dbg(f"Adding token [{token}]")
         for i, grp in enumerate(groups, 1):
-            out[i - 1].append((sep, None))
+            out[i - 1].append((token, None))
+
+    def open_sep(storage, prefix=None):
+        storage['separator'] += 1
+        storage['nmodels'].insert(0, 0)
+
+        for i, grp in enumerate(groups, 1):
+            # break out the prefix if set
+            if prefix is not None:
+                out[i - 1].append((prefix, None))
+            out[i - 1].append(('(', None))
+
+    def close_sep(storage, postfix=None):
+        storage['separator'] -= 1
+        nmodels = storage['nmodels'].pop(0)
+
+        # If there's only one model then we can remove the
+        # open/close tokens, as long as this not for a
+        # convolution model. If the convolution setting
+        # is None then we assume this is not for a convolution
+        # model. Note that this is to support the XSPEC
+        # syntax phabs(powerlaw). We could extend to remove
+        # un-needed brackets but just catch the simple case.
+        #
+        for i, grp in enumerate(groups, 1):
+
+            outlist = out[i - 1]
+            if nmodels == 1 and not in_convolution(storage):
+                assert len(outlist) > 1
+                assert outlist[-2] == ('(', None)
+                outlist.pop(-2)
+            else:
+                outlist.append((')', None))
+
+            if postfix is not None:
+                outlist.append((postfix, None))
 
     def check_end_convolution(storage):
         if storage['convolution'] is None:
@@ -820,7 +908,7 @@ def convert_model(expr, postfix, groups, names):
             return
 
         if storage['convolution'] == storage['depth']:
-            add_sep(")")
+            close_sep(storage)
         elif storage['convolution'] > storage['depth']:
             print("WARNING: convolution model may not be handled correctly.")
 
@@ -830,11 +918,16 @@ def convert_model(expr, postfix, groups, names):
         return storage['convolution'] is not None \
             and storage['convolution'] == storage['depth']
 
+    def lastterm_is_openbracket():
+        lastterm = out[0][-1]
+        return lastterm[1] is None and lastterm[0] == "("
+
     maxchar = len(expr) - 1
     start = 0
     end = 0
     mnum = 1
-    storage = {'convolution': None, 'depth': 0, 'lastterm': None}
+    storage = {'convolution': None, 'depth': 0, 'separator': 0,
+               'lastterm': None, 'nmodels': [0]}
     for end, char in enumerate(expr):
 
         # Not completely sure of the supported language.
@@ -844,42 +937,46 @@ def convert_model(expr, postfix, groups, names):
 
         if char == "(":
             if end == 0:
-                add_sep('(')
+                open_sep(storage)
             else:
                 mnum = add_term(start, end, mnum, storage)
                 # We want to leave ( alone for convolution models.
                 # This is a bit messy.
                 #
                 if expr[end - 1] in "+*-/":
-                    add_sep(" (")
-                elif storage['lastterm'] == 'convolution':
-                    add_sep("(")
+                    open_sep(storage, " ")
+                elif storage['lastterm'] == 'convolution' or lastterm_is_openbracket():
+                    open_sep(storage)
                 else:
-                    add_sep(" * (")
+                    open_sep(storage, " * ")
 
             start = end + 1
             storage['depth'] += 1
+            assert storage['depth'] == storage['separator'], storage
             continue
 
         if char == ")":
             mnum = add_term(start, end, mnum, storage)
+            storage['nmodels'][0] += 1
 
             # Check to see whether we can close out the convolution.
             #
             check_end_convolution(storage)
 
-            if end == maxchar:
-                add_sep(")")
+            if end == maxchar or expr[end + 1] == ")":
+                close_sep(storage)
             elif expr[end + 1] in "+*-/":
-                add_sep(") ")
+                close_sep(storage, " ")
             else:
-                add_sep(") * ")
+                close_sep(storage, " * ")
 
             start = end + 1
             storage['depth'] -= 1
+            assert storage['depth'] == storage['separator'], storage
             continue
 
         mnum = add_term(start, end, mnum, storage)
+        storage['nmodels'][0] += 1
 
         # conv*a1+a2 is conv(s1) + a2
         if char == '+':
@@ -888,11 +985,11 @@ def convert_model(expr, postfix, groups, names):
         # If we had conv*mdl then we want to drop the *
         # but conv*m1*a1 is conv(m1*a1)
         #
-        if not(char == '*' and in_convolution(storage) and out[0][-1][1] is None and out[0][-1][0] == "("):
+        if not(char == '*' and in_convolution(storage) and lastterm_is_openbracket()):
             # Add space characters to separate out the expression,
             # even if start==end.
             #
-            add_sep(f" {char} ")
+            add_token(storage, f" {char} ")
 
         start = end + 1
 
@@ -909,8 +1006,19 @@ def convert_model(expr, postfix, groups, names):
     if storage['convolution'] is not None:
         print("WARNING: convolution model may not be handled correctly.")
 
+    # depth and separator are really the same thing, and nmodels check is
+    # similar
     if storage['depth'] != 0:
+        dbg(f"storage[depth] = {storage['depth']}")
         print("WARNING: unexpected issues handling brackets in the model")
+
+    if storage['separator'] != 0:
+        dbg(f"storage[separator] = {storage['separator']}")
+        print("WARNING: unexpected issues handling separators")
+
+    if len(storage['nmodels']) != 1:
+        dbg(f"storage[nmodels] = {storage['nmodels']}")
+        print("WARNING: unexpected issues counting models")
 
     return out
 
@@ -1301,14 +1409,33 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
             # full source model until the end of the script, since
             # we may need to handle multiple source "spectra".
             #
+            # This is complicated by the need to support table models.
+            #
             for expr in exprs:
                 for cpt in expr:
                     if cpt[1] is None:
                         continue
 
-                    mtype, mname = cpt[0]
-                    madd(f"{mname} = XXcreate_model_component('{mtype}', '{mname}')",
-                         expand=True)
+                    if cpt[0][0] == 'tablemodel':
+                        assert len(cpt[0]) == 4, cpt
+                        mname = cpt[0][1]
+                        tfile = cpt[0][2]
+                        ttype = cpt[0][3]
+                        if cpt[0][3] == 'etable':
+                            madd(f"XXload_xstable_model('{mname}', '{tfile}', etable=True)",
+                                 expand=True)
+                        else:
+                            madd(f"XXload_xstable_model('{mname}', '{tfile}')",
+                                 expand=True)
+
+                        # Not really needed but just in case
+                        madd(f"{mname} = XXget_model_component('{mname}')",
+                             expand=True)
+
+                    else:
+                        mtype, mname = cpt[0]
+                        madd(f"{mname} = XXcreate_model_component('{mtype}', '{mname}')",
+                             expand=True)
 
             # Create the list of all parameters, so we can set up links.
             # Note that we store these with the label, not sourcenumber,
@@ -1398,6 +1525,8 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
     # The easy case:
     #
     exprs = state['exprs']
+    dbg(f"Number of extra sources: {len(state['sourcenum'])}")
+    dbg(f"Keys in exprs: {exprs.keys()}")
     if len(state['sourcenum']) == 0:
         if list(exprs.keys()) != [None]:
             raise RuntimeError("Unexpected state when processing the model expressions in the XCM file!")
@@ -1405,12 +1534,14 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
         # Do we use the same model or separate models?
         #
         if len(exprs[None]) == 1:
+            dbg("Single source expression for all data sets")
             cpts = [conv(t) for t in exprs[None][0]]
             sexpr = "".join(cpts)
             for did in state['datasets']:
                 add('set_source', did, sexpr)
 
         else:
+            dbg("Separate source expressions for the data sets")
             if len(state['datasets']) != len(exprs[None]):
                 raise RuntimeError("Unexpected state when handling source models!")
 
