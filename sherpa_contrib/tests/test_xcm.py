@@ -60,11 +60,13 @@ set_source(1, m1)
     check(expected, answer)
 
 
-@pytest.mark.parametrize('expr',
-                         ['phabs * powerlaw',
-                          'phabs(powerlaw)',
-                          'phabs* powerlaw'])
-def test_absorbed_powerlaw(expr):
+# I'd like all these to map to the same string...
+@pytest.mark.parametrize('expr,expected',
+                         [('phabs * powerlaw', 'm1 * m2'),
+                          ('phabs(powerlaw)', 'm1 * (m2)'),
+                          ('phabs* powerlaw', 'm1 * m2')
+                         ])
+def test_absorbed_powerlaw(expr, expected):
     """model powerlaw"""
 
     expected = f"""from sherpa.astro.ui import *
@@ -76,7 +78,7 @@ m2 = create_model_component('xspowerlaw', 'm2')
 
 # Set up the model expressions
 #
-set_source(1, m1 * m2)
+set_source(1, {expected})
 """
 
     f = StringIO(f'model {expr}')
@@ -107,146 +109,61 @@ set_source(1, m1(m2))
     check(expected, answer)
 
 
-def test_cflux_absorbed_powerlaw1():
+# I'd like all these to map to the same string...
+@pytest.mark.parametrize('expr,expected',
+                         [('cflux*(phabs * powerlaw )', 'm1(m2 * m3)'),
+                          ('cflux(phabs(powerlaw))', 'm1(m2 * (m3))'),
+                          ('cflux*phabs*powerlaw', 'm1(m2 * m3)'),
+                          ('cflux*phabs(powerlaw)', 'm1(m2 * (m3))')
+                         ])
+def test_cflux_absorbed_powerlaw(expr, expected):
     """cflux of absorbed powerlaw
 
-    Note the output isn't guaranteed to be the same for all the
-    tests so we need separate ones.
+    I am not convinced I understand the XSPEC model syntax
+    to ensure all these mean the same thing.
     """
 
     expected = f"""from sherpa.astro.ui import *
 
 
-# model cflux*(phabs * powerlaw )
+# model {expr}
 m1 = create_model_component('xscflux', 'm1')
 m2 = create_model_component('xsphabs', 'm2')
 m3 = create_model_component('xspowerlaw', 'm3')
 
 # Set up the model expressions
 #
-set_source(1, m1(m2 * m3))
+set_source(1, {expected})
 """
 
-    f = StringIO(f'model cflux*(phabs * powerlaw )')
+    f = StringIO(f'model {expr}')
     answer = xcm.convert(f)
     check(expected, answer)
 
 
-def test_cflux_absorbed_powerlaw2():
-    """cflux of absorbed powerlaw
-
-    Note the output isn't guaranteed to be the same for all the
-    tests so we need separate ones.
-    """
-
-    expected = f"""from sherpa.astro.ui import *
-
-
-# model cflux(phabs(powerlaw))
-m1 = create_model_component('xscflux', 'm1')
-m2 = create_model_component('xsphabs', 'm2')
-m3 = create_model_component('xspowerlaw', 'm3')
-
-# Set up the model expressions
-#
-set_source(1, m1(m2 * m3))
-"""
-
-    f = StringIO(f'model cflux(phabs(powerlaw))')
-    answer = xcm.convert(f)
-    check(expected, answer)
-
-
-def test_cflux_absorbed_powerlaw3():
-    """cflux of absorbed powerlaw
-
-    I am not convinced that we have the correct interpretation
-    of this as I don't find the model command documentation to
-    really explain the difference between
-
-        clux(phabs*powerlaw)
-        cflux*phabs*powerlaw
-    """
-
-    expected = f"""from sherpa.astro.ui import *
-
-
-# model cflux*phabs*powerlaw
-m1 = create_model_component('xscflux', 'm1')
-m2 = create_model_component('xsphabs', 'm2')
-m3 = create_model_component('xspowerlaw', 'm3')
-
-# Set up the model expressions
-#
-set_source(1, m1(m2 * m3))
-"""
-
-    f = StringIO(f'model cflux*phabs*powerlaw')
-    answer = xcm.convert(f)
-    check(expected, answer)
-
-
-def test_absorbed_cflux_powerlaw1():
+# I'd like all these to map to the same string...
+@pytest.mark.parametrize('expr,expected',
+                         [('phabs * cflux(powerlaw )', 'm1 * m2(m3)'),
+                          ('phabs(cflux(powerlaw))', 'm1 * (m2(m3))'),
+                          pytest.param('phabs(cflux*powerlaw)', 'm1 * (m2(m3))', marks=pytest.mark.xfail)
+                         ])
+def test_absorbed_cflux_powerlaw(expr, expected):
     """absorbed cflux powerlaw"""
 
     expected = f"""from sherpa.astro.ui import *
 
 
-# model phabs * cflux(powerlaw )
+# model {expr}
 m1 = create_model_component('xsphabs', 'm1')
 m2 = create_model_component('xscflux', 'm2')
 m3 = create_model_component('xspowerlaw', 'm3')
 
 # Set up the model expressions
 #
-set_source(1, m1 * m2(m3))
+set_source(1, {expected})
 """
 
-    f = StringIO(f'model phabs * cflux(powerlaw )')
-    answer = xcm.convert(f)
-    check(expected, answer)
-
-
-@pytest.mark.xfail
-def test_absorbed_cflux_powerlaw2():
-    """absorbed cflux powerlaw"""
-
-    expected = f"""from sherpa.astro.ui import *
-
-
-# model phabs(cflux(powerlaw))
-m1 = create_model_component('xsphabs', 'm1')
-m2 = create_model_component('xscflux', 'm2')
-m3 = create_model_component('xspowerlaw', 'm3')
-
-# Set up the model expressions
-#
-set_source(1, m1 * m2(m3))
-"""
-
-    f = StringIO(f'model phabs(cflux(powerlaw)))')
-    answer = xcm.convert(f)
-    check(expected, answer)
-
-
-@pytest.mark.xfail
-def test_absorbed_cflux_powerlaw():
-    """absorbed cflux powerlaw"""
-
-    expected = f"""from sherpa.astro.ui import *
-
-
-# model phabs(cflux*powerlaw)
-m1 = create_model_component('xsphabs', 'm1')
-m2 = create_model_component('xscflux', 'm2')
-m3 = create_model_component('xspowerlaw', 'm3')
-
-# Set up the model expressions
-#
-set_source(1, m1 * m2(m3))
-"""
-
-    f = StringIO(f'model phabs(cflux*powerlaw))')
+    f = StringIO(f'model {expr}')
     answer = xcm.convert(f)
     check(expected, answer)
 

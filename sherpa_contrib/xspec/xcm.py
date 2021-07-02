@@ -722,16 +722,18 @@ class ModelExpression:
         self.out = [[]] * len(groups)
 
         # Record the number of brackets at the current "convolution level".
-        # When a convolution is started we add an entry to the start of the
+        # When a convolution is started we add an entry to the end of the
         # list and track from that point, then when the convolution ends we
-        # pop the value off.
+        # pop the value off. So the number of convolution terms currently
+        # in use is len(self.depth) - 1.
         #
-        self.depth = [0]
+        self.depth = [0]  # treat as a stack
 
         # What was the last term we added. When set it should be a
-        # Term enumeration.
+        # Term enumeration. Note that this tracks a combination of
+        # paranthesis and convolution depth.
         #
-        self.lastterm = [[]]
+        self.lastterm = [[]]  # treat as a stack
 
         # Create our own session object to make it easy to
         # find out XSPEC models and the correct naming scheme.
@@ -817,20 +819,20 @@ class ModelExpression:
                     dbg(" - it's a convolution model")
 
                     # Track a new convolution term
-                    self.lastterm[0].insert(0, Term.CON)
-                    self.lastterm.insert(0, [])
+                    self.lastterm[-1].append(Term.CON)
+                    self.lastterm.append([])
 
                     # start a new entry to track the bracket depth
-                    self.depth.insert(0, 0)
+                    self.depth.append(0)
                     outlist.append(("(", None))
 
                 elif isinstance(mdl, xspec.XSMultiplicativeModel):
                     dbg(" - it's a multiplicative model")
-                    self.lastterm[0].insert(0, Term.MUL)
+                    self.lastterm[-1].append(Term.MUL)
 
                 elif isinstance(mdl, xspec.XSAdditiveModel):
                     dbg(" - it's an additive model")
-                    self.lastterm[0].insert(0, Term.ADD)
+                    self.lastterm[-1].append(Term.ADD)
 
                 elif isinstance(mdl, xspec.XSTableModel):
                     if mdl.addmodel:
@@ -840,7 +842,7 @@ class ModelExpression:
                         dbg(" - it's a multiplicative table model")
                         lterm = Term.MUL
 
-                    self.lastterm[0].insert(0, lterm)
+                    self.lastterm[-1].append(lterm)
 
                 else:
                     raise RuntimeError(f"Unrecognized XSPEC model: {mdl.__class__}")
@@ -855,11 +857,9 @@ class ModelExpression:
 
     def open_sep(self, prefix=None):
 
-        self.depth[0] += 1
+        self.depth[-1] += 1
         dbg(f"Adding token (   depth={self.depth}")
 
-        # We have a separate token for the prefix from the bracket
-        # to make removing excess brackets easier later in close_sep
         for outlist in self.out:
             if prefix is not None:
                 outlist.append((prefix, None))
@@ -867,37 +867,21 @@ class ModelExpression:
 
         # We have a new context for the token list
         #
-        self.lastterm.insert(0, [])
+        self.lastterm.append([])
 
     def close_sep(self, postfix=None):
 
         dbg(f"Adding token )   depth={self.depth}")
-        self.depth[0] -= 1
-        assert self.depth[0] >= 0, self.depth
+        self.depth[-1] -= 1
+        assert self.depth[-1] >= 0, self.depth
 
-        nmodels = len(self.lastterm[0])
-        is_conv = self.in_convolution()
-        dbg(f" - nmodels={nmodels}  is_conv={is_conv}")
-
-        # If there's only one model then we can remove the
-        # open/close tokens, as long as this is not for a
-        # convolution model. That is we want to remove
-        # the brackets from phabs(powerlaw) but not
-        # cflux(powerlaw).
-        #
         for outlist in self.out:
-
-            if nmodels == 1 and not is_conv:
-                assert len(outlist) > 1, outlist
-                assert outlist[-2] == ('(', None)
-                outlist.pop(-2)
-            else:
-                outlist.append((')', None))
+            outlist.append((')', None))
 
             if postfix is not None:
                 outlist.append((postfix, None))
 
-        tokens = self.lastterm.pop(0)
+        tokens = self.lastterm.pop()
         dbg(f" - closing out sub-expression {tokens}")
 
     def check_end_convolution(self):
@@ -915,7 +899,7 @@ class ModelExpression:
 
         # Assume the convolution has come to an end when
         # the current depth is 0.
-        if self.depth[0] > 0:
+        if self.depth[-1] > 0:
             dbg("--> still in convolution")
             return False
 
@@ -924,18 +908,125 @@ class ModelExpression:
         for outlist in self.out:
             outlist.append((")", None))
 
-        self.depth.pop(0)
-        self.lastterm.pop(0)
+        self.depth.pop()
+        self.lastterm.pop()
         return True
 
     def in_convolution(self):
         """Are we in a convolution expression?"""
 
-        return len(self.lastterm) > 1 and self.lastterm[1][0] == Term.CON
+        # return len(self.lastterm) > 1 and self.lastterm[1][0] == Term.CON
+        return len(self.depth) > 1
 
     def lastterm_is_openbracket(self):
         last = self.out[0][-1]
         return last[1] is None and last[0] == "("
+
+    def remove_unneeded_open_bracket(self):
+
+        # We currently skip this optimization
+        #
+        return False
+
+
+        # We need to decide whether to add the bracket or not. It is
+        # tricky since in a situation like 'phabs(powerlaw)' we want
+        # to output 'phabs * powerlaw' and not 'phabs *
+        # (powerlaw)'. Complications are 'cflux(powerlaw)' when we
+        # want to keep the brackets and 'clux(phabs(powerlaw))' when
+        # we want to keep the cflux brackets but not the phabs
+        # brackets.
+        #
+        # Only bother with this optimisation if there's one model
+        # being applied to a previous model (we could only do this for
+        # an additive model but does this help?).
+        #
+        if len(self.lastterm) == 1 or len(self.lastterm[-1]) > 1:
+            return False
+
+        dbg("Found a potential case for removing )")
+        dbg(self.lastterm)
+
+        # If the previous term is not a multiplicative model
+        # then assume we should keep the bracket.
+        #
+        if self.lastterm[-2][-1] != Term.MUL:
+            return False
+
+        orig = create_source_expression(self.out[0])
+
+        for outlist in self.out:
+
+            # We need to loop back to find the first unmatched (.
+            # If we'd stored the depth in the token stream this
+            # would be easier.
+            #
+            # It should also be the same in all outlist but
+            # treat separately.
+            #
+            idx = -1
+            count = 0
+            try:
+                while True:
+                    token = outlist[idx]
+                    idx -= 1
+                    if token == (')', None):
+                        count += 1
+                        continue
+                    elif token != ('(', None):
+                        continue
+
+                    if count == 0:
+                        # need to add 1 back to idx
+                        idx += 1
+                        break
+
+                    count -= 1
+
+            except IndexError:
+                dbg("Unable to find unmatched ( in outlist")
+                dbg(outlist)
+                return False
+
+            outlist.pop(idx)
+
+
+        dbg("Removing excess )")
+        dbg(orig)
+        dbg(" -> ")
+        dbg(create_source_expression(self.out[0]))
+
+        # Note that we've removed a bracket and remove the
+        # convolution term.
+        #
+        # Something has gone wrong with my beautiful code
+        # as the check on self.lastterm shouldn't be needed
+        #
+
+        dbg(f"Testing: lastterm = {self.lastterm}")
+        # assert self.lastterm[-1] == [Term.CON], self.lastterm
+        if self.lastterm[-1] == [Term.CON]:
+            self.depth[-1] -= 1
+            self.lastterm.pop()
+        else:
+            print('WTF')
+            print(self.depth)
+            print(self.lastterm)
+
+        return True
+
+
+def create_source_expression(expr):
+    "create a readable source expression"
+
+    def conv(t):
+        if t[1] is None:
+            return t[0]
+
+        return t[0][1]
+
+    cpts = [conv(t) for t in expr]
+    return "".join(cpts)
 
 
 def convert_model(expr, postfix, groups, names):
@@ -1000,7 +1091,8 @@ def convert_model(expr, postfix, groups, names):
 
         # Report the current processing state
         #
-        dbg(f"output: {process.out[0]}")
+        # dbg(f"output: {process.out[0]}")
+        dbg(f"output: {create_source_expression(process.out[0])}")
 
         # What does an open-bracket mean?
         # It can imply multiplication, wrapping a term in
@@ -1012,7 +1104,7 @@ def convert_model(expr, postfix, groups, names):
             else:
                 mnum = process.add_term(start, end, mnum)
 
-                if process.in_convolution() and len(process.lastterm[0]) == 0:
+                if process.in_convolution() and len(process.lastterm[-1]) == 0:
                     # We've just started a convolution which has added a bracket
                     # so we don't need to do anything
                     pass
@@ -1030,11 +1122,10 @@ def convert_model(expr, postfix, groups, names):
         if char == ")":
             mnum = process.add_term(start, end, mnum)
 
-            # Check to see whether we can close out the convolution.
-            #
+            flag = process.remove_unneeded_open_bracket()
             cflag = process.check_end_convolution()
 
-            if not cflag:
+            if not flag and not cflag:
                 if end == maxchar or expr[end + 1] == ")":
                     process.close_sep()
                 elif expr[end + 1] in "+*-/":
@@ -1077,13 +1168,13 @@ def convert_model(expr, postfix, groups, names):
     if process.in_convolution():
         print("WARNING: convolution model may not be handled correctly.")
 
-    if len(process.depth) != 1 or process.depth[0] != 0:
-        dbg(f"depth = {process.depth}")
+    if len(process.depth) != 1 or process.depth != [0]:
         print("WARNING: unexpected issues handling brackets in the model")
+        dbg(f"depth = {process.depth}")
 
     if len(process.lastterm) != 1:
-        dbg(f"lastterm = {process.lastterm}")
         print("WARNING: unexpected issues in the model")
+        dbg(f"lastterm = {process.lastterm}")
 
     out = process.out
     dbg(f"Found {len(out)} expressions")
@@ -1583,12 +1674,6 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
     # Sherpa handles "multiple specnums" differently to XSPEC.
     #
 
-    def conv(t):
-        if t[1] is None:
-            return t[0]
-
-        return t[0][1]
-
     # Technically we could have no model expression, but assume that is unlikely
     madd("")
     madd("# Set up the model expressions")
@@ -1607,8 +1692,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
         #
         if len(exprs[None]) == 1:
             dbg("Single source expression for all data sets")
-            cpts = [conv(t) for t in exprs[None][0]]
-            sexpr = "".join(cpts)
+            sexpr = create_source_expression(exprs[None][0])
             for did in state['datasets']:
                 add('set_source', did, sexpr)
 
@@ -1618,8 +1702,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
                 raise RuntimeError("Unexpected state when handling source models!")
 
             for did, expr in zip(state['datasets'], exprs[None]):
-                cpts = [conv(t) for t in expr]
-                sexpr = "".join(cpts)
+                sexpr = create_source_expression(expr)
                 add('set_source', did, sexpr)
 
     else:
