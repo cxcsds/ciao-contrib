@@ -21,6 +21,11 @@
 
 """
 Test routines for the convert_xspec_script code
+
+If the SHERPATESTDIR environment variable is set to the
+sherpatestdir directory within the Sherpa test data setup
+then we run more tests.
+
 """
 
 from io import StringIO
@@ -168,8 +173,7 @@ set_source(1, {expected})
     check(expected, answer)
 
 
-@pytest.mark.xfail
-def test_atable_expression():
+def test_mtable_simple_expression():
     """This requires the Sherpa test data to be available
     at the SHERPATESTDIR environment variable.
     """
@@ -181,17 +185,66 @@ def test_atable_expression():
     expected = f"""from sherpa.astro.ui import *
 
 
-# model mtable{xspec-tablemodel-RCS.mod}(zpowerlw)
-load_table_model('m1', 'xspec-tablemodel-RCS.mod')
+# model mtable{{xspec-tablemodel-RCS.mod}}(zpowerlw)
+load_xstable_model('m1', 'xspec-tablemodel-RCS.mod')
 m1 = get_model_component('m1')
 m2 = create_model_component('xszpowerlw', 'm2')
 
 # Set up the model expressions
 #
-set_source(1, m1 * m2)
+set_source(1, m1 * (m2))
 """
 
     f = StringIO('model mtable{xspec-tablemodel-RCS.mod}(zpowerlw)')
+
+    # How to run this test and get back to the correct directory whatever
+    # happens?
+    thisdir = os.getcwd()
+    os.chdir(path)
+
+    try:
+        answer = xcm.convert(f)
+    finally:
+        os.chdir(thisdir)
+
+    check(expected, answer)
+
+
+# Technically this test fails but for identify when the output changes
+def test_mtable_complex_expression():
+    """This requires the Sherpa test data to be available
+    at the SHERPATESTDIR environment variable.
+
+    This is a case where the expression is probably not valid
+    in XSPEC (e.g using the same table as ADD and MUL). I use this
+    here as at the source combination level we don't care about
+    the table type (other than ETABLE) so we can use the same
+    model file for both mtable and atable expressions.
+    """
+
+    path = os.getenv('SHERPATESTDIR')
+    if path is None:
+        pytest.skip("Need SHERPATESTDIR environment variable")
+
+    expected = f"""from sherpa.astro.ui import *
+
+
+# model constant * phabs * ((zpowerlw)mtable{{xspec-tablemodel-RCS.mod}} + constant(atable{{xspec-tablemodel-RCS.mod}}))
+m1 = create_model_component('xsconstant', 'm1')
+m2 = create_model_component('xsphabs', 'm2')
+m3 = create_model_component('xszpowerlw', 'm3')
+load_xstable_model('m4', 'xspec-tablemodel-RCS.mod')
+m4 = get_model_component('m4')
+m5 = create_model_component('xsconstant', 'm5')
+load_xstable_model('m6', 'xspec-tablemodel-RCS.mod')
+m6 = get_model_component('m6')
+
+# Set up the model expressions
+#
+set_source(1, m1 * m2 *  ( * (m3) * m4 + m5 * (m6)))
+"""
+
+    f = StringIO('model constant * phabs * ((zpowerlw)mtable{xspec-tablemodel-RCS.mod} + constant(atable{xspec-tablemodel-RCS.mod}))')
 
     # How to run this test and get back to the correct directory whatever
     # happens?

@@ -1082,7 +1082,30 @@ def convert_model(expr, postfix, groups, names):
     mnum = 1
 
     process = ModelExpression(expr, groups, postfix, names)
+
+    # Scan through each character and when we have identified a term
+    # "seperator" then process the preceeding token. We assume the
+    # text is valid XSPEC - i.e. there's little to no support for
+    # invalid commands.
+    #
+    # Note that we switch mode when { is found as we have to
+    # then find the matching } and not any of the other normal
+    # tokens.
+    #
+    in_curly_bracket = False
     for end, char in enumerate(expr):
+
+        if char == '{':
+            if in_curly_bracket:
+                raise ValueError("Unable to parse '{expr}'")
+
+            in_curly_bracket = True
+            continue
+
+        if in_curly_bracket:
+            if char == '}':
+                in_curly_bracket = False
+            continue
 
         # Not completely sure of the supported language.
         #
