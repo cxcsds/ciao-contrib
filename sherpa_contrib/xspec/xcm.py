@@ -871,9 +871,10 @@ def convert_model(expr, postfix, groups, names):
 
         for i, grp in enumerate(groups, 1):
             # break out the prefix if set
+            outlist = out[i - 1]
             if prefix is not None:
-                out[i - 1].append((prefix, None))
-            out[i - 1].append(('(', None))
+                outlist.append((prefix, None))
+            outlist.append(('(', None))
 
     def close_sep(storage, postfix=None):
         storage['separator'] -= 1
@@ -1019,6 +1020,12 @@ def convert_model(expr, postfix, groups, names):
     if len(storage['nmodels']) != 1:
         dbg(f"storage[nmodels] = {storage['nmodels']}")
         print("WARNING: unexpected issues counting models")
+
+    dbg(f"Found {len(out)} expressions")
+    for i, expr in enumerate(out):
+        dbg(f"Expression: {i + 1}")
+        for token in expr:
+            dbg(f"  {token}")
 
     return out
 
