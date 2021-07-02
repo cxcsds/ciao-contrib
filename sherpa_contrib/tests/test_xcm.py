@@ -85,7 +85,7 @@ set_source(1, m1 * m2)
 
 
 @pytest.mark.parametrize('expr',
-                         [pytest.param('cflux(powerlaw)', marks=pytest.mark.xfail),
+                         ['cflux(powerlaw)',
                           'cflux * powerlaw'])
 def test_cflux_powerlaw(expr):
     """cflux of powerlaw"""
@@ -124,7 +124,7 @@ m3 = create_model_component('xspowerlaw', 'm3')
 
 # Set up the model expressions
 #
-set_source(1, m1( (m2 * m3))
+set_source(1, m1(m2 * m3))
 """
 
     f = StringIO(f'model cflux*(phabs * powerlaw )')
@@ -132,7 +132,6 @@ set_source(1, m1( (m2 * m3))
     check(expected, answer)
 
 
-@pytest.mark.xfail
 def test_cflux_absorbed_powerlaw2():
     """cflux of absorbed powerlaw
 
@@ -187,7 +186,6 @@ set_source(1, m1(m2 * m3))
     check(expected, answer)
 
 
-@pytest.mark.xfail
 def test_absorbed_cflux_powerlaw1():
     """absorbed cflux powerlaw"""
 

@@ -28,6 +28,7 @@ analysis in Sherpa.
 """
 
 from collections import defaultdict
+from enum import Enum
 
 import numpy as np
 
@@ -700,6 +701,243 @@ def parse_notice_range(add_import, add, datasets, command, tokens):
                 add(f"xcm.{command}", d, lo, hi, expand=False)
 
 
+
+class Term(Enum):
+    """The "type" of an XSPEC model."""
+
+    ADD = 1
+    MUL = 2
+    CON = 3
+
+
+class ModelExpression:
+    """Construct a model expression."""
+
+    def __init__(self, expr, groups, postfix, names):
+        self.expr = expr
+        self.groups = groups
+        self.ngroups = len(groups)
+        self.postfix = postfix
+        self.names = names
+        self.out = [[]] * len(groups)
+
+        # Record the number of brackets at the current "convolution level".
+        # When a convolution is started we add an entry to the start of the
+        # list and track from that point, then when the convolution ends we
+        # pop the value off.
+        #
+        self.depth = [0]
+
+        # What was the last term we added. When set it should be a
+        # Term enumeration.
+        #
+        self.lastterm = [[]]
+
+        # Create our own session object to make it easy to
+        # find out XSPEC models and the correct naming scheme.
+        #
+        self.session = Session()
+        self.session._add_model_types(xspec,
+                                      (xspec.XSAdditiveModel,
+                                       xspec.XSMultiplicativeModel,
+                                       xspec.XSConvolutionKernel))
+
+    def mkname(self, ctr, grp):
+        n = f"m{ctr}{self.postfix}"
+        if self.ngroups > 1:
+            n += f"g{grp}"
+
+        if n in self.names:
+            raise RuntimeError("Unable to handle model names with this input script")
+
+        self.names.add(n)
+        return n
+
+    def try_tablemodel(self, basename, gname):
+        """Depends if we have a Sherpa with https://github.com/sherpa/sherpa/pull/1113
+        fixed whether we can support etable models."""
+
+        if not basename.startswith('etable{') and \
+           not basename.startswith('mtable{') and \
+           not basename.startswith('atable{'):
+            return None, None
+
+        if not basename.endswith('}'):
+            raise ValueError(f"No }} in {basename}")
+
+        dbg(f"Handling TABLE model: {basename} for {gname}")
+        tbl = basename[7:-1]
+        kwargs = {}
+        if basename[0] == 'e':
+            kwargs['etable'] = True
+
+        try:
+            self.session.load_xstable_model(gname, tbl, **kwargs)
+        except FileNotFoundError:
+            raise ValueError(f"Unable to find XSPEC table model: {basename}")
+        except TypeError as t:
+            if basename[0] == 'e':
+                raise ValueError(f"XSPEC etable models are not supported in this version of Sherpa: {basename}")
+
+            # should not happen but just in case
+            raise t
+
+        mdl = self.session.get_model_component(gname)
+        return mdl, (['tablemodel', gname, tbl, basename[:7]], mdl)
+
+    def add_term(self, start, end, ctr):
+
+        # It's not ideal we need this
+        if start == end:
+            return ctr
+
+        basename = self.expr[start:end]
+        dbg(f"Identified model expression '{basename}'")
+
+        name = f"xs{basename}"
+        for i, grp in enumerate(self.groups, 1):
+            outlist = self.out[i - 1]
+            gname = self.mkname(ctr, grp)
+
+            mdl, store = self.try_tablemodel(basename, gname)
+            if mdl is None:
+                try:
+                    mdl = self.session.create_model_component(name, gname)
+                except ArgumentErr:
+                    raise ValueError(f"Unrecognized XSPEC model '{basename}' in {expr}") from None
+
+                outlist.append((mdl.name.split('.'), mdl))
+            else:
+                outlist.append(store)
+
+            # This only needs to be checked for the first group.
+            #
+            if i == 1:
+                if isinstance(mdl, xspec.XSConvolutionKernel):
+                    dbg(" - it's a convolution model")
+
+                    # Track a new convolution term
+                    self.lastterm[0].insert(0, Term.CON)
+                    self.lastterm.insert(0, [])
+
+                    # start a new entry to track the bracket depth
+                    self.depth.insert(0, 0)
+                    outlist.append(("(", None))
+
+                elif isinstance(mdl, xspec.XSMultiplicativeModel):
+                    dbg(" - it's a multiplicative model")
+                    self.lastterm[0].insert(0, Term.MUL)
+
+                elif isinstance(mdl, xspec.XSAdditiveModel):
+                    dbg(" - it's an additive model")
+                    self.lastterm[0].insert(0, Term.ADD)
+
+                elif isinstance(mdl, xspec.XSTableModel):
+                    if mdl.addmodel:
+                        dbg(" - it's an additive table model")
+                        lterm = Term.ADD
+                    else:
+                        dbg(" - it's a multiplicative table model")
+                        lterm = Term.MUL
+
+                    self.lastterm[0].insert(0, lterm)
+
+                else:
+                    raise RuntimeError(f"Unrecognized XSPEC model: {mdl.__class__}")
+
+        return ctr + 1
+
+    def add_token(self, token):
+        "Not sure about this"
+        dbg(f"Adding token [{token}]")
+        for outlist in self.out:
+            outlist.append((token, None))
+
+    def open_sep(self, prefix=None):
+
+        self.depth[0] += 1
+        dbg(f"Adding token (   depth={self.depth}")
+
+        # We have a separate token for the prefix from the bracket
+        # to make removing excess brackets easier later in close_sep
+        for outlist in self.out:
+            if prefix is not None:
+                outlist.append((prefix, None))
+            outlist.append(('(', None))
+
+        # We have a new context for the token list
+        #
+        self.lastterm.insert(0, [])
+
+    def close_sep(self, postfix=None):
+
+        dbg(f"Adding token )   depth={self.depth}")
+        self.depth[0] -= 1
+        assert self.depth[0] >= 0, self.depth
+
+        nmodels = len(self.lastterm[0])
+        is_conv = self.in_convolution()
+        dbg(f" - nmodels={nmodels}  is_conv={is_conv}")
+
+        # If there's only one model then we can remove the
+        # open/close tokens, as long as this is not for a
+        # convolution model. That is we want to remove
+        # the brackets from phabs(powerlaw) but not
+        # cflux(powerlaw).
+        #
+        for outlist in self.out:
+
+            if nmodels == 1 and not is_conv:
+                assert len(outlist) > 1, outlist
+                assert outlist[-2] == ('(', None)
+                outlist.pop(-2)
+            else:
+                outlist.append((')', None))
+
+            if postfix is not None:
+                outlist.append((postfix, None))
+
+        tokens = self.lastterm.pop(0)
+        dbg(f" - closing out sub-expression {tokens}")
+
+    def check_end_convolution(self):
+        """Returns True is this ends the convolution, False otherwise"""
+
+        # We track the convolution "depth" with the depth field as the
+        # lastterm tracks the number of brackets.
+        #
+        if len(self.depth) == 1:
+            return False
+
+        dbg("Checking end of convolution")
+        dbg(f"depth: {self.depth}")
+        dbg(f"lastterm: {self.lastterm}")
+
+        # Assume the convolution has come to an end when
+        # the current depth is 0.
+        if self.depth[0] > 0:
+            dbg("--> still in convolution")
+            return False
+
+        dbg("Ending convolution")
+
+        for outlist in self.out:
+            outlist.append((")", None))
+
+        self.depth.pop(0)
+        self.lastterm.pop(0)
+        return True
+
+    def in_convolution(self):
+        """Are we in a convolution expression?"""
+
+        return len(self.lastterm) > 1 and self.lastterm[1][0] == Term.CON
+
+    def lastterm_is_openbracket(self):
+        last = self.out[0][-1]
+        return last[1] is None and last[0] == "("
+
+
 def convert_model(expr, postfix, groups, names):
     """Extract the model components.
 
@@ -733,17 +971,12 @@ def convert_model(expr, postfix, groups, names):
     -----
     We require the Sherpa XSPEC module here.
 
+    This routine does not take advantage of the knowledge that a
+    model "sub expression" ends in an additive model - e.g. m1*m2*m3.
+    So, for instance, we would know we don't have to deal with
+    closing brackets when processing a multiplcative model.
+
     """
-
-    # Create our own session object to make it easy to
-    # find out XSPEC models and the correct naming scheme.
-    #
-    session = Session()
-    session._add_model_types(xspec,
-                             (xspec.XSAdditiveModel,
-                              xspec.XSMultiplicativeModel,
-                              xspec.XSConvolutionKernel))
-
 
     # Let's remove the spaces
     dbg(f"Processing model expression: {expr}")
@@ -751,184 +984,13 @@ def convert_model(expr, postfix, groups, names):
 
     if len(groups) == 1:
         groups = [None]
-        def mkname(ctr, grp):
-            n = f"m{ctr}{postfix}"
-            if n in names:
-                raise RuntimeError("Unable to handle model names with this input script")
-
-            names.add(n)
-            return n
-
-    else:
-        def mkname(ctr, grp):
-            n = f"m{ctr}{postfix}g{grp}"
-            if n in names:
-                raise RuntimeError("Unable to handle model names with this input script")
-
-            names.add(n)
-            return n
-
-
-    def try_tablemodel(basename, gname):
-        """Depends if we have a Sherpa with https://github.com/sherpa/sherpa/pull/1113
-        fixed whether we can support etable models."""
-
-        if not basename.startswith('etable{') and \
-           not basename.startswith('mtable{') and \
-           not basename.startswith('atable{'):
-            return None, None
-
-        if not basename.endswith('}'):
-            raise ValueError(f"No }} in {basename}")
-
-        dbg(f"Handling TABLE model: {basename} for {gname}")
-        tbl = basename[7:-1]
-        kwargs = {}
-        if basename[0] == 'e':
-            kwargs['etable'] = True
-
-        try:
-            session.load_xstable_model(gname, tbl, **kwargs)
-        except FileNotFoundError:
-            raise ValueError(f"Unable to find XSPEC table model: {basename}")
-        except TypeError as t:
-            if basename[0] == 'e':
-                raise ValueError(f"XSPEC etable models are not supported in this version of Sherpa: {basename}")
-
-            # should not happen but just in case
-            raise t
-
-        mdl = session.get_model_component(gname)
-        return mdl, (['tablemodel', gname, tbl, basename[:7]], mdl)
-
-    out = [[] for _ in groups]
-
-    def add_term(start, end, ctr, storage):
-        """storage tracks the convolution state."""
-
-        # It's not ideal we need this
-        if start == end:
-            return ctr
-
-        basename = expr[start:end]
-        dbg(f"Identified model expression '{basename}'")
-
-        name = f"xs{basename}"
-        for i, grp in enumerate(groups, 1):
-            gname = mkname(ctr, grp)
-
-            mdl, store = try_tablemodel(basename, gname)
-            if mdl is None:
-                try:
-                    mdl = session.create_model_component(name, gname)
-                except ArgumentErr:
-                    raise ValueError(f"Unrecognized XSPEC model '{basename}' in {expr}") from None
-
-                out[i - 1].append((mdl.name.split('.'), mdl))
-            else:
-                out[i - 1].append(store)
-
-            # This only needs to be checked for the first group.
-            #
-            # TODO: do we need to record when the convolution depth decreases
-            #       (ie we are nolonger in a convolution)?
-            #
-            if i == 1:
-                if isinstance(mdl, xspec.XSConvolutionKernel):
-                    if storage['convolution'] is not None:
-                        print("Convolution found within a convolution expession. This is not handled correctly.")
-                    else:
-                        storage['convolution'] = storage['depth']
-                        storage['lastterm'] = 'convolution'
-                        out[i - 1].append(("(", None))
-
-                elif isinstance(mdl, xspec.XSMultiplicativeModel):
-                    storage['lastterm'] = 'multiplicative'
-
-                elif isinstance(mdl, xspec.XSAdditiveModel):
-                    storage['lastterm'] = 'additive'
-
-                elif isinstance(mdl, xspec.XSTableModel):
-                    if mdl.addmodel:
-                        storage['lastterm'] = 'additive'
-                    else:
-                        storage['lastterm'] = 'multiplicative'
-
-                else:
-                    raise RuntimeError(f"Unrecognized XSPEC model: {mdl.__class__}")
-
-        return ctr + 1
-
-    def add_token(storage, token):
-        "Not sure about this"
-        dbg(f"Adding token [{token}]")
-        for i, grp in enumerate(groups, 1):
-            out[i - 1].append((token, None))
-
-    def open_sep(storage, prefix=None):
-        storage['separator'] += 1
-        storage['nmodels'].insert(0, 0)
-
-        for i, grp in enumerate(groups, 1):
-            # break out the prefix if set
-            outlist = out[i - 1]
-            if prefix is not None:
-                outlist.append((prefix, None))
-            outlist.append(('(', None))
-
-    def close_sep(storage, postfix=None):
-        storage['separator'] -= 1
-        nmodels = storage['nmodels'].pop(0)
-
-        # If there's only one model then we can remove the
-        # open/close tokens, as long as this not for a
-        # convolution model. If the convolution setting
-        # is None then we assume this is not for a convolution
-        # model. Note that this is to support the XSPEC
-        # syntax phabs(powerlaw). We could extend to remove
-        # un-needed brackets but just catch the simple case.
-        #
-        for i, grp in enumerate(groups, 1):
-
-            outlist = out[i - 1]
-            if nmodels == 1 and not in_convolution(storage):
-                assert len(outlist) > 1
-                assert outlist[-2] == ('(', None)
-                outlist.pop(-2)
-            else:
-                outlist.append((')', None))
-
-            if postfix is not None:
-                outlist.append((postfix, None))
-
-    def check_end_convolution(storage):
-        if storage['convolution'] is None:
-            return
-
-        if storage['convolution'] > storage['depth']:
-            return
-
-        if storage['convolution'] == storage['depth']:
-            close_sep(storage)
-        elif storage['convolution'] > storage['depth']:
-            print("WARNING: convolution model may not be handled correctly.")
-
-        storage['convolution'] = None
-
-    def in_convolution(storage):
-        return storage['convolution'] is not None \
-            and storage['convolution'] == storage['depth']
-
-    def lastterm_is_openbracket():
-        lastterm = out[0][-1]
-        return lastterm[1] is None and lastterm[0] == "("
 
     maxchar = len(expr) - 1
     start = 0
     end = 0
     mnum = 1
-    storage = {'convolution': None, 'depth': 0, 'separator': 0,
-               'lastterm': None, 'nmodels': [0]}
+
+    process = ModelExpression(expr, groups, postfix, names)
     for end, char in enumerate(expr):
 
         # Not completely sure of the supported language.
@@ -936,91 +998,94 @@ def convert_model(expr, postfix, groups, names):
         if char not in "*+-/()":
             continue
 
+        # Report the current processing state
+        #
+        dbg(f"output: {process.out[0]}")
+
+        # What does an open-bracket mean?
+        # It can imply multiplication, wrapping a term in
+        # a convolution model, or an actual bracket.
+        #
         if char == "(":
             if end == 0:
-                open_sep(storage)
+                process.open_sep()
             else:
-                mnum = add_term(start, end, mnum, storage)
-                # We want to leave ( alone for convolution models.
-                # This is a bit messy.
-                #
-                if expr[end - 1] in "+*-/":
-                    open_sep(storage, " ")
-                elif storage['lastterm'] == 'convolution' or lastterm_is_openbracket():
-                    open_sep(storage)
+                mnum = process.add_term(start, end, mnum)
+
+                if process.in_convolution() and len(process.lastterm[0]) == 0:
+                    # We've just started a convolution which has added a bracket
+                    # so we don't need to do anything
+                    pass
+
+                elif expr[end - 1] in "+*-/":
+                    # Assume this is an "actual" model evaluation
+                    process.open_sep(" ")
+
                 else:
-                    open_sep(storage, " * ")
+                    process.open_sep(" * ")
 
             start = end + 1
-            storage['depth'] += 1
-            assert storage['depth'] == storage['separator'], storage
             continue
 
         if char == ")":
-            mnum = add_term(start, end, mnum, storage)
-            storage['nmodels'][0] += 1
+            mnum = process.add_term(start, end, mnum)
 
             # Check to see whether we can close out the convolution.
             #
-            check_end_convolution(storage)
+            cflag = process.check_end_convolution()
 
-            if end == maxchar or expr[end + 1] == ")":
-                close_sep(storage)
-            elif expr[end + 1] in "+*-/":
-                close_sep(storage, " ")
-            else:
-                close_sep(storage, " * ")
+            if not cflag:
+                if end == maxchar or expr[end + 1] == ")":
+                    process.close_sep()
+                elif expr[end + 1] in "+*-/":
+                    process.close_sep(" ")
+                else:
+                    process.close_sep(" * ")
 
             start = end + 1
-            storage['depth'] -= 1
-            assert storage['depth'] == storage['separator'], storage
             continue
 
-        mnum = add_term(start, end, mnum, storage)
-        storage['nmodels'][0] += 1
+        mnum = process.add_term(start, end, mnum)
 
         # conv*a1+a2 is conv(s1) + a2
         if char == '+':
-            check_end_convolution(storage)
+            process.check_end_convolution()
 
         # If we had conv*mdl then we want to drop the *
-        # but conv*m1*a1 is conv(m1*a1)
+        # but conv*m1*a1 is conv(m1*a1). I am not convinced this
+        # is correct but the XSPEC docs are opaque as to this
+        # meaning.
         #
-        if not(char == '*' and in_convolution(storage) and lastterm_is_openbracket()):
+        if not(char == '*' and process.in_convolution() and process.lastterm_is_openbracket()):
             # Add space characters to separate out the expression,
             # even if start==end.
             #
-            add_token(storage, f" {char} ")
+            process.add_token(f" {char} ")
 
         start = end + 1
 
     # Last name, which is not always present.
     #
     if start < end:
-        add_term(start, None, mnum, storage)
+        process.add_term(start, None, mnum)
 
     # I'm not sure whether this should only be done if start < end.
     # I am concerned we may have a case where this is needed.
     #
-    check_end_convolution(storage)
+    process.check_end_convolution()
 
-    if storage['convolution'] is not None:
+    if process.in_convolution():
         print("WARNING: convolution model may not be handled correctly.")
 
-    # depth and separator are really the same thing, and nmodels check is
-    # similar
-    if storage['depth'] != 0:
-        dbg(f"storage[depth] = {storage['depth']}")
+    if len(process.depth) != 1 or process.depth[0] != 0:
+        dbg(f"depth = {process.depth}")
         print("WARNING: unexpected issues handling brackets in the model")
 
-    if storage['separator'] != 0:
-        dbg(f"storage[separator] = {storage['separator']}")
-        print("WARNING: unexpected issues handling separators")
+    if len(process.lastterm) != 1:
+        dbg(f"lastterm = {process.lastterm}")
+        print("WARNING: unexpected issues in the model")
 
-    if len(storage['nmodels']) != 1:
-        dbg(f"storage[nmodels] = {storage['nmodels']}")
-        print("WARNING: unexpected issues counting models")
-
+    out = process.out
     dbg(f"Found {len(out)} expressions")
     for i, expr in enumerate(out):
         dbg(f"Expression: {i + 1}")
