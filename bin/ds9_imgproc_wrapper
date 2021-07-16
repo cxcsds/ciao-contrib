@@ -406,9 +406,15 @@ class ImageProcTaskRegionOut(ImageProcTask):
         nrows = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
         if nrows.decode().strip() == '0':
             print("\n\nNo sources detected\n")
-        else:
-            self.xpaset_p(['regions', 'load', outreg])
-            print("\n\nRegions have been loaded in the current frame.\n")
+            return
+
+        self.xpaset_p(['regions', 'load', outreg])
+        print("\n\nRegions have been loaded in the current frame.\n")
+        
+        from paramio import pget
+        if "yes" == pget("dax", "prism"):
+            self.xpaset_p(["prism", self.tool.outfile])
+        
 
 
 class ImageProcTaskPlotOut(ImageProcTask):
@@ -418,6 +424,10 @@ class ImageProcTaskPlotOut(ImageProcTask):
         'Send plot to da9'
         cmd = ['ds9_plot_blt', self.plotfile, self.title, self.xpa]
         sp.run(cmd, check=True)
+
+        from paramio import pget
+        if "yes" == pget("dax", "prism"):
+            self.xpaset_p(["prism", self.tool.outfile])
 
 
 class ImageProcTaskTextOut(ImageProcTask):
