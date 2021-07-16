@@ -158,4 +158,17 @@ fi
 xpaset -p ${ds9} tcl  "{stop_dax_progress {srcflux}}" 
 echo ""
 echo "Output files are located in $rdir"
+
+if test x`pget dax prism` = xyes
+then
+  fluxfile=`/bin/ls ${rdir}/*.flux`
+  for ff in $fluxfile
+  do
+    xpaset -p $ds9 prism "$fluxfile"
+  done
+fi
+
+
+
+
 exit 0
