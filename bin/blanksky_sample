@@ -23,7 +23,7 @@
 #
 
 toolname = "blanksky_sample"
-__revision__  = "01 July 2020"
+__revision__  = "30 July 2021"
 
 import os, sys, paramio, tempfile, numpy
 
@@ -39,6 +39,7 @@ from ciao_contrib.runtool import dmcopy, dmhedit, dmlist, dmmerge, dmsort, dmtca
 
 from sherpa.utils import parallel_map
 from ciao_contrib.parallel_wrapper import parallel_pool
+from multiprocessing import cpu_count
 from ciao_contrib.runtool import new_pfiles_environment
 
 #############################################################################
@@ -433,7 +434,7 @@ def _structural_kw(fn,keyval,tmpdir):
 
     dmlist.punlearn()
     dmlist.infile = fn
-    dmlist.opt = "header,raw"
+    dmlist.opt = "keys,raw"
     dmlist.verbose = "0"
 
     col = dmlist()
@@ -494,7 +495,7 @@ def _num_pick(args): # P3
 
     (bkg,outfile,bkgscale,bkgmeth,tobs,tbsky,randomseed,tmpdir,verbose) = args # P3
 
-    with new_pfiles_environment(ardlib=True):
+    with new_pfiles_environment(ardlib=True,copyuser=False):
 
         ## get total number of events; the NAXIS2/__NROWS keyword aren't updated if
         ## evt file is filtered
@@ -556,7 +557,11 @@ def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
 
     t0 = kw["TSTART"]
     t1 = kw["TSTOP"]
+    dtcor = kw["DTCOR"]
 
+    t0_corr = t0 + 0.5*(1-dtcor)*(t1-t0)
+    t1_corr = t1 - 0.5*(1-dtcor)*(t1-t0)
+    
     time_rand = tempfile.NamedTemporaryFile(dir=tmpdir)
 
     if randomseed > 0:
@@ -568,7 +573,8 @@ def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
 
     dmtcalc.infile = bkg_rand
     dmtcalc.outfile = time_rand.name
-    dmtcalc.expression = "time={0}+({1}-{0})*{2}".format(t0,t1,randseed)
+    #dmtcalc.expression = "time={0}+({1}-{0})*{2}".format(t0,t1,randseed)
+    dmtcalc.expression = f"time={t0_corr}+({t1_corr}-{t0_corr})*{randseed}"
     dmtcalc.clobber = "yes"
     dmtcalc.verbose = verbose
 
@@ -591,7 +597,7 @@ def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
     dmhedit.operation = "add"
     dmhedit.verbose = "0"
 
-    for tkey in ["ONTIME","LIVETIME","EXPOSURE","TSTART","TSTOP"]:
+    for tkey in ["ONTIME","LIVETIME","EXPOSURE","TSTART","TSTOP","DTCOR"]:
         dmhedit.key = tkey
         dmhedit.value = kw[tkey]
         dmhedit()
@@ -651,8 +657,10 @@ def sample_chip(bkg,infile,outfile,kw,randomseed,tmpdir,verbose):
 
                 bkg_tmp.append(bkgtmp)
 
-            #parallel_map(_num_pick,bkg_sample)
-            parallel_pool(_num_pick,bkg_sample)
+            if len(chips) > cpu_count():
+                parallel_pool(_num_pick,bkg_sample)
+            else:
+                parallel_map(_num_pick,bkg_sample)
 
         finally:
             dmmerge.punlearn()
@@ -695,9 +703,9 @@ def doit():
     get_rand = tempfile.NamedTemporaryFile(dir=tmpdir)
     time_sorted = tempfile.NamedTemporaryFile(dir=tmpdir)
 
-    kw_psf = fileio.get_keys_from_file(infile)
+    kw_psf = fileio.get_keys_from_file(infile+params["infile_filter"])
     kw_bkg = fileio.get_keys_from_file(bkgfile)
-
+    
     instrument = kw_bkg["INSTRUME"]
 
     etype = _evt_type(infile)
