@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2011, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020
+# Copyright (C) 2011, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021
 #        Smithsonian Astrophysical Observatory
 #
 #
@@ -34,8 +34,7 @@ Script:
 __version__ = "CIAO 4.13"
 
 toolname = "specextract"
-__revision__ = "26 May 2021"
-
+__revision__ = "DD MMM 2021"
 
 
 ##########################################################################
@@ -48,21 +47,24 @@ __revision__ = "26 May 2021"
 
 # Load the necessary libraries.
 
-import paramio, os, sys, shutil, numpy, logging, cxcdm, stk, time, tempfile, caldb4
+import paramio, os, sys, shutil, numpy, stk, tempfile, caldb4
 import pycrates as pcr
 
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors, get_verbosity
+
 from ciao_contrib.param_wrapper import open_param_file
-from ciao_contrib.runtool import dmextract, mkrmf, mkacisrmf, mkwarf, dmgroup, dmhedit, calquiz, dmcopy, dmstat, acis_fef_lookup, mkarf, asphist, sky2tdet, arfcorr, combine_spectra, ardlib, acis_set_ardlib, dmmakereg, dmlist, dmkeypar, dmcoords, stk_build, stk_read_num, stk_count, add_tool_history, dmhistory, dmimgthresh
-from ciao_contrib.cxcdm_wrapper import get_block_info_from_file, get_info_from_file
-import ciao_contrib.cxcdm_wrapper as dmw
-from ciao_contrib.cxcdm_wrapper import open_block_from_file, close_block
-from crates_contrib.utils import write_columns
-from ciao_contrib.stacklib import make_stackfile
+
+from ciao_contrib.runtool import dmextract, mkrmf, mkacisrmf, mkarf, mkwarf, arfcorr, asphist, dmgroup, dmhedit, calquiz, dmcopy, acis_fef_lookup, sky2tdet, combine_spectra, ardlib, acis_set_ardlib, dmmakereg, add_tool_history, dmhistory, dmimgthresh
+
 import ciao_contrib._tools.fileio as fileio
 import ciao_contrib._tools.utils as utils
-import ciao_contrib._tools.obsinfo as obsinfo
-from ciao_contrib.proptools import colden
+import ciao_contrib._tools.specextract as spec
+
+from ciao_contrib.runtool import new_pfiles_environment
+from sherpa.utils import parallel_map
+from ciao_contrib.parallel_wrapper import parallel_pool
+
+
 
 ###############################################
 
@@ -79,163 +81,12 @@ v4 = make_verbose_level(toolname, 4)
 v5 = make_verbose_level(toolname, 5)
 
 
-#########################################################################################
-#
-# suppress warnings printed to screen from get_keyvals when probing for blank sky files
-# https://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
-#
-#########################################################################################
-class suppress_stdout_stderr(object):
-    '''
-    A context manager for doing a "deep suppression" of stdout and stderr in
-    Python, i.e. will suppress all print, even if the print originates in a
-    compiled C/Fortran sub-function.
-       This will not suppress raised exceptions, since exceptions are printed
-    to stderr just before a script exits, and after the context manager has
-    exited (at least, I think that is why it lets exceptions through).
-
-    https://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
-    '''
-    def __init__(self):
-        # Open a pair of null files
-        self.null_fds = [os.open(os.devnull,os.O_RDWR) for x in range(2)]
-        # Save the actual stdout (1) and stderr (2) file descriptors.
-        self.save_fds = [os.dup(1), os.dup(2)]
-
-    def __enter__(self):
-        # Assign the null pointers to stdout and stderr.
-        os.dup2(self.null_fds[0],1)
-        os.dup2(self.null_fds[1],2)
-
-    def __exit__(self, *_):
-        # Re-assign the real stdout/stderr back to (1) and (2)
-        os.dup2(self.save_fds[0],1)
-        os.dup2(self.save_fds[1],2)
-        # Close the null files
-        for fd in self.null_fds + self.save_fds:
-            os.close(fd)
-
-
-################################################################################
-# Usage:
-#  check_files(stack, filetype)
-#
-# Aim:
-#  Checks to see that each file in an input stack is readable (also catches
-#   the case of a non-existent file, e.g., the user misspelled the filename).
-#
-################################################################################
-
-def check_files(stack, filetype):
-    """Check to see if each file in the input stack is readable."""
-
-    count = len(stack)
-    if count == 1:
-        suffix = ''
-    else:
-        suffix = 's'
-
-    v2(f"Checking {filetype} file{suffix} for readability...")
-
-    for s in stack:
-        # str() should not be needed, but left in, just in case
-        filename = str(s)
-        v2(f"  validating file: {filename}")
-
-        if filename.upper() in ["CALDB","NONE"]:
-            v3("  ... skipping")
-            continue
-
-        v3("  ... checking if it exists")
-        try:
-            table = cxcdm.dmTableOpen(filename)
-
-        except IOError:
-            raise IOError(f"{filetype} file {filename} does not exist or could not be opened.")
-
-        cxcdm.dmTableClose(table)
-
-
-def check_filename_set(filename):
-    if not filename:
-        return False
-
-    filename = str(filename).upper()
-
-    if filename in ["NULL","NONE",""," "]:
-        return False
-
-    return True
-
-        
-################################################################################
-# Usage:
-#  check_file_pbkheader(infile_stack)
-#
-# Aim:
-#  Checks that the event files in a stack contain the PBK and ASOL-derived header
-#  keywords introduced in ReproIV
-#
-################################################################################
-
-def check_file_pbkheader(infile_stack):
-    """
-    check the input file header contains keywords that were found in the pbk file
-    """
-
-    ## pbkkeys are: 'OCLKPAIR', 'ORC_MODE', 'SUM_2X2', 'FEP_CCD'
-    ## asol-derived keys are: 'DY_AVG', 'DZ_AVG', 'DTH_AVG'
-
-    pbk_kw = ("OCLKPAIR","ORC_MODE","SUM_2X2","FEP_CCD")
-    # asp_kw = ["DY_AVG","DZ_AVG","DTH_AVG"]
-
-    file_status = []
-
-    for inf in infile_stack:
-        inf = fileio.get_file(inf)
-
-        headerkeys = fileio.get_keys_from_file(inf)
-
-        if headerkeys["INSTRUME"] == "ACIS":
-            try:
-                verify_keys = []
-
-                verify_keys.extend([headerkeys.has_key(kw) for kw in pbk_kw])
-
-                if False in verify_keys:
-                    v1(f"WARNING: {fileio.remove_path(inf)} missing header keywords.\n")
-
-                    file_status.append(inf)
-
-            except AttributeError:
-                pbk_kw_list = list(pbk_kw)
-
-                verify_keys = headerkeys.keys() & pbk_kw_list # find elements in common
-
-                for s in verify_keys:
-                    pbk_kw_list.remove(s)
-
-                if len(pbk_kw_list) != 0:
-                    v1(f"WARNING: {fileio.remove_path(inf)} missing header keywords.\n")
-
-                    file_status.append(inf)
-
-    if file_status != []:
-        raise IOError("Input event file(s) missing necessary Repro IV header keywords.  Reprocess data with chandra_repro or add the keywords to the event file(s) with r4_header_update.")
-
-
-##########################################################################
-# Usage:
-#  extract_spectra( full_outroot, infile, ptype, ewmap,
-#                   binwmap, instrument, clobber, verbose)
-#
-# Aim:
-#   Create spectrum from input file.
-#
-##########################################################################
 
 def extract_spectra(full_outroot, infile, ptype, channel, ewmap, binwmap, instrument, clobber, verbose):
-    # output spectrum filename
+    """
+    Create spectrum from input file, return spectrum file name
+    """
+
     specfile = f"{full_outroot}.{ptype.lower()}"
 
     dmextract.punlearn()
@@ -260,199 +111,449 @@ def extract_spectra(full_outroot, infile, ptype, channel, ewmap, binwmap, instru
     return specfile
 
 
-##########################################################################
-# Usage:
-#   build_rmf_ext(rmftool, ptype, full_outroot, ebin,
-#              rmfbin, clobber, verbose, specfile, weightfile)
-#
-#
-# Aim:
-#   Run either mkrmf or mkacisrmf depending on input conditions.
-#   For mkrmf:  input CALDB and weight file and return RMF name.
-#   For mkacisrmf:  input CALDB and WMAP and return RMF name.
-#
-##########################################################################
 
-def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, specfile, weightfile, wmap_clip, wmap_sky2tdet, infostr):
+def create_arf_ps(full_outroot, evt_filename, infile, asp_param, ebin, clobber, verbose, specfile, dafile, mskfile, ccd_id, skyx, skyy, chipx, chipy, infostr):
 
     """
-    RMF filename to return
+    Run mkarf to create an unweighted ARF.
+
+    Use acis_fef_lookup to locate the appropriate FEF file for input
+    to mkrmf, which is the FEF-file-finding method to use for creating
+    unweighted RMFs.  Return the name of the ARF and FEF file.
     """
+
+    # If file does not have a CTI_APP header keyword, issue
+    # a warning that the data should probably be reprocessed.
 
     v1(infostr)
     
-    rmffile = f"{full_outroot}.rmf"
+    cti_app_val = fileio.get_keys_from_file(evt_filename)["CTI_APP"]
 
-    if "mkrmf" == rmftool:
+    if cti_app_val.upper() == "NONE":
+        raise IOError(f"File {evt_filename} is missing a CTI_APP header keyword, required by many CIAO tools; an ARF will not be created. Try re-running specextract after reprocessing your data.\n")
 
-        mkrmf.punlearn()
+    acis_fef_lookup.punlearn()
 
-        mkrmf.infile = "CALDB"
-        mkrmf.outfile = rmffile
-        mkrmf.logfile = ""
-        mkrmf.weights = weightfile
-        mkrmf.axis1 = f"energy={ebin}"
-        mkrmf.axis2 = rmfbin
-        mkrmf.clobber = clobber
-        mkrmf.verbose = str(verbose)
+    acis_fef_lookup.infile = evt_filename
+    acis_fef_lookup.chipid = ccd_id
+    acis_fef_lookup.chipx  = chipx
+    acis_fef_lookup.chipy  = chipy
+    acis_fef_lookup.verbose = "0"
 
-        mkrmf()
-        
-        return rmffile
+    acis_fef_lookup()
 
-    elif "mkacisrmf" == rmftool:
+    feffile = acis_fef_lookup.outfile
 
-        channel = rmfbin.split("=")
-        channel.reverse()
 
-        mkacisrmf.punlearn()
+    # generate mkarf 'detsubsys' keyword
+    ccdid_mode_val = int(ccd_id)
 
-        mkacisrmf.infile = "CALDB"
-        mkacisrmf.outfile = rmffile
-        mkacisrmf.energy = ebin
-        mkacisrmf.channel = channel[0]
-        mkacisrmf.chantype = ptype.upper()
-        mkacisrmf.gain = "CALDB"
-        mkacisrmf.clobber = clobber
-        mkacisrmf.verbose = str(verbose)
-        mkacisrmf.ccd_id = "0" # hopefully, this par will
-                               # be ignored since it can't
-                               # be set to "".
-        if wmap_clip:
-            mkacisrmf.wmap = f"{wmap_sky2tdet}[wmap]"
-        else:
-            mkacisrmf.wmap = f"{specfile}[WMAP]" # dmextract WMAP is faster than sky2tdet WMAP
-
-        mkacisrmf()
-        
-        return rmffile
-        
+    if ccdid_mode_val > 3:
+        local_id = ccdid_mode_val - 4
+        detname = f"ACIS-S{local_id}"
     else:
-        raise IOError(f"Failed to find an appropriate tool to generate a RMF for {specfile}")
+        local_id = ccdid_mode_val
+        detname = f"ACIS-I{local_id}"
+
+    # ARF output file
+    arffile = f"{full_outroot}.arf"
+
+    mkarf.punlearn()
+
+    mkarf.detsubsys = f"{detname};BPMASK=0x03ffff"
+    mkarf.outfile = arffile
+    mkarf.asphistfile = asp_param
+    mkarf.sourcepixelx = skyx
+    mkarf.sourcepixely = skyy
+    mkarf.grating = fileio.get_keys_from_file(evt_filename)["GRATING"]
+    mkarf.obsfile = evt_filename
+    mkarf.dafile = dafile
+    mkarf.maskfile = mskfile
+    mkarf.verbose = str(verbose)
+    mkarf.engrid = ebin
+    mkarf.clobber = clobber
+
+    mkarf()
+    
+    return arffile, feffile
 
 
-##########################################################################
-# Usage:
-#   build_rmf_ps(rmftool, ptype, full_outroot, ebin,
-#              rmfbin, clobber, verbose, specfile, weightfile, ccd_id, chipx, chipy)
-#
-#
-# Aim:
-#   Run either mkrmf or mkacisrmf depending on input conditions.
-#   For mkrmf:  input FEF file and no weight file and return RMF name.
-#   For mkacisrmf:  input CALDB and WMAP and return RMF name.
-#
-##########################################################################
+
+def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, specfile, dafile, mskfile, ewmap_param, bintwmap_param, wmap_clip, wmap_thresh, pars, tmpdir, infostr):
+    
+    """
+    Run mkwarf to create a weighted ARF.  
+    
+    Input the sky2tdet WMAP to create
+    an ARF and weight file (to be used for creating a RMF, if using mkrmf).
+    Return the names of the ARF, weights, and TDET WMAP files
+    """
+	
+    tdetwmap = tempfile.NamedTemporaryFile(suffix="_tdet",dir=tmpdir)
+
+    v1(infostr)
+    
+    try:
+        try:
+            sky2tdet.punlearn()
+
+            sky2tdet.infile = f"{infile}[energy={ewmap_param}][bin sky]" # include extraction region
+                                                                         # plus same energy filter
+            
+            # used for dmextract wmap input to mkacisrmf
+            sky2tdet.bin = bintwmap_param
+            sky2tdet.asphistfile = asp_param
+            sky2tdet.outfile = f"{tdetwmap.name}[wmap]"
+            sky2tdet.clobber = "yes"
+            sky2tdet.verbose = verbose
+
+            sky2tdet()
+
+            # genearte clipped WMAP to speed up response generation
+            if wmap_clip:
+                clip_wmap(tdetwmap.name,wmap_thresh,tmpdir)
+
+        except (OSError,IOError):
+            raise IOError("Error generating WMAP w/sky2tdet!")
+			
+        try:
+            # ARF output file
+            arffile = f"{full_outroot}.arf"
+            
+            # output weight file used in mkrmf
+            weightfile = tempfile.NamedTemporaryFile(suffix=".wfef",dir=tmpdir)
+            
+            mkwarf.punlearn()
+
+            mkwarf.infile = f"{tdetwmap.name}[wmap]"
+            mkwarf.outfile = arffile
+            mkwarf.weightfile = weightfile.name
+            mkwarf.mskfile = mskfile
+            mkwarf.dafile = dafile
+            mkwarf.spectrumfile = ""
+            mkwarf.egridspec = ebin
+            mkwarf.detsubsysmod = "BPMASK=0x03ffff"
+            mkwarf.clobber = "yes"
+            mkwarf.verbose = str(verbose)
+
+            mkwarf()
+			
+        except (OSError,IOError):
+            raise IOError("Error generating weighted ARF w/mkwarf!")
+			
+    except IOError as err_msg:
+        print(err_msg)
+
+        raise IOError(f"Failure to create weighted ARF.  Possible causes include: zero counts in the input region; a memory allocation error; or corrupt ARDLIB.  Try running {toolname} with weight=no, binarfmap!=1, or punlearn ardlib.")
+
+    return arffile, weightfile.name, weightfile, tdetwmap
+
+
+
+def correct_arf(full_outroot, infile, evt_filename, orig_arf, skyx, skyy, binarfcorr, clobber):
+    """
+    Apply an energy-dependent point-source aperture correction
+    to the source ARF created by mkarf, if user has set the
+    'correct' specextract parameter to 'yes' and weight is 'no'.
+    It is not appropriate to run arfcorr on background ARFs because
+    background is extended.
+
+    Return the name of the corrected ARF file.
+    """
+    
+    gz_input = os.path.exists(evt_filename+".gz")
+    guz_input = os.path.exists(evt_filename)
+
+    if not infile.endswith(".gz") and not guz_input:
+
+        if gz_input:
+            evt_filename_gz = f"{evt_filename}.gz"
+
+            infile = infile.replace(evt_filename, evt_filename_gz)
+
+            v1("NOTE: {0} does not exist, but {0}.gz does; using the latter as input to arfcorr for the ARF correction.\n".format(evt_filename))
+
+    # arfcorr required input image:
+    reg_image  = f"{infile}[bin sky={binarfcorr}]"
+
+    # ARF output file
+    carffile = f"{full_outroot}.corr.arf"
+
+    arfcorr.punlearn()
+    arfcorr.infile = reg_image
+    arfcorr.arf = orig_arf
+    arfcorr.outfile = carffile
+    arfcorr.region = spec.get_region_filter(infile)[1]
+    arfcorr.x = skyx
+    arfcorr.y = skyy
+    arfcorr.energy = 0
+    arfcorr.verbose = 0
+    arfcorr.clobber = "yes"
+
+    arfcorr()
+
+    # add arfcorr history to file, since it doesn't automatically
+    param_arfcorr = {}
+    for acpar in arfcorr._parnames:
+        param_arfcorr[acpar] = arfcorr._get_param_value(acpar)
+
+    add_tool_history(carffile,"arfcorr",param_arfcorr)
+    
+    return carffile
+
+
+
+def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,verbose,mskfile,skyx,skyy,instrument,chip_id,infostr):
+    """
+    Generate HRC ARF with mkarf and copy RMF from CalDB
+    """
+    
+    # use the 'caldb4' module to query for the appropriate,
+    # latest HRC RMF in CALDB;  can use calquiz instead as well,
+    # output is a string rather than list
+
+    if rmf_file.upper() == "CALDB":
+        # cf. https://cxc.cfa.harvard.edu/cal/Hrc/detailed_info.html#rmf for HRC RMF information
+ 
+        rmf = caldb4.Caldb(infile=specfile,product="MATRIX").search
+
+        if len(rmf) == 0:
+            raise IOError(f"{specfile} is an invalid HRC spectral file, as non-SAMP responses are no longer supported by the CALDB.  Please reprocess the dataset or re-download the observation from the archive.")
+
+        if len(rmf) > 1:
+            # this should not happen
+            raise IOError("Multiple HRC RMFs returned by CALDB: {}".format(",".join(rmf)))
+
+        rmf = rmf[0]
+        rmf = rmf[:rmf.find("[")]
+
+        # copy RMF
+        rmffile = f"{full_outroot}.rmf"
+        shutil.copyfile(rmf,rmffile)
+
+    else:
+        # enable RMFFILE parameter for HRC data to support HRC Cal group
+        v1("Warning: 'rmffile' parameter for HRC observations is meant for Calibration Group and expert usage!")
+
+        rmffile = rmf_file
+
+    # establish detsubsys       
+    if instrument == "HRC":
+        if chip_id == "0":
+            detname = "HRC-I"
+        else:
+            detname = f"HRC-S{chip_id}"
+
+    # ARF output file
+    v1(infostr)
+    
+    arffile = f"{full_outroot}.arf"
+
+    mkarf.punlearn()
+
+    mkarf.detsubsys = detname
+    mkarf.outfile = arffile
+    mkarf.asphistfile = asp_param
+    mkarf.sourcepixelx = skyx
+    mkarf.sourcepixely = skyy
+    mkarf.grating = fileio.get_keys_from_file(specfile)["GRATING"]
+    mkarf.obsfile = specfile
+    mkarf.maskfile = mskfile
+    mkarf.verbose = str(verbose)
+    mkarf.clobber = clobber
+
+    try:
+        mkarf.engrid = f"grid({rmffile}[SPECRESP MATRIX][cols ENERG_LO,ENERG_HI])"
+        mkarf()
+
+    except OSError:        
+        mkarf.engrid = f"grid({rmffile}[MATRIX][cols ENERG_LO,ENERG_HI])"
+        mkarf()
+            
+    return arffile, rmffile
+
+
+
+def determine_rmf_tool(infile,rmffile,verbose):
+    """
+    Decide whether to run mkrmf or mkacisrmf, return the name of the tool to run.
+    """
+    
+    caldb_p2_resp_file = ""   # P2_RESP CALDB file
+
+    # NB: Adjust call_calquiz() function eventually
+    #     to avoid this step of having to initialize
+    #     the variable.
+
+    # rmftool               # rmf tool to use: 'mkrmf' or 'mkacisrmf'
+    # numCalFiles           # number of CALDB files found by calSearch
+
+    # query the CALDB for the p2_resp file
+
+    v2("Searching for P2_RESP calibration file...")
+
+    calquiz_results = call_calquiz(infile,"SC_MATRIX",rmffile,caldb_p2_resp_file,verbose)
+    numCalFiles = calquiz_results[0]
+
+    caldb_p2_resp_file = calquiz_results[1]
+
+    v3(f"Found the following P2_RESP file(s): {caldb_p2_resp_file}")
+
+    if not numCalFiles or numCalFiles in [0.0, 0, 0.]:
+
+        v1("Cannot use mkacisrmf because no P2_RESP files were found.\n")
+
+        v1(f"Please reprocess {infile} with acis_process_events if you wish to use mkacisrmf, unless the focal plane temperature is greater than -110C and the observation is taken in graded-mode or the extraction region is on a front-illuminated CCD.\n")
+
+        v1("Using mkrmf...\n")
+
+        rmftool = "mkrmf"
+
+    else:
+
+        v1("Using mkacisrmf...\n")
+
+        rmftool = "mkacisrmf"
+
+    return rmftool
+
+
 
 def build_rmf_ps(rmftool, evt_filename, infile, ptype, full_outroot, ebin, rmfbin, clobber, verbose, specfile, weightfile, ccd_id, chipx, chipy, infostr):
 	
     """
-    RMF filename to return
+    Run either mkrmf or mkacisrmf depending on input conditions.
+    For mkrmf: input FEF file and no weights file and return RMF name.
+    For mkacisrmf: input CALDB and WMAP='none' and return RMF name.
+    
+    Returns unweighted ACIS RMF filename.
     """
 
     v1(infostr)
     
     rmffile = f"{full_outroot}.rmf"
 
-    if "mkrmf" == rmftool:
+    try:
+        if rmftool == "mkrmf":
+            acis_fef_lookup.punlearn()
 
-        acis_fef_lookup.punlearn()
+            acis_fef_lookup.infile = evt_filename
+            acis_fef_lookup.chipid = ccd_id
+            acis_fef_lookup.chipx= chipx
+            acis_fef_lookup.chipy = chipy
+            acis_fef_lookup.verbose = str(0)
+            acis_fef_lookup()
 
-        acis_fef_lookup.infile = evt_filename
-        acis_fef_lookup.chipid = ccd_id
-        acis_fef_lookup.chipx= chipx
-        acis_fef_lookup.chipy = chipy
-        acis_fef_lookup.verbose = str(0)
-        acis_fef_lookup()
+            mkrmf.punlearn()
 
-        mkrmf.punlearn()
+            mkrmf.infile = acis_fef_lookup.outfile
+            mkrmf.outfile = rmffile
+            mkrmf.logfile = ""
+            mkrmf.weights = ""
+            mkrmf.axis1 = f"energy={ebin}"
+            mkrmf.axis2 = rmfbin
+            mkrmf.clobber = clobber
+            mkrmf.verbose = str(verbose)
 
-        mkrmf.infile  =  acis_fef_lookup.outfile
-        mkrmf.outfile =  rmffile
-        mkrmf.logfile =  ""
-        mkrmf.weights =  ""
-        mkrmf.axis1   =  f"energy={ebin}"
-        mkrmf.axis2   =  rmfbin
-        mkrmf.clobber =  clobber
-        mkrmf.verbose =  str(verbose)
+            mkrmf()
 
-        mkrmf()
-        
+        else:
+            channel = rmfbin.split("=")
+            channel.reverse()
+
+            mkacisrmf.punlearn()
+
+            # force CALDB querry to match 'ccd_id' parameter, otherwise the default
+            # behavior is to use the CCD_ID header keyword in the 'obsfile'
+            mkacisrmf.infile = f"CALDB(CCD_ID={ccd_id})"
+            mkacisrmf.outfile = rmffile
+            mkacisrmf.energy = ebin
+            mkacisrmf.channel = channel[0]
+            mkacisrmf.chantype = ptype.upper()
+            mkacisrmf.wmap = "none"
+            mkacisrmf.gain = "CALDB"
+            mkacisrmf.obsfile = evt_filename
+            mkacisrmf.ccd_id = ccd_id
+            mkacisrmf.chipx = chipx
+            mkacisrmf.chipy = chipy
+            mkacisrmf.clobber = clobber
+            mkacisrmf.verbose = str(verbose)
+
+            mkacisrmf()
+
         return rmffile
 
-    elif "mkacisrmf" == rmftool:
+    except (OSError,IOError):
+        raise IOError(f"Failed to find an appropriate tool to generate a RMF for {specfile}")
 
-        channel = rmfbin.split("=")
-        channel.reverse()
+    
 
-        mkacisrmf.punlearn()
+def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, specfile, weightfile, wmap_clip, wmap_sky2tdet, infostr):
 
-        # force CALDB querry to match 'ccd_id' parameter, otherwise the default
-        # behavior is to use the CCD_ID header keyword in the 'obsfile'
-        mkacisrmf.infile   =  f"CALDB(CCD_ID={ccd_id})"
-        mkacisrmf.outfile  =  rmffile
-        mkacisrmf.energy   =  ebin
-        mkacisrmf.channel  =  channel[0]
-        mkacisrmf.chantype =  ptype.upper()
-        mkacisrmf.wmap     =  "none"
-        mkacisrmf.gain     =  "CALDB"
-        mkacisrmf.obsfile  =  evt_filename
-        mkacisrmf.ccd_id   =  ccd_id
-        mkacisrmf.chipx    =  chipx
-        mkacisrmf.chipy    =  chipy
-        mkacisrmf.clobber  =  clobber
-        mkacisrmf.verbose  =  str(verbose)
+    """
+    Run either mkrmf or mkacisrmf depending on input conditions. 
+    For mkrmf: input CALDB and weight file and return RMF name.
+    For mkacisrmf: input CALDB and WMAP and return RMF name.
 
-        mkacisrmf()
-        
+    Returns weighted ACIS RMF filename.
+    """
+
+    v1(infostr)
+    
+    rmffile = f"{full_outroot}.rmf"
+
+    try:
+        if rmftool == "mkrmf":
+
+            mkrmf.punlearn()
+
+            mkrmf.infile = "CALDB"
+            mkrmf.outfile = rmffile
+            mkrmf.logfile = ""
+            mkrmf.weights = weightfile
+            mkrmf.axis1 = f"energy={ebin}"
+            mkrmf.axis2 = rmfbin
+            mkrmf.clobber = clobber
+            mkrmf.verbose = str(verbose)
+
+            mkrmf()
+
+        else:
+            channel = rmfbin.split("=")
+            channel.reverse()
+
+            mkacisrmf.punlearn()
+
+            mkacisrmf.infile = "CALDB"
+            mkacisrmf.outfile = rmffile
+            mkacisrmf.energy = ebin
+            mkacisrmf.channel = channel[0]
+            mkacisrmf.chantype = ptype.upper()
+            mkacisrmf.gain = "CALDB"
+            mkacisrmf.clobber = clobber
+            mkacisrmf.verbose = str(verbose)
+            mkacisrmf.ccd_id = "0" # hopefully, this par will
+                                   # be ignored since it can't
+                                   # be set to "".
+            if wmap_clip:
+                mkacisrmf.wmap = f"{wmap_sky2tdet}[wmap]"
+            else:
+                mkacisrmf.wmap = f"{specfile}[WMAP]" # dmextract WMAP is faster than sky2tdet WMAP
+
+            mkacisrmf()
+
         return rmffile
 
-    else:
+    except (OSError,IOError):
         raise IOError(f"Failed to find an appropriate tool to generate a RMF for {specfile}")
 
 
-##########################################################################
-# Usage:
-#  get_keyvals(stack, keyname)
-#
-# Aim:
-#  Needed for input to the dictionary output by group_by_obsid() for
-#  matching (TSTART-sorted) input asol files to each input source file.
-#  For now, 'stack' should be of the form 'stack=stk_build(files)'.
-#
-###########################################################################
-
-def get_keyvals(stack, keyname):
-
-    """
-    return keys
-    """
-
-    keys = []
-
-    for fn in stack:
-        try:
-            kval = fileio.get_keys_from_file(fn)[keyname]
-        except KeyError:
-            v1(f"WARNING: The {keyname} header keyword is missing from {fn}")
-            kval = None
-			
-        keys.append(kval)
-	
-    return keys
-
-
-##########################################################################
-# Usage:
-#   set_badpix(evtfile, bpixfile, instrument, verbose)
-#
-# Aim:
-#  Allow the user to set a different bad pixel file in ARDLIB for each
-#  observation in an input source or background stack.
-#
-##########################################################################
-
+    
 def set_badpix(evtfile, bpixfile, instrument, verbose):
+    """
+    set a different bad pixel file in ARDLIB for each
+    observation in an input source or background stack   
+    """
 
     ardlib.read_params()
 
@@ -485,26 +586,20 @@ def set_badpix(evtfile, bpixfile, instrument, verbose):
                 raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.")
 
 
-###########################################################################
-# Usage:
-#  convert_region(infile, evt_filename, clobber, verbose)
-#
-# Aim:
-#  Convert user-input source/background regions to physical coordinates, in
-#  order to ensure that regions input to arfcorr via the correct_arf() function
-#  are in the correct form. Running this function on regions already in
-#  physical coordinates has no effect other than converting CIAO region
-#  format to DS9 format.
-#
-############################################################################
-
+            
 def convert_region(infile, evt_filename, outfile, clobber, verbose):
-
+    """
+    Convert user-input source/background regions to physical coordinates, in
+    order to ensure that regions input to arfcorr via the correct_arf() function
+    are in the correct form. Running this function on regions already in
+    physical coordinates has no effect other than converting CIAO region
+    format to DS9 format.
+    """
     ## Output region name
 	
     dmmakereg.punlearn()
 
-    dmmakereg.region  = get_region_filter(infile)[1]
+    dmmakereg.region  = spec.get_region_filter(infile)[1]
     dmmakereg.outfile = outfile
     dmmakereg.wcsfile = evt_filename
     dmmakereg.kernel  = "fits"
@@ -513,165 +608,18 @@ def convert_region(infile, evt_filename, outfile, clobber, verbose):
 
     dmmakereg()
 
-    return infile.replace(get_region_filter(infile)[1], f"region({outfile})")
+    return infile.replace(spec.get_region_filter(infile)[1], f"region({outfile})")
 
 
-#########################################################################
-# Usage:
-#  sort_files(file_stack, file_type, key)
-#
-#
-# Aim:
-#  Sort a list of files by the value of a given keyword; e.g., for sorting
-#  a stack of aspect solution files on TSTART before input to mk_asphist().
-#
-##########################################################################
-
-def sort_files(file_stack, file_type, key):
-
-    file_count = len(file_stack)
-    files_orig_order = list(range(file_count))
-
-    for i in range(0, file_count):
-        files_orig_order[i] = file_stack[i]
-
-
-    keyvals_orig_order = get_keyvals(file_stack, key)
-
-    if None in keyvals_orig_order:
-        raise IOError(f"One or more of the entered {file_type} files is missing the required {key} header keyword value. Exiting.")
-
-
-    keyvals_sorted = sorted(keyvals_orig_order) #be sure numbers are not strings
-
-    files_sorted = list(range(file_count))
-
-    for i in range(0, file_count):
-        sort_ind = keyvals_orig_order.index(keyvals_sorted[i])
-        files_sorted[i] = files_orig_order[sort_ind]
-
-    return files_sorted
-
-
-##########################################################################
-# Usage:
-#  group_by_obsid(file_stack, file_type)
-#
-#
-# Aim:
-#  Read the OBS_ID value from the header of each file in the input stack
-#  in order to create a dictionary matching each ObsID to one or a list of
-#  files. Then, this dictionary can be used by other functions in the script
-#  to assign the appropriate file(s) (e.g., asol) to each source observation,
-#  by obsid.
-#
-##########################################################################
-
-def group_by_obsid(file_stack, file_type):
-
-    # Right now, for simplicity, accept stacks
-    # defined as follows:
-    #
-    # file_stack = stk.stack_build(files)
-    #
-    # where 'files' is a list or @stack read from
-    # specextract parameter file.
-
-    file_count = len(file_stack)
-
-    obsids = get_keyvals(file_stack, "OBS_ID")
-
-    # //// NEW 19April2012 ////////////////////////////////
-    #badstring=[]
-    #for obsid in obsids:
-    #    badstring.append(isinstance(obsid, basestring))
-    # /////////////////////////////////////////////////////
-
-    if None in obsids:
-        raise IOError(f"One or more of the entered {file_type} files is missing an OBS_ID header keyword value or it exists but contains an unexpected value, therefore files cannot be grouped by ObsID and properly matched to input source files. Exiting.")
-       # can be just a warning for certain file types, but right now this
-       # function is just used for asol
-
-
-    # //// NEW 19April2012 ////////////////////////////////
-    #elif True in badstring:
-    #    raise IOError("One or more of the entered %s files contains an unexpected OBS_ID header keyword value,
-    #    therefore files cannot be grouped by ObsID and properly matched to input source files. Exiting." % (file_type))
-    # /////////////////////////////////////////////////////
-
-    obsid_sort = sorted(obsids) # be sure numbers are not strings
-
-    orig_files = list(range(file_count))
-    for i in range(0, file_count):
-        orig_files[i] = file_stack[i] #stk_read_num(file_stack, i+1)
-
-    sorted_files = list(range(file_count))
-    for i in range(0,file_count):
-        sort_ind = obsids.index(obsid_sort[i])
-        sorted_files[i] = orig_files[sort_ind]
-
-
-        
-    if file_type != "aspsol":
-
-        obsid_dict = {}
-        for i in range(0,file_count):
-            if obsid_sort[i] in obsid_dict:
-                obsid_dict[obsid_sort[i]] = f"{obsid_dict[obsid_sort[i]]},{sorted_files[i]}"
-            else:
-                obsid_dict[obsid_sort[i]] = sorted_files[i]
-
-        return obsid_dict
-
-    else:
-        asol_tstart = get_keyvals(file_stack, "TSTART")
-
-        if None in asol_tstart:
-            raise IOError("One or more of the entered aspect solution files is missing a TSTART header keyword value, therefore files cannot be properly sorted and matched to input source files. Exiting.")
-
-        asol_tstart_sort = sorted(asol_tstart) #be sure numbers are not strings
-
-        sort_asolfiles = list(range(file_count))
-        asol_obsid_sort = list(range(file_count))
-
-        for i in range(0,file_count):
-            tsort_ind = asol_tstart.index(asol_tstart_sort[i])
-            sort_asolfiles[i] = orig_files[tsort_ind]
-            asol_obsid_sort[i] = obsids[tsort_ind]
-
-        asol_dict={}
-        for i in range(0,file_count):
-            if asol_obsid_sort[i] in asol_dict:
-
-                asol_sort = f"{asol_dict[asol_obsid_sort[i]]},{sort_asolfiles[i]}".replace(" ","").split(",")
-                unique_asol_sort = ",".join(utils.getUniqueSynset(asol_sort))
-
-                if len(asol_sort) != len(unique_asol_sort):
-                    v3("WARNING: Duplicate aspect solutions provided.")
-
-                asol_dict[asol_obsid_sort[i]] = unique_asol_sort
-            else:
-                asol_dict[asol_obsid_sort[i]] = sort_asolfiles[i]
-
-        return asol_dict
-
-
-##########################################################################
-# Usage:
-#  mk_asphist(asol_param, evt_filename, infile, full_outroot, instrument, dtf, chip_id, verbose, clobber)
-#
-#
-# Aim:
-#   Run asphist to create one aspect histogram file per user-input source
-#   observation, for input to sky2tdet ('weight=yes') or mkarf ('weight=no');
-#   the assumption is that it is appropriate to analyze each observation using
-#   only one, and not multiple, aspect histogram files.
-#
-##########################################################################
 
 def mk_asphist(asol_param, evt_filename_filter, full_outroot, dtffile, instrument, chip_id, verbose, clobber, tmpdir):
     """
-    return per chip aspect histogram and file name string
+    Run asphist to create one aspect histogram file per user-input source
+    observation for input into sky2tdet ('weight=yes') or mkarf ('weight=no');
+    the assumption is that it is appropriate to analyze each observation using
+    only one, and not multiple, aspect histogram files.
+
+    Return per chip aspect histogram and file name string
     """
 
     asp_out = tempfile.NamedTemporaryFile(suffix=f"_asphist{chip_id}",dir=tmpdir)
@@ -694,7 +642,8 @@ def mk_asphist(asol_param, evt_filename_filter, full_outroot, dtffile, instrumen
 
     asphist()
     
-    return asp_out.name, asp_out
+    return asp_out, asp_out.name
+
 
 
 def pi_alternate_wmap(pi,wmap):
@@ -747,6 +696,7 @@ def pi_alternate_wmap(pi,wmap):
     tmp_wmap.close()
     
 
+    
 def clip_wmap(wmapfile,threshold,tmpdir):
     """
     OPTIONAL: Truncate sky2tdet WMAP to speed up mkwarf by threshold 
@@ -794,7 +744,7 @@ def clip_wmap(wmapfile,threshold,tmpdir):
     flux_dist_info = numpy.arange(len(flux_dist)*1.0)
     flux_dist_info /= flux_dist_info[-1]
     perc = int(flux_dist_thresh[-1] / (len(flux_dist)*0.01)+0.5)
-    cutoff_stat = "{0:.3g}% flux cutoff @{1:.3g} removes {2}% area\n".format((threshold*100),cutoff,perc)
+    cutoff_stat = f"{threshold*100:.3g}% flux cutoff @{cutoff:.3g} removes {perc}% area\n" #.format((threshold*100),cutoff,perc)
     v1(cutoff_stat)      
 
     # Run dmimgthresh with 'cutoff'
@@ -828,497 +778,14 @@ def clip_wmap(wmapfile,threshold,tmpdir):
     del(flux_dist_thresh)
         
 
-##########################################################################
-# Usage:
-#  create_arf_ext( outtype, outroot, ebin, clobber, verbose,
-#              specfile, dafile, mskfile, ewmap_param, bintwmap_param, wmap_clip, wmap_thresh, pars, tmpdir)
-#
-#
-# Aim:
-#   Run mkwarf to create a weighted ARF.  Input the sky2tdet WMAP to create
-#   an ARF and weight file (to be used for creating a RMF, if using mkrmf).
-#   Return the name of the ARF.
-#
-##########################################################################
-
-def create_arf_ext(full_outroot, infile, asp_param, ebin, clobber, verbose, specfile, dafile, mskfile, ewmap_param, bintwmap_param, wmap_clip, wmap_thresh, pars, tmpdir, infostr):
     
-    """
-    output TDET WMAP filename
-    """
-	
-    tdetwmap = tempfile.NamedTemporaryFile(suffix="_tdet",dir=tmpdir)
-
-    v1(infostr)
-    
-    try:
-        try:
-            sky2tdet.punlearn()
-
-            sky2tdet.infile = f"{infile}[energy={ewmap_param}][bin sky]" # include extraction region
-                                                                         # plus same energy filter
-            
-            # used for dmextract wmap input to mkacisrmf
-            sky2tdet.bin = bintwmap_param
-            sky2tdet.asphistfile = asp_param
-            sky2tdet.outfile = f"{tdetwmap.name}[wmap]"
-            sky2tdet.clobber = "yes"
-            sky2tdet.verbose = verbose
-
-            sky2tdet()
-
-            #++++++++++++++++++++++++++++++++++++++++++++
-        
-            if wmap_clip:
-                clip_wmap(tdetwmap.name,wmap_thresh,tmpdir)
-
-            #++++++++++++++++++++++++++++++++++++++++++
-
-        except (OSError,IOError):
-            raise IOError("Error generating WMAP w/sky2tdet!")
-			
-        try:
-            # ARF output file
-            arffile = full_outroot + ".arf"
-            
-            # output weight file used in mkrmf
-            weightfile = tempfile.NamedTemporaryFile(suffix=".wfef",dir=tmpdir)
-            
-            mkwarf.punlearn()
-
-            mkwarf.infile = f"{tdetwmap.name}[wmap]"
-            mkwarf.outfile = arffile
-            mkwarf.weightfile = weightfile.name
-            mkwarf.mskfile = mskfile
-            mkwarf.dafile = dafile
-            mkwarf.spectrumfile = ""
-            mkwarf.egridspec = ebin
-            mkwarf.detsubsysmod = "BPMASK=0x03ffff"
-            mkwarf.clobber = "yes"
-            mkwarf.verbose = str(verbose)
-
-            mkwarf()
-			
-        except (OSError,IOError):
-            raise IOError("Error generating weighted ARF w/mkwarf!")
-			
-    except IOError as err_msg:
-        print(err_msg)
-
-        raise IOError(f"Failure to create weighted ARF.  Possible causes include: zero counts in the input region; a memory allocation error; or corrupt ARDLIB.  Try running {toolname} with weight=no, binarfmap!=1, or punlearn ardlib.")
-
-    return arffile, weightfile.name, weightfile, tdetwmap
-
-
-###############################################################
-# Usage:
-#  check_event_stats(file)
-#
-#
-# Aim:
-#     Use dmlist to determine the event counts
-#     and appropriately error out or proceed with the script
-#
-################################################################
-
-def check_event_stats(file,refcoord,weights_check=None,ewmap_range_check=None):
-
-    dmlist.punlearn()
-
-    if ewmap_range_check is None:
-        dmlist.infile = file
-    else:
-        dmlist.infile = f"{file}[energy={ewmap_range_check}]"
-        
-    dmlist.opt = "counts"
-    
-    counts = dmlist()
-
-    if counts == "0":
-        if refcoord.lower() not in ["","none","indef"]:
-            if weights_check:
-                v1("WARNING: Unweighted responses will be created at the refcoord position.\n")
-            else:
-                v1("WARNING: Using refcoord position to produce response files.\n")
-        else:
-            if ewmap_range_check is not None:
-                # do we want to error out if the number of counts is smaller than some magic count, instead of just zero?
-                
-                raise IOError(f"{file} has zero counts in the 'energy_wmap={ewmap_range_check}' range needed to generate a weights map.")
-
-
-            raise IOError(f"{file} has zero counts. Check that the region format is in sky pixels coordinates.")
-
-        return False
-    
-    return True
-
-
-def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,asp_param,clobber,verbose,mskfile,skyx,skyy,instrument,chip_id,infostr):
-
-    # use caldb4 module to query for the appropriate, latest HRC RMF in CALDB; can use calquiz
-    # instead as well, output is a string rather than list
-
-    if rmf_file.upper() == "CALDB":
-        # cf. https://cxc.cfa.harvard.edu/cal/Hrc/detailed_info.html#rmf for HRC RMF information
- 
-        rmf = caldb4.Caldb(infile=specfile,product="MATRIX").search
-
-        if len(rmf) == 0:
-            raise IOError(f"{specfile} is an invalid HRC spectral file, as non-SAMP responses are no longer supported by the CALDB.  Please reprocess the dataset or re-download the observation from the archive.")
-
-        if len(rmf) > 1:
-            # this should not happen
-            raise IOError("Multiple HRC RMFs returned by CALDB: {}".format(",".join(rmf)))
-
-        rmf = rmf[0]
-        rmf = rmf[:rmf.find("[")]
-
-        # copy RMF
-        rmffile = f"{full_outroot}.rmf"
-        shutil.copyfile(rmf,rmffile)
-
-    else:
-        # enable RMFFILE parameter for HRC data to support HRC Cal group
-        v1("Warning: 'rmffile' parameter for HRC observations is meant for Calibration Group and expert usage!")
-
-        rmffile = rmf_file
-
-    # establish detsubsys
-    if instrument == "HRC":
-        if chip_id == "0":
-            detname = "HRC-I"
-        else:
-            detname = f"HRC-S{chip_id}"
-
-    # ARF output file
-    v1(infostr)
-    
-    arffile = f"{full_outroot}.arf"
-
-    mkarf.punlearn()
-
-    mkarf.detsubsys = detname
-    mkarf.outfile = arffile
-    mkarf.asphistfile = asp_param
-    mkarf.sourcepixelx = skyx
-    mkarf.sourcepixely = skyy
-    mkarf.grating = fileio.get_keys_from_file(specfile)["GRATING"]
-    mkarf.obsfile = specfile
-    mkarf.maskfile = mskfile
-    mkarf.verbose = str(verbose)
-    mkarf.clobber = clobber
-
-    try:
-        mkarf.engrid = f"grid({rmffile}[SPECRESP MATRIX][cols ENERG_LO,ENERG_HI])"
-        mkarf()
-
-    except OSError:        
-        mkarf.engrid = f"grid({rmffile}[MATRIX][cols ENERG_LO,ENERG_HI])"
-        mkarf()
-            
-    return arffile, rmffile
-
-
-def resp_pos(infile,asol,refcoord,binimg=2):
-    """
-    determine coordinates to use to produce responses
-    """
-    
-    dmcoords.punlearn()
-    dmcoords.infile = get_filename(infile)
-    dmcoords.asolfile = asol
-    dmcoords.celfmt = "deg"
-
-    if refcoord != "":
-        # returns RA and Dec in decimal degrees
-        ra,dec,delme = utils.parse_refpos(refcoord.replace(","," "))
-
-        dmcoords.opt = "cel"
-        dmcoords.ra = str(ra)
-        dmcoords.dec = str(dec)
-
-        dmcoords()
-
-        skyx = str(dmcoords.x)
-        skyy = str(dmcoords.y)
-
-    else:
-        ## parse infile region
-        if get_region(infile) == infile:
-            raise IOError("No region filter with the event file, nor a refcoord value, provided to produce response files.")
-
-        else:
-            # follow general procedures used in event_stats()
-
-            dmstat.punlearn()
-            dmstat.infile = f"{infile}[bin sky={binimg}]"
-            dmstat.verbose = "0"
-            dmstat.centroid = "yes"
-            dmstat()
-
-            # get sky position
-            skyx,skyy = dmstat.out_max_loc.split(",")
-            #skyx,skyy = dmstat.out_cntrd_phys.split(",") # having issues if centroid falls in a zero-count location
-
-            # convert to chip coordinates
-            dmcoords.opt = "sky"
-            dmcoords.x = str(skyx)
-            dmcoords.y = str(skyy)
-
-            dmcoords()
-
-    chipx = str(int(dmcoords.chipx))
-    chipy = str(int(dmcoords.chipy))
-
-    chip_id = str(dmcoords.chip_id)
-
-    ra = float(dmcoords.ra)
-    dec = float(dmcoords.dec)
-
-    return ra,dec,skyx,skyy,chipx,chipy,chip_id
-
-
-###############################################################
-# Usage:
-#  event_stats(file, colname)
-#
-#
-# Aim:
-#     Use dmstat to determine the event statistics: source chipx,
-#     chipy, sky x, sky y, and ccd_id values to use for input
-#     to asphist, acis_fef_lookup, and arfcorr.
-#     Since dmstat doesn't return the mode, do this by brute force
-#     for ccd_id column (psextract algorithm uses mean ccd_id value,
-#     which isn't appropriate for this quantity).
-#
-################################################################
-
-def event_stats(file, colname):
-
-    dmstat.punlearn()
-    dmstat.verbose = "0"
-
-    cr = pcr.read_file(file)
-    if cr is None:
-        raise IOError(f"Unable to read from file {file}")
-    
-    if colname == "ccd_id":
-
-        # Use pycrates to retrieve ccd_id values from user-input event
-        # extraction region. Compute the mode of the ccd_id values
-        # stored in the array.
-
-        ccdid_vals = pcr.get_colvals(cr, "ccd_id")
-
-        n_elements = list(range(10))
-
-        for i in range(0,10):
-            zeros = numpy.array(ccdid_vals)-i
-            n_elements[i] = len(ccdid_vals)-len(numpy.nonzero(zeros)[0])
-
-        mode = numpy.where(n_elements==numpy.max(n_elements))[0]
-        return mode[0]
-
-    elif colname == "chip_id":
-
-        # Use pycrates to retrieve ccd_id values from user-input event
-        # extraction region. Compute the mode of the ccd_id values
-        # stored in the array.
-
-        chipid_vals = pcr.get_colvals(cr, "chip_id")
-
-        n_elements = list(range(10))
-
-        for i in range(0,10):
-            zeros = numpy.array(chipid_vals)-i
-            n_elements[i] = len(chipid_vals)-len(numpy.nonzero(zeros)[0])
-
-        mode = numpy.where(n_elements==numpy.max(n_elements))[0]
-        return mode[0]
-
-    elif colname in ["x","y","chipx","chipy"]:
-
-        if colname in ["x","y"]:
-            bin_setting="[bin sky=2]"
-
-        elif colname in ["chipx","chipy"]:
-            bin_setting="[bin chipx=2,chipy=2]"
-
-        dmstat(file+bin_setting)
-
-        max_cnts_src_pos = dmstat.out_max_loc
-
-        src_x = max_cnts_src_pos.split(",")[0]
-        src_y = max_cnts_src_pos.split(",")[1]
-
-        if colname == "x":
-            return src_x
-
-        elif colname == "y":
-            return src_y
-
-        elif colname == "chipx":
-            return int(float(src_x))
-
-        elif colname == "chipy":
-            return int(float(src_y))
-
-    del(cr)
-        
-
-##########################################################################
-# Usage:
-#  create_arf_ps( outtype, outroot, ebin, clobber, verbose,
-#              specfile, dafile, mskfile, ccd_id, skyx, skyy, chipx, chipy)
-#
-#
-# Aim:
-#   Run mkarf to create an unweighted ARF.  Run asphist and acis_fef_lookup
-#   to create an aspect histogram and locate an FEF file, respectively, for
-#   input to mkarf to create the ARF.  Return the name of the ARF and FEF file.
-#
-#
-##########################################################################
-
-def create_arf_ps(full_outroot, evt_filename, infile, asp_param, ebin, clobber, verbose, specfile, dafile, mskfile, ccd_id, skyx, skyy, chipx, chipy, infostr):
-
-    """
-    Use acis_fef_lookup to locate the appropriate FEF file for input
-    to mkrmf, which is the FEF-file-finding method to use for creating
-    unweighted RMFs.
-    """
-
-    # If file does not have a CTI_APP header keyword, issue
-    # a warning that the data should probably be reprocessed.
-
-    v1(infostr)
-    
-    cti_app_val = fileio.get_keys_from_file(evt_filename)["CTI_APP"]
-
-    if cti_app_val.upper() == "NONE":
-        raise IOError(f"File {evt_filename} is missing a CTI_APP header keyword, required by many CIAO tools; an ARF will not be created. Try re-running specextract after reprocessing your data.\n")
-
-    acis_fef_lookup.punlearn()
-
-    acis_fef_lookup.infile = evt_filename
-    acis_fef_lookup.chipid = ccd_id
-    acis_fef_lookup.chipx  = chipx
-    acis_fef_lookup.chipy  = chipy
-    acis_fef_lookup.verbose = "0"
-
-    acis_fef_lookup()
-
-    feffile = acis_fef_lookup.outfile
-
-
-    # Make mkarf 'detsubsys' keyword
-
-    ccdid_mode_val = int(ccd_id)
-
-    if ccdid_mode_val > 3:
-        local_id = ccdid_mode_val - 4
-        detname = f"ACIS-S{local_id}"
-    else:
-        local_id = ccdid_mode_val
-        detname = f"ACIS-I{local_id}"
-
-    # ARF output file
-    arffile = full_outroot + ".arf"
-
-    mkarf.punlearn()
-
-    mkarf.detsubsys = f"{detname};BPMASK=0x03ffff"
-    mkarf.outfile = arffile
-    mkarf.asphistfile = asp_param
-    mkarf.sourcepixelx = skyx
-    mkarf.sourcepixely = skyy
-    mkarf.grating = fileio.get_keys_from_file(evt_filename)["GRATING"]
-    mkarf.obsfile = evt_filename
-    mkarf.dafile = dafile
-    mkarf.maskfile = mskfile
-    mkarf.verbose = str(verbose)
-    mkarf.engrid = ebin
-    mkarf.clobber = clobber
-
-    mkarf()
-    
-    return arffile, feffile
-
-
-########################################################
-# Usage:
-#   correct_arf(full_outroot, infile, evt_filename, orig_arf, skyx, skyy, binarfcorr)
-#
-#
-# Aim:
-#  Apply an energy-dependent point-source aperture correction
-#  to the source ARF created by mkarf, if user has set the
-#  'correct' specextract parameter to 'yes' and weight is 'no'.
-#  It is not appropriate to run arfcorr on background ARFs because
-#  background is extended.
-#
-#  Return the name of the corrected ARF file.
-#
-########################################################
-
-def correct_arf(full_outroot, infile, evt_filename, orig_arf, skyx, skyy, binarfcorr, clobber):
-
-    gz_input = os.path.exists(evt_filename+".gz")
-    guz_input = os.path.exists(evt_filename)
-
-    if not infile.endswith(".gz") and not guz_input:
-
-        if gz_input:
-            evt_filename_gz = f"{evt_filename}.gz"
-
-            infile = infile.replace(evt_filename, evt_filename_gz)
-
-            v1("NOTE: {0} does not exist, but {0}.gz does; using the latter as input to arfcorr for the ARF correction.\n".format(evt_filename))
-
-    # arfcorr required input image:
-    reg_image  = f"{infile}[bin sky={binarfcorr}]"
-
-    # ARF output file
-    carffile = f"{full_outroot}.corr.arf"
-
-    arfcorr.punlearn()
-    arfcorr.infile = reg_image
-    arfcorr.arf = orig_arf
-    arfcorr.outfile = carffile
-    arfcorr.region = get_region_filter(infile)[1]
-    arfcorr.x = skyx
-    arfcorr.y = skyy
-    arfcorr.energy = 0
-    arfcorr.verbose = 0
-    arfcorr.clobber = "yes"
-
-    arfcorr()
-
-    # add arfcorr history to file, since it doesn't automatically
-    param_arfcorr = {}
-    for acpar in arfcorr._parnames:
-        param_arfcorr[acpar] = arfcorr._get_param_value(acpar)
-
-    add_tool_history(carffile,"arfcorr",param_arfcorr)
-    
-    return carffile
-
-
-
-##########################################################################
-# Usage:
-#   group_spectrum(ptype, full_outroot, val, spec, gtype,
-#		    clobber, verbose, phafile)
-#
-# Aim:
-#   Optionally group output spectrum.
-#
-##########################################################################
-
 def group_spectrum(ptype, full_outroot, val, spec, gtype,
-                    clobber, verbose, phafile):
+                   clobber, verbose, phafile):
+    """
+    Optionally group output spectrum
+    """
 
+    
     # grouped spectrum name
     grpout = f"{full_outroot}_grp.{ptype.lower()}"
 
@@ -1340,17 +807,12 @@ def group_spectrum(ptype, full_outroot, val, spec, gtype,
     return grpout
 
 
-###########################################################
-# Usage:
-#   edit_headers(verbose, infile, key, val)
-
-# Aim:
-#   Update/add the infile header key with a certain value.
-#
-###########################################################
 
 def edit_headers(verbose, infile, key, val, *args, **kwargs):
-
+    """
+    Update or add the infile header keyword with a specified value.
+    """
+    
     unit = kwargs.get("unit",None) # optional argument
     comment = kwargs.get("comment",None)
 
@@ -1372,195 +834,17 @@ def edit_headers(verbose, infile, key, val, *args, **kwargs):
     return dmhedit()
 
 
-########################################################
-# Usage:
-#   get_filename( full_filename:s )
-#
-#
-# Aim:
-#  Pass in the full filename
-#     i.e.  dir/source.fits[sky=region(dir/source.reg)]
-#  and return the filename w/o filter
-#     i.e.  filename = dir/source.fits
-#
-
-########################################################
-
-def get_filename(full_filename):
-
-    # filename = filename w/o filter
-
-    #
-    # NB: strip off the filter by scanning the string
-    # until the first "[", "'[", or ""[".
-    #
-
-    brack = "["
-    squot_brack = "'["
-    dquot_brack = "\""+"["
-
-    if dquot_brack in str(full_filename):
-        filename = full_filename.split(dquot_brack)[0]
-
-    elif squot_brack in str(full_filename):
-        filename = full_filename.split(squot_brack)[0]
-
-    else:
-        filename = full_filename.split(brack)[0]
-
-    if not check_filename_set(filename):
-        return None
-
-    return filename
-
-
-
-
-########################################################
-# Usage:
-#   get_region_filter(full_filename)
-#
-#
-# Aim:
-#  Pass in the full filename
-#     i.e.  dir/source.fits[sky=region(dir/source.reg)]
-#  and return the filter without filename
-#     i.e.  region_filter = region(source.reg)
-#  for input to arfcorr
-#
-
-########################################################
-
-def get_region_filter(full_filename):
-
-    # region_filter = dm spatial region filter minus filename
-    #                 and any other filters which may be present
-
-    #
-    # NB: strip off the filename by splitting the string
-    # at "sky=" or "(x,y)=", and then cleaning up the dm
-    # filter portion of this result.
-    #
-    # Note: the 'exclude' DM region filter syntax is unsupported
-    # by sky2tdet for 'weight=yes'; by dmextract when 'weight=no';
-    # and by dmmakereg when 'weight=no' and 'correct=yes'.
-    # (dmextract won't output an error, but the WMAP doesn't make
-    # it into the output spectrum as it should, causing a
-    # calquiz error downstream).
-
-    if "sky=" in full_filename:
-        filter = True
-        region_temp = full_filename.split("sky=")[1]
-
-    elif "(x,y)=" in full_filename:
-        filter = True
-        region_temp = full_filename.split("(x,y)=")[1]
-
-    elif "pos=" in full_filename:
-        filter = True
-        region_temp = full_filename.split("pos=")[1]
-
-    else:
-        filter = False
-
-        if full_filename.startswith("@"):
-            # deal with stacks
-            pass
-        else:
-            region_temp = full_filename
-            v1(f"WARNING: A supported spatial region filter was not detected for {full_filename}\n")
-
-    if filter:
-
-        if ")," in region_temp and ") ," in region_temp:
-
-            region_temp2 = region_temp.partition("),")[0]+")"
-
-            if ") ," in region_temp2:
-                region = region_temp2.partition(") ,")[0]+")"
-            else:
-                region = region_temp2
-
-        elif ")," in region_temp:
-            region = region_temp.partition("),")[0]+")"
-
-        elif ") ," in region_temp:
-            region = region_temp.partition(") ,")[0]+")"
-
-        else:
-            region = region_temp.rpartition("]")[0]
-
-    else:
-        region = full_filename
-
-
-    if not check_filename_set(region):
-        raise IOError(f"Please specify a valid spatial region filter for {full_filename} or use FOV region files.")
-
-    return filter,region
-
-########################################################
-# Usage:
-#   get_region(full_filename)
-#
-# NOT BEING USED AT THE MOMENT
-#
-# Aim:
-#  Pass in the full filename
-#     i.e.  dir/source.fits[sky=region(dir/source.reg)]
-#  and return the region without filename or filter
-#     i.e.  region = source.reg
-#  for use in correct_arf() function
-#
-
-########################################################
-
-def get_region(full_filename):
-
-    # region = region without filename or filter syntax
-
-    #
-    # NB: strip off the filename by splitting the string
-    # at "sky=", and then cleaning up the dm filter portion
-    # of this result.
-    #
-
-    if "region" in get_region_filter(full_filename)[1]:
-        region =  get_region_filter(full_filename)[1].split("(")[1].strip(")")
-    else:
-        region = get_region_filter(full_filename)[1]
-
-
-    if not check_filename_set(region):
-        return None
-
-    return region
-
-
-def valid_regstr(inf):
-    regfilter = fileio.get_filter(inf)
-
-    if any(["=(" in regfilter,"(" not in regfilter]):
-        raise IOError(f"There is a problem with the extraction region syntax in: {inf}")
-
-    
-################################################################
-# Usage:
-#  numCalFiles = call_calquiz(infile, product, queryStr,
-#                              caldb_file, verbose)
-#
-# Aim:
-#  Retrieve the caldb file name & number of files found
-#  by calling calquiz.
-#
-################################################################
 
 def call_calquiz(infile, product, query, file, verbose):
-
+    """
+    Retrieve the CalDB file name and number of files found by
+    calling calquiz as a list
+    """
+    
     #clear params and set calquiz command string
     calquiz.punlearn()
 
-    calquiz.infile  =  infile + "[WMAP]"
+    calquiz.infile  =  f"{infile}[WMAP]"
     calquiz.product =  product
     calquiz.calfile =  query
     calquiz.outfile =  "y"
@@ -1572,7 +856,6 @@ def call_calquiz(infile, product, query, file, verbose):
                          # remove "y" in outfile
 
     if [result != "", "ERROR" in str(result)] == [True,False]:
-
         cqpf = paramio.paramopen("calquiz", "r")
 
         if not cqpf:
@@ -1598,12 +881,6 @@ def call_calquiz(infile, product, query, file, verbose):
                 numFiles = len(outfiles_arr)
                 paramio.paramclose(cqpf)
 
-            #domsg(verbose, 2, "CALDB " + str(product) + " file found was: "+str(file))
-
-            # NB: This 'domsg' command is no longer necessary
-            # b/c calquiz 'echo' parameter has been set to 'yes';
-            # though screen output will be slightly different.
-
     else:
         numFiles = 0
         file = None
@@ -1611,64 +888,636 @@ def call_calquiz(infile, product, query, file, verbose):
     return [numFiles, file]
 
 
-########################################################
-# Usage:
-#   determine_rmf_tool(infile, rmffile, verbose)
+##########################################################################
+# 
+#  Parallelizable functions; main steps for spectral extraction 
+#  and response generation.  Dependent on above functions  
 #
-#
-# Aim:
-#  Decide whether to run mkrmf or mkacisrmf.
-#
-#  Return the name of the tool to run.
-#
-########################################################
+##########################################################################
 
-def determine_rmf_tool(infile,rmffile,verbose):
+def spectra(args):
+    key_id = args["key_id"]
+    srcbkg = args["srcbkg"]
+    fullfile = args["fullfile"]
+    filename = args["filename"]
+    full_outroot = args["full_outroot"]
+    dobpix = args["dobpix"]
+    bpix = args["bpix"]
+    instrument = args["instrument"]
+    weight = args["weight"]
+    correct = args["correct"]
+    binwmap = args["binwmap"]    
+    nrao_nh = args["nrao_nh"]
+    bell_nh = args["bell_nh"]
+    ptype = args["ptype"]
+    channel = args["channel"]
+    ewmap = args["ewmap"]
+    tmpdir = args["tmpdir"]
+    clobber = args["clobber"]
+    verbose = args["verbose"]
+    fcount = args["fcount"]
+    iteminfostr = args["iteminfostr"]
+        
+    with new_pfiles_environment(ardlib=True):
+        ###################################
+        #
+        # set bad pixel file in ardlib.par
+        #
+        ###################################
 
-    caldb_p2_resp_file = ""   # P2_RESP CALDB file
+        if dobpix:
+            v1(f"Setting bad pixel file {iteminfostr}")
+            set_badpix(filename, bpix, instrument, verbose)
 
-    # NB: Adjust call_calquiz() function eventually
-    #     to avoid this step of having to initialize
-    #     the variable.
 
-    # rmftool               # rmf tool to use: 'mkrmf' or 'mkacisrmf'
-    # numCalFiles           # number of CALDB files found by calSearch
+        #####################################
+        #
+        # convert source region to physical
+        # coordinates for ARF correction
+        #
+        #####################################
 
-    # query the CALDB for the p2_resp file
+        if weight != "yes":
+            if correct == "yes" and srcbkg == "src":
+                if not spec.get_region_filter(fullfile)[0]:
+                    v0(f"WARNING: The ARF generated for {fullfile} cannot be corrected as no supported spatial region filter was detected for this file, which is required input for this step.\n")
 
-    v2("Searching for P2_RESP calibration file...")
+                    correct = "no"
 
-    calquiz_results = call_calquiz(infile,"SC_MATRIX",rmffile,caldb_p2_resp_file,verbose)
-    numCalFiles = calquiz_results[0]
+                    pardict = {key_id : {"correct" : correct}}
+                    
+                else:
+                    v1(f"Converting source region to physical coordinates {iteminfostr}")
 
-    caldb_p2_resp_file = calquiz_results[1]
+                    outreg = tempfile.NamedTemporaryFile(suffix=f"_phys_coords_{key_id}.reg",dir=tmpdir)
+                    fullfile = convert_region(fullfile,filename,outreg.name,"yes",verbose)
 
-    v3(f"Found the following P2_RESP file(s): {caldb_p2_resp_file}")
+                    pardict = {key_id : {"fullfile" : fullfile,
+                                         "outreg" : outreg}}
+                    
+        ###########################
+        #
+        # extract spectrum
+        #
+        ###########################
 
-    if not numCalFiles or numCalFiles in [0.0, 0, 0.]:
+        v1(f"Extracting {srcbkg} spectra {iteminfostr}")
 
-        v1("Cannot use mkacisrmf because no P2_RESP files were found.\n")
+        # If 'binwmap' contains 'tdet' string, check that TDET column exists
+        # in file; if not, change 'binwmap' value to
+        # 'det={user's specification}' and notify user.
 
-        v1(f"Please reprocess {infile} with acis_process_events if you wish to use mkacisrmf, unless the focal plane temperature is greater than -110C and the observation is taken in graded-mode or the extraction region is on a front-illuminated CCD.\n")
+        if "tdet" in binwmap:
+            cr = pcr.read_file(fullfile)
 
-        v1("Using mkrmf...\n")
+            if cr is None:
+                raise IOError(f"Unable to read from file {fullfile}")
 
-        rmftool = "mkrmf"
+            if not cr.column_exists("tdet"):
+                v1(f"WARNING: No TDET column found in {filename}; the 'wmap' parameter of dmextract will be set to use DET coordinates instead.\n")
+
+                binwmap_val = binwmap.split("=")[1]
+                binwmap = f"det={binwmap_val}"
+
+                del(cr)
+
+        try:
+            phafile = extract_spectra(full_outroot,fullfile,ptype,channel,
+                                      ewmap,binwmap,instrument,clobber,verbose)
+
+            try:
+                pardict[key_id].update({"phafile" : phafile})
+            except NameError:
+                pardict = {key_id : {"phafile" : phafile}}
+                
+        except OSError:
+            raise IOError(f"Failed to extract spectrum for {fullfile}")
+
+        # add nH values to phafile header
+        if nrao_nh not in [None,"-",0.0]:
+            # Galactic neutral hydrogen column density at the source position using
+            # the NRAO all-sky interpolation, via COLDEN.
+
+            edit_headers(verbose,phafile,"NRAO_nH",nrao_nh,unit="10**22 cm**-2",
+                         comment="galactic HI column density") 
+
+        if bell_nh not in [None,"-",0.0]:
+            # Galactic neutral hydrogen column density at the source position using
+            # the Bell Labs survey, via COLDEN.
+
+            edit_headers(verbose,phafile,"Bell_nH",bell_nh,unit="10**22 cm**-2",
+                         comment="galactic HI column density") 
+
+
+        ############################################################
+        #
+        # add AREASCAL value from 'blanksky' BKGSCAL value, do not
+        # change if using 'blanksky_sample'
+        #
+        ############################################################
+        
+        if srcbkg == "bkg":
+            dmhistory.punlearn()
+            dmhistory.infile = fullfile
+
+            try:
+                dmhistory.tool = "blanksky"
+                bsky_status = dmhistory()
+            except OSError:
+                bsky_status = None
+
+            try:
+                dmhistory.tool = "blanksky_sample"
+                bskysamp_status = dmhistory()
+            except OSError:
+                bskysamp_status = None
+                
+            if all([bsky_status is not None, bskysamp_status is None]):
+                src_cr = pcr.read_file(f"{filename}[#row=1]")
+                ccdid = src_cr.get_column("CCD_ID").values[0]
+                del(src_cr)
+
+                bkgscale = fileio.get_keys_from_file(fullfile)[f"BKGSCAL{ccdid}"]
+
+                edit_headers(verbose, phafile, "AREASCAL", bkgscale, comment=f"blanksky BKGSCAL{ccdid} scaling factor from the 'blanksky' script, set to 1.0 if subtracting background")
+
+                v1(f"{phafile} AREASCAL keyword set to 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling.  Set AREASCAL to 1.0 if 'blanksky' spectrum is being used for background subtraction.")
+                
+    try:
+        return pardict
+    except NameError:
+        pass
+
+    
+
+def resps(args):
+    key_id = args["key_id"]
+    srcbkg = args["srcbkg"]
+    fullfile = args["fullfile"]
+    filename = args["filename"]
+    full_outroot = args["full_outroot"]
+    phafile = args["phafile"]
+    dobpix = args["dobpix"]
+    bpix = args["bpix"]
+    dtf = args["dtf"]
+    da = args["da"]
+    msk = args["msk"]
+    instrument = args["instrument"]
+    ebin = args["ebin"]
+    ptype = args["ptype"]  
+    bintwmap = args["bintwmap"]
+    ewmap = args["ewmap"]
+
+    correct = args["correct"]
+    skyx = args["skyx"]
+    skyy = args["skyy"]
+    chip_id = args["chip_id"]
+    chipx = args["chipx"]
+    chipy = args["chipy"]
+    binarfcorr = args["binarfcorr"]
+
+    refcoord = args["refcoord"]
+
+    weight = args["weight"]
+    weight_rmf = args["weight_rmf"]
+    wmap_clip = args["wmap_clip"]
+    wmap_threshold = args["wmap_threshold"]
+    rmfbin = args["rmfbin"]
+    
+    dobkgresp = args["dobkgresp"]
+
+    tmpdir = args["tmpdir"]
+    clobber = args["clobber"]
+    verbose = args["verbose"]
+    iteminfostr = args["iteminfostr"]
+    pars = args["pars_specextract"]
+    
+    try:
+        asol = args["asol"]
+        asolstat = True
+    except KeyError:
+        asphist = args["asphist"]
+        asolstat = False
+
+    if instrument == "ACIS":
+        null_rmffile = args["null_rmffile"]
+        rmffile_ccd = args["rmffile_ccd"]
+    else:
+        rmffile = args["rmffile"]
+
+    with new_pfiles_environment(ardlib=True):
+        if dobpix:
+            set_badpix(filename,bpix,instrument,verbose)
+
+        infostr = f"Creating {srcbkg} ARF {iteminfostr}"
+
+        if asolstat:                
+            #########################################
+            #
+            # create aspect histograms if necessary
+            # to pass along toe mkarf
+            #
+            #########################################
+            
+            with spec.suppress_stdout_stderr():
+                try:
+                    asphist_temp, asphist = mk_asphist(asol,fullfile,full_outroot,
+                                                       dtf,instrument,chip_id,
+                                                       verbose,clobber,tmpdir)
+
+                    add_tool_history(asphist,toolname,pars,toolversion=__revision__)
+
+                except OSError:
+                    if dobkgresp:
+                        raise IOError(f"Failed to create aspect histogram file for {fullfile}")
+
+        if instrument == "ACIS":
+            ###########################
+            #
+            # create ACIS ARF
+            #
+            ###########################
+
+            try:
+                if any([srcbkg == "src" and weight == "yes", srcbkg == "bkg" and dobkgresp]):
+                    weight = "yes" # force background ARF to always be weighted
+                    
+                    ancrfile, weightfile, fef_file, tdetwmap = create_arf_ext(full_outroot,fullfile,asphist,
+                                                                              ebin,clobber,verbose,
+                                                                              phafile,da,msk,ewmap,
+                                                                              bintwmap,wmap_clip,wmap_threshold,
+                                                                              pars,tmpdir,infostr)
+
+                    add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
+                    
+                if all([srcbkg == "src", weight == "no"]):
+                    try:
+                        ancrfile, weightfile = create_arf_ps(full_outroot,filename,fullfile,
+                                                             asphist,ebin,clobber,verbose,
+                                                             phafile,da,msk,
+                                                             chip_id,skyx,skyy,chipx,chipy,infostr)
+
+                        add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
+
+                    except OSError:
+                        raise IOError(f"Failed to create ARF for {fullfile}")
+
+                    if correct == "yes":
+                        v1(f"Calculating aperture correction for {srcbkg} ARF {iteminfostr}")
+
+                        try:
+                            ancrfile = correct_arf(full_outroot,fullfile,filename,
+                                                   ancrfile,skyx,skyy,binarfcorr,clobber)
+                        except OSError:
+                            raise IOError(f"Failed to PSF correct the ARF: {ancrfile}")
+
+            except (OSError,IOError):
+                raise IOError(f"Failed to create ARF for {fullfile}")
+            
+            ###########################
+            #
+            # create ACIS RMF
+            #
+            ###########################
+
+            infostr = f"Creating {srcbkg} RMF {iteminfostr}"
+
+            if null_rmffile:
+                v1(f"WARNING: Setting rmffile parameter (and calquiz calfile) to '{rmffile_ccd}'.\n")
+
+            rmftool = determine_rmf_tool(phafile,rmffile_ccd,verbose)
+
+            try:
+                if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
+                    if all([weight == "yes",weight_rmf == "yes"]):
+                        respfile = build_rmf_ext(rmftool,ptype,full_outroot,
+                                                 ebin,rmfbin,clobber,verbose,
+                                                 phafile,weightfile,wmap_clip,
+                                                 tdetwmap.name, infostr)
+
+                        if wmap_clip:
+                            tdetwmap.close()
+
+                    else:
+                        respfile = build_rmf_ps(rmftool,filename,fullfile,ptype,full_outroot,
+                                                ebin,rmfbin,clobber,verbose,phafile,weightfile,
+                                                chip_id,chipx,chipy,infostr)
+
+                    try:
+                        add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+                    except OSError:
+                        v3("skip writing file history to RMF")
+
+            except (OSError,IOError):
+                raise IOError(f"Failed to create RMF for {fullfile}")
+
+        else:
+            ##########################################
+            #
+            # make HRC ARF and copy RMF from CalDB
+            #
+            ##########################################
+
+            try:
+                ancrfile, respfile = create_hrc_resp(phafile,rmffile,refcoord,full_outroot,
+                                                     asphist,clobber,verbose,msk,
+                                                     skyx,skyy,instrument,chip_id,infostr)
+
+                add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
+
+                try:
+                    add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+                except OSError:
+                    v3("skip writing file history to RMF")
+
+                if all([srcbkg == "src",correct == "yes"]):
+                    try:
+                        v1(f"Calculating aperture correction for {srcbkg} ARF {iteminfostr}")
+
+                        ancrfile = correct_arf(full_outroot,fullfile,filename,
+                                               ancrfile,skyx,skyy,binarfcorr,clobber)
+                    except OSError:
+                        raise IOError(f"Failed to PSF correct the ARF: {ancrfile}")
+
+            except (OSError,IOError):
+                raise IOError(f"Failed to create ARF for {fullfile}")
+
+        try:
+            asphist_temp.close()
+        except NameError:
+            pass
+
+        try:
+            fef_file.close()
+        except NameError:
+            pass
+
+    if srcbkg == "bkg" and not dobkgresp:
+        pass
+    else:
+        return {key_id : {"ARF" : ancrfile,
+                          "RMF" : respfile}}
+
+
+    
+def groupspec(args):
+
+    key_id = args["key_id"]
+    srcbkg = args["srcbkg"]
+
+    dogroup = args["dogroup"]
+    bgdogroup = args["bgdogroup"]
+
+    tmpdir = args["tmpdir"]
+    clobber = args["clobber"]
+    verbose = args["verbose"]
+    iteminfostr = args["iteminfostr"]
+    pars = args["pars_specextract"]
+
+    full_outroot = args["full_outroot"]
+    phafile = args["phafile"]
+    ptype = args["ptype"]      
+
+    try:
+        gtype = args["gtype"]
+    except KeyError:
+        pass
+    try:
+        gval = args["gval"]
+    except KeyError:
+        pass
+    try:
+        binspec = args["binspec"]
+    except KeyError:
+        pass
+
+    try:
+        bggtype = args["bggtype"]
+    except KeyError:
+        pass
+    try:
+        bggval = args["bggval"]
+    except KeyError:
+        pass
+    try:
+        bgbinspec = args["bgbinspec"]
+    except KeyError:
+        pass
+
+    if all([srcbkg == "src", dogroup]):
+        v1(f"Grouping {srcbkg} spectrum {iteminfostr}")
+
+        try:
+            grpfile = group_spectrum(ptype,full_outroot,
+                                     gval,binspec,gtype,
+                                     clobber,verbose,phafile)
+
+            return {key_id : {"grpfile" : grpfile}}
+
+        except (OSError,IOError):
+            raise IOError(f"Failed to group spectrum for {fullfile}")
+
+    if all([srcbkg == "bkg", bgdogroup]):
+        v1(f"Grouping {srcbkg} spectrum {iteminfostr}")
+
+        try:
+            grpfile = group_spectrum(ptype,full_outroot,
+                                     bggval,bgbinspec,bggtype,
+                                     clobber,verbose,phafile)
+            return {key_id : {"grpfile" : grpfile}}
+
+        except (OSError,IOError):
+            raise IOError(f"Failed to group spectrum for {fullfile}")
+
+
+        
+def add_header_keys(args):
+    key_id = args["key_id"]
+    srcbkg = args["srcbkg"]
+    phafile = args["phafile"]
+    full_outroot = args["full_outroot"]    
+    dobkgresp = args["dobkgresp"]
+    bkgresp = args["bkgresp"]
+    refcoord = args["refcoord"]
+
+    dobg = args["dobg"]
+    dogroup = args["dogroup"]
+    bgdogroup = args["bgdogroup"]
+    
+    tmpdir = args["tmpdir"]
+    verbose = args["verbose"]
+    clobber = args["clobber"]
+
+    iteminfostr = args["iteminfostr"]
+    pars = args["pars_specextract"]
+
+    try:
+        ancrfile = args["ARF"]
+    except KeyError:
+        pass
+
+    try:
+        respfile = args["RMF"]
+    except KeyError:
+        pass
+    
+    try:
+        grpfile = args["grpfile"]
+    except KeyError:
+        pass
+
+    ####################################
+    #
+    # add header keys to output files
+    #
+    ####################################
+
+    try:
+        fn = phafile
+
+        if srcbkg == "bkg" and not dobkgresp:
+            if refcoord != "" and bkgresp == "yes":
+                v1(f"Updating header of {fn} with RESPFILE and ANCRFILE keywords.\n")
+                respfile = args["specdicts"][key_id.replace("bkg","src")]["RMF"]
+                ancrfile = args["specdicts"][key_id.replace("bkg","src")]["ARF"]
+
+                edit_headers(verbose, fn, "RESPFILE", os.path.basename(respfile))
+                edit_headers(verbose, fn, "ANCRFILE", os.path.basename(ancrfile))
+
+        else:
+            v1(f"Updating header of {fn} with RESPFILE and ANCRFILE keywords.\n")
+
+            edit_headers(verbose, fn, "RESPFILE", os.path.basename(respfile))
+            edit_headers(verbose, fn, "ANCRFILE", os.path.basename(ancrfile))
+
+            # If the source or background spectrum was grouped, add the respfile
+            # and ancrfile keys there, too.
+            if srcbkg == "src" and dogroup:
+                fn = grpfile
+                v1(f"Updating header of {fn} with RESPFILE and ANCRFILE keywords.\n")
+
+                edit_headers(verbose, fn, "RESPFILE", os.path.basename(respfile))
+                edit_headers(verbose, fn, "ANCRFILE", os.path.basename(ancrfile))
+
+            if srcbkg == "bkg" and bgdogroup:
+                fn = grpfile
+                v1(f"Updating header of {fn} with RESPFILE and ANCRFILE keywords.\n")
+                
+                edit_headers(verbose, fn, "RESPFILE", os.path.basename(respfile))
+                edit_headers(verbose, fn, "ANCRFILE", os.path.basename(ancrfile))
+
+    except Exception:
+        v1(f"Failed to update the RESPFILE and ANCRFILE keywords in {fn}.\n")
+
+    try:
+        if srcbkg == "src" and dobg:
+            # Add the backfile key to the ungrouped source spectrum;
+            # use the ungrouped background spectrum filename.
+
+            fn = phafile
+            backpha = args["specdicts"][key_id.replace("src","bkg")]["phafile"]
+
+            v1(f"Updating header of {fn} with BACKFILE keyword.\n")
+            edit_headers(verbose, fn, "BACKFILE", os.path.basename(backpha))
+
+            # If the source spectrum was grouped, add the 
+            # backfile key to the grouped source spectrum.
+
+            if dogroup:
+                # If the background is grouped, use the grouped background spectrum filename.
+                if bgdogroup:
+                    fn = grpfile
+                    backphagrp = args["specdicts"][key_id.replace("src","bkg")]["grpfile"]
+
+                    v1(f"Updating header of {fn} with BACKFILE keyword.\n")
+                    edit_headers(verbose, fn, "BACKFILE", os.path.basename(backphagrp))
+
+                else:
+                    # If the background is not grouped, use the ungrouped background spectrum filename.
+                    fn = grpfile
+                    
+                    v1(f"Updating header of {grpfile} with BACKFILE keyword.\n")
+                    edit_headers(verbose, fn, "BACKFILE", os.path.basename(backpha))
+
+    except Exception:
+        v1(f"Failed to update the BACKFILE keyword in {fn}.\n")
+                
+    try:
+        add_tool_history(phafile,toolname,pars,toolversion=__revision__)
+    except Exception:
+        v3(f"skip writing '{toolname}' history to {phafile}")
+
+    try:
+        add_tool_history(grpfile,toolname,pars,toolversion=__revision__)
+    except OSError:
+        v3(f"skip writing '{toolname}' history to {grpfile}")
+    except NameError:
+        pass
+    
+
+    
+def combine(outroot,spec_src_stk,spec_bkg_stk,arf_src_stk,arf_bkg_stk,rmf_src_stk,rmf_bkg_stk,dobg,dobkgresp):
+    """
+    Determine whether or not to combine source output spectra, and any
+    associated background spectra and response files, if user has input
+    a stack of source event files.
+    """
+
+    if len(spec_src_stk) < 2:
+        v1("Warning: There are fewer than two source event files specified in the 'infile' parameter; the 'combine=yes' setting will be ignored.\n")
 
     else:
+        #################################################
+        #
+        # Combine output spectra and responses if the
+        # appropriate files were successfully created.
+        #
+        #################################################
 
-        v1("Using mkacisrmf...\n")
+        combine_spectra.punlearn()
+        combine_spectra.outroot = f"{outroot}_combined"
+        combine_spectra.clobber = clobber
+        combine_spectra.verbose = verbose
 
-        rmftool = "mkacisrmf"
+        src_length = [len(spec_src_stk),len(arf_src_stk),len(rmf_src_stk)]
 
-    return rmftool
+        if all(slen == src_length[0] for slen in src_length):
+            combine_spectra.src_spectra = spec_src_stk
+            combine_spectra.src_arfs = arf_src_stk
+            combine_spectra.src_rmfs = rmf_src_stk
 
+            combine_infostr = "Combined source spectra and responses."
+            
+            if dobg:
+                bkg_length = [len(spec_bkg_stk),len(arf_bkg_stk),len(rmf_bkg_stk)]
 
+                if len(spec_bkg_stk) == len(spec_src_stk):
+                    combine_spectra.bkg_spectra = spec_bkg_stk
+
+                    combine_infostr = "Combined source spectra and responses, and background spectra."
+
+                    if dobkgresp and all(blen == bkg_length[0] for blen in bkg_length):
+                        combine_spectra.bkg_arfs = arf_bkg_stk
+                        combine_spectra.bkg_rmfs = rmf_bkg_stk
+                        
+                        combine_infostr = "Combined source and background spectra and responses."
+
+            try:
+                combine_spectra()
+                v2(combine_infostr)
+
+            except (OSError,IOError):
+                v1("Failed to combine output spectra and responses, please do so manually or with 'combine_spectra'.")
+                
+        else:
+            v1("Output spectra and responses were not combined because spectra and/or responses were not created for every item in the input stack(s) of files.")
+            
+
+            
 ##########################################################################
-# Usage:
-#  get_par(args)
-#
-# Aim:
+# 
+#  Parameter related tasks
+# 
 #  Retrieve parameter values set in the referenced parameter file
 #  and create a dictionary matching parameter name to parameter value.
 ##########################################################################
@@ -1679,7 +1528,7 @@ def get_par(args):
     pinfo = open_param_file(args, toolname=toolname)
     pfile = pinfo["fp"]
 
-#   Parameters:
+    # Parameters:
     params = {}
     pars = {}
 
@@ -1719,20 +1568,12 @@ def get_par(args):
     #pars["wmap_threshold"] = params["wmap_threshold"] = paramio.pgetstr(pfile,"wmap_threshold")
 
 
-    #### Deprecated
-    ##if params["ptype"].upper() != "PI":
-    ##    raise ValueError("Support for ptype=PHA has been removed from specextract. Please contact the CXC HelpDesk at https://cxc.harvard.edu/helpdesk/ if you need to use this option.")
-
     # verify the existence of the output directory, create if non-existent
-    if params["outroot"].startswith("@"): # although this approach still may
-                                          # run into problems with stacks
-        stackfile = open(params["outroot"].lstrip("@"),"r")
-        stackfile.close
-        stackfile = stackfile.readlines()
-        out_roots = [stackfile.replace(" ","").strip("\n") for stackfile in stackfile]
+    if params["outroot"].startswith("@"): 
+        stackfile = stk.build(params["outroot"])
+        out_roots = [st.replace(" ","").strip("\n") for st in stackfile]
         del(stackfile)
-
-        #out_roots = stk.build(params["outroot"])
+        
     else:
         out_roots = params["outroot"].replace(" ","").split(",")
 
@@ -1752,25 +1593,41 @@ def get_par(args):
     #     params["wmap_clip"] = False
     params["wmap_clip"] = False # remove when clipping implemented
     params["wmap_threshold"] = None # remove when clipping implemented
-
-    
+        
     paramio.paramclose(pfile)
+
     return params,pars
 
 
+def update_param_args_and_dict(dict_update,dict_orig,args_list,cmd_pars_history):
+    """
+    update the parameter dictionary (dict_orig) and argument list with new 
+    keywords and revised entries defined in (dict_update)
+    """
+
+    for par in dict_update:
+        if par is not None:
+            for keyitem,keyitem_dict in par.items():
+                for k,v in keyitem_dict.items():
+                    dict_orig[keyitem][k] = v
+
+    if not all(n is None for n in dict_update):
+        return [{"key_id":key, **dict_orig[key], "pars_specextract" : cmd_pars_history} for key in dict_orig.keys()]
+    else:
+        return args_list
 
 
-##########################################################################
-#
-# Main Code
-#
-##########################################################################
+#######################################################################
+#######################################################################
+#####
+#####  Create data products 
+#####
+#######################################################################
+#######################################################################
 
 @handle_ciao_errors(toolname, __revision__)
-def specextract(args):
-    """ Run the tool """
-
-
+def run_specextract(args):
+    
     #-----------------------------------------------------------
     # Retrieve parameter values from specextract parameter file.
     #-----------------------------------------------------------
@@ -1785,7 +1642,7 @@ def specextract(args):
 
     set_verbosity(params["verbose"])
     utils.print_version(toolname, __revision__)
-    v3("  Parameters: " + str(params))
+    v3(f"Parameters: {params}")
 
     # Define variables to represent parameter values.
 
@@ -1823,1511 +1680,109 @@ def specextract(args):
     wmap_clip = params["wmap_clip"]
     wmap_threshold = params["wmap_threshold"]
 
-
     # error out if there are spaces in absolute paths of the various parameters
-    
     for parname in ["infile","outroot","bkgfile","asp","dtffile","mskfile","rmffile","bpixfile","dafile"]:
         if " " in os.path.abspath(params[parname]):
             raise IOError(f"The absolute path for the {parname}, '{os.path.abspath(params[parname])}', cannot contain any spaces")
 
-        
-    # Alert the user that the 'correct' parameter only applies
-    # when 'weight=no'.  Also check image/PSF binning factors
-    # for arfcorr and weighted ARFs
+    specdicts = spec.ParDicts(params).specextract_dict()  
 
-    if correct == "yes":
-        if weight == "yes":
-            v0("WARNING: The 'correct' parameter is ignored when 'weight=yes'.")
-        else:
-            v2("Note: all input source regions are converted to physical coordinates for point-source analysis with ARF correction.")
+    specextract_args = [{"key_id" : key, **specdicts[key], "pars_specextract" : pars} for key in specdicts.keys()]
 
-            # also check that the binarfcorr parameter is greater than zero
-            if float(binarfcorr) <= 0:
-                raise ValueError("'binarfcorr' must be greater than zero.")
-
-    else:
-        if float(bintwmap) <= 0 :
-            raise ValueError("'binarfwmap' must be greater than zero.")
-
-        
-    # no need to duplicate responses, since src and bkg responses will be the same if refcoord!=""
-
-    if refcoord != "" and  bkgresp == "yes":
-        v1(f"Responses for source and background are identical at {refcoord}, setting 'bkgresp=no' to avoid duplicate files.")
-
-        bkgresp = "no"
-
-        
-    # Define the binning specification for RMFs output by the script.
-
-    if ptype == "PI":
-        rmfbin = f"pi={channel}"
-    else:
-        rmfbin = f"pha={channel}"
-
-
-    # 6) Build stacks for the file input parameters; make sure they are readable and not empty.
+    ###########################
     #
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # extract spectra
     #
-    # a) source stack
+    ###########################   
 
-    if infile and infile.lower() not in [""," ","none"]:
+    pardict_update_spectra = parallel_pool(spectra,specextract_args)
 
-        # handle a stack of regions, but single input file, in the format: "evt.fits[sky=@reg.lis]",
-        # assume no other dmfilter included
+    # update parameters dictionary if necessary, and the list passed to parallelization
+    specextract_args = update_param_args_and_dict(pardict_update_spectra,specdicts,specextract_args,pars)
 
-        if get_region_filter(infile)[0] and get_region_filter(infile)[1].startswith("@"):
-            regfile = get_region_filter(infile)[1]
-            regfilter = fileio.get_filter(infile)
-            fi = get_filename(infile)
-            regcoord = regfilter.strip("\[\]").replace(regfile,"").replace("=","")
+    ###########################
+    #
+    # generate responses
+    #
+    ###########################
 
-            regstk = stk.build(regfile)
+    pardict_update_resps = parallel_pool(resps,specextract_args)
+    specextract_args = update_param_args_and_dict(pardict_update_resps,specdicts,specextract_args,pars)
 
-            src_stk = [f"{fi}[{regcoord}={region}]" for region in regstk]
+    ###########################
+    #
+    # optionally group spectrum
+    #
+    ###########################
 
-            del(fi)
-            del(regfile)
-            del(regfilter)
-            del(regcoord)
-            del(regstk)
-
-        else:
-            src_stk = stk.build(infile)
-
-    else:
-        src_stk = [""]
-
-    src_count = len(src_stk)
-
-    # error out if there are spaces in absolute paths of the stack
-    for path in src_stk:
-        if " " in os.path.abspath(path):
-            raise IOError(f"The absolute path for the input file, '{os.path.abspath(path)}', cannot contain any spaces")
-
-    # check infiles for CC-mode data and throw warning; also look for merged
-    # data or blanksky files and error out
-    for inf in src_stk:
-        inf = fileio.get_file(inf)
-        headerkeys = fileio.get_keys_from_file(inf)
-
-        # check for blank sky files and maxim's bg files, error out if found:
-        try:
-            blanksky = headerkeys["CDES0001"]
-        except (KeyError,AttributeError):
-            blanksky = None
-
-        try:
-            mm_blanksky = headerkeys["MMNAME"]
-        except (KeyError,AttributeError):
-            mm_blanksky = None
-
-        if blanksky is not None:
-            if "blank sky event" in blanksky.lower():
-                raise IOError("Cannot use blanksky background files as infile, since responses cannot be produced.\n")
-
-        if mm_blanksky is not None:
-            if mm_blanksky.lower().startswith("acis") and "_bg_evt_" in mm_blanksky.lower():
-                raise IOError("Cannot use M.M. ACIS blanksky background files as infile, since responses cannot be produced.\n")
-
-        # check defined response energy range for weighted warm observations
-        if weight == "yes" and  headerkeys["INSTRUME"] == "ACIS":
-
-            # check focal plane temperature, if >-110C, then check FEF energy range
-            # ObsID 114 (observed 2000-01-30 10:40:42) is first observation made at <-119C.
-            #
-            # mkarf/mkrmf automatically creates response in the available energy range in the FEF file
-            # for unweighted responses
-
-            v3("Checking detector focal plane temperature\n")
-
-            fp_temp = headerkeys["FP_TEMP"] - 273.15 # convert from Kelvin to Celsius
-
-            if fp_temp > -110:
-                v3("Checking FEF energy range for warm observation")
-
-                acis_fef_lookup.punlearn()
-                acis_fef_lookup.infile = inf
-                acis_fef_lookup.chipid = "none"
-                acis_fef_lookup.verbose = "0"
-                acis_fef_lookup()
-
-                fef = acis_fef_lookup.outfile
-
-                cr_fef = pcr.read_file(fef)
-                fef_energy = cr_fef.get_column("ENERGY").values
-                del(cr_fef)
-
-                fef_emin = min(fef_energy)
-                fef_emax = max(fef_energy)
-
-                ebin_min,ebin_max,ebin_de = ebin.split(":")
-
-                fef_estat = (float(ebin_min) >= fef_emin, float(ebin_max) <= fef_emax)
-
-                if fef_estat != (True,True):
-                    raise ValueError(f"ObsID {headerkeys['OBS_ID']} was made at a warm focal plane temperature, >-110C.  The available calibration products are valid for an energy range of {fef_emin:.3f}-{fef_emax:.3f} keV while the 'energy' parameter has been set to {ebin_min}-{ebin_max} keV (energy={ebin})") # the ":.3f" in the format prints up to three decimal places of the float
-
-        # find CC-mode data, throw warning
-        if headerkeys["INSTRUME"] == "ACIS":
-            readmode = headerkeys["READMODE"]
-
-            if readmode.upper() == "CONTINUOUS":
-                v1(f"WARNING: Observation taken in CC-mode.  {toolname} may provide invalid responses for {inf}.  Use rotboxes instead of circles/ellipses for extraction regions.")
-
-        # try to find if there is merged data in input stack, throw warning (or error out)
-        merge_key = [headerkeys["TITLE"].lower(),
-                     headerkeys["OBSERVER"].lower(),
-                     headerkeys["OBJECT"].lower(),
-                     headerkeys["OBS_ID"].lower()]
-
-        try:
-            merge_key.append(headerkeys["DS_IDENT"].lower())
-        except KeyError:
-            pass
-
-        if "merged" in merge_key:
-            raise IOError(f"Merged data sets are unsupported by {toolname}.  Merged events files should not be used for spectral analysis.") # or v1 warning?
-
-        del(merge_key)
-
-    # check infiles for ReproIV header keywords that came from the pbk
-    # and derived from the asol.
+    pardict_update_grp = parallel_pool(groupspec,specextract_args)
+    specextract_args = update_param_args_and_dict(pardict_update_grp,specdicts,specextract_args,pars)
     
-    check_file_pbkheader(src_stk)
+    ###########################
+    #
+    # update header keywords
+    #
+    ###########################
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #    
-    # b) outroot stack
+    specextract_args = [{**d , "specdicts" : specdicts} for d in specextract_args]
+    parallel_pool(add_header_keys,specextract_args)
 
-    isoutstack = True
-    outroot_tmp = outroot
-
-    if outroot and outroot.lower() not in [""," ","none"]:
-        out_stk = stk.build(outroot)
-
-    else:
-        out_stk = [""]
-
-    out_count = len(out_stk)
-
+    # ## test in serial
+    # for dargs in specextract_args:
+    #     add_header_keys(dargs)
     
-    # If the outroot stack count equals 1 but the source stack count
-    # is not equal to 1, treat the outroot parameter as the only root
-    # and append "src1", "src2", etc., to the output files.
-    if 1 == out_count:
-        if src_count > 1:
-            isoutstack = False
-
-    # error out if there are spaces in absolute paths
-    for path in out_stk:
-        if " " in os.path.abspath(path):
-            raise IOError(f"The absolute path for the outroot, '{os.path.abspath(path)}', cannot contain any spaces")
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ###########################
     #
-    # c) background stack; ensure it has the same
-    #    number of elements as the source stack.
-
-    if bkgfile and bkgfile.lower() not in [""," ","none"]:
-
-        # handle a stack of regions, but single input file, in the format: "evt.fits[sky=@reg.lis]",
-        # assume no other dmfilter included
-        if get_region_filter(bkgfile)[0] and get_region_filter(bkgfile)[1].startswith("@") == True:
-            regfile = get_region_filter(bkgfile)[1]
-            regfilter = fileio.get_filter(bkgfile)
-            fi = get_filename(bkgfile)
-            regcoord = regfilter.strip("\[\]").replace(regfile,"").replace("=","")
-
-            regstk = stk.build(regfile)
-
-            bkg_stk = [f"{fi}[{regcoord}={region}]" for region in regstk]
-
-            del(fi)
-            del(regfile)
-            del(regfilter)
-            del(regcoord)
-            del(regstk)
-
-        else:
-            bkg_stk = stk.build(bkgfile)
-
-        bg_count = len(bkg_stk)
-
-        # error out if there are spaces in absolute paths of the stacks
-        for path in bkg_stk:
-            if " " in os.path.abspath(path):
-                raise IOError(f"The absolute path for the background file, '{os.path.abspath(path)}', cannot contain any spaces")
-
-        for bg in bkg_stk:
-            if not get_region_filter(bg)[0]:
-                raise IOError(f"Please specify a valid background spatial region filter for {bg} or use FOV region file.")
-
-
-        if src_count != bg_count:
-            raise IOError("Source and background stacks must contain the same number of elements.  Source stack= " + str(src_count) + "    Background stack= " + str(bg_count))
-
-        else:
-            # Check that source and background ObsIDs match.
-            src_obsid_stk = get_keyvals(src_stk, "OBS_ID")
-            bkg_obsid_stk = get_keyvals(bkg_stk, "OBS_ID")
-
-            # check for blank sky files and maxim's bg files:
-            v1("Checking for blank sky background files...")
-
-            with suppress_stdout_stderr():
-                blanksky = get_keyvals(bkg_stk,"CDES0001")
-                mm_blanksky = get_keyvals(bkg_stk,"MMNAME")
-
-            blanksky = [kw for kw in blanksky if kw is not None]
-            mm_blanksky = [kw for kw in mm_blanksky if kw is not None]
-
-            for blanksky_info in blanksky:
-                if "blank sky event" in blanksky_info.lower():
-                    if bkgresp == "yes":
-                        raise IOError("Cannot create responses for spectra from blanksky background files.\n")
-                    else:
-                        v1("WARNING: Extracting background spectra from blanksky background files.\n")
-
-            for mm_blanksky_info in blanksky:
-                if mm_blanksky_info.lower().startswith("acis") and "_bg_evt_" in mm_blanksky_info.lower():
-                    if bkgresp == "yes":
-                        raise IOError("Cannot create responses for spectra from M.M. ACIS blanksky background files.\n")
-                    else:
-                        v1("WARNING: Extracting background spectra from M.M. ACIS blanksky background files.\n")
-
-            if None not in src_obsid_stk and None not in bkg_obsid_stk:
-
-                src_obsid_stk_int=[int(i) for i in src_obsid_stk]
-                bkg_obsid_stk_int=[int(i) for i in bkg_obsid_stk]
-
-                # Check that src&bkg stacks have matching ObsID values and also same number of each unique value.
-
-                if sum(abs(numpy.array(sorted(src_obsid_stk_int))-numpy.array(sorted(bkg_obsid_stk_int)))) != 0:
-                    v0("WARNING: Background file OBS_IDs differ from source file OBS_IDs; ignoring background input.\n")
-                    dobg = False
-                    dobkgresp = False
-                    fcount = src_count
-
-                # Check if the matched src&bkg ObsID values are entered in the proper matching order.
-
-                elif sum(abs(numpy.array(src_obsid_stk_int)-numpy.array(bkg_obsid_stk_int))) != 0:
-                    v0("WARNING: 'bkgfile' file order does not match 'infile' file order; ignoring background input.\n")
-                    dobg = False
-                    dobkgresp = False
-                    fcount = src_count
-
-                else:
-                    dobg = True
-                    fcount = src_count
-
-                    if bkgresp == "yes":
-                        dobkgresp = True
-                    else:
-                        dobkgresp = False
-
-            else:
-                v0("WARNING: OBS_ID information could not be found in one or more source and/or background files. Assuming source and background file lists have a matching order.\n")
-                dobg = True
-                fcount = src_count
-
-                if bkgresp == "yes":
-                    dobkgresp = True
-                else:
-                    dobkgresp = False
-
-    else:
-        dobg = False
-        dobkgresp = False
-        fcount = src_count
-
-    # check that region extraction syntax does not take the erroneous form:
-    # "sky=(src.reg)" or "sky=src.reg" which can lead to unexpected results
-    # and very long run times
-    try:
-        in_stk = set(src_stk).union(set(bkg_stk))
-    except NameError:
-        in_stk = src_stk
-    
-    for fn in in_stk:
-        valid_regstr(fn)
-
-    # check counts in input files, and exit if necessary, or produce responses for upper-limits
-    for src in src_stk:
-        check_event_stats(src,refcoord,weights_check=False)
-
-    # check if there are counts in energy_wmap range for weighted ARFs/sky2tdet creation
-    ewmap_srcbg_stk = []
-
-    if weight == "yes":
-        ewmap_srcbg_stk.extend(src_stk)
-
-    if dobkgresp:
-        ewmap_srcbg_stk.extend(bkg_stk)
-
-    for fn in ewmap_srcbg_stk:
-        if fileio.get_keys_from_file(inf)["INSTRUME"] == "ACIS":
-            check_event_stats(fn,refcoord,ewmap_range_check=ewmap)
-
-    # find ancillary files, if exists, add to stack
-    ancil = {}
-    ancil["asol"] = []
-    ancil["bpix"] = []
-    ancil["msk"] = []
-    ancil["dtf"] = []
-
-    for obs in src_stk:
-        fobs = obsinfo.ObsInfo(obs)
-
-        if "" in [asp,bpixfile,mask]:
-            v1(f"Using event file {obs}\n")
-
-        if asp == "":
-            v3('Looking in header for ASOLFILE keyword\n')
-            asols = fobs.get_asol()
-            asolstr = ",".join(asols)
-
-            # It should be okay to have multiple entries per source since
-            # downstream code tries to match observations to asol files,
-            # but is this true or the best way to do it?
-            ancil["asol"].extend(asols)
-
-            if len(asols) == 1:
-                suffix = ''
-            else:
-                suffix = 's'
-                
-            v1(f"Aspect solution file{suffix} {asolstr} found.\n")
-
-        if bpixfile == "":
-            v3('Looking in header for BPIXFILE keyword\n')
-            ancil["bpix"].append(fobs.get_ancillary('bpix'))
-            v1(f"Bad-pixel file {fobs.get_ancillary('bpix')} found.\n")
-
-        if mask == "":
-            v3('Looking in header for MASKFILE keyword\n')
-            ancil["msk"].append(fobs.get_ancillary('mask'))
-            v1(f"Mask file {fobs.get_ancillary('mask')} found.\n")
-
-        if fobs.instrument == "ACIS":
-            ancil["dtf"].append("")
-
-        elif dtffile == "":
-            v3('Looking in header for DTFFILE keyword\n')
-            ancil["dtf"].append(fobs.get_ancillary("dtf"))
-            v1(f"HRC dead time factor file {fobs.get_ancillary('dtf')} found.\n")
-
-
-    ## cast as stacks
-    if asp == "" and len(ancil["asol"]) != 0:
-        temp_asol_stk = make_stackfile(ancil["asol"],suffix="asol",delete=True)
-
-    if bpixfile == "" and len(ancil["bpix"]) != 0:
-        temp_bpix_stk =  make_stackfile(ancil["bpix"],suffix="bpix",delete=True)
-
-    if dtffile == "" and len(ancil["dtf"]) != 0:
-        if "" not in ancil["dtf"]:
-            temp_dtf_stk = make_stackfile(ancil["dtf"],suffix="dtf",delete=True)
-
-    if mask == "" and len(ancil["msk"]) != 0:
-        temp_msk_stk = make_stackfile(ancil["msk"],suffix="msk",delete=True)
-
-    # assign stacks to variables
-    if False not in [asp.lower() != "none", asp == ""]:
-        asp = "@"+temp_asol_stk.name
-
-    if False not in [dtffile.lower() != "none", dtffile == ""] and "" not in ancil["dtf"]:
-        dtffile = "@"+temp_dtf_stk.name
-
-    if False not in [bpixfile.lower() != "none", bpixfile == ""]:
-        bpixfile = "@"+temp_bpix_stk.name
-
-    if False not in [mask.lower() != "none", mask == ""]:
-        mask = "@"+temp_msk_stk.name
-
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # co-add datasets
     #
-    #    e) dafile stack; ensure it has
-    #       either 1 or src_count elements
-
-    if dafile and dafile.lower() not in [""," ","none"]:
-        da_stk = stk.build(dafile)
-        check_files(da_stk, "dead area")
-        da_count = len(da_stk)
-
-        if 1 != da_count and src_count != da_count:
-            raise IOError(f"Error: dafile stack must have either 1 element or the same number of elements as the source stack.  Source stack={src_count}     dafile stack={da_counts}")
-
-    else:
-        da_stk = [""]
-        da_count = len(da_stk)
-        
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #
-    #    f) mskfile stack; ensure it has
-    #       either 1 or src_count elements
-
-    if mask and mask.lower() not in [""," ","none"]:
-        mask_stk = stk.build(mask)
-        check_files(mask_stk, "mask")
-        mask_count = len(mask_stk)
-
-        if 1 != mask_count and src_count != mask_count:
-            raise IOError(f"The 'mskfile' stack must have either 1 element or the same number of elements as the source stack.  Source stack={src_count}     mskfile stack={mask_count}")
-
-    else:
-        mask_stk = [""]
-        mask_count = len(mask_stk)
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #
-    #    g) badpixfile file stack; ensure it has
-    #       either 1 or src_count elements
-
-    if bpixfile and bpixfile.lower() not in [""," ","none"]:
-        bpix_stk = stk.build(bpixfile)
-        check_files(bpix_stk,"bad pixel")
-        bpix_count = len(bpix_stk)
-
-        if 1 != bpix_count and src_count != bpix_count:
-            raise IOError(f"The 'badpixfile' stack must have either 1 element or the same number of elements as the source stack.  Source stack={src_count}     bpix stack={bpix_count}")
-        else:
-            dobpix = True
-    else:
-        bpix_stk = [""]
-        dobpix = False
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #
-    #    h) aspect histogram/solution file stack
-    #
-    #       If histogram, it must have 1 or
-    #        src_count elements.
-    #
-    #       If solution, it can have
-    #       1 or more elements per source file.
-
-    if asp and asp.lower() not in [""," ","none"]:
-        asp_stk = stk.build(asp)
-        check_files(asp_stk,"aspect")
-        asp_count = len(asp_stk)
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # 
-    #    i)  dtffile stack; ensure it has
-    #        either 1 or src_count elements
-
-    if dtffile and dtffile.lower() not in [""," ","none"]:
-        dtf_stk = stk.build(dtffile)
-        check_files(dtf_stk,"dead time factor")
-        dtf_count = len(dtf_stk)
-
-        if 1 != dtf_count and src_count != dtf_count:
-            raise IOError(f"Error: dtffile stack must have either 1 element or the same number of elements as the source stack.  Source stack={src_count}     dtffile stack={dtf_count}")
-
-    else:
-        dtf_stk=[""]
-        dtf_count = len(dtf_stk)
-        
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #
-    #
-    # check that there are no spaces in ancillary file paths, if specified
-    #
-
-    stk_dict = {"asol":asp_stk,
-                "badpix":bpix_stk,
-                "mask":mask_stk,
-                "DTF":dtf_stk,
-                "dead area":da_stk}
-
-    for key in stk_dict.keys():
-        for path in stk_dict[key]:
-            if " " in os.path.abspath(path):
-                raise IOError(f"The absolute path for the {key} file, '{os.path.abspath(path)}', cannot contain any spaces")
-
-    if bpix_stk == [""]:
-        del(bpix_stk)
-
-    # Determine if asphist or asol files were input
-    # to the 'asp' parameter and build the appropriate
-    # stack accordingly. (Must check all files since
-    # the invoked tool 'asphist' won't complain if
-    # histogram files are incorrectly input.)
-
-    aspfile_hdus = get_keyvals(asp_stk, "HDUCLAS2")
-
-
-    if "HISTOGRAM" in aspfile_hdus and "ASPSOL" in aspfile_hdus:
-        raise IOError("A mix of aspect solution and histogram files were entered into 'asp'; please enter one or a list of either type, not both.\n")
-
-    elif "ASPSOL" in aspfile_hdus:
-        for i in aspfile_hdus:
-            if i != "ASPSOL":
-                raise IOError("Found a file in 'asp' which is neither an aspect solution nor histogram file. Exiting.\n")
-            else:
-                asol=1
-                ahist=0
-
-    elif "HISTOGRAM" in aspfile_hdus:
-        for i in aspfile_hdus:
-            if i != "HISTOGRAM":
-                raise IOError("Found a file in 'asp' which is neither an aspect solution nor histogram file. Exiting.\n")
-            else:
-                asol=0
-                ahist=1
-
-    else:
-        raise IOError("Neither aspect histogram nor aspect solution files were found in the 'asp' input. Either the ASPHIST/asphist or ASPSOL FITS HDU is not in the expected place - which could cause the CIAO tools invoked by this script to fail - or a filename was entered incorrectly or does not exist. Exiting.\n")
-
-
-    if ahist:
-        if 1 != asp_count and src_count != asp_count:
-            raise IOError(f"Error: asp stack must have either 1 element or the same number of elements as the source stack.  Source stack={src_count}    asp stack={asp_count}")
-
-    elif asol:
-        # Build the aspect solution ('asol') file stack:
-
-        asol_stk = asp_stk
-        asol_count = asp_count
-
-        if 1 != asol_count and 1 != src_count:
-
-        # Compile lists of the OBS_IDs found in the
-        # input source and asol file headers, exiting with
-        # an error if the requisite OBS_ID information
-        # is not found or is mismatched.
-
-            src_obsid_stk = get_keyvals(src_stk, "OBS_ID")
-            asol_obsid_stk = get_keyvals(asol_stk, "OBS_ID")
-
-            if any([None in src_obsid_stk, None in asol_obsid_stk]):
-                raise ValueError("OBS_ID information could not be found in source and/or aspect solution files; cannot properly match source files to aspect solution files. Try entering aspect histogram files into 'asp' to work around this requirement.")
-
-
-            # Quit with an error if any of the source file OBS_ID
-            # values are not found in the list of asol OBS_IDs.
-
-            for i in range(0, src_count):
-                if str(src_obsid_stk[i]) not in asol_obsid_stk:
-                    raise IOError(f"No aspect solution files provided for {src_stk[i]}.")
-
-            asol_sorted_grouped = group_by_obsid(asol_stk,"aspsol")
-
-            v3(f"ObsIDs matched to aspect solution files: \n{asol_sorted_grouped}")
-
-
-
-        elif 1 != asol_count and 1 == src_count:
-            asol_sorted = sort_files(asol_stk, "aspsol", "TSTART")
-
-    else:
-        asp_stk=[""]
-        asp_count = len(asp_stk)
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-    #----------------------------------------------------------
-    # Determine whether or not to group source output spectrum,
-    # and set appropriate grouping values.
-    #
-    # dogroup           # flag set if grouping
-    # binspec           # grouping spec
-    # gval              # grouping value
-    #-----------------------------------------------------------
-
-    if "NONE" == gtype:
-        dogroup = False
-
-    else:
-        dogroup = True
-
-        if "BIN" == gtype:
-            binspec = gspec
-            gval = ""
-
-        else:
-            binspec = ""
-            gval = gspec
-
-
-    #----------------------------------------------------------
-    # Determine whether or not to group background output spectrum
-    # and set appropriate grouping values.
-    #
-    # bgdogroup           # flag set if grouping
-    # bgbinspec           # grouping spec
-    # bggval              # grouping value
-    #----------------------------------------------------------
-
-    if "NONE" == bggtype:
-        bgdogroup = False
-
-    else:
-        bgdogroup = True
-
-        if "BIN" == bggtype:
-            bgbinspec = bggspec
-            bggval = ""
-
-        else:
-            bgbinspec = ""
-            bggval = bggspec
-
-
-    #--------------------------------------------------------------------
-    # Determine whether or not to combine source output spectra, and any
-    # associated background spectra and response files, if user has input
-    # a stack of source event files.
-    #
-    # docombine         # flag set if combining
-    #----------------------------------------------------------
+    ###########################
 
     if combine == "yes":
-        if src_count < 2:
-            print("Warning: There are fewer than two source event files specified in the 'infile' parameter; the 'combine=yes' setting will be ignored.\n")
+        outroot = specdicts["src1"]["full_outroot"]
+        dobg = specdicts["src1"]["dobg"]
+        dobkgresp = specdicts["src1"]["dobkgresp"]
 
-            docombine = False
+        sdvals = specdict.values()
+        
+        src_spec = [d["phafile"] for d in sdvals if d["srcbkg"] is "src"]
+        src_arf = [d["ARF"] for d in sdvals if d["srcbkg"] is "src"]
+        src_rmf = [d["RMF"] for d in sdvals if d["srcbkg"] is "src"]
 
-            cs_src_spectra = [0]
-            cs_src_arfs = [0]
-            cs_src_rmfs = [0]
-            cs_bkg_spectra = [0]
-            cs_bkg_arfs = [0]
-            cs_bkg_rmfs = [0]
+        bkg_spec = [d["phafile"] for d in sdvals if d["srcbkg"] is "bkg"]
 
+        if dobkgresp:
+            bkg_arf = [d["ARF"] for d in sdvals if d["srcbkg"] is "bkg"]
+            bkg_rmf = [d["RMF"] for d in sdvals if d["srcbkg"] is "bkg"]
         else:
-            docombine = True
+            bkg_arf = None
+            bkg_rmf = None
 
-            cs_src_spectra = list(range(src_count))
-            cs_src_arfs = list(range(src_count))
-            cs_src_rmfs = list(range(src_count))
+        combine(outroot,src_spec,bkg_spec,src_arf,bkg_arf,src_rmf,bkg_rmf,dobg)
 
-            sphafiles = list(range(src_count))
-            sarffiles = list(range(src_count))
-            srmffiles = list(range(src_count))
-
-            if dobg:
-                cs_bkg_spectra = list(range(src_count))
-                cs_bkg_arfs = list(range(src_count))
-                cs_bkg_rmfs = list(range(src_count))
-
-                bphafiles = list(range(src_count))
-                barffiles = list(range(src_count))
-                brmffiles = list(range(src_count))
-
-            else:
-                cs_bkg_spectra = [0]
-                cs_bkg_arfs = [0]
-                cs_bkg_rmfs = [0]
-    else:
-        docombine = False
-
-        cs_src_spectra = [0]
-        cs_src_arfs = [0]
-        cs_src_rmfs = [0]
-        cs_bkg_spectra = [0]
-        cs_bkg_arfs = [0]
-        cs_bkg_rmfs = [0]
-
-
-    # ///////////////////////////////////////////////////////////////////////////
-    #
-    # Reference for the key variables used in the main "for" loop of the script,
-    # below (carried over from the original specextract and expanded to include
-    # some new variables). Some of the variables in the list are already defined
-    # at this point, and some are defined below.
-
-    # ii = 0                # counter
-    # fullfile              # infile string
-    # filename              # infile string w/o filter
-    # pbk_arg               # pbkfile arg passed to mkwarf
-    # da_arg                # dafile arg passed to mkwarf
-    # msk_arg               # mskfile arg passed to mkwarf
-    #
-    # ret                   # function return value
-    # ancrfile              # ARF filename returned from create_arf
-    # weightfile            # weight file from create_arf
-    # phafile               # extracted spectrum filename
-    # grpfile               # grouped spectrum filename
-    # rmftool               # rmf tool to use: 'mkrmf' or 'mkacisrmf'
-    # respfile              # RMF filename returned from build_rmf
-    # otype                 # which filetypes to process ("src", "bkg")
-    # cur_stack             # current stack - bkg or src
-    # asol_arg              # current aspect solution file or list of files
-    # asp_arg               # source aspect histogram file input by user or
-    #                       # output by mk_asphist
-    #
-    #//////////////////////////////////////////////////////////////////////////
-
-
-    #----------------------------------------------------------
-    # Determine the file output types, either source files or
-    # both source and background files.
-    #----------------------------------------------------------
-
-    if dobg:
-        otype = ["src","bkg"]
-    else:
-        otype = ["src"]
-
-    #------------------------------------------------------------------
-    # Check all of the input files up front and make sure they are
-    # readable. If not, notify the user of each bad file and exit.
-    #
-    # srcbkg                # the current output type
-    # inputfile             # current input file to test
-    # table                 # is the infile readable (!NULL)?
-    # badfile               # is at least one of the input files bad?
-    #
-    # Do for each output type we are processing,
-    # i.e. "src" or ( "src" and "bkg" )
-    #
-    #-------------------------------------------------------------------
-
-    for i in otype:
-
-        # Set srcbkg to the current member of otype.
-        srcbkg = i
-
-        #
-        # Determine which stack to use.
-        #
-        if "bkg" == srcbkg:
-
-            #v1("\nChecking background input file(s) for readability...")
-            cur_stack = bkg_stk
-
-        else:
-
-            #v1("\nChecking source input file(s) for readability..." )
-            cur_stack = src_stk
-
-
-        #
-        # Look at each file in the stack and check for readability.
-        #
-
-        if "bkg" == srcbkg:
-            check_files(cur_stack,"background")
-        else:
-            check_files(cur_stack,"source")
-
-
-
-    #---------------------------------------------------------
-    # For each stack item in the source and background lists:
-    #
-    #    ) optionally set the ardlib bad pixel file
-    #    ) convert src regions to phys. coords for ARF correction
-    #    ) extract the spectrum
-    #    ) create an ARF
-    #    ) create a RMF
-    #    ) optionally group the spectrum
-    #    ) add header keywords
-    #    ) optionally combine output spectra and responses
-    #
-    #----------------------------------------------------------
-
-    # Do for each output type we are processing,
-    #  i.e. "src" or ( "src" and "bkg" )
-
-    for i in otype:
-
-        # Set srcbkg to the current member of otype.
-        srcbkg = i
-
-        #
-        # Determine which stack to use.
-        #
-        if "bkg" == srcbkg:
-            cur_stack = bkg_stk
-        else:
-            cur_stack = src_stk
-
-        # outroot + src/bkg + output number; ie. 'outroot_src1'
-        # full_outroot
-
-        #
-        # Run tools for each item in the current stack.
-        #
-        for ii in range(fcount):
-            fullfile = str(cur_stack[ii])
-            filename = get_filename(cur_stack[ii])
-            instrument = fileio.get_keys_from_file(filename)["INSTRUME"]
-            
-            if fcount == 1:
-                iteminfostr = "\n"
-            else:
-                iteminfostr = f"[{ii+1} of {fcount}]\n"
-
-            if instrument == "HRC" and weight == "yes":
-                weight = "no"
-                v1("HRC responses will be unweighted.")
-
-            if not check_event_stats(fullfile,refcoord,weights_check=True):
-                weight = "no"
-
-            #  If we're using an output stack, then grab an item off of the stack
-            #  but if not, then append "src1", "src2", etc., to the outroot
-            #  parameter for each output file.
-
-            if isoutstack:
-                outdir, outhead = utils.split_outroot(out_stk[ii])
-
-                if outhead == "":
-                    full_outroot = outdir + srcbkg
-
-                else:
-                    if "bkg" == srcbkg:
-                        full_outroot = outdir + outhead + srcbkg
-                    else:
-                        full_outroot = outdir + outhead.rstrip("_")
-
-            else:
-                outdir, outhead = utils.split_outroot(outroot)
-
-                if outhead == "":
-                    full_outroot = outdir + srcbkg + str(ii+1)
-                else:
-                    full_outroot = outdir + outhead + srcbkg + str(ii+1)
-
-
-            # Set dafile argument passes to create_arf_*.
-            if 1 != da_count:
-                da_arg  = da_stk[ii]
-            else:
-                if dafile.startswith("@"):
-                    da_arg = ",".join(stk.build(dafile))
-                else:
-                    da_arg  = dafile
-
-
-            # Set dtffile argument passes to mk_asphist().
-            if 1 != dtf_count:
-                dtf_arg = dtf_stk[ii]
-            else:
-                if dtffile.startswith("@"):
-                    dtf_arg = ",".join(stk.build(dtffile))
-                else:
-                    dtf_arg = dtffile
-
-
-            # If asol and not asphist files were input to
-            # 'asp' parameter, set asol argument passes to
-            # mk_asphist() for creating aspect histogram file
-            # input to create_arf_*.
-            if asol:
-
-               if 1 != asol_count and 1 != src_count:
-
-                   # Moved the following two commented-out lines of code higher up
-                   # in script, outside of the main loop, to avoid the
-                   # segmentation faulting which occurs when group_by_obsid()
-                   # accesses a certain constant in the cxcdm module
-                   # (via get_block_info_from_file) too many times.
-
-                   #asol_sorted_grouped = group_by_obsid(asol_stk,"aspsol")
-                   #v1("\nObsIDs matched to aspect solution files: \n"+str(asol_sorted_grouped))
-
-                   asol_arg = asol_sorted_grouped[src_obsid_stk[ii]]
-
-                   # yes, use src_obsid_stk for both src and bkg
-                   # until we support src & bkg input from
-                   # separate observations (though to get to this
-                   # point, src obs should equal bkg obs anyway)
-
-               elif 1 != asol_count and 1 == src_count:
-                   asol_arg = asol_sorted
-
-               else:
-                   asol_arg = asp
-
-            elif ahist:
-                # set asol_arg for resp_pos
-                asol_arg = "none"
-
-                if 1 != asp_count:
-                    aspfile_block = get_block_info_from_file(asp_stk[ii])
-
-                else:
-                    aspfile_block = get_block_info_from_file(asp)
-
-
-                if aspfile_block[0].find("asphist") != -1:
-                    if srcbkg != "bkg":
-                        v1("Found a Level=3 ahst3.fits file in 'asp' input; the 'asphist' block corresponding to the source region location will be used.\n")
-
-                    if 1 != asp_count:
-                        asp_arg = asp_stk[ii]+"[asphist"+str(event_stats(fullfile, "ccd_id"))+"]"
-                    else:
-                        if asp.startswith("@"):
-                            asp_arg = ",".join(stk.build(asp))+"[asphist"+str(event_stats(fullfile, "ccd_id"))+"]"
-                        else:
-                            asp_arg = asp+"[asphist"+str(event_stats(fullfile, "ccd_id"))+"]"
-
-                else:
-                    if 1 != asp_count:
-                        asp_arg  = asp_stk[ii]
-                    else:
-                        if asp.startswith("@"):
-                            asp_arg = ",".join(stk.build(asp))
-                        else:
-                            asp_arg  = asp
-
-
-            # Set mask argument passes to create_arf_ext (mkwarf).
-
-            if 1 != mask_count:
-                msk_arg  = mask_stk[ii]
-            else:
-                if mask.startswith("@"):
-                    msk_arg = ",".join(stk.build(mask))
-                else:
-                    msk_arg = mask
-
-            # Set bpixfile argument passes to set_badpix().
-
-            if dobpix:
-                if 1 != bpix_count:
-                    bpix_arg  = bpix_stk[ii]
-                else:
-                    if bpixfile.startswith("@"):
-                        bpix_arg = ",".join(stk.build(bpixfile))
-                    else:
-                        bpix_arg  = bpixfile
-
-            # determine coordinates to use to produce responses
-            ra,dec,skyx,skyy,chipx,chipy,chip_id = resp_pos(fullfile,asol_arg,refcoord,binimg=2) #binimg=binarfcorr)
-
-            # determine hydrogen column density based on extraction region centroid
-            # or refcoord to add to PI header in units of 1e-22 cm**-2
-            nrao_nh = colden(ra,dec,dataset="nrao")
-
-            if nrao_nh not in [None,"-",0.0]:
-                nrao_nh *= 0.01
-
-            bell_nh = colden(ra,dec,dataset="bell")
-
-            if bell_nh not in [None,"-",0.0]:
-                bell_nh *= 0.01
-            else:
-                v1("Warning: Skip adding 'bell_nh' header keyword.  No valid data at the source location in the Bell Labs HI Survey (the survey covers RA > -40 deg).\n")
-
-            del(ra,dec)
-
-            if instrument == "ACIS":
-                if int(chipx) < 1:
-                    v1(f"chipx={chipx} for ACIS-{chip_id}; using chipx=1 for FEF and RMF look up.\n")
-                    chipx = "1"
-                if int(chipy) < 1:
-                    v1(f"chipy={chipy} for ACIS-{chip_id}; using chipy=1 for FEF and RMF look up.\n")
-                    chipy = "1"
-                if int(chipx) > 1024:
-                    v1(f"chipx={chipx} for ACIS-{chip_id}; using chipx=1024 for FEF and RMF look up.\n")
-                    chipx = "1024"
-                if int(chipy) > 1024:
-                    v1(f"chipy={chipy} for ACIS-{chip_id}; using chipy=1024 for FEF and RMF look up.\n")
-                    chipy = "1024"
-
-            # Set the rmffile argument pass to determine_rmf_tool() [for ACIS only].
-            if instrument == "ACIS":
-                ccdid_val = f"(ccd_id={chip_id})"
-
-                if rmffile == "CALDB":
-                    rmffile_ccd = f"{rmffile}{ccdid_val}"
-                    null_rmffile = False
-
-                elif "CALDB(" in str(rmffile):
-                    rmffile_ccd = rmffile
-                    null_rmffile = False
-
-                else:
-                    rmffile_ccd = f"CALDB{ccdid_val}"
-                    null_rmffile = True
-
-
-            ###################################
-            #
-            # set bad pixel file in ardlib.par
-            #
-            ##################################
-            if dobpix:
-                v1(f"Setting bad pixel file {iteminfostr}")
-                set_badpix(filename, bpix_arg, instrument, verbose)
-
-                
-            #####################################
-            #
-            # convert source region to physical
-            # coordinates for ARF correction
-            #
-            #####################################
-
-            # First, reset the 'correct' parameter to its original
-            # (user input) value in case it was changed from
-            # 'yes' to 'no' in the last pass through the loop
-            # (e.g., when an unsupported source region is entered
-            # for src file 1 and a supported one for src file 2)
-
-            if weight != "yes":
-
-                correct = params["correctpsf"]
-
-                if correct == "yes" and srcbkg == "src":
-
-                    if not get_region_filter(fullfile)[0]:
-                        v0(f"WARNING: The ARF generated for {fullfile} cannot be corrected as no supported spatial region filter was detected for this file, which is required input for this step.\n")
-
-                        correct = "no"
-                        
-                    else:
-
-                        v1(f"Converting source region to physical coordinates {iteminfostr}")
-
-                        outreg = tempfile.NamedTemporaryFile(suffix=f"_phys_coords_{srcbkg}{ii+1}.reg",dir=tmpdir)
-
-                        fullfile = convert_region(fullfile, filename, outreg.name, "yes", verbose)
-
-            ###########################
-            #
-            # extract spectrum
-            #
-            ###########################
-
-            v1(f"Extracting {srcbkg} spectra {iteminfostr}")
-
-            # If 'binwmap' contains 'tdet' string, check that TDET column exists
-            # in file; if not, change 'binwmap' value to
-            # 'det={user's specification}' and notify user.
-
-            if "tdet" in binwmap:
-                cr = pcr.read_file(fullfile)
-
-                if cr is None:
-                    raise IOError(f"Unable to read from file {fullfile}")
-
-                if not cr.column_exists("tdet"):
-                    v1(f"WARNING: No TDET column found in {filename}; the 'wmap' parameter of dmextract will be set to use DET coordinates instead.\n")
-
-                    binwmap_val = binwmap.split("=")[1]
-                    binwmap = "det="+binwmap_val
-
-                    del(cr)
-
-            try:
-                phafile = extract_spectra(full_outroot, fullfile, ptype, channel, ewmap, binwmap, instrument, clobber, verbose)
-
-            except OSError:
-                raise IOError(f"Failed to extract spectrum for {fullfile}")
-
-            if docombine:
-                if srcbkg == "src":
-                    cs_src_spectra[ii] = 1
-                    sphafiles[ii] = phafile
-
-                elif srcbkg == "bkg":
-                    cs_bkg_spectra[ii] = 1
-                    bphafiles[ii] = phafile
-                        
-            
-            # add nH values to phafile header
-            if nrao_nh not in [None,"-",0.0]:
-                edit_headers(verbose, phafile, "NRAO_nH", nrao_nh, unit="10**22 cm**-2", comment="galactic HI column density") #comment="galactic neutral hydrogen column density at the source position using the NRAO all-sky interpolation, via COLDEN."
-
-            if bell_nh not in [None,"-",0.0]:
-                edit_headers(verbose, phafile, "Bell_nH", bell_nh, unit="10**22 cm**-2", comment="galactic HI column density") #comment="galactic neutral hydrogen column density at the source position using the Bell Labs survey, via COLDEN."
-
-
-            # add AREASCAL value from blanksky BKGSCAL value
-            if srcbkg == "bkg":
-                dmhistory.punlearn()
-                dmhistory.infile = fullfile
-                dmhistory.tool = "blanksky"
-
-                try:
-                    bsky_status = dmhistory()
-                except OSError:
-                    bsky_status = None
-
-                if bsky_status is not None:
-                    src_cr = pcr.read_file(f"{get_filename(src_stk[ii])}[#row=1]")
-                    ccdid = src_cr.get_column("CCD_ID").values[0]
-                    del(src_cr)
-
-                    bkgscale = fileio.get_keys_from_file(fullfile)[f"BKGSCAL{ccdid}"]
-
-                    edit_headers(verbose, phafile, "AREASCAL", bkgscale, comment="blanksky background scaling factor derived by the 'blanksky' script")
-
-                    
-            ###########################
-            #
-            # create ARF
-            #
-            ###########################
-
-            infostr = f"Creating {srcbkg} ARF {iteminfostr}"
-
-            if asol:
-                with suppress_stdout_stderr():
-                    try:
-                        asp_arg, asp_arg_tempfile = mk_asphist(asol_arg, fullfile, full_outroot, dtf_arg, instrument, chip_id, verbose, clobber, tmpdir)
-
-                        add_tool_history(asp_arg,toolname,pars,toolversion=__revision__)
-
-                    except OSError:
-                        #doexit("Failed to create aspect histogram file for " + fullfile, outroot, srcbkg, str(ii+1),full_outroot)
-
-                        if dobkgresp:
-                            raise IOError(f"Failed to create aspect histogram file for {fullfile}")
-                    
-            if instrument == "ACIS":
-                try:
-                    if any([srcbkg == "src" and weight == "yes", srcbkg == "bkg" and dobkgresp]): # force background to always be weighted
-                        ancrfile, weightfile, fef_file, tdetwmap = create_arf_ext(full_outroot, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, ewmap, bintwmap, wmap_clip, wmap_threshold, pars, tmpdir, infostr)
-
-                        add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
-
-                    else:
-                        if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
-                            try:
-                                ancrfile, weightfile = create_arf_ps(full_outroot, filename, fullfile, asp_arg, ebin, clobber, verbose, phafile, da_arg, msk_arg, chip_id, skyx, skyy, chipx, chipy, infostr)
-
-                                add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
-
-                            except OSError:
-                                raise IOError(f"Failed to create ARF for {fullfile}")
-
-                            if correct == "yes":
-                                v1(f"Calculating aperture correction for {srcbkg} ARF {iteminfostr}")
-
-                                try:
-                                    ancrfile = correct_arf(full_outroot, fullfile, filename, ancrfile, skyx, skyy, binarfcorr, clobber)
-                                except OSError:
-                                    raise IOError(f"Failed to PSF correct the ARF: {ancrfile}")
-
-                except (OSError,IOError):
-                    #doexit("Failed to create ARF for " + fullfile, outroot, srcbkg, str(ii+1),full_outroot)
-
-                    raise IOError(f"Failed to create ARF for {fullfile}")
-            else:
-                # make HRC ARF and copy RMF from CalDB
-                try:
-                    ancrfile, respfile = create_hrc_resp(phafile,rmffile,refcoord,full_outroot,asp_arg,clobber,verbose,msk_arg,skyx,skyy,instrument,chip_id, infostr)
-
-                    add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
-
-                    try:
-                        add_tool_history(respfile,toolname,pars,toolversion=__revision__)
-                    except OSError:
-                        v3("skip writing file history to RMF")
-
-                    if all([srcbkg == "src",correct == "yes"]):
-                        try:
-                            v1(f"Calculating aperture correction for {srcbkg} ARF {iteminfostr}")
-                            
-                            ancrfile = correct_arf(full_outroot, fullfile, filename, ancrfile, skyx, skyy, binarfcorr, clobber)
-                        except OSError:
-                            raise IOError(f"Failed to PSF correct the ARF: {ancrfile}")
-
-                except (OSError,IOError):
-                    raise IOError("Failed to create ARF for " + fullfile, outroot, srcbkg, str(ii+1),full_outroot)                    
-
-
-            if docombine:
-                if "src" == srcbkg:
-                    cs_src_arfs[ii] = 1
-                    sarffiles[ii] = ancrfile
-
-                elif "bkg" == srcbkg:
-                    cs_bkg_arfs[ii] = 1
-                    barffiles[ii] = ancrfile
-
-
-            ###########################
-            #
-            # create ACIS RMF
-            #
-            ###########################
-            
-            if instrument == "ACIS":
-                infostr = f"Creating {srcbkg} RMF {iteminfostr}"
-
-                if null_rmffile:
-                    v1(f"WARNING: Setting rmffile parameter (and calquiz calfile) to 'CALDB{ccdid_val}'.\n")
-
-                rmftool = determine_rmf_tool(phafile, rmffile_ccd, verbose)
-
-                try:
-                    if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
-                        if all([weight == "yes",weight_rmf == "yes"]):
-                            respfile = build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, wmap_clip, tdetwmap.name, infostr)
-                            
-                            if wmap_clip:
-                                tdetwmap.close()
-
-                        else:
-                            respfile = build_rmf_ps(rmftool, filename, fullfile, ptype, full_outroot, ebin, rmfbin, clobber, verbose, phafile, weightfile, chip_id, chipx, chipy, infostr)
-
-                        try:
-                            add_tool_history(respfile,toolname,pars,toolversion=__revision__)
-                        except OSError:
-                            v3("skip writing file history to RMF")
-
-                except (OSError,IOError):
-                    #doexit("Failed to create RMF for " + fullfile, outroot, srcbkg, ii+1)
-                    raise IOError(f"Failed to create RMF for {fullfile}")
-
-                if docombine:
-                    if "src" == srcbkg:
-                        cs_src_rmfs[ii] = 1
-                        srmffiles[ii] = respfile
-
-                    elif "bkg" == srcbkg:
-                        cs_bkg_rmfs[ii] = 1
-                        brmffiles[ii] = respfile
-
-
-            ###########################
-            #
-            # optionally group spectrum
-            #
-            ###########################
-            if "bkg" == srcbkg:
-                if bgdogroup:
-                    v1(f"Grouping {srcbkg} spectrum {iteminfostr}")
-
-                    try:
-                        grpfile = group_spectrum(ptype, full_outroot, bggval, bgbinspec, bggtype, clobber, verbose, phafile)
-                        
-                    except (OSError,IOError):
-                        #doexit("Failed to group spectrum for " + fullfile, outroot, srcbkg, str(ii+1), full_outroot)
-
-                        raise IOError(f"Failed to group spectrum for {fullfile}")
-
-            elif "src" == srcbkg:
-                if dogroup:
-                    v1(f"Grouping {srcbkg} spectrum {iteminfostr}")
-
-                    try:
-                        grpfile = group_spectrum(ptype, full_outroot, gval, binspec, gtype, clobber, verbose, phafile)
-
-                    except (OSError,IOError):
-                        #doexit("Failed to group spectrum for " + fullfile, outroot, srcbkg, str(ii+1), full_outroot)
-
-                        raise IOError(f"Failed to group spectrum for {fullfile}")
-
-            ###########################
-            #
-            # add header keys
-            #
-            ###########################
-
-            try:
-                if srcbkg == "bkg" and not dobkgresp:
-                    if refcoord != "" and params["bkgresp"] == "yes":
-                        v1(f"Updating header of {phafile} with RESPFILE and ANCRFILE keywords.\n")
-
-                        edit_headers(verbose, phafile, "RESPFILE", os.path.basename(respfile))
-                        edit_headers(verbose, phafile, "ANCRFILE", os.path.basename(ancrfile))
-
-                else:
-                    v1(f"Updating header of {phafile} with RESPFILE and ANCRFILE keywords.\n")
-
-                    edit_headers(verbose, phafile, "RESPFILE", os.path.basename(respfile))
-                    edit_headers(verbose, phafile, "ANCRFILE", os.path.basename(ancrfile))
-
-                    #
-                    # If the source or background spectrum was grouped, add the respfile
-                    # and ancrfile keys there, too.
-                    #
-
-                    if "bkg" == srcbkg:
-                        add_tool_history(phafile,toolname,pars,toolversion=__revision__)
-
-                        if bgdogroup:
-
-                            v1(f"Updating header of {grpfile} with RESPFILE and ANCRFILE keywords.\n")
-
-                            edit_headers(verbose, grpfile, "RESPFILE", os.path.basename(respfile))
-                            edit_headers(verbose, grpfile, "ANCRFILE", os.path.basename(ancrfile))
-
-                    elif "src" == srcbkg:
-                        if dogroup:
-
-                            v1(f"Updating header of {grpfile} with RESPFILE and ANCRFILE keywords.\n")
-
-                            edit_headers(verbose, grpfile, "RESPFILE", os.path.basename(respfile))
-                            edit_headers(verbose, grpfile, "ANCRFILE", os.path.basename(ancrfile))
-
-            finally:
-                if not dobkgresp:
-                    add_tool_history(phafile,toolname,pars,toolversion=__revision__)
-
-                    if dogroup:
-                        add_tool_history(grpfile,toolname,pars,toolversion=__revision__)
-
-            if "bkg" == srcbkg:
-
-                #
-                #  Add the backfile key to the ungrouped source spectrum;
-                #  use the ungrouped background spectrum filename.
-                #
-
-                if isoutstack:
-                    outdir, outhead = utils.split_outroot(out_stk[ii])
-
-                    if outhead == "":
-                        full_outroot = outdir + "src" #stk_read_num(out_stk, ii) + "_bkg"
-
-                    else:
-                        full_outroot = outdir + outhead.rstrip("_")
-
-                else:
-                    outdir, outhead = utils.split_outroot(outroot)
-
-                    if outhead == "":
-                        full_outroot = outdir + "src" + str(ii+1)
-                    else:
-                        full_outroot = outdir + outhead + "src" + str(ii+1)
-
-                sourcefile = f"{full_outroot}.{ptype.lower()}"
-                src_grpfile = f"{full_outroot}_grp.{ptype.lower()}"
-
-                v1(f"Updating header of {sourcefile} with BACKFILE keyword.\n")
-                edit_headers(verbose, sourcefile, "BACKFILE", os.path.basename(phafile))
-
-                add_tool_history(sourcefile,toolname,pars,toolversion=__revision__)
-
-                #
-                #  If the source spectrum was grouped,
-                #  add the backfile key to the grouped source spectrum.
-                #
-
-                if dogroup:
-
-                    #  If the background is grouped,
-                    #   use the grouped background spectrum filename.
-
-                    if bgdogroup:
-
-                        v1(f"Updating header of {src_grpfile} with BACKFILE keyword.\n")
-                        edit_headers(verbose, src_grpfile, "BACKFILE", os.path.basename(grpfile))
-
-                    else:
-
-                        #  If the background is not grouped,
-                        #   use the ungrouped background spectrum filename.
-
-                        v1(f"Updating header of {src_grpfile} with BACKFILE keyword.\n")
-                        edit_headers(verbose, src_grpfile, "BACKFILE", os.path.basename(phafile))
-
-                    add_tool_history(src_grpfile,toolname,pars,toolversion=__revision__)
-
-                # end if dogroup
-
-            # end if bkg
-
-        # end for ii loop
-
-    # end foreach otype loop
-
-
-            ###################################################################
-            #
-            # close temporary files that may have been created
-            #
-            ###################################################################
-            try:
-                outreg.close()
-            except NameError:
-                pass
-
-            try:
-                fef_file.close()
-            except NameError:
-                pass
-
-            try:
-                asp_arg_temp.close()
-            except NameError:
-                pass
-
-
+        
     ###################################################################
     #
-    # Combine output spectra and responses if the 'docombine' flag has
-    # been set and all appropriate files were successfully created.
+    # close temporary files that may have been created
     #
     ###################################################################
 
+    for key_id in specdicts.keys():
+        tmpfile = specdicts[key_id]
 
-    if sum(cs_src_spectra)==src_count and sum(cs_src_arfs)==src_count and sum(cs_src_rmfs)==src_count:
-
-        if out_count > 1:
-
-            # Define a time stamp variable to use in the 'outroot' parameter of
-            # combine_spectra for the case where "combine=yes" and the specextract
-            # 'outroot' parameter contains a stack.
-
-            # tstamp_full = time.gmtime()
-            # tstamp_shortstr = str(tstamp_full[0])+str(tstamp_full[1])+str(tstamp_full[2])+"_"+str(tstamp_full[3])+str(tstamp_full[4])
-
-            outroot_cs = out_stk[0] #stk_read_num(out_stk, 1) #tstamp_shortstr
-
-        else:
-            outroot_cs = outroot
-
-        combine_spectra.punlearn()
-
-        combine_spectra.outroot = f"{outroot_cs}_combined"
-        combine_spectra.clobber = clobber
-        combine_spectra.verbose = verbose
-        combine_spectra.src_spectra = ",".join(sphafiles)
-        combine_spectra.src_arfs = ",".join(sarffiles)
-        combine_spectra.src_rmfs = ",".join(srmffiles)
-
-        if sum(cs_bkg_spectra) == src_count:
-            combine_spectra.bkg_spectra = ",".join(bphafiles)
-
-            if dobkgresp:
-                if sum(cs_bkg_arfs)==src_count and sum(cs_bkg_rmfs)==src_count:
-                    combine_spectra.bkg_arfs = ",".join(barffiles)
-                    combine_spectra.bkg_rmfs = ",".join(brmffiles)
-
-                    combine_spectra()
-                    v2("Combined source and background spectra and responses.")
-
-            else:
-                combine_spectra()
-                v2("Combined source spectra and responses, and background spectra.")
-
-        else:
-            combine_spectra()
-            v2("Combined source spectra and responses.")
-
-    else:
-        if src_count > 1 and combine=="yes":
-            v1("Output spectra and responses were not combined because spectra and/or responses were not created for every item in the input stack(s) of files.")
+        for tmpkey in ["outreg","fef_file","asphist_temp"]:
+            try:
+                tmpfile[tmpkey].close()
+            except (KeyError,NameError):
+                pass
 
 
-        #else:
-        #    v2("Spectra and responses were not combined.")
+            
+if __name__  == "__main__":
+    try:
+        run_specextract(sys.argv)
+    except Exception as E:
+        print(f"\n# {toolname} ({__revision__}): ERROR {E} \n", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
 
-       ##  finally:
-       ##      # close tempfiles
-       ##      if False not in [asp.startswith("@"), params["asp"] == "", params["asp"].lower() != "none"]:
-       ##          os.remove(temp_asol_stk.name)
-
-       ##      if False not in [bpixfile.startswith("@"), params["bpixfile"] == "", params["bpixfile"].lower() != "none"]:
-       ##          os.remove(temp_bpix_stk.name)
-
-       ##      if False not in [mask.startswith("@"), params["mskfile"] == "", params["mskfile"].lower() != "none"]:
-       ##          os.remove(temp_msk_stk.name)
-
-if __name__ == "__main__":
-    specextract(sys.argv)
-
-quit()
+    
