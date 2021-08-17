@@ -964,8 +964,7 @@ def spectra(args):
                     outreg = tempfile.NamedTemporaryFile(suffix=f"_phys_coords_{key_id}.reg",dir=tmpdir)
                     fullfile = convert_region(fullfile,filename,outreg.name,"yes",verbose)
 
-                    pardict = {key_id : {"fullfile" : fullfile,
-                                         "outreg" : outreg}}
+                    #pardict = {key_id : {"fullfile" : fullfile, "outreg" : outreg}}
                     
         ###########################
         #
@@ -1058,6 +1057,11 @@ def spectra(args):
                 edit_headers(verbose, phafile, "AREASCAL", bkgscale, comment=f"blanksky BKGSCAL{ccdid} scaling factor from the 'blanksky' script, set to 1.0 if subtracting background")
 
                 v1(f"{phafile} AREASCAL keyword set to 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling.  Set AREASCAL to 1.0 if 'blanksky' spectrum is being used for background subtraction.")
+
+    try:
+        outreg.close()
+    except NameError:
+        pass
                 
     try:
         return pardict
@@ -1138,6 +1142,10 @@ def resps(args):
     else:
         rmffile = args["rmffile"]
 
+    if all([weight == "no", correct == "yes", srcbkg == "src"]):
+        outreg = tempfile.NamedTemporaryFile(suffix=f"_phys_coords_{key_id}.reg",dir=tmpdir)
+        fullfile = convert_region(fullfile,filename,outreg.name,"yes",verbose)
+        
     with new_pfiles_environment(ardlib=True):
         if dobpix:
             set_badpix(filename,bpix,instrument,verbose)
@@ -1282,6 +1290,11 @@ def resps(args):
 
         try:
             fef_file.close()
+        except NameError:
+            pass
+
+        try:
+            outreg.close()
         except NameError:
             pass
 
@@ -1804,21 +1817,6 @@ def run_specextract(args):
         
         coadd(combine_outroot,src_spec,bkg_spec,src_arf,bkg_arf,src_rmf,bkg_rmf,dobg,dobkgresp,verbose,clobber)
 
-        
-    ###################################################################
-    #
-    # close temporary files that may have been created
-    #
-    ###################################################################
-
-    for key_id in specdicts.keys():
-        tmpfile = specdicts[key_id]
-
-        for tmpkey in ["outreg","fef_file","asphist_temp"]:
-            try:
-                tmpfile[tmpkey].close()
-            except (KeyError,NameError):
-                pass
 
             
 if __name__  == "__main__":
