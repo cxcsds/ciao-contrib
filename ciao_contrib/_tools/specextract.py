@@ -461,7 +461,7 @@ class ParDicts(object):
         return region
 
         
-    def _sort_files(file_stack, file_type, key):
+    def _sort_files(self, file_stack, file_type, key):
         """
         Sort a list of files by the value of a given keyword; e.g., for sorting
         a stack of aspect solution files on TSTART before input to mk_asphist().
@@ -505,7 +505,9 @@ class ParDicts(object):
         #
         # where 'files' is a list or @stack read from
         # specextract parameter file.
-
+        if all([type(file_stack) is str, "," in file_stack]):
+            file_stack = file_stack.split(",")
+        
         file_count = len(file_stack)
 
         obsids = self._get_keyvals(file_stack, "OBS_ID")
@@ -1177,7 +1179,7 @@ class ParDicts(object):
         # Determine if asphist or asol files were input
         # to the 'asp' parameter
         #-----------------------------------------------------
-
+        
         stk_dict["asol"],stk_count["asol"],asolstat,ahiststat = self._asol_asphist(stk_dict["asol"],stk_count["asol"],src_stk)
 
         return stk_dict, stk_count, asolstat, ahiststat, dobpix
