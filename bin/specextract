@@ -63,7 +63,7 @@ import ciao_contrib._tools.specextract as spec
 from ciao_contrib.runtool import new_pfiles_environment
 from sherpa.utils import parallel_map
 from ciao_contrib.parallel_wrapper import parallel_pool
-
+from multiprocessing import cpu_count
 
 
 ###############################################
@@ -554,7 +554,7 @@ def set_badpix(evtfile, bpixfile, instrument, verbose):
     set a different bad pixel file in ARDLIB for each
     observation in an input source or background stack   
     """
-
+    
     ardlib.read_params()
 
     if instrument == "ACIS":
@@ -570,6 +570,7 @@ def set_badpix(evtfile, bpixfile, instrument, verbose):
 
         try:
             acis_set_ardlib()
+            #print(f"Updated ARDLib: {ardlib}") # verify for testing
         except (OSError,IOError):
             raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.")
 
@@ -818,12 +819,12 @@ def edit_headers(verbose, infile, key, val, *args, **kwargs):
 
     dmhedit.punlearn()
 
-    dmhedit.infile    =  infile
-    dmhedit.filelist  =  "none"
-    dmhedit.operation =  "add"
-    dmhedit.key       =  key
-    dmhedit.value     = str(val)
-    dmhedit.verbose   = str(verbose)
+    dmhedit.infile = infile
+    dmhedit.filelist = "none"
+    dmhedit.operation = "add"
+    dmhedit.key = key
+    dmhedit.value = str(val)
+    dmhedit.verbose = str(verbose)
 
     if unit is not None:
         dmhedit.unit  = str(unit)
@@ -902,13 +903,10 @@ def spectra(args):
     filename = args["filename"]
     full_outroot = args["full_outroot"]
     dobpix = args["dobpix"]
-    bpix = args["bpix"]
     instrument = args["instrument"]
     weight = args["weight"]
     correct = args["correct"]
     binwmap = args["binwmap"]    
-    nrao_nh = args["nrao_nh"]
-    bell_nh = args["bell_nh"]
     ptype = args["ptype"]
     channel = args["channel"]
     ewmap = args["ewmap"]
@@ -917,7 +915,22 @@ def spectra(args):
     verbose = args["verbose"]
     fcount = args["fcount"]
     iteminfostr = args["iteminfostr"]
-        
+
+    try:
+        bpix = args["bpix"]
+    except KeyError:
+        pass
+
+    try:
+        nrao_nh = args["nrao_nh"]
+    except KeyError:
+        pass
+
+    try:
+        bell_nh = args["bell_nh"]
+    except KeyError:
+        pass
+    
     with new_pfiles_environment(ardlib=True):
         ###################################
         #
@@ -928,7 +941,6 @@ def spectra(args):
         if dobpix:
             v1(f"Setting bad pixel file {iteminfostr}")
             set_badpix(filename, bpix, instrument, verbose)
-
 
         #####################################
         #
@@ -994,19 +1006,23 @@ def spectra(args):
             raise IOError(f"Failed to extract spectrum for {fullfile}")
 
         # add nH values to phafile header
-        if nrao_nh not in [None,"-",0.0]:
+        try:
             # Galactic neutral hydrogen column density at the source position using
             # the NRAO all-sky interpolation, via COLDEN.
 
-            edit_headers(verbose,phafile,"NRAO_nH",nrao_nh,unit="10**22 cm**-2",
+            edit_headers(verbose,phafile,"NRAO_nH",float(f"{nrao_nh:.6}"),unit="10**22 cm**-2",
                          comment="galactic HI column density") 
-
-        if bell_nh not in [None,"-",0.0]:
+        except NameError:
+            pass
+            
+        try:
             # Galactic neutral hydrogen column density at the source position using
             # the Bell Labs survey, via COLDEN.
 
-            edit_headers(verbose,phafile,"Bell_nH",bell_nh,unit="10**22 cm**-2",
-                         comment="galactic HI column density") 
+            edit_headers(verbose,phafile,"Bell_nH",float(f"{bell_nh:.6}"),unit="10**22 cm**-2",
+                         comment="galactic HI column density")
+        except NameError:
+            pass
 
 
         ############################################################
@@ -1058,10 +1074,7 @@ def resps(args):
     full_outroot = args["full_outroot"]
     phafile = args["phafile"]
     dobpix = args["dobpix"]
-    bpix = args["bpix"]
-    dtf = args["dtf"]
-    da = args["da"]
-    msk = args["msk"]
+
     instrument = args["instrument"]
     ebin = args["ebin"]
     ptype = args["ptype"]  
@@ -1099,6 +1112,26 @@ def resps(args):
         asphist = args["asphist"]
         asolstat = False
 
+    try:
+        bpix = args["bpix"]
+    except KeyError:
+        pass
+
+    try:
+        dtf = args["dtf"]
+    except KeyError:
+        pass
+
+    try:
+        da = args["da"]
+    except KeyError:
+        pass
+
+    try:
+        msk = args["msk"]
+    except KeyError:
+        pass
+                
     if instrument == "ACIS":
         null_rmffile = args["null_rmffile"]
         rmffile_ccd = args["rmffile_ccd"]
@@ -1456,13 +1489,13 @@ def add_header_keys(args):
     
 
     
-def combine(outroot,spec_src_stk,spec_bkg_stk,arf_src_stk,arf_bkg_stk,rmf_src_stk,rmf_bkg_stk,dobg,dobkgresp):
+def coadd(outroot,spec_src_stk,spec_bkg_stk,arf_src_stk,arf_bkg_stk,rmf_src_stk,rmf_bkg_stk,dobg,dobkgresp,verbose,clobber):
     """
     Determine whether or not to combine source output spectra, and any
     associated background spectra and response files, if user has input
     a stack of source event files.
     """
-
+    
     if len(spec_src_stk) < 2:
         v1("Warning: There are fewer than two source event files specified in the 'infile' parameter; the 'combine=yes' setting will be ignored.\n")
 
@@ -1489,14 +1522,12 @@ def combine(outroot,spec_src_stk,spec_bkg_stk,arf_src_stk,arf_bkg_stk,rmf_src_st
             combine_infostr = "Combined source spectra and responses."
             
             if dobg:
-                bkg_length = [len(spec_bkg_stk),len(arf_bkg_stk),len(rmf_bkg_stk)]
-
                 if len(spec_bkg_stk) == len(spec_src_stk):
                     combine_spectra.bkg_spectra = spec_bkg_stk
 
                     combine_infostr = "Combined source spectra and responses, and background spectra."
 
-                    if dobkgresp and all(blen == bkg_length[0] for blen in bkg_length):
+                    if dobkgresp and all([arf_bkg_stk is not None,rmf_bkg_stk is not None]):
                         combine_spectra.bkg_arfs = arf_bkg_stk
                         combine_spectra.bkg_rmfs = rmf_bkg_stk
                         
@@ -1689,13 +1720,22 @@ def run_specextract(args):
 
     specextract_args = [{"key_id" : key, **specdicts[key], "pars_specextract" : pars} for key in specdicts.keys()]
 
+
+    if len(specextract_args) > cpu_count():
+        def parallelize(func,args):    
+            return parallel_pool(func,args)
+    else:
+        def parallelize(func,args):
+            return parallel_map(func,args)
+        
+    
     ###########################
     #
     # extract spectra
     #
     ###########################   
 
-    pardict_update_spectra = parallel_pool(spectra,specextract_args)
+    pardict_update_spectra = parallelize(spectra,specextract_args)
 
     # update parameters dictionary if necessary, and the list passed to parallelization
     specextract_args = update_param_args_and_dict(pardict_update_spectra,specdicts,specextract_args,pars)
@@ -1706,7 +1746,7 @@ def run_specextract(args):
     #
     ###########################
 
-    pardict_update_resps = parallel_pool(resps,specextract_args)
+    pardict_update_resps = parallelize(resps,specextract_args)
     specextract_args = update_param_args_and_dict(pardict_update_resps,specdicts,specextract_args,pars)
 
     ###########################
@@ -1715,7 +1755,7 @@ def run_specextract(args):
     #
     ###########################
 
-    pardict_update_grp = parallel_pool(groupspec,specextract_args)
+    pardict_update_grp = parallelize(groupspec,specextract_args)
     specextract_args = update_param_args_and_dict(pardict_update_grp,specdicts,specextract_args,pars)
     
     ###########################
@@ -1725,7 +1765,7 @@ def run_specextract(args):
     ###########################
 
     specextract_args = [{**d , "specdicts" : specdicts} for d in specextract_args]
-    parallel_pool(add_header_keys,specextract_args)
+    parallelize(add_header_keys,specextract_args)
 
     # ## test in serial
     # for dargs in specextract_args:
@@ -1738,26 +1778,31 @@ def run_specextract(args):
     ###########################
 
     if combine == "yes":
-        outroot = specdicts["src1"]["full_outroot"]
+        combine_outroot = specdicts["src1"]["full_outroot"].rstrip("_src1")
         dobg = specdicts["src1"]["dobg"]
         dobkgresp = specdicts["src1"]["dobkgresp"]
 
-        sdvals = specdict.values()
-        
+        sdvals = specdicts.values()
+
         src_spec = [d["phafile"] for d in sdvals if d["srcbkg"] is "src"]
         src_arf = [d["ARF"] for d in sdvals if d["srcbkg"] is "src"]
         src_rmf = [d["RMF"] for d in sdvals if d["srcbkg"] is "src"]
+        
+        if dobg:
+            bkg_spec = [d["phafile"] for d in sdvals if d["srcbkg"] is "bkg"]
 
-        bkg_spec = [d["phafile"] for d in sdvals if d["srcbkg"] is "bkg"]
-
-        if dobkgresp:
-            bkg_arf = [d["ARF"] for d in sdvals if d["srcbkg"] is "bkg"]
-            bkg_rmf = [d["RMF"] for d in sdvals if d["srcbkg"] is "bkg"]
+            if dobkgresp:
+                bkg_arf = [d["ARF"] for d in sdvals if d["srcbkg"] is "bkg"]
+                bkg_rmf = [d["RMF"] for d in sdvals if d["srcbkg"] is "bkg"]
+            else:
+                bkg_arf = None
+                bkg_rmf = None
         else:
+            bkg_spec = None
             bkg_arf = None
-            bkg_rmf = None
-
-        combine(outroot,src_spec,bkg_spec,src_arf,bkg_arf,src_rmf,bkg_rmf,dobg)
+            bkg_rmf = None    
+        
+        coadd(combine_outroot,src_spec,bkg_spec,src_arf,bkg_arf,src_rmf,bkg_rmf,dobg,dobkgresp,verbose,clobber)
 
         
     ###################################################################
@@ -1775,11 +1820,13 @@ def run_specextract(args):
             except (KeyError,NameError):
                 pass
 
-
             
 if __name__  == "__main__":
     try:
         run_specextract(sys.argv)
+        # import timeit
+        # runtime = timeit.timeit(lambda:run_specextract(sys.argv), number=10)
+        # print(f"avg. runtime [s]: {runtime/10}")
     except Exception as E:
         print(f"\n# {toolname} ({__revision__}): ERROR {E} \n", file=sys.stderr)
         sys.exit(1)
