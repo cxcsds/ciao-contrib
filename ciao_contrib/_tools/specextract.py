@@ -115,19 +115,18 @@ class ParDicts(object):
         src_cnt = len(src_stk)
         asptype = self._get_keyvals(asp_stk, "CONTENT")
 
-        if all(["ASPHIST" in asptype, "ASPSOL" in asptype]):
+        if all(["ASPHIST" in asptype, "ASPSOL" in asptype or "ASPSOLOBI" in asptype]):
             raise IOError("A mix of aspect solution and histogram files were entered into 'asp'; please enter one or a list of either type, not both.\n")
 
-        if all(["ASPHIST" not in asptype, "ASPSOL" not in asptype]):
+        if all(["ASPHIST" not in asptype, "ASPSOL" not in asptype, "ASPSOLOBI" not in asptype]):
             raise IOError("Neither aspect histogram nor aspect solution files were found in the 'asp' input. Either the ASPHIST/asphist or ASPSOL FITS HDU is not in the expected place - which could cause the CIAO tools invoked by this script to fail - or a filename was entered incorrectly or does not exist. Exiting.\n")
-
-        if "ASPSOL" in utils.getUniqueSynset(asptype):
-            asol = True
-            ahist = False
 
         if "ASPHIST" in utils.getUniqueSynset(asptype):
             asol = False
             ahist = True
+        else:
+            asol = True
+            ahist = False
 
         if ahist:
             if asp_cnt != 1 and asp_cnt != src_cnt:
@@ -154,11 +153,6 @@ class ParDicts(object):
                 for i in range(0, src_cnt):
                     if str(src_obsid_stk[i]) not in asol_obsid_stk:
                         raise IOError(f"No aspect solution files provided for {src_stk[i]}.")
-
-                # #asol_sorted_grouped = group_by_obsid(asp_stk,"aspsol")
-                # asp_stk = group_by_obsid(asp_stk,"aspsol")
-
-                # v3(f"ObsIDs matched to aspect solution files: \n{asp_stk}")
 
             if asp_cnt != 1 and src_cnt == 1:
                 asp_stk = self._sort_files(utils.getUniqueSynset(asp_stk), "aspsol", "TSTART")
@@ -425,11 +419,26 @@ class ParDicts(object):
 
 
     def _valid_regstr(self,inf):
-        regfilter = fileio.get_filter(inf)
+        """
+        validate region filter string
+        """
 
+        regfilter = fileio.get_filter(inf)
+        
         if any(["=(" in regfilter,"(" not in regfilter]):
             raise IOError(f"There is a problem with the extraction region syntax in: {inf}")
 
+        # ensure the ASCII region file is in Unix compatible line feed format
+        # rather than Windows carriage return & line feed (CRLF) format
+        if "=region(" in regfilter:
+
+            regfile = self._get_region(inf)
+
+            with open(regfile, mode="rb") as r:
+                if b"\r\n" in r.read():
+                    raise IOError(f"EOL: the line ends in the ASCII region file, {regfile}, use Windows/DOS-style carriage return & line feed (CRLF) rather than Unix-compatible line feed only.")
+                ## n.b.: modify region file by doing `cat regfile | tr -d '\015' > regfile.lf-only`
+        
 
     def _get_region(self,full_filename):
         """
@@ -453,7 +462,6 @@ class ParDicts(object):
             region = get_region_filter(full_filename)[1].split("(")[1].strip(")")
         else:
             region = get_region_filter(full_filename)[1]
-
 
         if not _check_filename_set(region):
             return None
