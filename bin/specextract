@@ -1063,7 +1063,7 @@ def spectra(args):
                 bskysamp_status = None
                 
             if all([bsky_status is not None, bskysamp_status is None]):
-                src_cr = pcr.read_file(f"{filename}[#row=1]")
+                src_cr = pcr.read_file(f"{filename}[#row=0]")
                 ccdid = src_cr.get_column("CCD_ID").values[0]
                 del(src_cr)
 
@@ -1071,7 +1071,7 @@ def spectra(args):
 
                 edit_headers(verbose, phafile, "AREASCAL", bkgscale, comment=f"blanksky BKGSCAL{ccdid} scaling factor from the 'blanksky' script, set to 1.0 if subtracting background")
 
-                v1(f"{phafile} AREASCAL keyword set to 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling.  Set AREASCAL to 1.0 if 'blanksky' spectrum is being used for background subtraction.")
+                v1(f"{phafile} AREASCAL keyword set to the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling.  Set AREASCAL to 1.0 if 'blanksky' spectrum is being used for background subtraction.")
 
     try:
         outreg.close()
@@ -1757,7 +1757,16 @@ def run_specextract(args):
             return parallel_pool(func,args)
     else:
         def parallelize(func,args):
-            return parallel_map(func,args)
+            status = parallel_map(func,args)
+
+            # interrupt multiprocessing if a thread raises an exception
+            # parallel_pool does a better job exiting out sooner without
+            # extra intervention
+            
+            for stat in status:
+                if isinstance(stat,Exception):
+                    raise stat
+            return status
         
     
     ###########################
@@ -1815,16 +1824,16 @@ def run_specextract(args):
 
         sdvals = specdicts.values()
 
-        src_spec = [d["phafile"] for d in sdvals if d["srcbkg"] is "src"]
-        src_arf = [d["ARF"] for d in sdvals if d["srcbkg"] is "src"]
-        src_rmf = [d["RMF"] for d in sdvals if d["srcbkg"] is "src"]
+        src_spec = [d["phafile"] for d in sdvals if d["srcbkg"]=="src"]
+        src_arf = [d["ARF"] for d in sdvals if d["srcbkg"] == "src"]
+        src_rmf = [d["RMF"] for d in sdvals if d["srcbkg"] == "src"]
         
         if dobg:
-            bkg_spec = [d["phafile"] for d in sdvals if d["srcbkg"] is "bkg"]
+            bkg_spec = [d["phafile"] for d in sdvals if d["srcbkg"]=="bkg"]
 
             if dobkgresp:
-                bkg_arf = [d["ARF"] for d in sdvals if d["srcbkg"] is "bkg"]
-                bkg_rmf = [d["RMF"] for d in sdvals if d["srcbkg"] is "bkg"]
+                bkg_arf = [d["ARF"] for d in sdvals if d["srcbkg"]=="bkg"]
+                bkg_rmf = [d["RMF"] for d in sdvals if d["srcbkg"]=="bkg"]
             else:
                 bkg_arf = None
                 bkg_rmf = None
@@ -1833,7 +1842,12 @@ def run_specextract(args):
             bkg_arf = None
             bkg_rmf = None    
         
-        coadd(combine_outroot,src_spec,bkg_spec,src_arf,bkg_arf,src_rmf,bkg_rmf,dobg,dobkgresp,verbose,clobber)
+        coadd(combine_outroot,
+              src_spec,bkg_spec,
+              src_arf,bkg_arf,
+              src_rmf,bkg_rmf,
+              dobg,dobkgresp,
+              verbose,clobber)
 
 
             
@@ -1841,8 +1855,8 @@ if __name__  == "__main__":
     try:
         run_specextract(sys.argv)
         # import timeit
-        # runtime = timeit.timeit(lambda:run_specextract(sys.argv), number=10)
-        # print(f"avg. runtime [s]: {runtime/10}")
+        # runtime = timeit.timeit(lambda:run_specextract(sys.argv), number=1)
+        # print(f"test runtime [s]: {runtime}")
     except Exception as E:
         print(f"\n# {toolname} ({__revision__}): ERROR {E} \n", file=sys.stderr)
         sys.exit(1)
