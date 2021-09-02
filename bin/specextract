@@ -127,15 +127,7 @@ def create_arf_ps(full_outroot, evt_filename, infile, asp_param, ebin,
     unweighted RMFs.  Return the name of the ARF and FEF file.
     """
 
-    # If file does not have a CTI_APP header keyword, issue
-    # a warning that the data should probably be reprocessed.
-
-    v1(infostr)
-    
-    cti_app_val = fileio.get_keys_from_file(evt_filename)["CTI_APP"]
-
-    if cti_app_val.upper() == "NONE":
-        raise IOError(f"File {evt_filename} is missing a CTI_APP header keyword, required by many CIAO tools; an ARF will not be created. Try re-running specextract after reprocessing your data.\n")
+    v1(infostr)    
 
     acis_fef_lookup.punlearn()
 
@@ -312,79 +304,6 @@ def correct_arf(full_outroot, infile, evt_filename, orig_arf,
 
 
 
-def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,
-                    asp_param,clobber,verbose,
-                    mskfile,skyx,skyy,instrument,chip_id,infostr):
-    """
-    Generate HRC ARF with mkarf and copy RMF from CalDB
-    """
-    
-    # use the 'caldb4' module to query for the appropriate,
-    # latest HRC RMF in CALDB;  can use calquiz instead as well,
-    # output is a string rather than list
-
-    if rmf_file.upper() == "CALDB":
-        # cf. https://cxc.cfa.harvard.edu/cal/Hrc/detailed_info.html#rmf for HRC RMF information
- 
-        rmf = caldb4.Caldb(infile=specfile,product="MATRIX").search
-
-        if len(rmf) == 0:
-            raise IOError(f"{specfile} is an invalid HRC spectral file, as non-SAMP responses are no longer supported by the CALDB.  Please reprocess the dataset or re-download the observation from the archive.")
-
-        if len(rmf) > 1:
-            # this should not happen
-            raise IOError("Multiple HRC RMFs returned by CALDB: {}".format(",".join(rmf)))
-
-        rmf = rmf[0]
-        rmf = rmf[:rmf.find("[")]
-
-        # copy RMF
-        rmffile = f"{full_outroot}.rmf"
-        shutil.copyfile(rmf,rmffile)
-
-    else:
-        # enable RMFFILE parameter for HRC data to support HRC Cal group
-        v1("Warning: 'rmffile' parameter for HRC observations is meant for Calibration Group and expert usage!")
-
-        rmffile = rmf_file
-
-    # establish detsubsys       
-    if instrument == "HRC":
-        if chip_id == "0":
-            detname = "HRC-I"
-        else:
-            detname = f"HRC-S{chip_id}"
-
-    # ARF output file
-    v1(infostr)
-    
-    arffile = f"{full_outroot}.arf"
-
-    mkarf.punlearn()
-
-    mkarf.detsubsys = detname
-    mkarf.outfile = arffile
-    mkarf.asphistfile = asp_param
-    mkarf.sourcepixelx = skyx
-    mkarf.sourcepixely = skyy
-    mkarf.grating = fileio.get_keys_from_file(specfile)["GRATING"]
-    mkarf.obsfile = specfile
-    mkarf.maskfile = mskfile
-    mkarf.verbose = str(verbose)
-    mkarf.clobber = clobber
-
-    try:
-        mkarf.engrid = f"grid({rmffile}[SPECRESP MATRIX][cols ENERG_LO,ENERG_HI])"
-        mkarf()
-
-    except OSError:        
-        mkarf.engrid = f"grid({rmffile}[MATRIX][cols ENERG_LO,ENERG_HI])"
-        mkarf()
-            
-    return arffile, rmffile
-
-
-
 def determine_rmf_tool(infile,rmffile,verbose):
     """
     Decide whether to run mkrmf or mkacisrmf, return the name of the tool to run.
@@ -411,7 +330,7 @@ def determine_rmf_tool(infile,rmffile,verbose):
     v3(f"Found the following P2_RESP file(s): {caldb_p2_resp_file}")
 
     if not numCalFiles or numCalFiles in [0.0, 0, 0.]:
-
+        
         v1("Cannot use mkacisrmf because no P2_RESP files were found.\n")
 
         v1(f"Please reprocess {infile} with acis_process_events if you wish to use mkacisrmf, unless the focal plane temperature is greater than -110C and the observation is taken in graded-mode or the extraction region is on a front-illuminated CCD.\n")
@@ -421,7 +340,7 @@ def determine_rmf_tool(infile,rmffile,verbose):
         rmftool = "mkrmf"
 
     else:
-
+        
         v1("Using mkacisrmf...\n")
 
         rmftool = "mkacisrmf"
@@ -562,7 +481,80 @@ def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose,
         raise IOError(f"Failed to find an appropriate tool to generate a RMF for {specfile}")
 
 
+
+def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,
+                    asp_param,clobber,verbose,
+                    mskfile,skyx,skyy,instrument,chip_id,infostr):
+    """
+    Generate HRC ARF with mkarf and copy RMF from CalDB
+    """
     
+    # use the 'caldb4' module to query for the appropriate,
+    # latest HRC RMF in CALDB;  can use calquiz instead as well,
+    # output is a string rather than list
+
+    if rmf_file.upper() == "CALDB":
+        # cf. https://cxc.cfa.harvard.edu/cal/Hrc/detailed_info.html#rmf for HRC RMF information
+ 
+        rmf = caldb4.Caldb(infile=specfile,product="MATRIX").search
+
+        if len(rmf) == 0:
+            raise IOError(f"{specfile} is an invalid HRC spectral file, as non-SAMP responses are no longer supported by the CALDB.  Please reprocess the dataset or re-download the observation from the archive.")
+
+        if len(rmf) > 1:
+            # this should not happen
+            raise IOError("Multiple HRC RMFs returned by CALDB: {}".format(",".join(rmf)))
+
+        rmf = rmf[0]
+        rmf = rmf[:rmf.find("[")]
+
+        # copy RMF
+        rmffile = f"{full_outroot}.rmf"
+        shutil.copyfile(rmf,rmffile)
+
+    else:
+        # enable RMFFILE parameter for HRC data to support HRC Cal group
+        v1("Warning: 'rmffile' parameter for HRC observations is meant for Calibration Group and expert usage!")
+
+        rmffile = rmf_file
+
+    # establish detsubsys       
+    if instrument == "HRC":
+        if chip_id == "0":
+            detname = "HRC-I"
+        else:
+            detname = f"HRC-S{chip_id}"
+
+    # ARF output file
+    v1(infostr)
+    
+    arffile = f"{full_outroot}.arf"
+
+    mkarf.punlearn()
+
+    mkarf.detsubsys = detname
+    mkarf.outfile = arffile
+    mkarf.asphistfile = asp_param
+    mkarf.sourcepixelx = skyx
+    mkarf.sourcepixely = skyy
+    mkarf.grating = fileio.get_keys_from_file(specfile)["GRATING"]
+    mkarf.obsfile = specfile
+    mkarf.maskfile = mskfile
+    mkarf.verbose = str(verbose)
+    mkarf.clobber = clobber
+
+    try:
+        mkarf.engrid = f"grid({rmffile}[SPECRESP MATRIX][cols ENERG_LO,ENERG_HI])"
+        mkarf()
+
+    except OSError:        
+        mkarf.engrid = f"grid({rmffile}[MATRIX][cols ENERG_LO,ENERG_HI])"
+        mkarf()
+            
+    return arffile, rmffile
+
+
+
 def set_badpix(evtfile, bpixfile, instrument, verbose):
     """
     set a different bad pixel file in ARDLIB for each
@@ -1786,7 +1778,7 @@ def run_specextract(args):
     #
     ###########################
 
-    pardict_update_resps = parallelize(resps,specextract_args)
+    pardict_update_resps = parallelize(resps,specextract_args) 
     specextract_args = update_param_args_and_dict(pardict_update_resps,specdicts,specextract_args,pars)
 
     ###########################

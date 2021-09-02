@@ -896,6 +896,20 @@ class ParDicts(object):
         for d in fn_header_stk:
             for srcbkg_kw,headerkeys in d.items():
 
+                ## check for CTI_APP keyword
+                try:
+                    cti_app_val = headerkeys["CTI_APP"]
+                        
+                    if cti_app_val.upper() == "NONE":
+                        raise IOError(f"File {headerkeys['inf']} is missing a CTI_APP header keyword, required by many CIAO tools; an ARF will not be created. Try re-running specextract after reprocessing your data.\n")
+
+                except KeyError:
+                    if headerkeys["INSTRUME"] == "HRC":
+                        pass
+                    else:
+                        if srcbkg_kw == "source" or all([srcbkg_kw == "background", bkgresp == "yes"]):
+                            raise IOError(f"File {headerkeys['inf']} is missing a CTI_APP header keyword, required by many CIAO tools; an ARF will not be created. Try re-running specextract after reprocessing your data.\n")
+
                 ## check for CC-mode data and throw warning
                 if headerkeys["INSTRUME"] == "ACIS" and headerkeys["READMODE"].upper() == "CONTINUOUS":
                     v1(f"WARNING: Observation taken in CC-mode.  {__toolname__} may provide invalid responses for {headerkeys['inf']}.  Use rotboxes instead of circles/ellipses for extraction regions.")
