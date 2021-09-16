@@ -164,9 +164,9 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir,params):
         
     if "ASPSOLOBI" in content_values:
         if len( content_values["ASPSOLOBI"] ) > 1:
-            error_out("Too many ASPSOLOBI aspect file found.  If this "+
+            error_out(params, "Too many ASPSOLOBI aspect file found.  If this "+
             "is a mutli-obi observations, be sure to split it first "+
-            "using the splitobs script")
+            "using the splitobs script", 'input error')
 
     if "ASPSOL" in content_values and "ASPSOLOBI" in content_values:
         v2("WARNING: The primary directory has both CONTENT=ASPSOL and "+
@@ -196,7 +196,7 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir,params):
                                               mydir, params)
         return new_asol
     
-    error_out("Unknown CONTENT keywords found in the aspect solution files")
+    error_out(params, "Unknown CONTENT keywords found in the aspect solution files", 'input error')
     
 
 def update_aspsol_to_aspsolobi(asol_list,mydir, params):
@@ -229,7 +229,7 @@ def update_aspsol_to_aspsolobi(asol_list,mydir, params):
             params["recreate_tg_mask"] = True
 
     if len(asol_list) == 0:
-        error_out("ERROR: No aspect solution files found")
+        error_out(params, "ERROR: No aspect solution files found", 'input error')
 
     # remove \n
     instk = [a.strip() for a in asol_list] 
@@ -241,8 +241,8 @@ def update_aspsol_to_aspsolobi(asol_list,mydir, params):
         if obsid is None:
             obsid = tab.get_key_value("OBS_ID")
         elif obsid != tab.get_key_value("OBS_ID"):
-            error_out("ERROR: The OBS_ID values in the aspect solution "+
-                      "files are different")
+            error_out(params, "ERROR: The OBS_ID values in the aspect solution "+
+                      "files are different", 'input error')
 
     outfile = "pcadf{:05d}_repro_asol1.fits".format(int(obsid))
     outfile = os.path.join(mydir, outfile)
@@ -1761,7 +1761,7 @@ def run_tgdetect2_and_create_mask(params):
     elif params["detnam"] == "HRC-S":
         evtfilter = "[status=xxxxxx00xxxx0xxx0000x000x00000xx]"
     else:
-        error_out("Bad detnam")  # should have crashed long before this
+        error_out(params, "Bad detnam", 'input error')  # should have crashed long before this
         
     dmcopy.infile = "{}[@{}]{}".format(params["evt1_file"],
                                        params["flt1_file"],
@@ -2100,7 +2100,7 @@ def lookup_hrc_pi_filter(evtfile):
         return None
     
     if len(calfiles) > 1:
-        error_out("Too many TGPIMASK2 CALDB files found for this dataset")
+        raise RuntimeError("ERROR: Too many TGPIMASK2 CALDB files found for this dataset")
 
     retval = calfiles[0]
     retval = retval.split("[")   # remove block name
