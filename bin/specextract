@@ -91,24 +91,25 @@ def extract_spectra(full_outroot, infile, ptype, channel,
 
     specfile = f"{full_outroot}.{ptype.lower()}"
 
-    dmextract.punlearn()
+    with new_pfiles_environment(ardlib=True,copyuser=False):
+        dmextract.punlearn()
 
-    dmextract.outfile = specfile
-    dmextract.opt = "pha1"
-    dmextract.clobber = clobber
-    dmextract.verbose = str(verbose)
+        dmextract.outfile = specfile
+        dmextract.opt = "pha1"
+        dmextract.clobber = clobber
+        dmextract.verbose = str(verbose)
 
-    if channel == "1:1024:1":
-        dmextract.infile = f"{infile}[bin {ptype}]"
-    else:
-        dmextract.infile = f"{infile}[bin {ptype}={channel}]"
+        if channel == "1:1024:1":
+            dmextract.infile = f"{infile}[bin {ptype}]"
+        else:
+            dmextract.infile = f"{infile}[bin {ptype}={channel}]"
 
-    if instrument == "ACIS":
-        dmextract.wmap = f"[energy={ewmap}][bin {binwmap}]"
-    else:
-        dmextract.wmap = ""
+        if instrument == "ACIS":
+            dmextract.wmap = f"[energy={ewmap}][bin {binwmap}]"
+        else:
+            dmextract.wmap = ""
 
-    dmextract()
+        dmextract()
 
     return specfile
 
@@ -137,26 +138,27 @@ def create_arf_ps(full_outroot, evt_filename, asp_param, ebin,
         detname = f"ACIS-I{local_id}"
 
     v1(infostr)
-        
-    # ARF output file
-    arffile = f"{full_outroot}.arf"
 
-    mkarf.punlearn()
+    with new_pfiles_environment(ardlib=True,copyuser=False):
+        # ARF output file
+        arffile = f"{full_outroot}.arf"
 
-    mkarf.detsubsys = f"{detname};BPMASK=0x03ffff"
-    mkarf.outfile = arffile
-    mkarf.asphistfile = asp_param
-    mkarf.sourcepixelx = skyx
-    mkarf.sourcepixely = skyy
-    mkarf.grating = fileio.get_keys_from_file(evt_filename)["GRATING"]
-    mkarf.obsfile = evt_filename
-    mkarf.dafile = dafile
-    mkarf.maskfile = mskfile
-    mkarf.verbose = str(verbose)
-    mkarf.engrid = ebin
-    mkarf.clobber = clobber
+        mkarf.punlearn()
 
-    mkarf()
+        mkarf.detsubsys = f"{detname};BPMASK=0x03ffff"
+        mkarf.outfile = arffile
+        mkarf.asphistfile = asp_param
+        mkarf.sourcepixelx = skyx
+        mkarf.sourcepixely = skyy
+        mkarf.grating = fileio.get_keys_from_file(evt_filename)["GRATING"]
+        mkarf.obsfile = evt_filename
+        mkarf.dafile = dafile
+        mkarf.maskfile = mskfile
+        mkarf.verbose = str(verbose)
+        mkarf.engrid = ebin
+        mkarf.clobber = clobber
+
+        mkarf()
     
     return arffile
 
@@ -177,37 +179,38 @@ def create_arf_ext(full_outroot, ebin,
     v1(infostr)
     
     try:
-        # ARF output file
-        arffile = f"{full_outroot}.arf"
+        with new_pfiles_environment(ardlib=True,copyuser=False):
+            # ARF output file
+            arffile = f"{full_outroot}.arf"
 
-        # output weight file used in mkrmf
-        weightfile = tempfile.NamedTemporaryFile(suffix=".wfef",dir=tmpdir)
+            # output weight file used in mkrmf
+            weightfile = tempfile.NamedTemporaryFile(suffix=".wfef",dir=tmpdir)
 
-        mkwarf.punlearn()
+            mkwarf.punlearn()
 
-        mkwarf.outfile = arffile
-        mkwarf.weightfile = weightfile.name
-        mkwarf.mskfile = mskfile
-        mkwarf.dafile = dafile
-        mkwarf.spectrumfile = ""
-        mkwarf.egridspec = ebin
-        mkwarf.detsubsysmod = "BPMASK=0x03ffff"
-        mkwarf.clobber = "yes"
-        mkwarf.verbose = str(verbose)
-        
-        try:
-            mkwarf.infile = f"{tdetwmap.name}[wmap]"
-        except AttributeError:
-            mkwarf.infile = f"{tdetwmap}[wmap]"
-        
-        mkwarf()
+            mkwarf.outfile = arffile
+            mkwarf.weightfile = weightfile.name
+            mkwarf.mskfile = mskfile
+            mkwarf.dafile = dafile
+            mkwarf.spectrumfile = ""
+            mkwarf.egridspec = ebin
+            mkwarf.detsubsysmod = "BPMASK=0x03ffff"
+            mkwarf.clobber = "yes"
+            mkwarf.verbose = str(verbose)
+
+            try:
+                mkwarf.infile = f"{tdetwmap.name}[wmap]"
+            except AttributeError:
+                mkwarf.infile = f"{tdetwmap}[wmap]"
+
+            mkwarf()
 			
     except Exception as err_msg:
         print(err_msg)
 
         raise IOError(f"Failure to create weighted ARF.  Possible causes include: zero counts in the input region; a memory allocation error; or corrupt ARDLIB.  Try running {toolname} with weight=no, binarfmap!=1, or punlearn ardlib.")
 
-    return arffile, weightfile #, weightfile.name, weightfile, tdetwmap
+    return arffile, weightfile
 
 
 
@@ -238,28 +241,29 @@ def correct_arf(full_outroot, infile, evt_filename, orig_arf,
     # arfcorr required input image:
     reg_image  = f"{infile}[bin sky={binarfcorr}]"
 
-    # ARF output file
-    carffile = f"{full_outroot}.corr.arf"
+    with new_pfiles_environment(ardlib=False,copyuser=False):
+        # ARF output file
+        carffile = f"{full_outroot}.corr.arf"
 
-    arfcorr.punlearn()
-    arfcorr.infile = reg_image
-    arfcorr.arf = orig_arf
-    arfcorr.outfile = carffile
-    arfcorr.region = spec.get_region_filter(infile)[1]
-    arfcorr.x = skyx
-    arfcorr.y = skyy
-    arfcorr.energy = 0
-    arfcorr.verbose = 0
-    arfcorr.clobber = "yes"
+        arfcorr.punlearn()
+        arfcorr.infile = reg_image
+        arfcorr.arf = orig_arf
+        arfcorr.outfile = carffile
+        arfcorr.region = spec.get_region_filter(infile)[1]
+        arfcorr.x = skyx
+        arfcorr.y = skyy
+        arfcorr.energy = 0
+        arfcorr.verbose = 0
+        arfcorr.clobber = "yes"
 
-    arfcorr()
+        arfcorr()
 
-    # add arfcorr history to file, since it doesn't automatically
-    param_arfcorr = {}
-    for acpar in arfcorr._parnames:
-        param_arfcorr[acpar] = arfcorr._get_param_value(acpar)
+        # add arfcorr history to file, since it doesn't automatically
+        param_arfcorr = {}
+        for acpar in arfcorr._parnames:
+            param_arfcorr[acpar] = arfcorr._get_param_value(acpar)
 
-    add_tool_history(carffile,"arfcorr",param_arfcorr)
+        add_tool_history(carffile,"arfcorr",param_arfcorr)
     
     return carffile
 
@@ -327,41 +331,42 @@ def build_rmf_ps(rmftool, evt_filename, infile, ptype, full_outroot,
     rmffile = f"{full_outroot}.rmf"
 
     try:
-        if rmftool == "mkrmf":
-            mkrmf.infile = feffile
-            mkrmf.outfile = rmffile
-            mkrmf.logfile = ""
-            mkrmf.weights = ""
-            mkrmf.axis1 = f"energy={ebin}"
-            mkrmf.axis2 = rmfbin
-            mkrmf.clobber = clobber
-            mkrmf.verbose = str(verbose)
+        with new_pfiles_environment(ardlib=True,copyuser=False):
+            if rmftool == "mkrmf":
+                mkrmf.infile = feffile
+                mkrmf.outfile = rmffile
+                mkrmf.logfile = ""
+                mkrmf.weights = ""
+                mkrmf.axis1 = f"energy={ebin}"
+                mkrmf.axis2 = rmfbin
+                mkrmf.clobber = clobber
+                mkrmf.verbose = str(verbose)
 
-            mkrmf()
+                mkrmf()
 
-        else:
-            channel = rmfbin.split("=")
-            channel.reverse()
+            else:
+                channel = rmfbin.split("=")
+                channel.reverse()
 
-            mkacisrmf.punlearn()
+                mkacisrmf.punlearn()
 
-            # force CALDB querry to match 'ccd_id' parameter, otherwise the default
-            # behavior is to use the CCD_ID header keyword in the 'obsfile'
-            mkacisrmf.infile = f"CALDB(CCD_ID={ccd_id})"
-            mkacisrmf.outfile = rmffile
-            mkacisrmf.energy = ebin
-            mkacisrmf.channel = channel[0]
-            mkacisrmf.chantype = ptype.upper()
-            mkacisrmf.wmap = "none"
-            mkacisrmf.gain = "CALDB"
-            mkacisrmf.obsfile = evt_filename
-            mkacisrmf.ccd_id = ccd_id
-            mkacisrmf.chipx = chipx
-            mkacisrmf.chipy = chipy
-            mkacisrmf.clobber = clobber
-            mkacisrmf.verbose = str(verbose)
+                # force CALDB querry to match 'ccd_id' parameter, otherwise the default
+                # behavior is to use the CCD_ID header keyword in the 'obsfile'
+                mkacisrmf.infile = f"CALDB(CCD_ID={ccd_id})"
+                mkacisrmf.outfile = rmffile
+                mkacisrmf.energy = ebin
+                mkacisrmf.channel = channel[0]
+                mkacisrmf.chantype = ptype.upper()
+                mkacisrmf.wmap = "none"
+                mkacisrmf.gain = "CALDB"
+                mkacisrmf.obsfile = evt_filename
+                mkacisrmf.ccd_id = ccd_id
+                mkacisrmf.chipx = chipx
+                mkacisrmf.chipy = chipy
+                mkacisrmf.clobber = clobber
+                mkacisrmf.verbose = str(verbose)
 
-            mkacisrmf()
+                mkacisrmf()
 
         return rmffile
 
@@ -386,44 +391,51 @@ def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose,
     rmffile = f"{full_outroot}.rmf"
 
     try:
-        if rmftool == "mkrmf":
+        with new_pfiles_environment(ardlib=True,copyuser=False):
+            if rmftool == "mkrmf":
 
-            mkrmf.punlearn()
+                mkrmf.punlearn()
 
-            mkrmf.infile = "CALDB"
-            mkrmf.outfile = rmffile
-            mkrmf.logfile = ""
-            mkrmf.weights = weightfile
-            mkrmf.axis1 = f"energy={ebin}"
-            mkrmf.axis2 = rmfbin
-            mkrmf.clobber = clobber
-            mkrmf.verbose = str(verbose)
+                mkrmf.infile = "CALDB"
+                mkrmf.outfile = rmffile
+                mkrmf.logfile = ""
+                mkrmf.weights = weightfile
+                mkrmf.axis1 = f"energy={ebin}"
+                mkrmf.axis2 = rmfbin
+                mkrmf.clobber = clobber
+                mkrmf.verbose = str(verbose)
 
-            mkrmf()
+                mkrmf()
 
-        else:
-            channel = rmfbin.split("=")
-            channel.reverse()
-
-            mkacisrmf.punlearn()
-
-            mkacisrmf.infile = "CALDB"
-            mkacisrmf.outfile = rmffile
-            mkacisrmf.energy = ebin
-            mkacisrmf.channel = channel[0]
-            mkacisrmf.chantype = ptype.upper()
-            mkacisrmf.gain = "CALDB"
-            mkacisrmf.clobber = clobber
-            mkacisrmf.verbose = str(verbose)
-            mkacisrmf.ccd_id = "0" # hopefully, this par will
-                                   # be ignored since it can't
-                                   # be set to "".
-            if wmap_clip:
-                mkacisrmf.wmap = f"{wmap_sky2tdet}[wmap]"
             else:
-                mkacisrmf.wmap = f"{specfile}[WMAP]" # dmextract WMAP is faster than sky2tdet WMAP
+                channel = rmfbin.split("=")
+                channel.reverse()
 
-            mkacisrmf()
+                mkacisrmf.punlearn()
+
+                mkacisrmf.infile = "CALDB"
+                mkacisrmf.outfile = rmffile
+                mkacisrmf.energy = ebin
+                mkacisrmf.channel = channel[0]
+                mkacisrmf.chantype = ptype.upper()
+                mkacisrmf.gain = "CALDB"
+                mkacisrmf.clobber = clobber
+                mkacisrmf.verbose = str(verbose)
+                mkacisrmf.ccd_id = "0" # hopefully, this par will
+                                       # be ignored since it can't
+                                       # be set to "".
+                # if wmap_clip:
+                #     mkacisrmf.wmap = f"{wmap_sky2tdet}[wmap]"
+                # else:
+                #     mkacisrmf.wmap = f"{specfile}[WMAP]" # dmextract WMAP is faster than sky2tdet WMAP
+
+                ## The RMF does not change quickly enough to require the detail of the sky2tdet WMAP,
+                ## and its precision will cause mkacisrmf to run very slowly.  Clipping this WMAP does not severely
+                ## affect RMF creation given the low spatial resolution unless the the threshold is overly aggressive.
+                ## (since ACIS RMF originally calibrated by splitting each CCD into 32x32 sections)
+                mkacisrmf.wmap = f"{specfile}[WMAP]"
+
+                mkacisrmf()
 
         return rmffile
 
@@ -475,31 +487,32 @@ def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,
         else:
             detname = f"HRC-S{chip_id}"
 
-    # ARF output file
-    v1(infostr)
-    
-    arffile = f"{full_outroot}.arf"
+    with new_pfiles_environment(ardlib=True,copyuser=False):
+        # ARF output file
+        v1(infostr)
 
-    mkarf.punlearn()
+        arffile = f"{full_outroot}.arf"
 
-    mkarf.detsubsys = detname
-    mkarf.outfile = arffile
-    mkarf.asphistfile = asp_param
-    mkarf.sourcepixelx = skyx
-    mkarf.sourcepixely = skyy
-    mkarf.grating = fileio.get_keys_from_file(specfile)["GRATING"]
-    mkarf.obsfile = specfile
-    mkarf.maskfile = mskfile
-    mkarf.verbose = str(verbose)
-    mkarf.clobber = clobber
+        mkarf.punlearn()
 
-    try:
-        mkarf.engrid = f"grid({rmffile}[SPECRESP MATRIX][cols ENERG_LO,ENERG_HI])"
-        mkarf()
+        mkarf.detsubsys = detname
+        mkarf.outfile = arffile
+        mkarf.asphistfile = asp_param
+        mkarf.sourcepixelx = skyx
+        mkarf.sourcepixely = skyy
+        mkarf.grating = fileio.get_keys_from_file(specfile)["GRATING"]
+        mkarf.obsfile = specfile
+        mkarf.maskfile = mskfile
+        mkarf.verbose = str(verbose)
+        mkarf.clobber = clobber
 
-    except OSError:        
-        mkarf.engrid = f"grid({rmffile}[MATRIX][cols ENERG_LO,ENERG_HI])"
-        mkarf()
+        try:
+            mkarf.engrid = f"grid({rmffile}[SPECRESP MATRIX][cols ENERG_LO,ENERG_HI])"
+            mkarf()
+
+        except OSError:        
+            mkarf.engrid = f"grid({rmffile}[MATRIX][cols ENERG_LO,ENERG_HI])"
+            mkarf()
             
     return arffile, rmffile
 
@@ -553,17 +566,18 @@ def convert_region(infile, evt_filename, outfile, clobber, verbose):
     format to DS9 format.
     """
     ## Output region name
-	
-    dmmakereg.punlearn()
+    
+    with new_pfiles_environment(ardlib=False,copyuser=False):	
+        dmmakereg.punlearn()
 
-    dmmakereg.region  = spec.get_region_filter(infile)[1]
-    dmmakereg.outfile = outfile
-    dmmakereg.wcsfile = evt_filename
-    dmmakereg.kernel  = "fits"
-    dmmakereg.clobber = clobber
-    dmmakereg.verbose = verbose
+        dmmakereg.region  = spec.get_region_filter(infile)[1]
+        dmmakereg.outfile = outfile
+        dmmakereg.wcsfile = evt_filename
+        dmmakereg.kernel  = "fits"
+        dmmakereg.clobber = clobber
+        dmmakereg.verbose = verbose
 
-    dmmakereg()
+        dmmakereg()
 
     return infile.replace(spec.get_region_filter(infile)[1], f"region({outfile})")
 
@@ -580,25 +594,26 @@ def mk_asphist(asol_param, evt_filename_filter, full_outroot,
     Return per chip aspect histogram and file name string
     """
 
-    asp_out = tempfile.NamedTemporaryFile(suffix=f"_asphist{chip_id}",dir=tmpdir)
+    with new_pfiles_environment(ardlib=True,copyuser=False):
+        asp_out = tempfile.NamedTemporaryFile(suffix=f"_asphist{chip_id}",dir=tmpdir)
 
-    asphist.punlearn()
+        asphist.punlearn()
 
-    asphist.infile = asol_param # single file, @files.lis, or
-                                # comma-separated list of files
+        asphist.infile = asol_param # single file, @files.lis, or
+                                    # comma-separated list of files
 
-    if instrument == "ACIS":
-        asphist.evtfile = f"{evt_filename_filter}[ccd_id={chip_id}]"
-        asphist.dtffile = ""
-    else:
-        asphist.evtfile = f"{evt_filename_filter}[chip_id={chip_id}]"
-        asphist.dtffile = dtffile
+        if instrument == "ACIS":
+            asphist.evtfile = f"{evt_filename_filter}[ccd_id={chip_id}]"
+            asphist.dtffile = ""
+        else:
+            asphist.evtfile = f"{evt_filename_filter}[chip_id={chip_id}]"
+            asphist.dtffile = dtffile
 
-    asphist.outfile = asp_out.name
-    asphist.verbose = verbose
-    asphist.clobber = "yes"
+        asphist.outfile = asp_out.name
+        asphist.verbose = verbose
+        asphist.clobber = "yes"
 
-    asphist()
+        asphist()
         
     return asp_out, asp_out.name
 
@@ -607,7 +622,7 @@ def mk_asphist(asol_param, evt_filename_filter, full_outroot,
 def pi_alternate_wmap(pi,wmap):
     """
     replace the WMAP in the PI file (typically the dmextract generated version) 
-    with an alternate WMAP (typically generated by sky2tdet).
+    with an alternate WMAP (typically generated by sky2tdet or clipped PI WMAP).
     """
 
     tmp_spec = tempfile.NamedTemporaryFile(suffix="PI-WMAP",dir=tmpdir)    
@@ -681,23 +696,25 @@ def clip_wmap(wmapfile,threshold,tmpdir):
 
     del(cr)
 
-    # sort pixel values
+    ## sort pixel values
 
     im_sort = im.flatten()
     im_sort.sort()
 
-    im, = numpy.where(im_sort > 0)
-    im_sort = im_sort[im]
+    # im, = numpy.where(im_sort > 0)
+    # im_sort = im_sort[im]
 
-    # create cumulative flux distribution
+    im_sort = im_sort[im_sort > 0]
+    
+    ## create cumulative flux distribution
 
-    flux_dist = im_sort.cumsum()
+    flux_dist = im_sort.cumsum(dtype=numpy.float64)
     flux_dist /= flux_dist[-1] # normalize flux distribution
 
     flux_dist_thresh, = numpy.where(flux_dist < threshold)
     cutoff = im_sort[flux_dist_thresh[-1]]
 
-    # Give some feedback on statistics of applying threshold
+    ## Give some feedback on statistics of applying threshold
 
     flux_dist_info = numpy.arange(len(flux_dist)*1.0)
     flux_dist_info /= flux_dist_info[-1]
@@ -705,7 +722,7 @@ def clip_wmap(wmapfile,threshold,tmpdir):
     cutoff_stat = f"{threshold*100:.3g}% flux cutoff @{cutoff:.3g} removes {perc}% area\n" #.format((threshold*100),cutoff,perc)
     v1(cutoff_stat)      
 
-    # Run dmimgthresh with 'cutoff'
+    ## Run dmimgthresh with 'cutoff'
 
     threshfile = tempfile.NamedTemporaryFile(dir=tmpdir)
 
@@ -747,20 +764,21 @@ def group_spectrum(ptype, full_outroot, val, spec, gtype,
     # grouped spectrum name
     grpout = f"{full_outroot}_grp.{ptype.lower()}"
 
-    dmgroup.punlearn()
+    with new_pfiles_environment(ardlib=False,copyuser=False):
+        dmgroup.punlearn()
 
-    dmgroup.infile = f"{phafile}[SPECTRUM]"
-    dmgroup.outfile = grpout
-    dmgroup.binspec = spec
-    dmgroup.grouptype = gtype
-    dmgroup.grouptypeval = val
-    dmgroup.ycolumn = "counts"
-    dmgroup.xcolumn = "channel"
-    dmgroup.tabcolumn = ""
-    dmgroup.clobber = clobber
-    dmgroup.verbose = verbose
+        dmgroup.infile = f"{phafile}[SPECTRUM]"
+        dmgroup.outfile = grpout
+        dmgroup.binspec = spec
+        dmgroup.grouptype = gtype
+        dmgroup.grouptypeval = val
+        dmgroup.ycolumn = "counts"
+        dmgroup.xcolumn = "channel"
+        dmgroup.tabcolumn = ""
+        dmgroup.clobber = clobber
+        dmgroup.verbose = verbose
 
-    dmgroup()
+        dmgroup()
     
     return grpout
 
@@ -774,20 +792,21 @@ def edit_headers(verbose, infile, key, val, *args, **kwargs):
     unit = kwargs.get("unit",None) # optional argument
     comment = kwargs.get("comment",None)
 
-    dmhedit.punlearn()
+    with new_pfiles_environment(ardlib=False,copyuser=False):
+        dmhedit.punlearn()
 
-    dmhedit.infile = infile
-    dmhedit.filelist = "none"
-    dmhedit.operation = "add"
-    dmhedit.key = key
-    dmhedit.value = str(val)
-    dmhedit.verbose = str(verbose)
+        dmhedit.infile = infile
+        dmhedit.filelist = "none"
+        dmhedit.operation = "add"
+        dmhedit.key = key
+        dmhedit.value = str(val)
+        dmhedit.verbose = str(verbose)
 
-    if unit is not None:
-        dmhedit.unit  = str(unit)
+        if unit is not None:
+            dmhedit.unit  = str(unit)
 
-    if comment is not None:
-        dmhedit.comment = str(comment)
+        if comment is not None:
+            dmhedit.comment = str(comment)
 
     return dmhedit()
 
@@ -799,19 +818,20 @@ def call_calquiz(infile, product, query, file, verbose):
     calling calquiz as a list
     """
     
-    #clear params and set calquiz command string
-    calquiz.punlearn()
+    ## clear params and set calquiz command string
+    with new_pfiles_environment(ardlib=False,copyuser=False):
+        calquiz.punlearn()
 
-    calquiz.infile  =  f"{infile}[WMAP]"
-    calquiz.product =  product
-    calquiz.calfile =  query
-    calquiz.outfile =  "y"
-    calquiz.echo    = "yes"
-    calquiz.verbose = verbose
+        calquiz.infile  =  f"{infile}[WMAP]"
+        calquiz.product =  product
+        calquiz.calfile =  query
+        calquiz.outfile =  "y"
+        calquiz.echo    = "yes"
+        calquiz.verbose = verbose
 
-    # run calquiz cmd, pget outfile if successful
-    result = calquiz()   # can try calquiz.outfile here and perhaps
-                         # remove "y" in outfile
+        # run calquiz cmd, pget outfile if successful
+        result = calquiz()   # can try calquiz.outfile here and perhaps
+                             # remove "y" in outfile
 
     if [result != "", "ERROR" in str(result)] == [True,False]:
         cqpf = paramio.paramopen("calquiz", "r")
@@ -977,7 +997,7 @@ def build_acis_arf(args):
     #
     ###########################
 
-    with new_pfiles_environment(ardlib=True):
+    with new_pfiles_environment(ardlib=True,copyuser=False):
         if dobpix:
             set_badpix(filename,bpix,instrument,verbose)
 
@@ -1078,7 +1098,7 @@ def build_acis_rmf(args):
     #
     ###########################
 
-    with new_pfiles_environment(ardlib=True):
+    with new_pfiles_environment(ardlib=True,copyuser=False):
         if dobpix:
             set_badpix(filename,bpix,instrument,verbose)
     
@@ -1109,7 +1129,6 @@ def build_acis_rmf(args):
 
         except (OSError,IOError):
             raise IOError(f"Failed to create RMF for {fullfile}")
-
 
     if srcbkg == "bkg" and not dobkgresp:
         pass
@@ -1172,7 +1191,7 @@ def spectra(args):
     except KeyError:
         pass
     
-    with new_pfiles_environment(ardlib=True):
+    with new_pfiles_environment(ardlib=True,copyuser=False):
         ###################################
         #
         # set bad pixel file in ardlib.par
@@ -1387,7 +1406,7 @@ def resps(args):
         outreg = tempfile.NamedTemporaryFile(suffix=f"_phys_coords_{key_id}.reg",dir=tmpdir)
         fullfile = convert_region(fullfile,filename,outreg.name,"yes",verbose)
        
-    with new_pfiles_environment(ardlib=True):
+    with new_pfiles_environment(ardlib=True,copyuser=False):
         if dobpix:
             set_badpix(filename,bpix,instrument,verbose)
 
@@ -1462,7 +1481,7 @@ def resps(args):
             else:
 
                 ####
-                #### PARALLELIZABLE ARF and RMF creation
+                #### Parallelizable ARF and RMF creation
                 ####
 
                 if tdetwmap is None:
@@ -1971,7 +1990,7 @@ def run_specextract(args):
 
     specdicts = spec.ParDicts(params).specextract_dict()  
 
-    specextract_args = [{"key_id" : key, **specdicts[key], "pars_specextract" : pars} for key in specdicts.keys()]
+    specextract_args = [{"key_id" : key, "key_id_total" : len(specdicts), **specdicts[key], "pars_specextract" : pars} for key in specdicts.keys()]
 
     if len(specextract_args) > cpu_count():
         def parallelize(func,args,numcores=None):    
@@ -2007,7 +2026,7 @@ def run_specextract(args):
     #
     ###########################
 
-    pardict_update_resps = parallelize(resps,[{**s, "key_id_total" : len(specextract_args)} for s in specextract_args])
+    pardict_update_resps = parallelize(resps,[{**d, "key_id_total" : len(specextract_args)} for d in specextract_args])
     specextract_args = update_param_args_and_dict(pardict_update_resps,specdicts,specextract_args,pars)
 
     ###########################
@@ -2075,9 +2094,9 @@ def run_specextract(args):
 if __name__  == "__main__":
     try:
         run_specextract(sys.argv)
-        # import timeit
-        # runtime = timeit.timeit(lambda:run_specextract(sys.argv), number=1)
-        # print(f"test runtime [s]: {runtime}")
+        #import timeit
+        #runtime = timeit.timeit(lambda:run_specextract(sys.argv), number=1)
+        #print(f"test runtime [s]: {runtime}")
     except Exception as E:
         print(f"\n# {toolname} ({__revision__}): ERROR {E} \n", file=sys.stderr)
         sys.exit(1)
