@@ -526,25 +526,6 @@ class ParDicts(object):
         Sort a list of files by the value of a given keyword; e.g., for sorting
         a stack of aspect solution files on TSTART before input to mk_asphist().
         """
-
-        # file_count = len(file_stack)
-        # files_orig_order = list(range(file_count))
-
-        # for i in range(file_count):
-        #     files_orig_order[i] = file_stack[i]
-
-        # keyvals_orig_order = self._get_keyvals(file_stack, key)
-
-        # if None in keyvals_orig_order:
-        #     raise IOError(f"One or more of the entered {file_type} files is missing the required {key} header keyword value. Exiting.")
-
-        # keyvals_sorted = sorted(keyvals_orig_order) #be sure numbers are not strings
-
-        # files_sorted = list(range(file_count))
-
-        # for i in range(file_count):
-        #     sort_ind = keyvals_orig_order.index(keyvals_sorted[i])
-        #     files_sorted[i] = files_orig_order[sort_ind]
         
         file_count = len(file_stack)
 
@@ -592,7 +573,7 @@ class ParDicts(object):
 
         orig_files = list(range(file_count))
         for i in range(file_count):
-            orig_files[i] = file_stack[i] #stk_read_num(file_stack, i+1)
+            orig_files[i] = file_stack[i]
 
         sorted_files = list(range(file_count))
         for i in range(file_count):
@@ -617,7 +598,7 @@ class ParDicts(object):
             if None in asol_tstart:
                 raise IOError("One or more of the entered aspect solution files is missing a TSTART header keyword value, therefore files cannot be properly sorted and matched to input source files. Exiting.")
 
-            asol_tstart_sort = sorted(asol_tstart) #be sure numbers are not strings
+            asol_tstart_sort = sorted(asol_tstart) # be sure numbers are not strings
 
             sort_asolfiles = list(range(file_count))
             asol_obsid_sort = list(range(file_count))
@@ -675,8 +656,7 @@ class ParDicts(object):
                     raise IOError("No region filter with the event file, nor a refcoord value, provided to produce response files.")
 
                 else:
-                    # follow general procedures used in event_stats()
-
+                    # follow general procedures used in _event_stats()
                     dmstat.punlearn()
                     dmstat.infile = f"{infile}[bin sky={binimg}]"
                     dmstat.verbose = "0"
@@ -706,9 +686,12 @@ class ParDicts(object):
 
 
     def check_fp_temp(self,kwdict,inf,ebin):
+
+        """
+        check focal plane temperature, if >-110C, then check FEF energy range.        
+        """
+
         #####################################################################################
-        #
-        # check focal plane temperature, if >-110C, then check FEF energy range.
         #
         # ObsID 114 (observed 2000-01-30 10:40:42) is first observation made at <-119C.
         #
@@ -820,6 +803,10 @@ class ParDicts(object):
 
 
     def paralleltests(self,parallelfunc,args,method="map"):
+        """
+        run various parameter test functions in parallel
+        """
+
         if method == "map":
             status = parallel_map(parallelfunc,args)
         else:
@@ -859,13 +846,16 @@ class ParDicts(object):
                 if " " in os.path.abspath(fn):
                     raise IOError(f"The absolute path for the {key.replace('source','input')} file, '{os.path.abspath(fn)}', cannot contain any white spaces")
 
-
+        #####################################################################################
+        #
         # check that region extraction syntax does not take the erroneous form:
         # "sky=(src.reg)" or "sky=src.reg" which can lead to unexpected results
         # and very long run times
         #
         # combine source and background into a set (to eliminate duplicates)
         # and validate in a single pass
+        #
+        #####################################################################################
 
         fn_stk = numpy.ravel([[{"filename" : fn, "check" : "regstr"},{"filename" : fn, "check" : "crlf"}] for fn in set(src_stk).union(bkg_stk)])
         
@@ -890,7 +880,7 @@ class ParDicts(object):
         #     self._check_region_crlf(fn)
 
 
-        ### check files in source and background stacks
+        ### check files in source and background stacks ###
         fn_header_stk = [{k : {**fileio.get_keys_from_file(f"{fileio.get_file(fn)}[#row=0]"), "inf" : fileio.get_file(fn)}} for sd in fn_dict_stk for k,fn in sd.items()]
                 
         for d in fn_header_stk:
@@ -926,10 +916,11 @@ class ParDicts(object):
                 ## check blanksky
                 self._check_blanksky(headerkeys,srcbkg_kw,bkgresp)
 
-        ## check ACIS focal-plane temperature
+        ### check ACIS focal-plane temperature ###
         fp_temp_check = [{"srcbkg_kw" : srcbkg_kw, "weight" : weight, "bkgresp" : bkgresp, "ebin" : ebin, "hdr" : headerkeys} for fhs in fn_header_stk for srcbkg_kw,headerkeys in fhs.items() if headerkeys["INSTRUME"]=="ACIS"]
 
         if fp_temp_check != []:
+            
             def parallel_fptemp(args):
                 srcbkg_kw = args["srcbkg_kw"]
                 weight = args["weight"]
@@ -948,24 +939,25 @@ class ParDicts(object):
             
         ### check background files are valid ###
         if bkg_count > 0:
-            # ensure background stack has the same number of elements as the source stack ##                
+            ## ensure background stack has the same number of elements as the source stack               
             if src_count != bkg_count:
                 raise IOError(f"Source and background stacks must contain the same number of elements.  Source stack={src_count}    Background stack={bkg_count}")
 
-            # check background region filter formatted correctly
+            ## check background region filter formatted correctly
             for bg in bkg_stk:
                 if not get_region_filter(bg)[0]:
                     raise IOError(f"Please specify a valid background spatial region filter for {bg} or use FOV region file.")
 
-            # Check that source and background ObsIDs match.
+            ## Check that source and background ObsIDs match
             src_obsid_stk = [hdrkey["OBS_ID"] for hd in fn_header_stk for srcbkg,hdrkey in hd.items() if srcbkg == "source"]
                         
-            bkg_obsid_stk = self._get_keyvals(bkg_stk,"OBS_ID") #[hdrkey["OBS_ID"] for hd in fn_header_stk for srcbkg,hdrkey in hd.items() if srcbkg == "background"]
+            bkg_obsid_stk = self._get_keyvals(bkg_stk,"OBS_ID")
+            # bkg_obsid_stk = [hdrkey["OBS_ID"] for hd in fn_header_stk for srcbkg,hdrkey in hd.items() if srcbkg == "background"]
             
             if all([None not in src_obsid_stk, None not in bkg_obsid_stk]):
-                # Check that src & bkg stacks have matching ObsID values
-                # and also same number of each unique value.
 
+                ## Check that src & bkg stacks have matching ObsID values
+                ## and also same number of each unique value.
                 if all([src_obsid_stk == bkg_obsid_stk, sorted(src_obsid_stk) == sorted(bkg_obsid_stk)]):
                     dobg = True
                     fcount = src_count
@@ -979,8 +971,8 @@ class ParDicts(object):
                     if sorted(src_obsid_stk) != sorted(bkg_obsid_stk):
                         v0("WARNING: Background file OBS_IDs differ from source file OBS_IDs; ignoring background input.\n")
 
-                    # Check if the matched src&bkg ObsID values are entered in the
-                    # proper matching order.
+                    ## Check if the matched src&bkg ObsID values are entered in the
+                    ## proper matching order.
                     if src_obsid_stk != bkg_obsid_stk:
                         v0("WARNING: 'bkgfile' file order does not match 'infile' file order; ignoring background input.\n")
 
@@ -1043,16 +1035,15 @@ class ParDicts(object):
             else:
                 v2("Note: all input source regions are converted to physical coordinates for point-source analysis with ARF correction.")
 
-                # also check that the binarfcorr parameter is greater than zero
+                ## also check that the binarfcorr parameter is greater than zero
                 if float(binarfcorr) <= 0:
                     raise ValueError("'binarfcorr' must be greater than zero.")            
         else:
             if float(bintwmap) <= 0 :
                 raise ValueError("'binarfwmap' must be greater than zero.")
 
-        # no need to duplicate responses, since src and bkg responses will
-        # be the same if refcoord!=""
-
+        ## no need to duplicate responses, since src and bkg responses will
+        ## be the same if refcoord!=""
         if refcoord != "" and bkgresp == "yes":
             v1(f"Responses for source and background are identical at {refcoord}, setting 'bkgresp=no' to avoid duplicate files.")
 
@@ -1060,8 +1051,7 @@ class ParDicts(object):
 
             common_dict["bkgresp"] = bkgresp
 
-        # Define the binning specification for RMFs output by the script.
-
+        ## define the binning specification for RMFs output by the script.
         if ptype == "PI":
             rmfbin = f"pi={channel}"
         else:
@@ -1069,15 +1059,8 @@ class ParDicts(object):
 
         common_dict["rmfbin"] = rmfbin
 
-        #-----------------------------------------------------------
-        # Determine whether or not to group source output spectrum,
-        # and set appropriate grouping values.
-        #
-        # dogroup           # flag set if grouping
-        # binspec           # grouping spec
-        # gval              # grouping value
-        #-----------------------------------------------------------
-
+        ## determine whether source spectrum should be grouped and
+        ## setup grouping if necessary        
         if gtype.upper() == "NONE":
             dogroup = False
 
@@ -1096,15 +1079,8 @@ class ParDicts(object):
 
         common_dict["dogroup"] = dogroup
 
-        #----------------------------------------------------------
-        # Determine whether or not to group background output 
-        # spectrum and set appropriate grouping values.
-        #
-        # bgdogroup           # flag set if grouping
-        # bgbinspec           # grouping spec
-        # bggval              # grouping value
-        #----------------------------------------------------------
-
+        ## determine whether background spectrum should be grouped and
+        ## setup grouping if necessary        
         if bggtype.upper() == "NONE":
             bgdogroup = False
 
@@ -1130,16 +1106,10 @@ class ParDicts(object):
                        asp,bpixfile,mask,dtffile,dafile,
                        weight,dobkgresp,refcoord,ewmap):
 
-        # check counts in input files, and exit if necessary, or produce responses for upper-limits
+        ## check counts in input files, and exit if necessary, or produce responses for upper-limits
         src_dict = [{"file" : fn, "refcoord_check" : refcoord, "weights_check" : False, "ewmap_range_check" : None} for fn in src_stk]
-
-
-        # # check counts in input files, and exit if necessary, or produce responses for upper-limits
-        # for src in src_stk:
-        #     self._check_event_stats(src,refcoord_check=refcoord,weights_check=False)
-
         
-        # check if there are counts in energy_wmap range for weighted ARFs/sky2tdet creation
+        ## check if there are counts in energy_wmap range for weighted ARFs/sky2tdet creation
         ewmap_srcbg_stk = []
 
         if weight == "yes":
@@ -1150,10 +1120,6 @@ class ParDicts(object):
 
         ewmap_srcbg_dict = [{"file" : fn, "ewmap_range_check" : ewmap, "refcoord_check" : None, "weights_check" : None} for fn in ewmap_srcbg_stk]
             
-        # for fn in ewmap_srcbg_stk:
-        #     if fileio.get_keys_from_file(f"{fn}[#row=0]")["INSTRUME"] == "ACIS":
-        #         self._check_event_stats(fn,ewmap_range_check=ewmap)
-
         # run the checks in parallel
         def parallel_event_stats(args):
             file = args["file"]
@@ -1174,7 +1140,7 @@ class ParDicts(object):
 
         self.paralleltests(parallel_event_stats,[*src_dict,*ewmap_srcbg_dict],method="map")
 
-        # find ancillary files, if exists, add to stack
+        ## find ancillary files, if exists, add to stack
         ancil = {"asol" : {"var" : asp,
                            "stk" : [],
                            "v1str" : "Aspect solution"},
@@ -1225,20 +1191,16 @@ class ParDicts(object):
                 else:
                     ancil[key]["stk"].extend(stk.build(ancil[key]["var"]))
 
-        #-------------------------------------------------------
-        # assign stacks to dictionary entires
-        #-------------------------------------------------------
-
+                    
+        ### assign stacks to dictionary entires ###
         stk_dict = {"asol" : ancil["asol"]["stk"],
                     "mask" : ancil["mask"]["stk"],
                     "dead time factor" : ancil["dtf"]["stk"],
                     "dead area" : dafile,
                     "badpix" : ancil["bpix"]["stk"]}
 
-        #-------------------------------------------------------
-        # ensure file stacks has either 1 or src_count elements
-        #-------------------------------------------------------
 
+        ## ensure file stacks has either 1 or src_count elements
         stk_count = {}
         src_count = len(src_stk)
 
@@ -1277,21 +1239,15 @@ class ParDicts(object):
 
             stk_count[key] = count
 
-        #-------------------------------------------------------
-        # check that there are no spaces in ancillary file
-        # paths, if specified
-        #-------------------------------------------------------
-
+        ## check that there are no spaces in ancillary file
+        ## paths, if specified
         for key in stk_dict.keys():
             for path in stk_dict[key]:
                 if " " in os.path.abspath(path):
                     raise IOError(f"The absolute path for the {key} file, '{os.path.abspath(path)}', cannot contain any spaces")
 
-        #-----------------------------------------------------
-        # Determine if asphist or asol files were input
-        # to the 'asp' parameter
-        #-----------------------------------------------------
-        
+        ## Determine if asphist or asol files were input
+        ## to the 'asp' parameter        
         stk_dict["asol"],stk_count["asol"],asolstat,ahiststat = self._asol_asphist(stk_dict["asol"],stk_count["asol"],src_stk)
 
         return stk_dict, stk_count, asolstat, ahiststat, dobpix
@@ -1310,30 +1266,15 @@ class ParDicts(object):
         src_count = len(src_stk)
         out_count = len(out_stk)
 
-        #----------------------------------------------------------
-        # Determine the file output types, either source files or
-        # both source and background files.
-        #----------------------------------------------------------
-
+        ## Determine the file output types, either source files or
+        ## both source and background files.
         if dobg:
             otype = ["src","bkg"]
         else:
             otype = ["src"]
 
-        #------------------------------------------------------------------
-        # Check all of the input files up front and make sure they are
-        # readable. If not, notify the user of each bad file and exit.
-        #
-        # srcbkg                # the current output type
-        # inputfile             # current input file to test
-        # table                 # is the infile readable (!NULL)?
-        # badfile               # is at least one of the input files bad?
-        #
-        # Do for each output type we are processing,
-        # i.e. "src" or ( "src" and "bkg" )
-        #
-        #-------------------------------------------------------------------
-
+        ## Check all of the input files up front and make sure they are
+        ## readable. If not, notify the user of each bad file and exit.
         for srcbkg in otype:
 
             # Look at each file in the stack and check for readability.
@@ -1342,23 +1283,8 @@ class ParDicts(object):
             else:
                 self._check_files(src_stk,"source")
 
-        #---------------------------------------------------------
-        # For each stack item in the source and background lists:
-        #
-        #    ) optionally set the ardlib bad pixel file
-        #    ) convert src regions to phys. coords for ARF correction
-        #    ) extract the spectrum
-        #    ) create an ARF
-        #    ) create a RMF
-        #    ) optionally group the spectrum
-        #    ) add header keywords
-        #    ) optionally combine output spectra and responses
-        #
-        #----------------------------------------------------------
 
-        # Do for each output type we are processing,
-        # i.e. "src" or ( "src" and "bkg" )
-
+        ## For each stack item in the source and background lists:
         specextract_dict = {}
 
         for srcbkg in otype:
@@ -1370,9 +1296,7 @@ class ParDicts(object):
             else:
                 cur_stack = src_stk
 
-            #
             # Run tools for each item in the current stack.
-            #
             for i in range(fcount):
 
                 fullfile = cur_stack[i]
@@ -1391,11 +1315,11 @@ class ParDicts(object):
                 if not self._check_event_stats(fullfile,refcoord_check=refcoord,weights_check=True):
                     weight = "no"
 
-                #  If we're using an output stack, then grab an item off of the stack
-                #  but if not, then append "src1", "src2", etc., to the outroot
-                #  parameter for each output file. If the outroot stack count equals 1
-                #  but the source stack count is not equal to 1, treat the outroot
-                #  parameter as the only root
+                # If we're using an output stack, then grab an item off of the stack
+                # but if not, then append "src1", "src2", etc., to the outroot
+                # parameter for each output file. If the outroot stack count equals 1
+                # but the source stack count is not equal to 1, treat the outroot
+                # parameter as the only root
 
                 if out_count == 1 and src_count > 1:
                     outdir, outhead = utils.split_outroot(out_stk[0])
@@ -1474,7 +1398,7 @@ class ParDicts(object):
 
                 # Set mask argument passes to create_arf_ext (mkwarf).                          
                 if stk_count["mask"] != 1:
-                    msk_arg  = mask_stk[i]                                
+                    msk_arg  = mask_stk[i]
                 else:
                     if mask_stk[i].startswith("@"):
                         msk_arg = ",".join(stk.build(mask_stk[i]))
