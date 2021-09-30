@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020
-#    Smithsonian Astrophysical Observatory
+#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -85,7 +85,7 @@ def match_obsid(obsinfos, infiles, label):
     in infiles?
     """
 
-    v3("Matching observations and files for label={}".format(label))
+    v3(f"Matching observations and files for label={label}")
 
     # The OBI is only used in the comparison when the obsid is a known
     # multi-OBI dataset.
@@ -105,7 +105,7 @@ def match_obsid(obsinfos, infiles, label):
         # not know which is the better file, but for now just use the first
         # value.
         obsid = fileio.get_obsid_object(infile)
-        v4("File {} has obsid {}".format(infile, obsid))
+        v4(f"File {infile} has obsid {obsid}")
 
         key = make_key(obsid)
         if key in cache:
@@ -114,13 +114,12 @@ def match_obsid(obsinfos, infiles, label):
             # <obsid>e1 rather than <obsid> or <obsid>_<obi>, so I have
             # switched to obsid.obsid instead (when I should really try
             # and find out why).
-            v1("Skipping {} file {} as it has the same ObsId ({}) as {}".format(
-                label, infile, obsid.obsid, cache[key]))
+            v1(f"Skipping {label} file {infile} as it has the same ObsId ({obsid.obsid}) as {cache['key']}")
             continue
 
         cache[key] = infile
 
-    v3("{} files have obsinfos: {}".format(label, cache))
+    v3(f"{label} files have obsinfos: {cache}")
 
     # We need to know whether to worry about interleaved-mode observations.
     # The elements of obsinfos only have a non-None .obsid.cycle field when
@@ -130,28 +129,28 @@ def match_obsid(obsinfos, infiles, label):
     for obsinfo in obsinfos:
         obsid = obsinfo.obsid
         key = make_key(obsid)
-        v4("Looking for match for obsid {}: key={}".format(obsid, key))
+        v4(f"Looking for match for obsid {obsid}: key={key}")
 
         try:
             match = cache[key]
             del cache[key]
 
         except KeyError:
-            emsg = "There is no {} file for ObsId {}.".format(label, obsid)
+            emsg = f"There is no {label} file for ObsId {obsid}."
             if obsid.cycle is None:
                 key = make_key(obsid, cycle='P')
                 try:
                     match = cache[key]
                     del cache[key]
-                    v4("Looking for {} - assume ObsId {} is primary".format(label, obsid))
+                    v4(f"Looking for {label} - assume ObsId {obsid} is primary")
 
                 except KeyError:
-                    raise ValueError(emsg)
+                    raise ValueError(emsg) from None
 
             else:
-                raise ValueError(emsg)
+                raise ValueError(emsg) from None
 
-        v3("Matched {} for {} to {}".format(label, key, match))
+        v3(f"Matched {label} for {key} to {match}")
         out.append(match)
 
     # Let the user know if we have any unmatched files.
@@ -159,13 +158,13 @@ def match_obsid(obsinfos, infiles, label):
     for (key, filename) in cache.items():
         obsid = key[0]
         obscycle = key[1]
-        msg = "Skipping {} file {} (ObsId {}".format(label, filename, obsid)
+        msg = f"Skipping {label} file {filename} (ObsId {obsid}"
 
         if obscycle not in [None, 'None']:
-            msg += " Cycle {}".format(obscycle)
+            msg += f" Cycle {obscycle}"
 
         if len(key) == 3:
-            msg += " OBI {}".format(key[2])
+            msg += f" OBI {key[2]}"
 
         msg += ")"
         v1(msg)
@@ -223,9 +222,9 @@ def match_obsid_asol(obsinfos, asolfiles):
         try:
             fnames = aobsids[key]
         except KeyError:
-            raise ValueError("There is no aspect solution for ObsId {}.".format(obsid))
+            raise ValueError(f"There is no aspect solution for ObsId {obsid}.") from None
         except AttributeError:
-            raise IOError("*Internal error* match_obsid_asol sent {}/{} rather than ObsInfo.".format(obsinfo, type(obsinfo)))
+            raise IOError(f"*Internal error* match_obsid_asol sent {obsinfo}/{type(obsinfo)} rather than ObsInfo.") from None
 
         out.append(fileio.sort_mjd(fnames))
 
@@ -234,49 +233,54 @@ def match_obsid_asol(obsinfos, asolfiles):
         if key in keys:
             continue
         for infile in infiles:
-            v1("Skipping asol file {} (ObsId {})".format(infile, key[0]))
+            v1(f"Skipping asol file {infile} (ObsId {key[0]})")
 
     return out
 
 
 # start file names
 
+def basename(outdir, outhead, token):
+    """These files have a common prefix."""
+
+    return f"{outdir}{outhead}{token}"
+
 def name_coadd_img(outdir, outhead, enband):
     """The name of the coadded image."""
 
-    return "{}{}{}.img".format(outdir, outhead, enband)
+    return f"{basename(outdir, outhead, enband)}.img"
 
 
 def name_coadd_thresh_img(outdir, outhead, enband):
     """The name of the coadded thresholded image."""
 
-    return "{}{}{}_thresh.img".format(outdir, outhead, enband)
+    return f"{basename(outdir, outhead, enband)}_thresh.img"
 
 
 def name_coadd_flux(outdir, outhead, enband):
     """The name of the coadded fluxed image."""
 
-    return "{}{}{}_flux.img".format(outdir, outhead, enband)
+    return f"{basename(outdir, outhead, enband)}_flux.img"
 
 
 def name_coadd_expmap(outdir, outhead, enband):
     """The name of the coadded exposure map."""
 
-    return "{}{}{}.expmap".format(outdir, outhead, enband)
+    return f"{basename(outdir, outhead, enband)}.expmap"
 
 
 def name_coadd_thresh_expmap(outdir, outhead, enband):
     """The name of the coadded thresholded exposure map."""
 
-    return "{}{}{}_thresh.expmap".format(outdir, outhead, enband)
+    return f"{basename(outdir, outhead, enband)}_thresh.expmap"
 
 
 def name_coadd_psfmap(outdir, outhead, enband, thresh=False):
     """The name of the coadded PSF map."""
 
-    head = "{}{}{}".format(outdir, outhead, enband)
+    head = basename(outdir, outhead, enband)
     mid = "_thresh" if thresh else ""
-    return "{}{}.psfmap".format(head, mid)
+    return f"{head}{mid}.psfmap"
 
 
 def obsid_asol_name(outdir, outhead, obsid):
@@ -284,20 +288,20 @@ def obsid_asol_name(outdir, outhead, obsid):
     the given obsid.
     """
 
-    return "{}{}{}_asol.merged.fits".format(outdir, outhead, obsid)
+    return f"{basename(outdir, outhead, obsid)}_asol.merged.fits"
 
 
 def obsid_reproj_evt_name(outdir, outhead, obsid):
     """Return the name of the reprojected event file for the obsid."""
 
-    return "{}{}{}_reproj_evt.fits".format(outdir, outhead, obsid)
+    return f"{basename(outdir, outhead, obsid)}_reproj_evt.fits"
 
 
 def merged_evt_name(outdir, outhead):
     """Return the name of the merged event file given
     the outdir and outhead arguments."""
 
-    return "{}{}merged_evt.fits".format(outdir, outhead)
+    return f"{outdir}{outhead}merged_evt.fits"
 
 
 # TODO:
@@ -364,7 +368,7 @@ def modify_event_file_keywords(origdir, evtfile,
 
     checkdir = os.path.join(epath, origdir)
     if not os.path.isdir(checkdir):
-        raise IOError("No directory {} found relative to {}".format(origdir, evtfile))
+        raise IOError(f"No directory {origdir} found relative to {evtfile}")
 
     # Use cxcdm module to manipulate the keywords
     #
@@ -529,10 +533,9 @@ def reproject_events_task(infile, ra0, dec0, outfile,
         (ra, dec) = fileio.get_tangent_point(infile)
         sepdeg = coords.utils.point_separation(ra0, dec0, ra, dec)
         sepasec = sepdeg * 3600.0
-        v2("Separation={} arcsec between reference and {}".format(sepasec,
-                                                                  infile))
+        v2(f"Separation={sepasec} arcsec between reference and {infile}")
         if sepdeg < tol:
-            v3("No need to reproject {}, so copying.".format(infile))
+            v3(f"No need to reproject {infile}, so copying.")
             run.dmcopy(infile, outfile, option="all", clobber=clobber)
 
         else:
@@ -546,8 +549,7 @@ def reproject_events_task(infile, ra0, dec0, outfile,
             # does not work (ie the sky subspace is not lost as we want it).
             #
             if "[" in infile:
-                v3("Copying evt file to apply any subspace filters: " +
-                   "{}".format(infile))
+                v3(f"Copying evt file to apply any subspace filters: {infile}")
                 tmpfile = tempfile.NamedTemporaryFile(dir=tmpdir,
                                                       suffix=".evt")
                 run.dmcopy(infile, tmpfile.name, option="all", clobber=True)
@@ -556,15 +558,15 @@ def reproject_events_task(infile, ra0, dec0, outfile,
             else:
                 evtname = infile
 
-            v3("About to reproject events file ({})".format(evtname))
+            v3(f"About to reproject events file ({evtname})")
             run.punlearn('reproject_events')
             run.run('reproject_events',
-                    ["infile={}[subspace -sky]".format(evtname),
+                    [f"infile={evtname}[subspace -sky]",
                      'outfile=' + outfile,
-                     "match={} {}".format(ra0, dec0),
+                     f"match={ra0} {dec0}",
                      'aspect=',
                      'clobber=' + clstr,
-                     "verbose={}".format(verbose)
+                     f"verbose={verbose}"
                      ])
 
             run.update_column_range(outfile, verbose=verbose)
@@ -609,7 +611,7 @@ def reproject_event_files(taskrunner,
     """
 
     nevt = len(infiles)
-    v3("Reprojecting {} event files to ra={} dec={}".format(nevt, ra, dec))
+    v3(f"Reprojecting {nevt} event files to ra={ra} dec={dec}")
 
     stask = labelconv("reproj-obsids-start")
     if nevt == 1:
@@ -617,7 +619,7 @@ def reproject_event_files(taskrunner,
     else:
         lbl = "s"
     taskrunner.add_barrier(stask, preconditions,
-                           "Reprojecting {} event file{} to a common tangent point.".format(nevt, lbl))
+                           f"Reprojecting {nevt} event file{lbl} to a common tangent point.")
 
     tasks = []
     for (infile, outfile) in zip(infiles, outfiles):
@@ -647,7 +649,7 @@ def parse_lookup_table(filename):
 
             toks = l.split()
             if len(toks) != 2:
-                raise ValueError("Unexpected merging rule: {}".format(l))
+                raise ValueError(f"Unexpected merging rule: {l}")
 
             out.append(toks)
 
@@ -681,11 +683,11 @@ def adjust_warnomit_rule(key, rule, obsinfos):
     of the first value.
     """
 
-    v4("Rule=WarnOmit key={} rule={}".format(key, rule))
+    v4(f"Rule=WarnOmit key={key} rule={rule}")
     try:
         tol = float(rule[9:])
     except ValueError:
-        raise ValueError("Invalid WarnOmit rule: {}".format(rule))
+        raise ValueError(f"Invalid WarnOmit rule: {rule}")
 
     try:
         fval = float(obsinfos[0].get_keyword(key))
@@ -709,10 +711,10 @@ def adjust_warnomit_rule(key, rule, obsinfos):
 def adjust_merge_rule(key, rule, obsinfos):
     "Convert to PUT_STRING if any of the values do not match."
 
-    v4("Rule=Merge key={} rule={}".format(key, rule))
+    v4(f"Rule=Merge key={key} rule={rule}")
     toks = rule.split(";")
     if len(toks) != 2:
-        raise ValueError("Invalid Merge/Force rule: {}".format(rule))
+        raise ValueError(f"Invalid Merge/Force rule: {rule}")
 
     outval = toks[0][6:]
     defval = toks[1][6:]
@@ -729,7 +731,7 @@ def adjust_merge_rule(key, rule, obsinfos):
             val = defval
 
         if val != fval:
-            return (key, "PUT_STRING-{}".format(outval))
+            return (key, f"PUT_STRING-{outval}")
 
     # Could remove this rule, but want to catch any errors I may
     # have made by leaving this in
@@ -764,7 +766,7 @@ def create_lookup_table(origtable, obsinfos,
     which contains the new rules to use.
     """
 
-    v4("create_lookup_table: origtable={}".format(origtable))
+    v4(f"create_lookup_table: origtable={origtable}")
     orig = parse_lookup_table(origtable)
     out = []
     for (key, rule) in orig:
@@ -772,9 +774,9 @@ def create_lookup_table(origtable, obsinfos,
 
     fh = tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+',
                                      suffix=".ltab")
-    v4("** adjusted lookup table ({})".format(fh.name))
+    v4(f"** adjusted lookup table ({fh.name})")
     for (key, rule) in out:
-        omsg = "{} {}".format(key, rule)
+        omsg = f"{key} {rule}"
         fh.write(omsg + "\n")
         v4(omsg)
 
@@ -796,16 +798,16 @@ def find_new_sky_range(infiles):
     ylo = []
     yhi = []
     for infile in infiles:
-        v3("Checking SKY range of {}".format(infile))
+        v3(f"Checking SKY range of {infile}")
         bl = cxcdm.dmTableOpen(infile)
         try:
             x = cw.open_column(bl, "x", infile)
             y = cw.open_column(bl, "y", infile)
 
             (x1, x2) = cxcdm.dmDescriptorGetRange(x)
-            v3(" . x range = {} to {}".format(x1, x2))
+            v3(f" . x range = {x1} to {x2}")
             (y1, y2) = cxcdm.dmDescriptorGetRange(y)
-            v3(" . y range = {} to {}".format(y1, y2))
+            v3(f" . y range = {y1} to {y2}")
 
             xlo.append(x1)
             ylo.append(y1)
@@ -876,18 +878,18 @@ def update_sky_range(infiles, xr, yr,
         (xlo, xhi) = xr
         (a, b) = _normalize_range(xlo, xhi)
         if (a != xlo) or (b != xhi):
-            v3("Converting x range from {}:{} to {}:{}".format(xlo, xhi, a, b))
+            v3(f"Converting x range from {xlo}:{xhi} to {a}:{b}")
             xr = (a, b)
 
     if yr is not None:
         (ylo, yhi) = yr
         (a, b) = _normalize_range(ylo, yhi)
         if (a != ylo) or (b != yhi):
-            v3("Converting y range from {}:{} to {}:{}".format(ylo, yhi, a, b))
+            v3(f"Converting y range from {ylo}:{yhi} to {a}:{b}")
             yr = (a, b)
 
     for infile in infiles:
-        v3("Updating SKY range of {} to x={} y={}".format(infile, xr, yr))
+        v3(f"Updating SKY range of {infile} to x={xr} y={yr}")
 
         bl = cxcdm.dmTableOpen(infile, update=True)
         try:
@@ -968,7 +970,7 @@ def validate_obsinfo(infiles, colcheck=True):
         # TODO: does it make sense to allow only one observation here?
         v1("Verifying one observation.")
     else:
-        v1("Verifying {} observations.".format(norig))
+        v1(f"Verifying {norig} observations.")
 
     acols = set(['TIME', 'CHIP', 'DET', 'SKY', 'CCD_ID', 'ENERGY'])
     hcols = set(['TIME', 'CHIP', 'DET', 'SKY', 'CHIP_ID'])
@@ -987,7 +989,7 @@ def validate_obsinfo(infiles, colcheck=True):
     obsids = {}
 
     for infile in sinfiles:
-        v3("Checking input file: " + infile)
+        v3(f"Checking input file: {infile}")
         try:
             obs = ObsInfo(infile)
         except Exception as exc:
@@ -995,19 +997,19 @@ def validate_obsinfo(infiles, colcheck=True):
             # messages about why a file is skipped, but the information
             # should hopefully still be provided to the user.
             # v1("Skipping {}: {}".format(infile, exc))
-            v1("Skipping file: {}".format(exc))
+            v1(f"Skipping file: {exc}")
             blank_line = True
             continue
 
         if obs.nrows < 1:
-            v1("Skipping {} as it contains no data.".format(infile))
+            v1(f"Skipping {infile} as it contains no data.")
             blank_line = True
             continue
 
         # The following is trying to be too clever,
         # in that the expected behavior is to raise the error.
         try:
-            v1("Skipping {} as both it and {} have OBS_ID={}.".format(infile, obsids[obs.obsid], obs.obsid))
+            v1(f"Skipping {infile} as both it and {obsids[obs.obsid]} have OBS_ID={obs.obsid}.")
             blank_line = True
             continue
         except KeyError:
@@ -1026,12 +1028,12 @@ def validate_obsinfo(infiles, colcheck=True):
             try:
                 rcols = req_columns[instrument]
             except KeyError:
-                v1("Skipping {} as INSTRUME={} is unsupported.".format(infile, instrument))
+                v1(f"Skipping {infile} as INSTRUME={instrument} is unsupported.")
                 blank_line = True
                 continue
 
         elif instrument != obs.instrument:
-            v1("Skipping {} as it has INSTRUME={} but previous {} for {}".format(infile, obs.instrument, filelabel, instrument))
+            v1(f"Skipping {infile} as it has INSTRUME={obs.instrument} but previous {filelabel} for {instrument}")
             blank_line = True
             continue
 
@@ -1040,12 +1042,12 @@ def validate_obsinfo(infiles, colcheck=True):
             try:
                 readmode = keys['READMODE']
             except KeyError:
-                v1("Skipping {} as it has no READMODE keyword.".format(infile))
+                v1(f"Skipping {infile} as it has no READMODE keyword.")
                 blank_line = True
                 continue
 
             if readmode == 'CONTINUOUS':
-                v1("Skipping {} as it is a CC-mode observation.".format(infile))
+                v1(f"Skipping {nifile} as it is a CC-mode observation.")
                 blank_line = True
                 continue
 
@@ -1053,7 +1055,7 @@ def validate_obsinfo(infiles, colcheck=True):
             if detname is None:
                 detname = obs.detector
             elif detname != obs.detector:
-                v1("Skipping {} as it has DETNAM={} but previous {} for {}".format(infile, obs.detector, filelabel, detname))
+                v1(f"Skipping {infile} as it has DETNAM={obs.detector} but previous {filelabel} for {detname}")
                 blank_line = True
                 continue
 
@@ -1065,9 +1067,9 @@ def validate_obsinfo(infiles, colcheck=True):
         if colcheck and nmiss != 0:
             cnames = ' '.join(missing_columns)
             if nmiss == 1:
-                v1("Skipping {} as it is missing the {} column".format(infile, cnames))
+                v1(f"Skipping {infile} as it is missing the {cnames} column")
             else:
-                v1("Skipping {} as it is missing columns: {}".format(infile, cnames))
+                v1(f"Skipping {infile} as it is missing columns: {cnames}")
 
             blank_line = True
             continue
@@ -1096,11 +1098,11 @@ def validate_obsinfo(infiles, colcheck=True):
 
     multis = [k for (k, v) in nobsids.items() if v > 1]
     if len(multis) > 0:
-        v3("Found interleaved/multi-OBI ObsIds: {}".format(multis))
+        v3(f"Found interleaved/multi-OBI ObsIds: {multis}")
         if len(multis) == 1:
             v1("Found one interleaved/multi-OBI observation:")
         else:
-            v1("Found {} interleaved/multi-OBI observations:".format(len(multis)))
+            v1(f"Found {len(multis)} interleaved/multi-OBI observations:")
 
         # check for interleaved observations; remove them from the 'multis'
         # multi-obi list
@@ -1121,7 +1123,7 @@ def validate_obsinfo(infiles, colcheck=True):
             # if ObsID has both cycle=P and cycle=S files, then remove it
             # from the multi-obi list
             if obs_cycle[obsid] in ["PS", "SP"]:
-                v3("ObsID {} is an interleaved observation".format(obsid))
+                v3(f"ObsID {obsid} is an interleaved observation")
                 multis.remove(obsid)
 
         # Mark the observations as being "multi obi"
@@ -1134,14 +1136,14 @@ def validate_obsinfo(infiles, colcheck=True):
             obsinfo = oi[1]
             obsid = obsinfo.obsid
             if obsid.obsid in multis:
-                v3("Setting {} as multi-OBI".format(obsinfo))
+                v3(f"Setting {obsinfo} as multi-OBI")
                 try:
                     obsid.is_multi_obi = True
-                    v1("  - using label {}".format(obsid))
+                    v1(f"  - using label {obsid}")
                 except ValueError as ve:
                     # oops, this has no OBI value so should be rejected
                     fname = obsinfo.get_evtfile()
-                    v1("Skipping {} as it has no OBI_NUM keyword".format(fname))
+                    v1(f"Skipping {fname} as it has no OBI_NUM keyword")
 
                     # as a debug aid
                     v3(str(ve))
@@ -1159,9 +1161,9 @@ def validate_obsinfo(infiles, colcheck=True):
     if nskip == 1:
         v1("Skipped one observation.")
     elif nskip > 1:
-        v1("Skipped {} observations.".format(nskip))
+        v1(f"Skipped {nskip} observations.")
 
-    v3("Time sorting {} observations.".format(ninfiles))
+    v3(f"Time sorting {ninfiles} observations.")
     obsinfos.sort(key=lambda item: item[0])
     out = list(zip(*obsinfos))
 
@@ -2042,7 +2044,7 @@ def setup_obsid_bpix(obsinfos, badpixfiles):
                 if not os.path.isfile(bpixfile):
                     raise IOError("Unable to find bad pixel file={} (or .gz version)".format(bpixfile[:-3]))
 
-                v3("Found .gz version of badpixfile=" + bpixfile)
+                v3(f"Found .gz version of badpixfile={bpixfile}")
 
             out.append(bpixfile)
 
@@ -2148,7 +2150,7 @@ def get_observation_xygrids(obsinfos, binval,
     grids = []
     for obs in obsinfos:
         infile = obs.get_evtfile()
-        v3("get_observation_xygrids: infile=" + infile)
+        v3(f"get_observation_xygrids: infile={infile}")
 
         # TODO: we know that this is the same for all files
         if obs.instrument == "ACIS":
@@ -2160,12 +2162,12 @@ def get_observation_xygrids(obsinfos, binval,
 
         # This check should have already been made but just in case
         if chips is None:
-            raise IOError("No {} found in {}!".format(lbl, infile))
+            raise IOError(f"No {lbl} found in {infile}!")
 
-        v3("get_observation_xygrids: instrument={} chips={}".format(obs.instrument, chips))
+        v3(f"get_observation_xygrids: instrument={obs.instrument} chips={chips}")
         (xg, yg) = fileio.find_output_grid2(obs, binval, chips,
                                             tmpdir=tmpdir)
-        v3("get_observation_xygrids: xg={} yg={}".format(xg, yg))
+        v3(f"get_observation_xygrids: xg={xg} yg={yg}")
 
         grids.append((xg, yg))
 
@@ -2181,34 +2183,38 @@ def calculate_output_grid(obs_xygrids,
     """Calculate the output grid for the final image. The obs_xygrids
     array is the return value from get_observation_xygrids().
 
-    The return value is an array of (xgrid,yfrid) objects.  At present
+    The return value is an array of (xgrid,ygrid) objects.  At present
     all elements are the same, but this may change.
     """
 
     ninfiles = len(obs_xygrids)
-    v3("calculate_output_grid: combining {} grids".format(ninfiles))
+    v3(f"calculate_output_grid: combining {ninfiles} grids")
     (xunion, yunion) = obs_xygrids[0]
     for (xg, yg) in obs_xygrids[1:]:
         (xunion, yunion) = (xunion.union(xg), yunion.union(yg))
 
-    v3("calculate_output_grid: union={} {}".format(xunion, yunion))
+    v3(f"calculate_output_grid: union={xunion} {yunion}")
     (xlo, xhi) = xunion.get_limits()
     (ylo, yhi) = yunion.get_limits()
-    v3("calculate_output_grid: limits={}:{} {}:{}".format(xlo, xhi, ylo, yhi))
+    v3(f"calculate_output_grid: limits={xlo}:{xhi} {ylo}:{yhi}")
 
     if size is not None:
 
-        v3("calculate_output_grid: max grid size = {}".format(size))
+        # We need to re-generate the grid limits since the output is
+        # unlikely to be square. This is awkward as we also want to
+        # ensure we have "nice" limits.
+
+        v3(f"calculate_output_grid: max grid size = {size}")
         pixsize = max([(xhi - xlo) * 1.0 / size,
                        (yhi - ylo) * 1.0 / size])
         if int(pixsize) == pixsize:
             pixsize = int(pixsize)
 
-        v3("calculate_output_grid: -> pixsize = {}".format(pixsize))
+        v3(f"calculate_output_grid: -> pixsize = {pixsize}")
         xrng = AxisRange(xlo, xhi, pixsize)
         yrng = AxisRange(ylo, yhi, pixsize)
-        xstr = "{}".format(xrng)
-        ystr = "{}".format(yrng)
+        xstr = str(xrng)
+        ystr = str(yrng)
         nx = xrng.nbins
         ny = yrng.nbins
 
@@ -2217,16 +2223,16 @@ def calculate_output_grid(obs_xygrids,
     else:
         nx = xunion.nbins
         ny = yunion.nbins
-        xstr = "{}".format(xunion)
-        ystr = "{}".format(yunion)
+        xstr = str(xunion)
+        ystr = str(yunion)
         pixsize = xunion.size
 
         xygrids = [(xunion.copy(), yunion.copy()) for i in range(ninfiles)]
 
     pixsize = utils.sky_to_arcsec(instrume, pixsize)
 
-    v1("\nThe merged images will have {} by {} pixels, a pixel size of {} arcsec,".format(nx, ny, pixsize))
-    v1("    and cover x={}, y={}.".format(xstr, ystr))
+    v1(f"\nThe merged images will have {nx} by {ny} pixels, a pixel size of {pixsize} arcsec,")
+    v1(f"    and cover x={xstr}, y={ystr}.")
 
     return xygrids
 
@@ -2288,8 +2294,8 @@ def matchup_xygrids_user(xygrid, obsinfos, binsize, sizes, xrange, yrange,
 
     pixsize = utils.sky_to_arcsec(obsinfos[0].instrument, binsize)
 
-    v1("\nThe merged images will have {} by {} pixels, a pixel size of {} arcsec,".format(int(nx), int(ny), pixsize))
-    v1("    and cover x={}, y={}.".format(xrng, yrng))
+    v1(f"\nThe merged images will have {int(nx)} by {int(ny)} pixels, a pixel size of {pixsize} arcsec,")
+    v1(f"    and cover x={xrng}, y={yrng}.")
 
     return (xygrids, chipslist, process)
 

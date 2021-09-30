@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2011, 2014, 2015, 2016, 2017
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2011, 2014, 2015, 2016, 2017, 2021
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -51,7 +51,7 @@ def _is_int(ival):
     return np.int(ival) == ival
 
 
-class AxisRange(object):
+class AxisRange:
     """Represent an axis range in DM syntax. There's
     a minimum, maximum, and bin size (defaults to 1).
     This is intended for "physical" or "logical"
@@ -88,10 +88,10 @@ class AxisRange(object):
     def __init__(self, minval, maxval, size=1):
 
         if minval >= maxval:
-            raise ValueError("Expected minval < maxval, sent {} and {}".format(minval, maxval))
+            raise ValueError(f"Expected minval < maxval, sent {minval} and {maxval}")
 
         if size <= 0:
-            raise ValueError("Expected the size to be > 0, sent {}".format(size))
+            raise ValueError(f"Expected the size to be > 0, sent {size}")
 
         lo = minval
         hi = maxval
@@ -142,21 +142,15 @@ class AxisRange(object):
         return self._nbins
 
     def __repr__(self):
-        return "{}({}, {}, {})".format(self.__class__.__name__,
-                                       self.minval, self.maxval,
-                                       self.size)
+        return f"{self.__class__.__name__}({self.minval}, {self.maxval}, {self.size})"
 
     def __str__(self):
-        return "{}:{}:{}".format(self.minval,
-                                 self.maxval,
-                                 self.size)
+        return f"{self.minval}:{self.maxval}:{self.size}"
 
     def as_grid(self):
         "Return a string representation lo:hi:#nbins"
 
-        return "{}:{}:#{}".format(self.minval,
-                                  self.maxval,
-                                  self.nbins)
+        return f"{self.minval}:{self.maxval}:#{self.nbins}"
 
     def copy(self):
         """Returns a copy of the object."""
@@ -267,7 +261,7 @@ class AxisRange(object):
             raise TypeError("union() requires an AxisRange argument!")
 
         if self.size != other.size:
-            raise ValueError("union() requires equal bin size: sent {} and {}".format(self.size, other.size))
+            raise ValueError(f"union() requires equal bin size: sent {self.size} and {other.size}")
 
         l1 = self.minval
         u1 = self.maxval
@@ -306,7 +300,7 @@ class AxisRange(object):
             raise TypeError("intersect() requires an AxisRange argument!")
 
         if self.size != other.size:
-            raise ValueError("intersect() requires equal bin size: sent {} and {}".format(self.size, other.size))
+            raise ValueError(f"intersect() requires equal bin size: sent {self.size} and {other.size}")
 
         if self.check_overlap(other):
             l1 = self.minval
@@ -317,8 +311,7 @@ class AxisRange(object):
 
             return self.__class__(max(l1, l2), min(u1, u2), self.size)
 
-        else:
-            return None
+        return None
 
     def check_point(self, x):
         """Returns True if x is >= minval and < maxval."""
@@ -419,33 +412,31 @@ class FOVRegion:
             fname = fov
 
         if pixsize <= 0:
-            raise ValueError("pixsize must be > 0, not {}".format(pixsize))
+            raise ValueError(f"pixsize must be > 0, not {pixsize}")
 
         self.filename = os.path.abspath(fname)
         self.pixsize  = pixsize
         self._read_input(cr)
 
     def __repr__(self):
-        out = "{}('{}'".format(self.__class__.__name__, self.filename)
+        out = f"{self.__class__.__name__}('{self.filename}'"
         if self.pixsize != 1:
-            out += ",pixsize={}".format(self.pixsize)
+            out += f",pixsize={self.pixsize}"
 
         out += ")"
         return out
 
     def __str__(self):
-        out = ["FOV      : {}".format(self.filename),
-               "Obs Id   : {}".format(self.obsid),
-               "Detector : {}".format(self.detector)
+        out = [f"FOV      : {self.filename}",
+               f"Obs Id   : {self.obsid}",
+               f"Detector : {self.detector}"
                ]
-        out.extend(["CCD {}    : X={} Y={}".format(c,
-                                                   self.ranges[c][0],
-                                                   self.ranges[c][1])
+        out.extend([f"CCD {c}    : X={self.ranges[c][0]} Y={self.ranges[c][1]}"
                     for c in self.ccd_ids])
 
         if len(self.ccd_ids) > 1:
-            out.append("Combined : X={} Y={}".format(self.range[0],
-                                                     self.range[1]))
+            out.append(f"Combined : X={self.range[0]} Y={self.range[1]}")
+
         return "\n".join(out)
 
     def _read_input(self, cr):
@@ -460,31 +451,31 @@ class FOVRegion:
         fname = self.filename
         pixsize = self.pixsize
 
-        v3("Validating input from {}".format(fname))
+        v3(f"Validating input from {fname}")
 
         if cr.get_nrows() < 1:
-            raise IOError("No data found in {}".format(fname))
+            raise IOError(f"No data found in {fname}")
 
         # We always check for EQPOS, even though this may not be
         # required by the user.
         cnames = ["CCD_ID", "POS", "EQPOS", "SHAPE"]
         for cname in cnames:
             if not cr.column_exists(cname):
-                raise IOError("Column {} not found in {}".format(cname, fname))
+                raise IOError(f"Column {cname} not found in {fname}")
 
         v3("Columns exist")
 
         keys = ["OBS_ID", "INSTRUME", "DETNAM"]
         for key in keys:
             if not cr.key_exists(key):
-                raise IOError("Keyword {} not found in {}".format(key, fname))
+                raise IOError(f"Keyword {key} not found in {fname}")
 
         v3("Keys exist")
 
         shapes = cr.get_column("SHAPE").values
         idx, = np.where(shapes == "Polygon")
         if len(idx) == 0:
-            raise IOError("No Polygons found in {}".format(fname))
+            raise IOError(f"No Polygons found in {fname}")
 
         self.ccd_ids = cr.get_column("CCD_ID").values[idx].copy()
         pos   = cr.get_column("POS").values[idx].copy()
@@ -500,7 +491,7 @@ class FOVRegion:
             idx = ((x == x[0]) & (y == y[0])).nonzero()[0]
             nidx = len(idx)
             if nidx < 2:
-                raise IOError("Unable to find end of region for ccd_id={}".format(self.ccd_ids[rnum]))
+                raise IOError(f"Unable to find end of region for ccd_id={self.ccd_ids[rnum]}")
 
             # Use the last point that is equal (in case there are
             # multiple occurrences, which is highly unlikely)
@@ -526,18 +517,18 @@ class FOVRegion:
         for i in range(0, len(self.ccd_ids)):
 
             ccd = self.ccd_ids[i]
-            v3("Cleaning up polygon data for ccd {}".format(ccd))
-            v5("x = {}".format(pos[i][0]))
-            v5("y = {}".format(pos[i][1]))
+            v3(f"Cleaning up polygon data for ccd {ccd}")
+            v5(f"x = {pos[i][0]}")
+            v5(f"y = {pos[i][1]}")
             ns = getidx(i)
 
-            v4("Cut at element {}".format(ns))
+            v4(f"Cut at element {ns}")
 
             self.pos[ccd] = pos[i, :, :ns].copy()
             self.eqpos[ccd] = eqpos[i, :, :ns].copy()
 
-            v5("-> x = {}".format(self.pos[ccd][0]))
-            v5("-> y = {}".format(self.pos[ccd][1]))
+            v5(f"-> x = {self.pos[ccd][0]}")
+            v5(f"-> y = {self.pos[ccd][1]}")
 
             # some repeated work with the *_min/max fields below
             #
@@ -593,5 +584,5 @@ class FOVRegion:
             bad = [str(d)
                    for d in cr.get_column("CCD_ID").values[idx]]
             wmsg = "WARNING: Unable to read regions for CCDs " + \
-                "{} in obsid {}".format(", ".join(bad), self.obsid)
+                f"{', '.join(bad)} in obsid {self.obsid}"
             v1(wmsg)
