@@ -2203,14 +2203,63 @@ def calculate_output_grid(obs_xygrids,
         # We need to re-generate the grid limits since the output is
         # unlikely to be square. This is awkward as we also want to
         # ensure we have "nice" limits.
-
+        #
+        # So xlo/xhi and ylo/yhi are assumed to represent the
+        # minimum and maximum edges of the two pixels respectively,
+        # so (hi - lo) / size will equal the pixel size.
+        #
         v3(f"calculate_output_grid: max grid size = {size}")
         pixsize = max([(xhi - xlo) * 1.0 / size,
                        (yhi - ylo) * 1.0 / size])
+        v3(f" - original pixel size = {pixsize}")
         if int(pixsize) == pixsize:
             pixsize = int(pixsize)
 
+        else:
+            # We are implicitly assuming that the pixel size is > 1
+            # here. We could support smaller pixel sizes but it's
+            # unlikely to be worth it.
+            #
+            if pixsize < 1:
+                v1(f"WARNING: estimated pixel size ({pixsize}) is too small to be used with the maxsize argument")
+
+            # Adjust the pixel size so it's "nice" - that is
+            # something we can easily define the edges of the
+            # bins and is easy to use. The idea is to use a small
+            # number of possibilites:
+            #   x.2, x.4, x.6, x.8
+            # the idea being that these lead to bin edges that can
+            # be described using %.1f
+            #
+            # we rely on integer values being handled differently.
+            #
+            # Subtract an "error term" so that x.2 is treated as x.2;
+            # we could also .resolution instead.
+            #
+            # Perhaps we should just bump up the pixel size to the
+            # next integer value?
+            #
+            res = np.finfo('float32').eps
+            base = int(pixsize)
+            delta = pixsize - base - res
+
+            if delta > 0.8:
+                pixsize = base + 1
+            elif delta > 0.6:
+                pixsize = base + 0.8
+            elif delta > 0.4:
+                pixsize = base + 0.6
+            elif delta > 0.2:
+                pixsize = base + 0.4
+            else:
+                pixsize = base + 0.2
+
+        v3(f" - final pixel size = {pixsize}")
         v3(f"calculate_output_grid: -> pixsize = {pixsize}")
+
+        # Note that AxisRange will extend the lo/hi ranges so that
+        # the grid is "sensible".
+        #
         xrng = AxisRange(xlo, xhi, pixsize)
         yrng = AxisRange(ylo, yhi, pixsize)
         xstr = str(xrng)
