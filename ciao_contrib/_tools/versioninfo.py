@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2011, 2014, 2015, 2016, 2019, 2020
+#  Copyright (C) 2011, 2014, 2015, 2016, 2019, 2020, 2021
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -452,5 +452,21 @@ def check_conda_versions(ciao):
     for name, version in names:
         print(f"  {name} : {found[name]['version']} -> {version}")
 
+    spacing = "       "
+
     print("")
+    print("The update can be checked with:")
+    print("")
+    tokens = " ".join([n[0] for n in names])
+    print(f"  conda update {tokens} --no-deps \\")
+
+    # use a set to ensure we don't repeat the same channel
+    for chan in {v['channel'] for v in found.values()}:
+        print(f"{spacing}-c {chan} \\")
+
+    print(f"{spacing}--dry-run")
+    print("")
+    print("and then repeated without the '--dry-run' option to make the change.")
+    print("")
+
     return False

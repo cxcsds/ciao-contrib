@@ -54,7 +54,7 @@ import sys
 from optparse import OptionParser
 
 toolname = "check_ciao_version"
-version = "10 March 2021"
+version = "29 September 2021"
 
 try:
     from ciao_contrib import logger_wrapper as lw
@@ -101,7 +101,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 """
 
 
-def report_update_info():
+def report_update_info_ciao_install():
     "Write out generic 'how to install CIAO' info"
 
     print("\nPlease use the ciao-install script from")
@@ -132,7 +132,7 @@ def compare_versions(ciao, latest, installed):
         print(f"The CIAO installation at {ciao}")
         print(f"   has version             {vinstalled}")
         print(f"   the released version is {vlatest}")
-        report_update_info()
+        report_update_info_ciao_install()
         sys.exit(1)
 
     updates = []
@@ -242,6 +242,8 @@ def doit():
 
     installed = versioninfo.get_installed_versions(ciao)
     if installed is None:
+        # We rely on conda for all the checks so can exit here
+        #
         flag = versioninfo.check_conda_versions(ciao)
         sys.exit(0 if flag else 1)
 
@@ -254,7 +256,8 @@ def doit():
     flag = compare_versions(ciao, latest, installed)
     flag &= compare_caldb()
     if not flag:
-        report_update_info()
+        report_update_info_ciao_install()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
