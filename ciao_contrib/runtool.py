@@ -58,18 +58,18 @@ or even
 Once the tool has been run the parameters can be accessed; for instance
 
   dmstat("simple.dat", median=True)
-  print("Median = {0}".format(dmstat.out_median))
+  print(f"Median = {dmstat.out_median}")
 
 or
 
   acis_bkgrnd_lookup("evt2.fits")
   match = acis_bkgrnd_lookup.outfile
-  print("Found file: {0}".format(match))
+  print(f"Found file: {match}")
 
 There is also support for those parameter files which have no associated
 tools - e.g. lut, colors, or ardlib. So you can say
 
-  print("Location of LUT 'a' is {0}".format(lut.a))
+  print(f"Location of LUT 'a' is {lut.a}")
 
 but you cannot run these commands. Attempting to do so will result in
 an error like
@@ -123,7 +123,7 @@ to refer to the AXAF_HRC-I_BADPIX_FILE parameter of ardlib.
 Values
 ------
 
-Plesae see the NOTE below for information on how this information is
+Please see the NOTE below for information on how this information is
 slightly different for those tools written as shell scripts.
 
 When the module is imported, each tool is set up so that its
@@ -137,7 +137,8 @@ When a parameter is set for a tool - e.g.
   acis_process_events.infile = "evt2.fits"
 
 then this setting ONLY applies to this routine; it does NOT write the
-value to the on-disk parameter file for the tool.
+value to the on-disk parameter file for the tool (unless you use the
+write_params method, as described below).
 
 If a tool relies on any other parameter file - e.g. many of the
 Chandra instrument tools will implicitly use the ardlib parameter file
@@ -168,6 +169,34 @@ parameter file - e.g.
 
   ardlib.read_params()
   ardlib.read_params("store.par")
+
+Converting between Python and parameter types
+---------------------------------------------
+
+The parameter types have been converted into Python equivalents using
+the following table:
+
+  Parameter type    Python type
+  s                 string
+  f                 string
+  b                 bool
+  i                 int
+  r                 float
+
+When using string or filename parameters, you do not need to add
+quotes around the name if it contains a space - so you can say
+
+  inf = "evt2.fits[energy=500:2000,sky=region(src.reg)][bin sky=::1]"
+  dmcopy(inf, "img.fits")
+
+There is some support for converting Python values to the correct
+type - e.g. for a bool parameter called boolpar you can say
+
+  tool.boolpar = "yes"
+
+but it is **strongly suggested** that you use the correct Python type,
+as the conversion of other types is not guaranteed to work reliably or
+match the rules used by the CXC parameter library.
 
 Handling of stacks
 ------------------
@@ -237,7 +266,7 @@ The tool also acts as a Python iterator, so you can loop through
 the parameter names and values using code like the following:
 
   for (pname, pval) in dmimgcalc:
-    print("{0} = {1}".format(pname, pval))
+      print(f"{pname} = {pval}")
 
 Resetting parameter values
 --------------------------
@@ -255,25 +284,6 @@ There is limited support for setting a parameter value using the
 ")sclmin", which mean use the value of the sclmin parameter of the
 tool . Such re-directs can only be used to parameter values from the
 same tool, so the value ")dmstat.centroid" is not permitted.
-
-Types
------
-
-The parameter types have been converted into Python equivalents using
-the following table:
-
-  Parameter type    Python type
-  s                 string
-  f                 string
-  b                 bool
-  i                 int
-  r                 float
-
-When using string or filename parameters, you do not need to add
-quotes around the name if it contains a space - so you can say
-
-  inf = "evt2.fits[energy=500:2000,sky=region(src.reg)][bin sky=::1]"
-  dmcopy(inf, "img.fits")
 
 Excluded parameters
 -------------------
@@ -382,11 +392,11 @@ An example of its use is
       mki.maskfile = "msk1.fits"
 
       for ccd in [0,1,2,3]:
-          mki.obsfile = "asphist{0}.fits[asphist]".format(ccd)
-          mki.detsubsys = "ACIS-{0}".format(ccd)
+          mki.obsfile = f"asphist{ccd}.fits[asphist]"
+          mki.detsubsys = f"ACIS-{ccd}"
           for energy in [1,2,3,4,5]:
               mki(monoenergy=energy,
-                  out="imap{0}_e{1}.fits".format(ccd,energy))
+                  out=f"imap{ccd}_e{energy}.fits")
 
 See 'help new_pfiles_environment' for more information.
 
@@ -630,7 +640,7 @@ def _time_delta(stime, etime):
         return int(f + 0.5)
 
     def stringify(val, unit):
-        out = "{0} {1}".format(val, unit)
+        out = f"{val} {unit}"
         if val > 1:
             out += "s"
         return out
@@ -645,17 +655,17 @@ def _time_delta(stime, etime):
     if d > 0:
         lbl = stringify(d, "day")
         if h > 0:
-            lbl += " {0}".format(stringify(h, "hour"))
+            lbl += f' {stringify(h, "hour")}'
 
     elif h > 0:
         lbl = stringify(h, "hour")
         if m > 0:
-            lbl += " {0}".format(stringify(m, "minute"))
+            lbl += f' {stringify(m, "minute")}'
 
     elif m > 0:
         lbl = stringify(m, "minute")
         if s > 0:
-            lbl += " {0}".format(stringify(s, "second"))
+            lbl += f' {stringify(s, "second")}'
 
     else:
         lbl = stringify(s, "second")
@@ -684,7 +694,7 @@ def _quote_value(val):
     string adding quotes if necessary."""
 
     if _value_needs_quoting(val):
-        return '"{0}"'.format(val)
+        return f'"{val}"'
     else:
         return val
 
@@ -698,7 +708,7 @@ def _log_par_file_contents(parfile):
     v4("***** Start of parameter file")
     with open(parfile, "r") as ofh:
         for line in ofh.readlines():
-            v4("** {0}".format(line.strip()))
+            v4(f"** {line.strip()}")
 
     v4("***** End of parameter file")
 
@@ -747,14 +757,14 @@ class CIAOParameter(object):
     parameter settings as if you were using the pset/pget command-line
     tools, but using an attribute style - e.g.
 
-      print("The green color is {0}".format(colors.green))
+      print(f"The green color is {colors.green}")
       ardlib.AXAF_ACIS0_BADPIX_FILE = "bpix.fits[ccd_id=0]"
 
     To list all the parameters use the print() command, or convert to
     a string; for example
 
       print(geom)
-      txt = "We have\n\n{0}".format(geom)
+      txt = f"We have\n\n{geom}"
 
     As with the command-line tools, the parameters can be specified
     using any unique prefix of the name (case sensitive), so you can
@@ -838,7 +848,7 @@ class CIAOParameter(object):
 
         # at present do nothing extra
         if pname not in self._parnames:
-            raise ValueError("Invalid parameter name: {0}".format(pname))
+            raise ValueError(f"Invalid parameter name: {pname}")
 
         val = self._settings[pname]
         return val
@@ -856,7 +866,7 @@ class CIAOParameter(object):
 
         # at present do nothing extra
         if pname not in self._parnames:
-            raise ValueError("Invalid parameter name: {0}".format(pname))
+            raise ValueError(f"Invalid parameter name: {pname}")
 
         if is_an_iterable(nval):
             # should really enforce the type constraint for safety
@@ -868,7 +878,7 @@ class CIAOParameter(object):
             self._settings[pname] = nval
 
     def __repr__(self):
-        return "<CIAO parameter file: {0}>".format(self._toolname)
+        return f"<CIAO parameter file: {self._toolname}>"
 
     def _param_as_string(self, pname):
         "Return a string representation of the parameter"
@@ -890,11 +900,11 @@ class CIAOParameter(object):
         if pi.type in "sf" and pval is None:
             pval = ""
 
-        return "{0:>20} = {1!s:<15}  {2}".format(pname, pval, pi.help)
+        return f"{pname:>20} = {pval!s:<15}  {pi.help}"
 
     def __str__(self):
         """Return a multi-line output listing the parameter names and values"""
-        out = ["Parameters for {0}:".format(self._toolname)]
+        out = [f"Parameters for {self._toolname}:"]
 
         if len(self._required) > 0:
             out.extend(["", "Required parameters:"])
@@ -916,7 +926,7 @@ class CIAOParameter(object):
 
     def punlearn(self):
         """Reset the parameter values to their default settings"""
-        v5("Calling punlearn on tool {0}".format(self._toolname))
+        v5(f"Calling punlearn on tool {self._toolname}")
         self._settings = self._defaults.copy()
 
     def _expand_parname(self, pname):
@@ -930,16 +940,15 @@ class CIAOParameter(object):
         ans = _partial_match(self._parnames, pname)
         if ans is None:
             raise UnknownParamError(
-                "There is no parameter for {0} that matches '{1}'".format(self._toolname, pname))
+                f"There is no parameter for {self._toolname} that matches '{pname}'")
 
         elif ans[1]:
             return ans[0]
 
         else:
+            choices = " ".join(ans[0])
             raise UnknownParamError(
-                "Multiple matches for {0} parameter '{1}', choose from:\n  {2}".format(self._toolname,
-                                                                                       pname,
-                                                                                       " ".join(ans[0])))
+                f"Multiple matches for {self._toolname} parameter '{pname}', choose from:\n  {choices}")
 
     def _validate(self, pname, val, store=True):
         """Check that val is a valid value for the parameter and
@@ -947,9 +956,9 @@ class CIAOParameter(object):
         name, and not a partial match. val may be a string redirect.
         """
 
-        v5("Entering _validate for name={} ".format(pname) +
-           "val={} (type={}) ".format(val, type(val)) +
-           "store={}".format(store))
+        v5(f"Entering _validate for name={pname} " +
+           f"val={val} (type={type(val)}) " +
+           f"store={store}")
 
         pinfo = self._store[pname]
         ptype = pinfo.type
@@ -959,24 +968,25 @@ class CIAOParameter(object):
         is_redirect = str(val).startswith(")")
         if is_redirect:
             pval = self._eval_redirect(val)
-            pstr = "{0} -> {1}".format(val, pval)
+            pstr = f"{val} -> {pval}"
         else:
             pval = val
             pstr = str(val)
 
         isiterable = is_an_iterable(pval)
         if isiterable and ptype in "bir":
-            raise ValueError("The {0}.{1} value can not be set to an array (sent {2})".format(self._toolname, pname, pstr))
+            raise ValueError(f"The {self._toolname}.{pname} value can not be set to an array (sent {pstr})")
 
+        v5(f"Validating {self._toolname}.{pname} val={pstr} as ...")
         if ptype == "b":
-            v5("Validating {0}.{1} val={2} as a boolean".format(self._toolname, pname, pstr))
+            v5("... a boolean")
             if pval == "no":
                 pval = False
             else:
                 pval = bool(pval)
 
         elif ptype == "i":
-            v5("Validating {0}.{1} val={2} as an integer".format(self._toolname, pname, pstr))
+            v5("... an integer")
             if pval == "INDEF":
                 pval = None
 
@@ -987,10 +997,10 @@ class CIAOParameter(object):
                 try:
                     pval = int(pval)
                 except (ValueError, TypeError):
-                    raise ValueError("The {0}.{1} parameter must be an integer, sent {2}".format(self._toolname, pname, pstr))
+                    raise ValueError(f"The {self._toolname}.{pname} parameter must be an integer, sent {pstr}")
 
         elif ptype == "r":
-            v5("Validating {0}.{1} val={2} as a float".format(self._toolname, pname, pstr))
+            v5("... a float")
             if pval == "INDEF":
                 pval = None
 
@@ -1001,12 +1011,14 @@ class CIAOParameter(object):
                 try:
                     pval = float(pval)
                 except (ValueError, TypeError):
-                    raise ValueError("The {0}.{1} parameter must be a float, sent {2}".format(self._toolname, pname, pstr))
+                    raise ValueError(f"The {self._toolname}.{pname} parameter must be a float, sent {pstr}")
 
         elif pval == "":
+            v5("... a ''")
             pval = None
 
         elif pval is not None:
+            v5("... something else")
             if isiterable:
                 # assuming you can't have a stack with an options setting
                 pval = [str(v) for v in pval]
@@ -1015,29 +1027,27 @@ class CIAOParameter(object):
 
         if hasattr(pinfo, "lo") and hasattr(pinfo, "hi"):
 
-            v5("Validating {0}.{1} val={2} against min/max={3}/{4}".format(self._toolname, pname, pval, pinfo.lo, pinfo.hi))
+            v5(f"Validating {self._toolname}.{pname} val={pval} against min/max={pinfo.lo}/{pinfo.hi}")
 
             if pval is not None:
                 if not self._check_param_limit(pname, pval, pinfo.lo, operator.gt):
-                    raise ValueError("{0}.{1} must be >= {2} but set to {3}".format(
-                        self._toolname, pname, pinfo.lo, pstr))
+                    raise ValueError(f"{self._toolname}.{pname} must be >= {pinfo.lo} but set to {pstr}")
 
                 if not self._check_param_limit(pname, pval, pinfo.hi, operator.lt):
-                    raise ValueError("{0}.{1} must be <= {2} but set to {3}".format(
-                        self._toolname, pname, pinfo.hi, pstr))
+                    raise ValueError(f"{self._toolname}.{pname} must be <= {pinfo.hi} but set to {pstr}")
 
         elif hasattr(pinfo, "options"):
 
-            v5("Validating {0}.{1} val={2} against {3}".format(self._toolname, pname, pval, pinfo.options))
+            v5(f"Validating {self._toolname}.{pname} val={pval} against {pinfo.options}")
 
             matches = _partial_match(pinfo.options, pval, qtype=ptype)
             if matches is None:
-                efmt = "The parameter {0} was set to {1} when it must be one of:\n  {2}"
+                efmt = "The parameter {} was set to {} when it must be one of:\n  {}"
                 raise ValueError(efmt.format(pname, pstr, " ".join([str(o) for o in pinfo.options])))
 
             elif not matches[1]:
                 # can only get multiple matches for strings
-                raise ValueError("The parameter {0} was set to {1} which matches:\n  {2}".format(pname, pstr, " ".join(matches[0])))
+                raise ValueError("The parameter {} was set to {} which matches:\n  {}".format(pname, pstr, " ".join(matches[0])))
 
             else:
                 pval = matches[0]
@@ -1051,7 +1061,7 @@ class CIAOParameter(object):
             else:
                 nval = pval
 
-            v5("Setting {0}.{1} to {2} ({3})".format(self._toolname, pname, nval, type(nval)))
+            v5(f"Setting {self._toolname}.{pname} to {nval} ({type(nval)})")
             self._set_param_value(pname, nval)
 
     def __getattr__(self, parname):
@@ -1059,7 +1069,7 @@ class CIAOParameter(object):
         try:
             pname = self._expand_parname(parname)
         except UnknownParamError as ue:
-            raise AttributeError(str(ue))
+            raise AttributeError(str(ue)) from None
 
         return self._get_param_value(pname)
 
@@ -1075,7 +1085,7 @@ class CIAOParameter(object):
             try:
                 pname = self._expand_parname(name)
             except UnknownParamError as ue:
-                raise AttributeError(str(ue))
+                raise AttributeError(str(ue)) from None
 
             self._validate(pname, val, store=True)
 
@@ -1119,19 +1129,19 @@ class CIAOParameter(object):
         """
 
         toolname = self._toolname
-        v5("_create_parfile_copy called for {0} with parfile={1}".format(toolname, parfile))
+        v5(f"_create_parfile_copy called for {toolname} with parfile={parfile}")
 
         if parfile is None:
             # tmpfile = True
             try:
                 tmpdir = os.environ["ASCDS_WORK_PATH"]
             except KeyError:
-                v2("WARNING: $ASCDS_WORK_PATH is not set, using default temp dir to create a parameter file for {}".format(self._toolname))
+                v2(f"WARNING: $ASCDS_WORK_PATH is not set, using default temp dir to create a parameter file for {toolname}")
                 tmpdir = None
             # Add in the toolname to the suffix to make tracking down what
             # is being run a bit easier
             pfh = tempfile.NamedTemporaryFile(dir=tmpdir,
-                                              suffix=".{}.par".format(toolname),
+                                              suffix=f".{toolname}.par",
                                               delete=False,
                                               mode="w")
             parfile = pfh.name[:]
@@ -1142,7 +1152,7 @@ class CIAOParameter(object):
 
         try:
             ofile = pio.paramgetpath(toolname)
-            v5("Copying par file {0} to {1}".format(ofile, parfile))
+            v5(f"Copying par file {ofile} to {parfile}")
             with open(ofile, "r") as ifh:
                 for line in ifh.readlines():
                     pfh.write(line)
@@ -1150,7 +1160,7 @@ class CIAOParameter(object):
             pfh.close()
 
         except Exception:
-            v5("Deleting par file due to error: {0}".format(parfile))
+            v5(f"Deleting par file due to error: {parfile}")
             os.unlink(parfile)
             raise
 
@@ -1182,21 +1192,21 @@ class CIAOParameter(object):
                 try:
                     pval = self._get_param_value(pname)
                 except KeyError:
-                    v5("skipping setting parameter {0} as not set".format(pname))
+                    v5(f"skipping setting parameter {pname} as not set")
                     continue
 
                 oname = self._orig_parnames[pname]
                 ptype = self._store[pname].type
                 if oname == pname:
-                    v5("setting parameter {0} type={1} val={2}".format(pname, ptype, pval))
+                    v5(f"setting parameter {pname} type={ptype} val={pval}")
                 else:
-                    v5("setting parameter {0}->{1} type={2} val={3}".format(pname, oname, ptype, pval))
+                    v5(f"setting parameter {pname}->{oname} type={ptype} val={pval}")
 
                 nval = _from_python(ptype, pval)
 
                 if len(nval) > 1023:
                     if ptype in "bir":
-                        raise ValueError("Parameter {0}.{1} exceeds 1023 characters in length!".format(self._toolname, pname))
+                        raise ValueError(f"Parameter {self._toolname}.{pname} exceeds 1023 characters in length!")
 
                     # We rely on the calling routine to delete these
                     # files, even in case of an error. The parameter name
@@ -1206,10 +1216,10 @@ class CIAOParameter(object):
                     sfh = tempfile.NamedTemporaryFile(dir=tmpdir,
                                                       delete=False,
                                                       mode="w",
-                                                      suffix=".{}.stk".format(pname))
+                                                      suffix=f".{pname}.stk")
                     sname = sfh.name[:]
                     stackfiles[pname] = sname
-                    v5("setting parameter {0} via an external stack file: {1}".format(pname, sname))
+                    v5(f"setting parameter {pname} via an external stack file: {sname}")
 
                     # Not sure if a really long file name is okay in a stack file
                     # but the only other solution is to exit with an error.
@@ -1247,7 +1257,7 @@ class CIAOParameter(object):
             #
             if type(ee) == Exception:
                 raise IOError("Unable to write to parameter file:\n" +
-                              "  {}".format(parfile))
+                              f"  {parfile}")
             else:
                 raise
 
@@ -1272,7 +1282,7 @@ class CIAOParameter(object):
                 try:
                     # pval = "@" + stackfiles[pname]
                     pval = "@-" + stackfiles[pname]
-                    v5("parameter {0} has been set to an ".format(pname) +
+                    v5(f"parameter {pname} has been set to an " +
                        "external stack file")
 
                 except KeyError:
@@ -1281,15 +1291,15 @@ class CIAOParameter(object):
 
                     except KeyError:
                         v5("skipping verifying parameter " +
-                           "{0} as not set".format(pname))
+                           f"{pname} as not set")
                         continue
 
                 oname = self._orig_parnames[pname]
                 ptype = self._store[pname].type
                 if oname == pname:
-                    v5("verifying parameter {0} type={1} is val={2}".format(pname, ptype, pval))
+                    v5(f"verifying parameter {pname} type={ptype} is val={pval}")
                 else:
-                    v5("verifying parameter {0}<-{1} type={2} is val={3}".format(pname, oname, ptype, pval))
+                    v5(f"verifying parameter {pname}<-{oname} type={ptype} is val={pval}")
 
                 oval = _to_python(ptype, pio.pget(fp, oname))
 
@@ -1308,20 +1318,19 @@ class CIAOParameter(object):
                 #
                 if str(pval).startswith(")"):
                     nval = _to_python(ptype, pio.pget(fp, pval[1:]))
-                    pstr = "{0} -> {1}".format(pval, nval)
+                    pstr = f"{pval} -> {nval}"
                     pval = nval
 
                 elif str(pval).startswith("${"):
                     nval = os.path.expandvars(pval)
-                    pstr = "{0} -> {1}".format(pval, nval)
+                    pstr = f"{pval} -> {nval}"
                     pval = nval
 
                 else:
                     pstr = pval
 
                 if not _values_equal(ptype, oval, pval):
-                    raise IOError("Unable to store {0}.{1}, should be\n    '{2}' ({3})\n  but parameter file contains\n    '{4}' ({5})".format(
-                        self._toolname, pname, pstr, type(pval), oval, type(oval)))
+                    raise IOError(f"Unable to store {self._toolname}.{pname}, should be\n    '{pstr}' ({type(pval)})\n  but parameter file contains\n    '{oval}' ({type(oval)})")
 
             pio.paramclose(fp)
 
@@ -1331,7 +1340,7 @@ class CIAOParameter(object):
             #
             if type(ee) == Exception:
                 raise IOError("Unable to check values in parameter " +
-                              "file:\n  {}".format(parfile))
+                              f"file:\n  {parfile}")
             else:
                 raise
 
@@ -1354,10 +1363,9 @@ class CIAOParameter(object):
         """
 
         if parfile != self._toolname and not parfile.endswith(".par"):
-            raise ValueError("parfile argument is not the tool name nor does it end in .par ({0})".format(parfile))
+            raise ValueError(f"parfile argument is not the tool name nor does it end in .par ({parfile})")
 
-        v5("_update_parfile[{0}] called for {1}".format(self._toolname,
-                                                        parfile))
+        v5(f"_update_parfile[{self._toolname}] called for {parfile}")
 
         stackfiles = {}
         try:
@@ -1369,14 +1377,14 @@ class CIAOParameter(object):
             # ensure any temporary stack files are cleaned up
             for sname in stackfiles.values():
                 try:
-                    v5("Deleting temporary stack file due to error: {0}".format(sname))
+                    v5(f"Deleting temporary stack file due to error: {sname}")
                     os.unlink(sname)
                 except OSError:
                     pass
 
             raise
 
-        v5("_update_parfile[{0}] returning {1}".format(self._toolname, stackfiles))
+        v5(f"_update_parfile[{self._toolname}] returning {stackfiles}")
         return stackfiles
 
     def _get_command_line_args(self, simplify=True, nameall=False, quote=False):
@@ -1449,16 +1457,16 @@ class CIAOParameter(object):
         if logger.getEffectiveVerbose() < 2:
             return
 
-        out = [">>> {0}".format(self._toolname)]
+        out = [f">>> {self._toolname}"]
         for (pname, pval) in self._get_command_line_args(simplify=simplify, quote=True):
             if pname is None:
                 outstr = pval
             else:
-                outstr = "{0}={1}".format(pname, pval)
+                outstr = f"{pname}={pval}"
 
             out.append(outstr)
 
-        v2("Running tool {0} using:".format(self._toolname))
+        v2(f"Running tool {self._toolname} using:")
         v2(" ".join(out))
 
     def write_params(self, parfile=None):
@@ -1494,9 +1502,9 @@ class CIAOParameter(object):
 
         stackfiles = self._update_parfile(pname)
         if pname == self._toolname:
-            msg = "Wrote to the {0} parameter file".format(self._toolname)
+            msg = f"Wrote to the {self._toolname} parameter file"
         else:
-            msg = "Wrote parameters for {0} to {1}".format(self._toolname, pname)
+            msg = f"Wrote parameters for {self._toolname} to {pname}"
 
         v3(msg)
 
@@ -1505,7 +1513,7 @@ class CIAOParameter(object):
         else:
             v3("Parameters contain temporary stacks:")
             for (k, v) in stackfiles.items():
-                v3("   {0}.{1} -> @-{2}".format(self._toolname, k, v))
+                v3(f"   {self._toolname}.{k} -> @-{v}")
 
             return stackfiles
 
@@ -1543,15 +1551,14 @@ class CIAOParameter(object):
             #
             if type(ee) == Exception:
                 raise IOError("Unable to read from parameter file:" +
-                              "\n  {}".format(pname))
+                              f"\n  {pname}")
             else:
                 raise
 
         if pname == self._toolname:
-            msg = "Read from the {} parameter file".format(self._toolname)
+            msg = f"Read from the {self._toolname} parameter file"
         else:
-            msg = "Read parameters for {} from {}".format(self._toolname,
-                                                          pname)
+            msg = f"Read parameters for {self._toolname} from {pname}"
 
         v3(msg)
 
@@ -1593,14 +1600,14 @@ class CIAOTool(CIAOParameter):
 
       dmstat("evt2.fits[energy=500:7000,sky=region(src.reg)][bin sky=::1]",
              cent=False, med=True)
-      print("Median = {0}".format(dmstat.out_median))
+      print(f"Median = {dmstat.out_median}")
 
     If the tool returns a non-zero status code indicating an error
     then an IOError will be raised.
     """
 
     def __repr__(self):
-        return "<CIAO tool: {0}>".format(self._toolname)
+        return f"<CIAO tool: {self._toolname}>"
 
     def _eval_redirect(self, pval):
         """Return the value pval, which can be a
@@ -1611,19 +1618,17 @@ class CIAOTool(CIAOParameter):
         """
 
         if str(pval).startswith(")"):
-            v5("Expanding redirect: input={0}".format(pval))
+            v5(f"Expanding redirect: input={pval}")
             # the '-'/'_' replacement is prob. not worth doing
             newpar = pval[1:].replace('-', '_')
             if newpar in self._settings:
                 newval = self._eval_redirect(self._get_param_value(newpar))
-                v5(" -> {0}".format(newval))
+                v5(f" -> {newval}")
                 return newval
 
-            else:
-                raise ValueError("Parameter redirect value of {0} is not supported".format(pval))
+            raise ValueError(f"Parameter redirect value of {pval} is not supported")
 
-        else:
-            return pval
+        return pval
 
     def _check_param_limit(self, pname, pval, plimit, op):
         """Check that pval (the value of the parameter pname)
@@ -1684,7 +1689,7 @@ class CIAOTool(CIAOParameter):
         parnames = self._parnames
 
         if len(args) > len(parnames):
-            raise TypeError("{0} takes at most {1} arguments ({2} given)".format(toolname, len(parnames), len(args)))
+            raise TypeError(f"{toolname} takes at most {len(parnames)} arguments ({len(args)} given)")
 
         # We validate the arguments in order; not completely clear it is
         # worth it, but there may be some redirected parameters for which
@@ -1700,9 +1705,7 @@ class CIAOTool(CIAOParameter):
 
         for pname in [pn for pn in self._parnames if pn in nstore]:
             pval = nstore[pname]
-            v5("Setting parameter {0} to {1} [from {2}]".format(pname,
-                                                                pval,
-                                                                type(pval)))
+            v5(f"Setting parameter {pname} to {pval} [from {type(pval)}]")
             self._validate(pname, pval, store=True)
 
     def punlearn(self):
@@ -1774,13 +1777,13 @@ class CIAOToolParFile(CIAOTool):
 
         args = self._get_command_line_args(simplify=False, nameall=True)
         stime = time.localtime()
-        v4("Starting {0} at {1}".format(self._toolname, time.asctime(stime)))
+        v4(f"Starting {self._toolname} at {time.asctime(stime)}")
         self._runtimes = {"start": stime, "args": args}
 
         # As stderr is merged into stdout, only need to care about the
         # first item returned by communicate.
         proc = subprocess.Popen([self._toolname,
-                                 "@@{0}".format(parfile),
+                                 f"@@{parfile}",
                                  "mode=hl"],
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT)
@@ -1791,12 +1794,12 @@ class CIAOToolParFile(CIAOTool):
         rval = proc.returncode
         self._runtimes["code"] = rval
 
-        v4("{0} finished at {1}".format(self._toolname, time.asctime(etime)))
+        v4(f"{self._toolname} finished at {time.asctime(etime)}")
         self._runtimes["end"] = etime
         self._runtimes["delta"] = _time_delta(stime, etime)
         self._runtimes["output"] = sout
-        v4("Run time = {0}".format(self._runtimes["delta"]))
-        v4("Return code = {0}".format(rval))
+        v4(f"Run time = {self._runtimes['delta']}")
+        v4(f"Return code = {rval}")
         return (rval, sout)
 
     def __call__(self, *args, **kwargs):
@@ -1817,12 +1820,12 @@ class CIAOToolParFile(CIAOTool):
                 self.read_params(parfile)
                 for pname in stackfiles:
                     oval = self._get_param_value(pname)
-                    v5("Replacing {0}.{1} = {2}".format(self._toolname, pname, oval))
+                    v5(f"Replacing {self._toolname}.{pname} = {oval}")
                     nval = stk.build(oval)
                     if len(nval) == 1:
                         nval = nval[0]
 
-                    v5("  by {0}".format(nval))
+                    v5(f"  by {nval}")
                     self._set_param_value(pname, nval)
 
                 txt = sout.rstrip()
@@ -1834,14 +1837,14 @@ class CIAOToolParFile(CIAOTool):
             else:
                 sep = "\n  "
                 smsg = sep.join(sout.rstrip().split("\n"))
-                raise IOError("An error occurred while running '{0}':{1}{2}".format(self._toolname, sep, smsg))
+                raise IOError(f"An error occurred while running '{self._toolname}':{sep}{smsg}")
 
         finally:
             for v in stackfiles.values():
-                v5("Deleting stack file: {0}".format(v))
+                v5(f"Deleting stack file: {v}")
                 os.unlink(v)
 
-            v5("Deleting par file: {0}".format(parfile))
+            v5(f"Deleting par file: {parfile}")
             os.unlink(parfile)
 
         return retval
@@ -1879,11 +1882,11 @@ class CIAOToolDirect(CIAOTool):
         self._runtimes = None
 
         args = self._get_command_line_args(simplify=False, nameall=True)
-        v5("Argument list for {0} = \n{1}".format(self._toolname, args))
+        v5(f"Argument list for {self._toolname} = \n{args}")
         pargs = [self._toolname, "mode=hl"]
-        pargs.extend(["{0}={1}".format(name, val) for (name, val) in args])
+        pargs.extend(["{name}={val}" for (name, val) in args])
         stime = time.localtime()
-        v4("Starting {0} at {1}".format(self._toolname, time.asctime(stime)))
+        v4(f"Starting {self._toolname} at {time.asctime(stime)}")
         self._runtimes = {"start": stime, "args": args}
 
         # As stderr is merged into stdout, only need to care about the
@@ -1898,12 +1901,12 @@ class CIAOToolDirect(CIAOTool):
         rval = proc.returncode
         self._runtimes["code"] = rval
 
-        v4("{0} finished at {1}".format(self._toolname, time.asctime(etime)))
+        v4(f"{seld._toolname} finished at {time.asctime(etime)}")
         self._runtimes["end"] = etime
         self._runtimes["delta"] = _time_delta(stime, etime)
         self._runtimes["output"] = sout
-        v4("Run time = {0}".format(self._runtimes["delta"]))
-        v4("Return code = {0}".format(rval))
+        v4(f"Run time = {self._runtimes['delta']}")
+        v4(f"Return code = {rval}")
         return (rval, sout)
 
     def __call__(self, *args, **kwargs):
@@ -1931,7 +1934,7 @@ class CIAOToolDirect(CIAOTool):
         else:
             sep = "\n  "
             smsg = sep.join(sout.rstrip().split("\n"))
-            raise IOError("An error occurred while running '{0}':{1}{2}".format(self._toolname, sep, smsg))
+            raise IOError(f"An error occurred while running '{self._toolname}':{sep}{smsg}")
 
         return retval
 
@@ -1948,7 +1951,7 @@ def get_pfiles(userdir=True):
     pfiles = os.environ["PFILES"]
     paths = pfiles.split(";")
     if len(paths) != 2:
-        raise IOError("Expected the PFILES environment variable to contain 1 ';' character, but found {0}".format(len(paths) - 1))
+        raise IOError(f"Expected the PFILES environment variable to contain 1 ';' character, but found {len(paths) - 1}")
 
     if userdir:
         rval = paths[0]
@@ -1996,7 +1999,7 @@ def set_pfiles(userdir=None, userdirs=None):
     pfiles = os.environ["PFILES"]
     paths = pfiles.split(";")
     if len(paths) != 2:
-        raise IOError("Expected the PFILES environment variable to contain 1 ';' character, but found {0}".format(len(paths) - 1))
+        raise IOError(f"Expected the PFILES environment variable to contain 1 ';' character, but found {len(paths) - 1}")
 
     syspath = paths[1]
 
@@ -2014,14 +2017,14 @@ def set_pfiles(userdir=None, userdirs=None):
                 continue
 
             elif os.path.exists(dname):
-                raise IOError("{0} exists but is not a directory".format(dname))
+                raise IOError(f"{dname} exists but is not a directory")
 
             else:
-                raise IOError("{0} does not exist".format(dname))
+                raise IOError(f"{dname} does not exist")
 
         newpath = ":".join(udirs)
 
-    os.environ["PFILES"] = "{0};{1}".format(newpath, syspath)
+    os.environ["PFILES"] = f"{newpath};{syspath}"
 
 
 # Context managers for
@@ -2077,16 +2080,16 @@ def new_tmpdir(dirname=None, tmpdir=None):
             dname = tempfile.mkdtemp(dir=tmpdir, prefix="tmpdir")
         except OSError as ose:
             if ose.errno == errno.ENOENT:
-                raise IOError("The directory tmpdir={} does not exist!".format(tmpdir))
+                raise IOError(f"The directory tmpdir={tmpdir} does not exist!")
             elif ose.errno == errno.ENOTDIR:
-                raise IOError("The tmpdir={} argument does not refer to a directory!".format(tmpdir))
+                raise IOError(f"The tmpdir={tmpdir} argument does not refer to a directory!")
             else:
                 raise ose
 
     else:
         dname = os.path.abspath(dirname)
         if os.path.exists(dname):
-            raise IOError("Already exists: {0}".format(dname))
+            raise IOError(f"Already exists: {dname}")
 
         else:
             os.makedirs(dname)
@@ -2176,19 +2179,19 @@ def new_pfiles_environment(ardlib=True,
       #
       def getemap(ccd, gridstr):
           with new_pfiles_environment(ardlib=True):
-              afile = "asphist{0}.fits".format(ccd)
+              afile = f"asphist{ccd}.fits"
               ah = make_tool("asphist")
               ah(infile="asol1.fits", outfile=afile,
-                 evtfile="evt2.fits[ccd_id={0}]".format(ccd),
+                 evtfile=f"evt2.fits[ccd_id={ccd}]",
                  clobber=True)
 
-              ifile = "imap{0}.fits".format(ccd)
+              ifile = f"imap{ccd}.fits"
               mki = make_tool("mkinstmap")
               mki(outfile=ifile, monoenergy=1.7, pixelgrid="1:1024:1,1:1024:1",
-                  obsfile=afile+"[asphist]", detsubsys="ACIS-{0}".format(ccd),
+                  obsfile=afile+"[asphist]", detsubsys=f"ACIS-{ccd}",
                   maskfile="msk1.fits", clobber=True)
 
-              efile = "emap{0}.fits".format(ccd)
+              efile = f"emap{ccd}.fits"
               mke = make_tool("mkexpmap")
               mke(asphistfile=afile, outfile=efile, instmapfile=ifile,
                   xygrid=gridstr, clobber=True)
@@ -2219,17 +2222,17 @@ def new_pfiles_environment(ardlib=True,
     ardlibpath = pio.paramgetpath('ardlib')
     odirs = get_pfiles()
     origpfiles = os.environ['PFILES']
-    v5("About to overide user PFILES setting: {0} from {1}".format(odirs, origpfiles))
+    v5(f"About to overide user PFILES setting: {odirs} from {origpfiles}")
 
     with new_tmpdir(dirname=dirname, tmpdir=tmpdir) as dname:
 
-        v5("Setting up {0} as new user PFILES directory".format(dname))
+        v5(f"Setting up {dname} as new user PFILES directory")
         set_pfiles(dname)
 
         try:
 
             if copyuser and odirs is not None:
-                v5("Checking parameter directories: {}".format(odirs))
+                v5(f"Checking parameter directories: {odirs}")
                 null = open(os.devnull, 'wb')
 
                 # We scan through all the directories in reverse order
@@ -2250,17 +2253,17 @@ def new_pfiles_environment(ardlib=True,
                 #   be copied twice, which seems wasteful.
                 #
                 for od in odirs[::-1]:
-                    v5("Checking in: {}".format(od))
+                    v5(f"Checking in: {od}")
                     # we want to exclude the 'backup copies' that
                     # get stored, so reject any name that
                     # ends in "_YYYYMMDD.HH:MM:SS.par"
                     #
-                    for pname in glob.glob("{0}/*.par".format(od)):
+                    for pname in glob.glob(f"{od}/*.par"):
                         bname = os.path.basename(pname)
                         if dtime.search(bname) is not None:
                             continue
 
-                        v5("Checking file: {}".format(bname))
+                        v5(f"Checking file: {bname}")
                         bname = bname[:-4]
                         try:
                             # Used to use pio.paramgetpath since this
@@ -2291,24 +2294,24 @@ def new_pfiles_environment(ardlib=True,
                                                   stdout=null, stderr=null)
 
                         except subprocess.CalledProcessError:
-                            v5("Copying over {0} as not in system path (or paccess failed)".format(pname))
+                            v5(f"Copying over {pname} as not in system path (or paccess failed)")
                             try:
                                 _copy_par_file(pname, dname)
                             except IOError as ioe:
-                                v5("WARNING: skipping copy of {} because of: {}".format(pname, ioe))
+                                v5(f"WARNING: skipping copy of {pname} because of: {ioe}")
 
             if ardlib:
                 # Question: why not try the paccess route here first?
                 # If the user has asked for ardlib to be copied then
                 # error out if it can't be (unlike the generic file copy above)
                 #
-                v5("About to copy over ardlib parameter file: {0}".format(ardlibpath))
+                v5(f"About to copy over ardlib parameter file: {ardlibpath}")
                 _copy_par_file(ardlibpath, dname)
 
             yield dname
 
         finally:
-            v5("About to restore PFILES setting to {0}".format(origpfiles))
+            v5(f"About to restore PFILES setting to {origpfiles}")
             os.environ['PFILES'] = origpfiles
 
 
@@ -2330,11 +2333,11 @@ def add_comment_lines(infile, comments):
     if cs == []:
         return
 
-    v4("Adding comments to {}".format(infile))
+    v4(f"Adding comments to {infile}")
     bl = cxcdm.dmBlockOpen(infile, update=True)
     try:
         for comment in cs:
-            v4("COMMENT: {}".format(comment))
+            v4(f"COMMENT: {comment}")
             cxcdm.dmBlockWriteComment(bl, 'COMMENT', comment)
 
     finally:
@@ -2360,12 +2363,12 @@ def add_tool_history(infiles, toolname, params,
     file.
     """
 
-    msg = "Adding HISTORY record for {} ".format(toolname)
+    msg = f"Adding HISTORY record for {toolname} "
     if toolversion is not None:
-        msg += "({}) ".format(toolversion)
+        msg += f"({toolversion}) "
 
     v2(msg)
-    v3("Params: {}".format(params))
+    v3(f"Params: {params}")
 
     # special case a single file
     if isinstance(infiles, str):
@@ -2380,8 +2383,7 @@ def add_tool_history(infiles, toolname, params,
         pio.punlearn(toolname)
         fp = pio.paramopen(toolname, "wL")
         for (k, v) in params.items():
-            v3("Checking parameter <{}> value <{}> type={}".format(k, v,
-                                                                   type(v)))
+            v3(f"Checking parameter <{k}> value <{v}> type={type(v)}")
             if isinstance(v, bool):
                 if v:
                     val = "yes"
@@ -2390,18 +2392,18 @@ def add_tool_history(infiles, toolname, params,
             else:
                 val = str(v)
 
-            v3(" -> {}={}".format(k, v))
+            v3(f" -> {k}={v}")
             pio.pset(fp, k, val)
 
         pio.paramclose(fp)
 
         if toolversion is not None:
-            comments = ["{} version {}".format(toolname, toolversion)]
+            comments = [f"{toolname} version {toolversion}"]
         else:
             comments = None
 
         for infile in infiles:
-            v2("Adding history to " + infile)
+            v2(f"Adding history to {infile}")
             if comments is not None:
                 add_comment_lines(infile, comments)
 
@@ -2463,8 +2465,7 @@ def make_tool(toolname):
 
         return cfunc(toolname, pi["req"], pi["opt"])
 
-    else:
-        raise ValueError("The tool '{0}' is not available.".format(toolname))
+    raise ValueError(f"The tool '{toolname}' is not available.")
 
 # Auto-generated code follows
 #
@@ -2716,7 +2717,7 @@ parinfo['csmooth'] = {
 parinfo['dax'] = {
     'istool': False,
     'req': [],
-    'opt': [ParValue("outdir","f","Location of the output files for dax",'${ASCDS_WORK_PATH}/ds9_dax.${USER}'),ParValue("tile","b","Change ds9 into tile mode when adding new images?",False),ParValue("progress_bar","b","Show progress bar when tasks are running?",True)],
+    'opt': [ParValue("outdir","f","Location of the output files for dax",'${ASCDS_WORK_PATH}/ds9_dax.${USER}'),ParValue("tile","b","Change ds9 into tile mode when adding new images?",False),ParValue("progress_bar","b","Show progress bar when tasks are running?",True),ParValue("random_seed","i","Random seed for any tasks the require one",-1)],
     }
 
 
