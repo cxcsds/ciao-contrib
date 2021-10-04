@@ -204,9 +204,8 @@ def test_dmstat_parameter_match_not_unique():
     assert str(ae2.value) == emsg
 
 
-@pytest.mark.parametrize('val', [True, 1, "yes", "YES", "true", "NO", "false", "on", "off"])
+@pytest.mark.parametrize('val', [True, 1, "1", "yes", "YES", "true", "on"])
 def test_set_boolean_true(val):
-    """We include a number of settings that user might expect would be false!"""
     tool = rt.make_tool('dmstat')
     assert not tool.median
 
@@ -214,13 +213,22 @@ def test_set_boolean_true(val):
     assert tool.median
 
 
-@pytest.mark.parametrize('val', [False, 0, "no"])
+@pytest.mark.parametrize('val', [False, 0, "0", "no", "No", "false", "off"])
 def test_set_boolean_false(val):
     tool = rt.make_tool('dmstat')
     assert tool.sigma
 
     tool.sigma = val
     assert not tool.sigma
+
+
+@pytest.mark.parametrize('val', ["truthy", "falsey", "ya", ""])
+def test_set_boolean_invalid(val):
+    tool = rt.make_tool('dmstat')
+    with pytest.raises(ValueError) as ve:
+        tool.sigma = val
+
+    assert str(ve.value) == f"The dmstat.sigma value should be a boolean, not '{val}'"
 
 
 def test_reset_params():

@@ -25,9 +25,7 @@
 #   but are there other areas where it could be done?
 #
 
-"""
-
-Summary
+"""Summary
 =======
 
 This module allows users to run CIAO command-line tools by calling a
@@ -190,13 +188,18 @@ quotes around the name if it contains a space - so you can say
   dmcopy(inf, "img.fits")
 
 There is some support for converting Python values to the correct
-type - e.g. for a bool parameter called boolpar you can say
+type - e.g. for a boolean parameter you can use one either
 
-  tool.boolpar = "yes"
+- True, 1, "yes", "true", "on", "1"
+- False, 0, "no", "false", "off", "0"
 
-but it is **strongly suggested** that you use the correct Python type,
-as the conversion of other types is not guaranteed to work reliably or
-match the rules used by the CXC parameter library.
+bit it is **strongly suggested** that you use the correct Python type
+(in this case either True or False) as the conversion of other types
+is not guaranteed to work reliably or match the rules used by the CXC
+parameter library.
+
+Parameters can be set to None and the system will try to do the right
+thing, but it is best to be explicit when possible.
 
 Handling of stacks
 ------------------
@@ -549,6 +552,12 @@ def _to_python(type, value):
     strings.
 
     Numeric types with a value of '' (or are all spaces) are converted to 0.
+
+    It looks like this is called assuming that value has been retrived
+    gvia one of the paramio routines, and so we don't have to deal
+    with all the cases we do in CIAOParameter._validate, but it has
+    been long enough since I wrote this that I can not guarantee it.
+
     """
 
     if type == "b":
@@ -980,9 +989,17 @@ class CIAOParameter(object):
         v5(f"Validating {self._toolname}.{pname} val={pstr} as ...")
         if ptype == "b":
             v5("... a boolean")
-            if pval == "no":
-                pval = False
-            else:
+            try:
+                porig = pval
+                pval = pval.lower()
+                if pval in ["no", "false", "off", "0"]:
+                    pval = False
+                elif pval in ["yes", "true", "on", "1"]:
+                    pval = True
+                else:
+                    raise ValueError(f"The {self._toolname}.{pname} value should be a boolean, not '{porig}'")
+
+            except AttributeError:
                 pval = bool(pval)
 
         elif ptype == "i":
