@@ -6,6 +6,7 @@ import pathlib
 import pytest
 
 import ciao_contrib.runtool as rt
+from ciao_contrib.logger_wrapper import initialize_logger, set_verbosity
 
 
 ALL_TOOLS = rt.list_tools()
@@ -20,6 +21,18 @@ STANDARD_TOOLS = list(set(ALL_TOOLS) - set(SPECIAL_TOOLS) - set(PAR_TOOLS))
 # The current tests assume a conda-installed CIAO environment
 #
 ASCDS_INSTALL = pathlib.Path(os.getenv('ASCDS_INSTALL'))
+
+
+initialize_logger('test_runtool')
+set_verbosity(0)
+
+
+@pytest.fixture
+def verbose5():
+
+    set_verbosity(5)
+    yield
+    set_verbosity(0)
 
 
 def test_have_ascds_install():
@@ -284,8 +297,14 @@ def test_reset_params():
 @pytest.mark.parametrize("toolname", STANDARD_TOOLS)
 def test_write_parfile_standard(toolname, tmp_path):
 
-    if toolname in ['arfcorr', 'dmimg2jpg', 'mkgarf', 'mkgrmf', 'simulate_psf']:
-        pytest.skip(f'tool {toolname} has problems')
+    if toolname in ['dmimg2jpg', 'mkgrmf', 'mkgarf']:
+        # mkgrmf and mkgarf fail because grating_arm is set to '' but this
+        # is not a valid enumeration for them.
+        #
+        # dmimg2jpg fails presumably because lutfile defaults
+        # to ')lut.grey' and we don't support this level of redirect/
+        #
+        pytest.skip(f'We know writing out {toolname} fails due to reasons')
 
     parfile = tmp_path / f'standard.{toolname}.par'
 
@@ -348,6 +367,8 @@ def test_write_parfile_standard(toolname, tmp_path):
         assert nwrong == 2
     elif toolname == 'arestore':
         assert nwrong == 2
+    elif toolname == 'arfcorr':
+        assert nwrong == 4
     elif toolname == 'celldetect':
         assert nwrong == 1
     elif toolname == 'combine_grating_spectra':
@@ -440,6 +461,8 @@ def test_write_parfile_standard(toolname, tmp_path):
         assert nwrong == 1
     elif toolname == 'search_csc':
         assert nwrong == 3
+    elif toolname == 'simulate_psf':
+        assert nwrong == 7
     elif toolname == 'srcflux':
         assert nwrong == 1
     elif toolname == 'tg_create_mask':
@@ -574,3 +597,91 @@ def test_write_parfile_par(toolname, tmp_path):
         assert nwrong == 2
     else:
         assert nwrong == 0
+
+
+@pytest.mark.parametrize("val,ptype",
+                         [(True, "bool"),
+                          (1, "int"),
+                          ("True", "str"),
+                          ("1", "str"),
+                          ("yes", "str")])
+def test_verbosity_set_boolean(val, ptype, verbose5, caplog):
+    """Check we get the expected messages when setting a boolean"""
+
+    tool = rt.make_tool('dmimg2jpg')
+    assert not tool.invert
+
+    tool.invert = val
+    assert tool.invert
+
+    # All messages are verbose=5
+    #
+    assert len(caplog.records) == 5
+    for lname, lvl, _ in caplog.record_tuples:
+        assert lname == 'cxc.ciao.contrib.module.runtool'
+        assert lvl == 10
+
+    def check(i, msg):
+        assert caplog.record_tuples[i][2] == msg
+
+    check(0, 'Calling punlearn on tool dmimg2jpg')
+    check(1, f"Entering _validate for name=invert val={val} (type=<class '{ptype}'>) store=True")
+    check(2, f'Validating dmimg2jpg.invert val={val} as ...')
+    check(3, '... a boolean')
+    check(4, "Setting dmimg2jpg.invert to True (<class 'bool'>)")
+
+
+@pytest.mark.parametrize("val,ptype",
+                         [(5, "int"),
+                          ("5", "str")])
+def test_verbosity_set_int(val, ptype, verbose5, caplog):
+    """Check we get the expected messages when setting an integer"""
+
+    tool = rt.make_tool('dmimg2jpg')
+    assert tool.colorshift == 0
+
+    tool.colorshift = val
+    assert tool.colorshift == 5
+
+    # All messages are verbose=5
+    #
+    assert len(caplog.records) == 5
+    for lname, lvl, _ in caplog.record_tuples:
+        assert lname == 'cxc.ciao.contrib.module.runtool'
+        assert lvl == 10
+
+    def check(i, msg):
+        assert caplog.record_tuples[i][2] == msg
+
+    check(0, 'Calling punlearn on tool dmimg2jpg')
+    check(1, f"Entering _validate for name=colorshift val={val} (type=<class '{ptype}'>) store=True")
+    check(2, f'Validating dmimg2jpg.colorshift val={val} as ...')
+    check(3, '... an integer')
+    check(4, "Setting dmimg2jpg.colorshift to 5 (<class 'int'>)")
+
+
+def test_verbosity_set_str(verbose5, caplog):
+    """Check we get the expected messages when setting a string"""
+
+    tool = rt.make_tool('dmimg2jpg')
+    assert tool.infile is None
+
+    infile = "foo.fits[sky region(/a/b/c.reg)]"
+    tool.infile = infile
+    assert tool.infile == infile
+
+    # All messages are verbose=5
+    #
+    assert len(caplog.records) == 5
+    for lname, lvl, _ in caplog.record_tuples:
+        assert lname == 'cxc.ciao.contrib.module.runtool'
+        assert lvl == 10
+
+    def check(i, msg):
+        assert caplog.record_tuples[i][2] == msg
+
+    check(0, 'Calling punlearn on tool dmimg2jpg')
+    check(1, f"Entering _validate for name=infile val={infile} (type=<class 'str'>) store=True")
+    check(2, f'Validating dmimg2jpg.infile val={infile} as ...')
+    check(3, '... something else')
+    check(4, f"Setting dmimg2jpg.infile to {infile} (<class 'str'>)")
