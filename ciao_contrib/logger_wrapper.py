@@ -147,7 +147,7 @@ def _check_verbose(verbose):
 # am not convinced that it is actually sensible but let us see how it
 # goes.
 #
-class CIAOLogger(logging.getLoggerClass(), object):
+class CIAOLogger(logging.getLoggerClass()):
     """Create a logging class that uses the CIAO tool
     verbose hierarchy, where the verbose levels are
     the integers 0 to 5 inclusive, and you get more
@@ -174,7 +174,7 @@ class CIAOLogger(logging.getLoggerClass(), object):
 
         _check_verbose(verbose)
         level = _v_to_lvl(verbose)
-        logging.Logger.__init__(self, name, level=level)
+        super().__init__(name, level=level)
 
     @property
     def verbose(self):
@@ -185,7 +185,8 @@ class CIAOLogger(logging.getLoggerClass(), object):
     def verbose(self, verbose):
         "Sets the verbose level of this logger (0 to 5)"
         _check_verbose(verbose)
-        self.level = _v_to_lvl(verbose)
+        lvl = _v_to_lvl(verbose)
+        self.setLevel(lvl)
 
     def getEffectiveVerbose(self):
         "Get the effective verbose level for this logger (or the closest value)."
@@ -194,8 +195,7 @@ class CIAOLogger(logging.getLoggerClass(), object):
         if lvl == logging.NOTSET:
             return VNOTSET
 
-        else:
-            return _lvl_to_v(lvl)
+        return _lvl_to_v(lvl)
 
     def verbose0(self, msg):
         "Log the message if the verbose level is 0 or higher"
