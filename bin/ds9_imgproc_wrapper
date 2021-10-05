@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2019-2020  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2019-2021  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -104,6 +104,12 @@ class ImageProcTask():
         self.infile = self.infile+ffilt
         self.tool.infile = self.infile
 
+
+    def run_tool(self):
+        'Wrapper to run tool'
+        return self.tool()
+        
+
     def run(self):
         'Do it'
 
@@ -121,7 +127,8 @@ class ImageProcTask():
 
             print(self.tool)
             print("")
-            verb = self.tool()
+            verb = self.run_tool()
+
             if verb:
                 print(verb)
             self.send_output()
@@ -385,6 +392,24 @@ class ImageProcTaskImgOut(ImageProcTask):
         from paramio import pget
         if "yes" == pget("dax", "tile"):
             self.xpaset_p(['tile', ])
+
+    def run_tool(self):
+        'Runs tool.  Overrides outfile to provide nice blocks name'
+
+        if hasattr(self.tool, "outfile"):
+            # If the tool has an outfile, then add the 
+            # tool name as the extension name, eg
+            #    tmp_XYZ123_dmimgadapt.fits[dmimgadapt]
+            # This sets the block name to something "nice" and 
+            # informative, and deterministic.
+            fname = self.tool.outfile
+            self.tool.outfile = self.tool.outfile + f"[{self.toolname}]"
+            verb = self.tool()
+            self.tool.outfile= fname
+        else:
+            verb = self.tool()
+
+        return verb
 
 
 class ImageProcTaskRegionOut(ImageProcTask):
