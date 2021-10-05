@@ -1288,6 +1288,12 @@ class CIAOParameter(object):
         Note that if an external stack file is used we do not currently
         validate its values (it should be, for safety, but isn't).
 
+        Coming back to this code now: why is it needed? Is it really
+        an internal check to ensure we haven't messed anything up, or
+        is there some need for these checks? At the moment (Oct 5
+        2021) I have decided to remove the error check as it fails for
+        re-directs.
+
         """
 
         v5("Verifying parameter settings")
@@ -1347,7 +1353,8 @@ class CIAOParameter(object):
                     pstr = pval
 
                 if not _values_equal(ptype, oval, pval):
-                    raise IOError(f"Unable to store {self._toolname}.{pname}, should be\n    '{pstr}' ({type(pval)})\n  but parameter file contains\n    '{oval}' ({type(oval)})")
+                    # raise IOError(f"Unable to store {self._toolname}.{pname}, should be\n    '{pstr}' ({type(pval)})\n  but parameter file contains\n    '{oval}' ({type(oval)})")
+                    v2(f"When writing {self._toolname}.{pname}, expected '{pstr}' but found '{oval}'")
 
             pio.paramclose(fp)
 
