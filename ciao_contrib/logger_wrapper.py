@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2021
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -120,7 +120,7 @@ def _v_to_lvl(v):
             if vv == v:
                 return l
 
-        raise ValueError("Unrecognized verbose level: {0}".format(v))
+        raise ValueError(f"Unrecognized verbose level: {v}")
 
 V0 = _v_to_lvl(0)
 V1 = _v_to_lvl(1)
@@ -136,7 +136,7 @@ def _check_verbose(verbose):
     if verbose == VNOTSET or (verbose >= 0 and verbose <= 5):
         return
     else:
-        raise ValueError("verbose must be 0-5 (inclusive) or {0}, sent {1}".format(VNOTSET, verbose))
+        raise ValueError(f"verbose must be 0-5 (inclusive) or {VNOTSET}, sent {verbose}")
 
 
 # From
@@ -247,7 +247,7 @@ def get_logger(lgr):
     if hasattr(lgr, "log"):
         logger = lgr
     else:
-        logger = logging.getLogger("{0}.{1}".format(lhead, lgr))
+        logger = logging.getLogger(f"{lhead}.{lgr}")
 
     return logger
 
@@ -262,7 +262,7 @@ def get_module_logger(lgr):
     if hasattr(lgr, "log"):
         logger = lgr
     else:
-        logger = logging.getLogger("{0}.{1}".format(mhead, lgr))
+        logger = logging.getLogger(f"{mhead}.{lgr}")
 
     return logger
 
@@ -425,11 +425,11 @@ def make_verbose_level(progname, verbose):
     """
 
     if verbose == VNOTSET:
-        raise ValueError("verbose must be 0-5, not {0}".format(verbose))
+        raise ValueError(f"verbose must be 0-5, not {verbose}")
     else:
         _check_verbose(verbose)
 
-    vname = "verbose{0}".format(verbose)
+    vname = f"verbose{verbose}"
     return getattr(get_logger(progname), vname)
 
 
@@ -534,7 +534,7 @@ def handle_ciao_errors(toolname, version=None):
                 if version is None:
                     label = toolname
                 else:
-                    label = "{0} ({1})".format(toolname, version)
+                    label = f"{toolname} ({version})"
 
                 emsg = str(se)
                 if emsg.upper().startswith("ERROR"):
@@ -552,7 +552,7 @@ def handle_ciao_errors(toolname, version=None):
                 else:
                     emsg = "ERROR " + emsg
 
-                sys.stderr.write("# {0}: {1}\n".format(label, emsg))
+                sys.stderr.write(f"# {label}: {emsg}\n")
                 _handle_traceback()
                 sys.exit(1)
 
@@ -560,9 +560,9 @@ def handle_ciao_errors(toolname, version=None):
                 if version is None:
                     label = toolname
                 else:
-                    label = "{0} ({1})".format(toolname, version)
+                    label = f"{toolname} ({version})"
 
-                sys.stderr.write("\n# {0}: Keyboard interrupt (control-c)\n".format(label))
+                sys.stderr.write(f"\n# {label}: Keyboard interrupt (control-c)\n")
                 _handle_traceback()
                 sys.exit(1)
 
