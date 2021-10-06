@@ -116,7 +116,7 @@ class Param:
                 if c == ",":
                     expect_comma = False
                 else:
-                    raise IOError("Expected a comma after a quote, found {} in [{}], tool={}".format(c, txt, toolname))
+                    raise IOError(f"Expected a comma after a quote, found {c} in [{txt}], tool={toolname}")
 
             # Assume that only " is used for start/end of a string
             if c == '"':
@@ -135,9 +135,9 @@ class Param:
 
         nt = len(toks)
         if nt < 4:
-            print("DBG: len toks = {}".format(nt))
-            print("DBG:     toks = {}".format(toks))
-            raise IOError("Unable to process parameter line '{}' for {}".format(txt, toolname))
+            print(f"DBG: len toks = {nt}")
+            print(f"DBG:     toks = {toks}")
+            raise IOError(f"Unable to process parameter line '{txt}' for {toolname}")
 
         elif nt < 7:
             toks.extend(["" for i in range(nt, 7)])
@@ -153,7 +153,7 @@ class Param:
 
         # Use a case-insensitive check
         if self.name.lower() in language_keywords_lower:
-            print("WARNING: [{}] parameter name clashes with Python reserved word:\n  {}".format(self.toolname, txt))
+            print(f"WARNING: [{self.toolname}] parameter name clashes with Python reserved word:\n  {txt}")
 
         # This is just a warning as the ParameterInfo object does the
         # remapping.
@@ -164,12 +164,12 @@ class Param:
         if re.match(identifier, self.name) is None:
             nname = self.name.replace("-", "_")
             if re.match(identifier, nname) is None:
-                print("WARNING: [{}] parameter name is not a valid Python identifier and does not transform '-' -> '_': {}".format(self.toolname, txt))
+                print(f"WARNING: [{self.toolname}] parameter name is not a valid Python identifier and does not transform '-' -> '_': {txt}")
                 self.skip = True
                 return  # will this work?
 
             else:
-                print("Note: converting {} -> {}".format(self.name, nname))
+                print(f"Note: converting {self.name} -> {nname}")
 
         if "INDEF" in self.info:
             self.info = self.info.replace("INDEF", "None")
@@ -178,7 +178,7 @@ class Param:
         # are noted as a reminder.
         #
         if "INDEF" in [self.minval, self.maxval]:
-            print("Note: minval/maxval is INDEF in\n  {}".format(txt))
+            print(f"Note: minval/maxval is INDEF in\n  {txt}")
 
         # We hide the complexity of the mode (e.g. values of
         # h or hl or l) and just make this binary distinction
@@ -223,8 +223,7 @@ class Param:
             raise IOError("Found a required parameter that is to be skipped!")
 
     def __repr__(self):
-        return "{}('{}', '{}')".format(self.__class__.__name__,
-                                       self.toolname, self.input_line)
+        return f"{self.__class__.__name__}('{self.toolname}', '{self.input_line}')"
 
     def __str__(self):
         return self.input_line
@@ -236,17 +235,16 @@ class Param:
         The sep argument is the spacing to use before the text
         """
 
-        args = '"{}","{}","{}",'.format(self.name, self.type,
-                                        self.info)
+        args = f'"{self.name}","{self.type}","{self.info}",'
         if self.value is None or str(self.value) == "":
             # not sure about this
             args += "None"
 
         elif self.type in "sf" or self.value == "INDEF" or \
                 str(self.value).startswith(")"):
-            args += "'{}'".format(self.value)
+            args += f"'{self.value}'"
         else:
-            args += "{}".format(self.value)
+            args += f"{self.value}"
 
         if self.set:
             ptype = "ParSet"
@@ -261,21 +259,21 @@ class Param:
         elif (self.minval is not None) or (self.maxval is not None):
             ptype = "ParRange"
             if self.minval == "INDEF" or self.is_minval_redirect:
-                minval = '"{}"'.format(self.minval)
+                minval = f'"{self.minval}"'
             else:
                 minval = self.minval
 
             if self.maxval == "INDEF" or self.is_maxval_redirect:
-                maxval = '"{}"'.format(self.maxval)
+                maxval = f'"{self.maxval}"'
             else:
                 maxval = self.maxval
 
-            args += ",{},{}".format(minval, maxval)
+            args += f",{minval},{maxval}"
 
         else:
             ptype = "ParValue"
 
-        return "{}{}({})".format(sep, ptype, args)
+        return f"{sep}{ptype}({args})"
 
 
 def get_param_list(dirname, toolname):
@@ -289,7 +287,7 @@ def get_param_list(dirname, toolname):
     # all of the functionality of the S-Lang version (e.g.
     # plist_names) so we have to parse the parameter file
     #
-    pname = os.path.join(dirname, "{}.par".format(toolname))
+    pname = os.path.join(dirname, f"{toolname}.par")
     with open(pname, "r") as pf:
         req_params = []
         opt_params = []
@@ -333,8 +331,8 @@ def create_output(dirname, toolname, istool=True):
     (req_params, opt_params) = get_param_list(dirname, toolname)
 
     # create the parameter object
-    out = "parinfo['{}'] = {{\n".format(toolname)
-    out += "\t'istool': {},\n".format(istool)
+    out = f"parinfo['{toolname}'] = {{\n"
+    out += f"\t'istool': {istool},\n"
 
     rpars = [p.describe("") for p in req_params]
     out += "\t'req': [{}],\n".format(",".join(rpars))
@@ -355,10 +353,10 @@ def add_output(funcinfo, parname):
     """
 
     dirname, toolname = os.path.split(parname)
-    if dirname is '':
-        raise ValueError("Unexpected: dirname='' in parname={}".format(parname))
-    if toolname is '' or not toolname.endswith('.par'):
-        raise ValueError("Unexpected: toolname={} in parname={}".format(toolname, parname))
+    if dirname == '':
+        raise ValueError(f"Unexpected: dirname='' in parname={parname}")
+    if toolname == '' or not toolname.endswith('.par'):
+        raise ValueError(f"Unexpected: toolname={toolname} in parname={parname}")
 
     toolname = toolname[:-4]
 
@@ -368,7 +366,7 @@ def add_output(funcinfo, parname):
     #
     """
     if toolname in funcinfo:
-        raise ValueError("The tool {} has already been added!".format(toolname))
+        raise ValueError(f"The tool {toolname} has already been added!")
     """
 
     epath = os.path.normpath(os.path.join(dirname, '../bin'))
@@ -442,20 +440,19 @@ def doit():
 
     for pathname in [ascds_install, ascds_contrib]:
         if not os.path.isdir(pathname):
-            raise IOError("Unable to find directory: {}".format(pathname))
+            raise IOError(f"Unable to find directory: {pathname}")
 
     for filename in [MODULE_HEADER, MODULE_FOOTER]:
         if not os.path.isfile(filename):
-            raise IOError("Unable to find the file: {}".format(filename))
+            raise IOError(f"Unable to find the file: {filename}")
 
     contrib_path = "ciao_contrib/"
     odir = os.path.join(ascds_contrib, contrib_path)
     if not os.path.isdir(odir):
-        raise IOError("Unable to find output directory:\n{}".format(odir))
+        raise IOError(f"Unable to find output directory:\n{odir}")
     oname = os.path.join(odir, "runtool.py")
 
-    print("Input directores:\n  {}\n  {}\n".format(ascds_install,
-                                                   ascds_contrib))
+    print(f"Input directores:\n  {ascds_install}\n  {ascds_contrib}\n")
 
     with open(oname, "w") as ofh:
         print_module_section(ofh, MODULE_HEADER)
@@ -507,7 +504,7 @@ def doit():
 if __name__ == "__main__":
 
     if len(sys.argv) != 1:
-        sys.stderr.write("Usage: python {}\n".format(sys.argv[0]))
+        sys.stderr.write(f"Usage: python {sys.argv[0]}\n")
         sys.exit(1)
 
     doit()
