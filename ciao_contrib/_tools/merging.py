@@ -1060,12 +1060,14 @@ def validate_obsinfo(infiles, colcheck=True):
                 continue
 
         got_columns = obs.get_colnames()
-        v2("Found columns {} against {}".format(' '.join(got_columns), ' '.join(rcols)))
+        found = ' '.join(got_columns)
+        expected = ' '.join(sorted(rcols))
+        v2(f"Found columns {found} against {expected}")
 
         missing_columns = rcols.difference(got_columns)
         nmiss = len(missing_columns)
         if colcheck and nmiss != 0:
-            cnames = ' '.join(missing_columns)
+            cnames = ' '.join(sorted(missing_columns))
             if nmiss == 1:
                 v1(f"Skipping {infile} as it is missing the {cnames} column")
             else:
