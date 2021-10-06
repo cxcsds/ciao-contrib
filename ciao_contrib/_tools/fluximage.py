@@ -550,12 +550,12 @@ def make_asphist(taskrunner, labelconv,
 
     tasks = []
     for chip in chips:
-        task = labelconv("asphist-chip{}".format(chip))
+        task = labelconv(f"asphist-chip{chip}")
         if chip == chips[0]:
             if len(chips) == 1:
-                smsg = "Creating aspect histogram for obsid {}".format(obs.obsid)
+                smsg = f"Creating aspect histogram for obsid {obs.obsid}"
             else:
-                smsg = "Creating aspect histograms for obsid {}".format(obs.obsid)
+                smsg = f"Creating {len(chips)} aspect histograms for obsid {obs.obsid}"
         else:
             smsg = None
 
@@ -960,12 +960,11 @@ def make_event_images(taskrunner, labelconv,
     out = []
     tasks = []
     for enband in enbands:
-        v3("Creating an image with {}".format(enband.dmfilterstr))
-        ifile = "{}[bin {}]{}[opt type=i4]".format(filename, grid,
-                                                   enband.dmfilterstr)
+        v3(f"Creating an image with {enband.dmfilterstr}")
+        ifile = f"{filename}[bin {grid}]{enband.dmfilterstr}[opt type=i4]"
         ofile = name_image(outpath, enband)
 
-        task = labelconv("evtbin-{}".format(enband.bandlabel))
+        task = labelconv(f"evtbin-{enband.bandlabel}")
         taskrunner.add_task(task, [], create_event_image, ifile, ofile,
                             tmpdir=tmpdir, clobber=clobber, verbose=verbose)
         out.append(ofile)
@@ -1412,7 +1411,7 @@ def run_mkexpmap(outfile, instmap, asphist, matchfile, normalize,
         #
         punlearn("get_sky_limits")
         run.run("get_sky_limits",
-                ["image={}".format(matchfile),
+                [f"image={matchfile}",
                  "verbose=0",
                  "mode=h"]
                 )
@@ -1460,9 +1459,9 @@ def make_expmap_indiv(taskrunner, labelconv, preconditions,
 
     nruns = len(enbands) * len(chips)
     if nruns == 1:
-        smsg = "Creating exposure map for obsid {}".format(obsid)
+        smsg = f"Creating exposure map for obsid {obsid}"
     else:
-        smsg = "Creating {} exposure maps for obsid {}".format(nruns, obsid)
+        smsg = f"Creating {nruns} exposure maps for obsid {obsid}"
 
     tasks = []
     for j in chips:
@@ -1474,7 +1473,7 @@ def make_expmap_indiv(taskrunner, labelconv, preconditions,
             outfile = name_expmap(outhead, enband, num=j)
             instmap = name_instmap(outhead, j, enband)
 
-            task = labelconv("emap-{}".format(outfile))
+            task = labelconv(f"emap-{outfile}")
             taskrunner.add_task(task, preconditions,
                                 run_mkexpmap,
                                 outfile, instmap, asphist, matchfile,
@@ -1494,7 +1493,7 @@ def make_expmap_indiv(taskrunner, labelconv, preconditions,
         if cleanup:
             # Note: we do not make the emap-end depend on this task
             delfiles.append(name_asphist(outhead, j, blockname=False))
-            task2 = labelconv("cleanup-asphist-instmap-{}".format(j))
+            task2 = labelconv(f"cleanup-asphist-instmap-{j}")
             taskrunner.add_task(task2, atasks,
                                 cleanup_files_task, delfiles)
 
@@ -1759,17 +1758,17 @@ def run_mkpsfmap(outfile, matchfile, energy, wgtfile, ecf,
     if maskfile is None:
         infile = matchfile
     else:
-        infile = "{}[sky=MASK({})]".format(matchfile, maskfile)
+        infile = f"{matchfile}[sky=MASK({maskfile})]"
 
     mapfile = tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.psfmap')
 
     with new_pfiles_environment(ardlib=False, copyuser=False, tmpdir=tmpdir):
         punlearn("mkpsfmap")
-        args = ["infile={}".format(infile),
-                "outfile={}[PSFMAP]".format(mapfile.name),
-                "energy={}".format(enarg),
-                "spectrum={}".format(sparg),
-                "ecf={}".format(ecf),
+        args = [f"infile={infile}",
+                f"outfile={mapfile.name}[PSFMAP]",
+                f"energy={enarg}",
+                f"spectrum={sparg}",
+                f"ecf={ecf}",
                 "mode=h"
                 ]
 
@@ -1782,7 +1781,7 @@ def run_mkpsfmap(outfile, matchfile, energy, wgtfile, ecf,
 
         # Remove any spatial filters
         #
-        run.dmcopy("{}[subspace -sky]".format(mapfile.name),
+        run.dmcopy(f"{mapfile.name}[subspace -sky]",
                    outfile, clobber=clobber, verbose="0")
 
 
@@ -1806,14 +1805,14 @@ def make_psf_maps(taskrunner, labelconv, preconditions,
     #
     nruns = len(enbands)
     if nruns == 1:
-        smsg = "Creating PSF map for obsid {}".format(obs.obsid)
+        smsg = f"Creating PSF map for obsid {obs.obsid}"
     else:
-        smsg = "Creating {} PSF maps for obsid {}".format(nruns, obs.obsid)
+        smsg = f"Creating {nruns} PSF maps for obsid {obs.obsid}"
 
     tasks = []
     for enband in enbands:
         outfile = name_psfmap(outhead, enband, thresh=threshold)
-        task = labelconv("psfmap-{}".format(outfile))
+        task = labelconv(f"psfmap-{outfile}")
 
         # What file do we use as the "base" for the mkpsfmap call (that is,
         # this defines the location, size, pixels for the output), and
@@ -2607,7 +2606,7 @@ def run_fluximage_tasks(taskrunner, labelconv,
         normflag = 'no'
     else:
         raise ValueError("Internal error: invalid setting " +
-                         "units={}".format(units))
+                         f"units={units}")
 
     want_psf = ecf is not None
 

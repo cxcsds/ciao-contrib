@@ -55,7 +55,7 @@ from ciao_contrib._tools.aspsol import AspectSolution
 from ciao_contrib._tools.taskrunner import TaskRunner
 
 toolname = 'flux_obs'
-__revision__ = '23 February 2021'
+__revision__ = '30 September 2021'
 
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
@@ -256,16 +256,16 @@ def data_products(taskrunner,
         v1("\nCreating the fluxed image.")
 
     elif parallel:
-        v1("\nCreating the fluxed images for {} observations in parallel.".format(nargs))
+        v1(f"\nCreating the fluxed images for {nargs} observations in parallel.")
 
     else:
-        v1("\nCreating the fluxed images for {} observations.".format(nargs))
+        v1(f"\nCreating the fluxed images for {nargs} observations.")
 
     for (obs, bkgfile, chips, xygrid) in args:
-        outroot = "{}{}{}_".format(outdir, outhead, obs.obsid)
+        outroot = f"{outdir}{outhead}{obs.obsid}_"
 
         (xrng, yrng) = xygrid
-        grid = "x={},y={}".format(xrng, yrng)
+        grid = f"x={xrng},y={yrng}"
         # ox = xrng.nbins
         # oy = yrng.nbins
         binsize = xrng.size
@@ -277,7 +277,7 @@ def data_products(taskrunner,
 
         asolobj = AspectSolution(obs.get_asol(), tmpdir=tmpdir)
         fi.run_fluximage_tasks(taskrunner,
-                               lambda s: "{}-obsid{}".format(s, obs.obsid),
+                               lambda s: f"{s}-obsid{obs.obsid}",
                                obs,
                                bkginfo,
                                chips,
