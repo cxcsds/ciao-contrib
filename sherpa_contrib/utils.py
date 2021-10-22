@@ -51,7 +51,7 @@ import time
 import numpy as np
 
 from sherpa.astro import ui
-from sherpa.astro.utils import _charge_e
+from sherpa.astro.utils import charge_e
 import sherpa.utils as su
 
 from sherpa.utils import print_fields
@@ -168,7 +168,7 @@ class InstMapWeights:
         dtype = src.dtype
 
         if self.fluxtype == "erg":
-            norm = _charge_e * np.sum(src * self.xmid)
+            norm = charge_e * np.sum(src * self.xmid)
         else:
             norm = np.sum(src)
 
