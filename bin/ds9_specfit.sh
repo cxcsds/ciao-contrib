@@ -28,7 +28,8 @@ method=$7
 stat=$8
 absmodel=$9
 shift 9
-xtra="$1"
+absmodel2=$1
+xtra="$2"
 
 
 
@@ -265,10 +266,17 @@ sherpa.group_counts(${grpcts})
 sherpa.notice(${elo},${ehi})
 $subtract
 
-if "${addmodel}" == "none":
-    sherpa.set_source("${model}.mdl1 * ${absmodel}.abs1")
+if "${absmodel2}" == "none":
+  absm = "${absmodel}.abs1"
 else:
-    sherpa.set_source("(${model}.mdl1 + ${addmodel}.mdl2) * ${absmodel}.abs1")
+  absm = "${absmodel}.abs1 * ${absmodel2}.abs2"
+
+
+if "${addmodel}" == "none":
+    sherpa.set_source("${model}.mdl1 *"+absm)
+else:
+    sherpa.set_source("(${model}.mdl1 + ${addmodel}.mdl2) * "+absm)
+
 
 if hasattr(abs1,"nH"):
     abs1.nH = $nH
@@ -286,6 +294,9 @@ if "${addmodel}" == "none":
 else:
     mdls = [mdl1,mdl2,abs1]
     sherpa.guess(mdl2)
+
+if "${absmodel2}" != "none":
+    mdls.append(abs2)
 
 
 from dax.dax_model_editor import *
