@@ -2670,8 +2670,8 @@ parinfo['blanksky_sample'] = {
 
 parinfo['calquiz'] = {
     'istool': True,
-    'req': [ParValue("infile","f","File to get meta data from",None),ParValue("telescope","s","telescope",None),ParValue("instrument","s","instrument",None),ParValue("product","s","data product",None),ParValue("calfile","s","caldb specifier",None)],
-    'opt': [ParValue("outfile","s","File(s) found",None),ParValue("echo","b","Print returned cal-files to screen?",False),ParValue("echo_qual","b","return quality value",False),ParValue("echo_fidel","b","return fidelity value?",False),ParRange("verbose","i","verbosity level (0 = no display)",0,0,5)],
+    'req': [ParValue("infile","f","File to get meta data from",None),ParValue("telescope","s","telescope",None),ParValue("instrument","s","instrument",None),ParValue("product","s","data product",None)],
+    'opt': [ParValue("calfile","s","caldb specifier",'CALDB'),ParValue("outfile","s","File(s) found",None),ParValue("echo","b","Print returned cal-files to screen?",False),ParValue("echo_qual","b","return quality value",False),ParValue("echo_fidel","b","return fidelity value?",False),ParRange("verbose","i","verbosity level (0 = no display)",0,0,5)],
     }
 
 
@@ -3035,7 +3035,7 @@ parinfo['dmmerge'] = {
 parinfo['dmnautilus'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input image",None),ParValue("outfile","f","Output file name",None),ParRange("snr","r","SNR limit",0,0,None)],
-    'opt': [ParValue("inerrfile","f","Input error on image",None),ParValue("outmaskfile","f","Output mask image",None),ParValue("outsnrfile","f","Output SNR image",None),ParValue("outareafile","f","Output area image",None),ParRange("verbose","i","Tool verbosity",0,0,0),ParValue("clobber","b","Clobber outputs",False)],
+    'opt': [ParRange("method","i","Number of subimages required to be above SNR threshold",0,0,4),ParValue("inerrfile","f","Input error on image",None),ParValue("outmaskfile","f","Output mask image",None),ParValue("outsnrfile","f","Output SNR image",None),ParValue("outareafile","f","Output area image",None),ParRange("verbose","i","Tool verbosity",0,0,0),ParValue("clobber","b","Clobber outputs",False)],
     }
 
 
@@ -3043,6 +3043,13 @@ parinfo['dmpaste'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input file name",None),ParValue("pastefile","f","Input paste file lists",None),ParValue("outfile","f","Output file name",None)],
     'opt': [ParValue("clobber","b","clobber existing output",False),ParRange("verbose","i","verbosity of processing comments",0,0,5)],
+    }
+
+
+parinfo['dmradar'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image",None),ParValue("outfile","f","Output file name",None),ParRange("snr","r","SNR limit",0,0,None),ParValue("xcenter","r","X coordinate of center of grid (physical pixels)",0),ParValue("ycenter","r","Y coordinate of center of grid (physical pixels)",0)],
+    'opt': [ParRange("method","i","Number of subimages required to be above SNR threshold",4,0,4),ParSet("shape","s","Shape of region to use",'pie',["pie","epanda","bpanda","box"]),ParRange("rinner","r","Minimum inner radius (physical pixels)",5,0,None),ParRange("router","r","Outer radius range, (physical pixels)",1000,0,None),ParRange("astart","r","Starting angle, degrees CCW +X axis",0,0,360),ParRange("arange","r","Range of angles, degrees CCW from astart",360,0,360),ParRange("ellipticity","r","Ellipticity of shape (1=circle,0=line)",1,0,1),ParRange("rotang","r","Rotation angle of shape",0,0,360),ParRange("minradius","r","Minimum allowed radius (phys pixels)",0.5,0,None),ParRange("minangle","r","Minimum allowed angle (degrees)",1,0,None),ParValue("inerrfile","f","Input error on image",None),ParValue("outmaskfile","f","Output mask image",None),ParValue("outsnrfile","f","Output SNR image",None),ParValue("outareafile","f","Output area image",None),ParRange("verbose","i","Tool verbosity",0,0,5),ParValue("clobber","b","Clobber outputs",False)],
     }
 
 
@@ -3714,7 +3721,7 @@ parinfo['wavdetect'] = {
 parinfo['wcs_match'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input file with duplicate srcs",None),ParValue("refsrcfile","f","Input file with reference srcs",None),ParValue("outfile","f","Transform file",None)],
-    'opt': [ParValue("wcsfile","f","Input file with WCS used in transform",None),ParValue("logfile","f","debug log file ( STDOUT | stdout | <filename>)",'STDOUT'),ParSet("method","s","reproject method: rot/scale/trans (rst) or translate (trans)",'rst',["rst","trans"]),ParRange("radius","r","radius used to match sources (arcsec)",12,0,None),ParSet("select","s","drop/add srcs from transform calc automatically or manually",'auto',["auto","manual"]),ParRange("residlim","r","src pairs with residuals > residlim are dropped (arcsec)",2,0,None),ParRange("residfac","r","src pairs with residuals > residfac * position error are dropped",0,0,None),ParRange("residtype","i","residfac applies to: (0) each residual, (1) avg residuals",0,0,1),ParValue("clobber","b","Overwrite existing output dataset with same name?",False),ParRange("verbose","i","debug level (0-5)",0,0,5)],
+    'opt': [ParValue("wcsfile","f","Input file with WCS used in transform",None),ParValue("logfile","f","debug log file ( STDOUT | stdout | <filename>)",'STDOUT'),ParSet("method","s","reproject method: rot/scale/trans (rst) or translate (trans)",'rst',["rst","trans"]),ParRange("radius","r","radius used to match sources (arcsec)",12,0,None),ParSet("select","s","drop/add srcs from transform calc automatically or manually",'auto',["auto","manual"]),ParRange("residlim","r","src pairs with residuals > residlim are dropped (arcsec)",2,0,None),ParRange("residfac","r","src pairs with residuals > residfac * position error are dropped",0,0,None),ParRange("residtype","i","residfac applies to: (0) each residual, (1) avg residuals",0,0,1),ParValue("multimatch","b","Allow multiple matches to reference srcs?",False),ParValue("clobber","b","Overwrite existing output dataset with same name?",False),ParRange("verbose","i","debug level (0-5)",0,0,5)],
     }
 
 
