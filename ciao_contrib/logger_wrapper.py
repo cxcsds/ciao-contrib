@@ -18,8 +18,7 @@
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-"""
-A simple set of routines to try and provide a consistent user
+"""A simple set of routines to try and provide a consistent user
 interface for script use of the Python logging framework.
 
 This is primarily an internal interface for use by the CIAO
@@ -29,6 +28,10 @@ is stable.
 The logging class has changed in the December 2010/CIAO 4.3 release;
 it now tries to map the CIAO verbose levels onto the standard logging
 hierarchy rather than insert a new system within the hierarchy.
+
+The error message created by the handle_ciao_errors decorator will be
+displayed in red unless the NO_COLOR environment variable is set - see
+https://no-color.org/ - or the standerr channel is not a TTY.
 
 """
 
@@ -58,8 +61,9 @@ hierarchy rather than insert a new system within the hierarchy.
 #   5         DEBUG
 #
 
-import sys
 import logging
+import os
+import sys
 import traceback
 
 # The module versions are not exported
@@ -488,12 +492,33 @@ def get_handle_ciao_errors_debug():
     return __handle_ciao_errors_debug
 
 
+def _add_color(txt):
+    """Allow ANSI color escape codes unless NO_COLOR env var is set
+    or sys.stderr is not a TTY.
+
+    See https://no-color.org/
+
+    Is it worth allowing these colors to be customized?
+    """
+
+    if not sys.stderr.isatty():
+        return txt
+
+    if os.getenv('NO_COLOR') is not None:
+        return txt
+
+    return f"\033[1;31m{txt}\033[0;0m"
+
+
 def _handle_traceback():
     "Display the traceback if requested to do so."
 
-    if __handle_ciao_errors_debug:
-        sys.stderr.write("\n\n##### Traceback:\n\n")
-        traceback.print_exc()
+    if not __handle_ciao_errors_debug:
+        return
+
+    header = _add_color('##### Traceback:')
+    sys.stderr.write(f"\n\n{header}\n\n")
+    traceback.print_exc()
 
 
 def handle_ciao_errors(toolname, version=None):
@@ -521,6 +546,10 @@ def handle_ciao_errors(toolname, version=None):
     set_handle_ciao_errors_debug() routine has previously been called
     with a True argument. The default is for the traceback to be
     hidden.
+
+    The error message will be displayed in red unless the NO_COLOR
+    environment variable is set - see https://no-color.org/ - or the
+    standerr channel is not a TTY.
 
     """
 
@@ -552,7 +581,8 @@ def handle_ciao_errors(toolname, version=None):
                 else:
                     emsg = "ERROR " + emsg
 
-                sys.stderr.write(f"# {label}: {emsg}\n")
+                msg = _add_color(f"# {label}: {emsg}")
+                sys.stderr.write(f"{msg}\n")
                 _handle_traceback()
                 sys.exit(1)
 
@@ -562,7 +592,8 @@ def handle_ciao_errors(toolname, version=None):
                 else:
                     label = f"{toolname} ({version})"
 
-                sys.stderr.write(f"\n# {label}: Keyboard interrupt (control-c)\n")
+                msg = _add_color(f'# {label}: Keyboard interrupt (control-c)')
+                sys.stderr.write(f"\n{msg}\n")
                 _handle_traceback()
                 sys.exit(1)
 
