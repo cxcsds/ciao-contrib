@@ -45,69 +45,6 @@ data_files = [("param", list_files("param/*.par")),
               (".", ["Changes.CIAO_scripts", "README_CIAO_scripts"])
 ]
 
-# The XSPEC include files contains a number of sub-directories.
-# We can hard-code this list at the cost of having to modify this
-# code when there's a change.
-#
-# These header files are from a Linux installation. Hopefully they
-# are platform agnostic.
-#
-for dname in ["install", "install/readline",
-              "install/wcslib", "install/CCfits",
-              "install/ape", "install/fftw",
-              "builddir/XSFit/FitMethod/Unimplemented/Anneal",
-              "builddir/XSFit/FitMethod/Unimplemented/Genetic",
-              "builddir/XSFit/FitMethod/LevMarq",
-              "builddir/XSFit/FitMethod/Minuit",
-              "builddir/XSFit/FitMethod/Minuit/minuit2/inc/Math",
-              "builddir/XSFit/FitMethod/Minuit/minuit2/inc/Minuit2",
-              "builddir/XSFit/FitMethod/Minuit/minuit2/test/MnSim",
-              "builddir/XSFit/FitMethod/Minuit/minuit2/test/MnTutorial",
-              "builddir/XSFit/FitMethod/Minuit/minuit2/src",
-              "builddir/XSFit/StatMethod/EDF",
-              "builddir/XSFit/StatMethod/Cstat",
-              "builddir/XSFit/StatMethod/Runs",
-              "builddir/XSFit/StatMethod/ChiSquare",
-              "builddir/XSFit/MCMC",
-              "builddir/XSFit/Randomizer",
-              "builddir/XSFit/Fit",
-              "builddir/tools/cxsetup",
-              "builddir/tools/initpackage",
-              "builddir/tools/include",
-              "builddir/XSUtil/Parse",
-              "builddir/XSUtil/Error",
-              "builddir/XSUtil/Utils",
-              "builddir/XSUtil/Numerics",
-              "builddir/XSUtil/Signals",
-              "builddir/XSUser/Global",
-              "builddir/XSUser/Handler",
-              "builddir/XSUser/Python/xspec",
-              "builddir/XSUser/Help",
-              "builddir/XSUser/UserInterface",
-              "builddir/include",
-              "builddir/XSFunctions",
-              "builddir/XSFunctions/Utilities",
-              "builddir/XSModel/Model",
-              "builddir/XSModel/Model/MixFunction",
-              "builddir/XSModel/Model/EmissionLines",
-              "builddir/XSModel/Model/Component",
-              "builddir/XSModel/Model/Component/OGIPTable",
-              "builddir/XSModel/GlobalContainer",
-              "builddir/XSModel/Data",
-              "builddir/XSModel/Data/Detector",
-              "builddir/XSModel/Data/BackCorr",
-              "builddir/XSModel/DataFactory",
-              "builddir/XSModel/Parameter",
-              "builddir/XSPlot/Commands",
-              "builddir/XSPlot/Plt",
-              "builddir/XSPlot/Plot",
-              "builddir/xslib",
-              "builddir/xslib/ihf"]:
-
-    outdir = f"share/xspec/{dname}"
-    data_files.append((outdir, list_files(outdir + "/*.h")))
-
-
 setup(version=VERSION,
       scripts=scripts,
 
