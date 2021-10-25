@@ -108,7 +108,7 @@ class ImageProcTask():
     def run_tool(self):
         'Wrapper to run tool'
         return self.tool()
-        
+
 
     def run(self):
         'Do it'
@@ -397,10 +397,10 @@ class ImageProcTaskImgOut(ImageProcTask):
         'Runs tool.  Overrides outfile to provide nice blocks name'
 
         if hasattr(self.tool, "outfile"):
-            # If the tool has an outfile, then add the 
+            # If the tool has an outfile, then add the
             # tool name as the extension name, eg
             #    tmp_XYZ123_dmimgadapt.fits[dmimgadapt]
-            # This sets the block name to something "nice" and 
+            # This sets the block name to something "nice" and
             # informative, and deterministic.
             fname = self.tool.outfile
             self.tool.outfile = self.tool.outfile + f"[{self.toolname}]"
@@ -435,11 +435,11 @@ class ImageProcTaskRegionOut(ImageProcTask):
 
         self.xpaset_p(['regions', 'load', outreg])
         print("\n\nRegions have been loaded in the current frame.\n")
-        
+
         from paramio import pget
         if "yes" == pget("dax", "prism"):
             self.xpaset_p(["prism", self.tool.outfile])
-        
+
 
 
 class ImageProcTaskPlotOut(ImageProcTask):
@@ -543,6 +543,29 @@ class Dmnautilus(ImageProcTaskImgOut):
         'ARGS: SNR, method'
         self.tool.snr = args[0]
         self.tool.method = args[1]
+
+
+class Dmradar(ImageProcTaskImgOut):
+    'CIAO dmradar tool'
+
+    toolname = 'dmradar'
+
+    def set_args(self, args):
+        '''ARGS: SNR, xcen, ycen methd shape inner outer start range
+        ellipticity rotang minrad minangle'''
+        self.tool.snr = args[0]
+        self.tool.xcenter = args[1]
+        self.tool.ycenter = args[2]
+        self.tool.method = args[3]
+        self.tool.shape = args[4]
+        self.tool.rinner = args[5]
+        self.tool.router = args[6]
+        self.tool.astart = args[7]
+        self.tool.arange = args[8]
+        self.tool.ellipticity = args[9]
+        self.tool.rotang = args[10]
+        self.tool.minradius = args[11]
+        self.tool.minangle = args[12]
 
 
 class Dmimgdist(ImageProcTaskImgOut):
@@ -1545,7 +1568,7 @@ def map_tool_to_object(toolname, xpa, args):
                'glvary': Glvary, 'pfold': Pfold,
                'dme_pha': Dmepha, 'dme_pi': Dmepi, 'dme_time': Dmetime,
                'dme_expno': Dmeexpno, 'dme_generic': Dmegeneric,
-               'dmcopy': Dmcopy}
+               'dmcopy': Dmcopy, 'dmradar': Dmradar}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
