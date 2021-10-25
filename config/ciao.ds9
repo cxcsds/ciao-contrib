@@ -297,6 +297,24 @@ param lutclrs
 endparam
 
 
+param dmradar
+    rad_snr entry {SNR} {5} {Signal to Noise ratio limit}
+    rad_xcen entry {X Center} {} {X coordinate of center of grid (physical pixels)}
+    rad_ycen entry {Y Center} {} {Y coordinate of center of grid (physical pixels)}
+    rad_meth menu {Method} 0|1|2|3|4 {Number of subimages required to be above SNR threshold, 0=all below}
+    rad_shape menu {Shape} pie|epanda|bpanda|box {Shape of region to use}
+    rad_in entry {Inner Radius} {5} {Minimum inner radius, (physical pixels), major axis}
+    rad_out entry {Outer Radius} {1000} {Outer radius range, (physical pixels), major axis}
+    rad_start entry {Start Angle} {0} {Starting angle, degrees CCW +X axis}
+    rad_range entry {Angle Range} {360} {Range of angles, degrees CCW from astart}
+    rad_ell entry {Ellipticity} {1} {Ellipticity of shape (1=circle,0=line)}
+    rad_rot entry {Rotation Angle} {0} {Rotation anble of shape}
+    rad_radmin entry {Minimum Radius} {0.5} {Minimum radius size when dividing, phys pixels}
+    rad_angmin entry {Minimum Angle} {1} {Minimum angle when dividing (deg)}
+endparam
+
+
+
 #
 # New in ds9 8.4 -- put some dax tasks on the button bar
 
@@ -847,6 +865,11 @@ hmenu CIAO tools (DAX)
     *
     menu
     $param(bin); ds9_imgproc_wrapper $xpa dmnautilus $snr $nautilus_method |& $text
+
+    Adaptive Bin (Radial)
+    *
+    menu
+    $param(dmradar); ds9_imgproc_wrapper $xpa dmradar $rad_snr $rad_xcen $rad_ycen $rad_meth $rad_shape $rad_in $rad_out $rad_start $rad_range $rad_ell $rad_rot $rad_radmin $rad_angmin |& $text
     
     Distrance Transform
     *
