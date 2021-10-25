@@ -1,6 +1,6 @@
     
 # 
-#  Copyright (C) 2004-2020  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2021  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -69,10 +69,11 @@ param grad
 endparam
 
 # ---------------
-# dmnatilus
+# dmnautilus
 # ---------------
 param bin
-  snr entry {snr} 5 {Signal-to-noise value to bin}
+  snr entry {SNR} 5 {Signal-to-noise value to bin}
+  nautilus_method menu {Method} 0|1|2|3|4 {Number of quadrants required to be above SNR, 0: all must be below}
 endparam
 
 
@@ -170,7 +171,8 @@ endparam
 param spectral
   model menu {Model: mdl1} powlaw1d|bbody|bpl1d|gauss1d|normgauss1d|lorentz1d|logparabola|xszpowerlw|xszbbody|xsbknpower|xscutoffpl|xszgauss|xsdiskline|xsapec|xsbapec|xsmekal|xsvmekal|xsraymond|xszbremss|xscemekl {Spectral Model - model editor will open}
   add_model menu {Additional component: mdl2} none|powlaw1d|bbody|bpl1d|gauss1d|normgauss1d|lorentz1d|logparabola|xszpowerlw|xszbbody|xsbknpower|xscutoffpl|xszgauss|xsdiskline|xsapec|xsbapec|xsmekal|xsvmekal|xsraymond|xszbremss|xscemekl {Added to mdl1 - model editor will open}
-  specfit_absmodel menu {Absorption model: abs1} xswabs|xsphabs|xstbabs|xszwabs|xszphabs|xsztbabs {Absorption model - model editor will open}
+  specfit_absmodel menu {Absorption model: abs1} xsphabs|xswabs|xstbabs|xszwabs|xszphabs|xsztbabs {Absorption model - model editor will open}
+  specfit_absxtra menu {2nd Absorption model: abs2} none|xsphabs|xswabs|xstbabs|xszwabs|xszphabs|xsztbabs {Absorption model - model editor will open}
   grpcts entry {grpcts} 20 {Group channels by number of counts}
   elo entry {elo} 0.3 {[keV] Lower energy range to perform fit}
   ehi entry {ehi} 7.0 {[keV] Upper energy range to perform fit}
@@ -295,6 +297,63 @@ param lutclrs
 endparam
 
 
+param dmradar
+    rad_snr entry {SNR} {5} {Signal to Noise ratio limit}
+    rad_xcen entry {X Center} {} {X coordinate of center of grid (physical pixels)}
+    rad_ycen entry {Y Center} {} {Y coordinate of center of grid (physical pixels)}
+    rad_meth menu {Method} 0|1|2|3|4 {Number of subimages required to be above SNR threshold, 0=all below}
+    rad_shape menu {Shape} pie|epanda|bpanda|box {Shape of region to use}
+    rad_in entry {Inner Radius} {5} {Minimum inner radius, (physical pixels), major axis}
+    rad_out entry {Outer Radius} {1000} {Outer radius range, (physical pixels), major axis}
+    rad_start entry {Start Angle} {0} {Starting angle, degrees CCW +X axis}
+    rad_range entry {Angle Range} {360} {Range of angles, degrees CCW from astart}
+    rad_ell entry {Ellipticity} {1} {Ellipticity of shape (1=circle,0=line)}
+    rad_rot entry {Rotation Angle} {0} {Rotation anble of shape}
+    rad_radmin entry {Minimum Radius} {0.5} {Minimum radius size when dividing, phys pixels}
+    rad_angmin entry {Minimum Angle} {1} {Minimum angle when dividing (deg)}
+endparam
+
+
+
+#
+# New in ds9 8.4 -- put some dax tasks on the button bar
+
+buttonbar
+    Statistics (dmstat)
+    *
+    button
+    ds9_imgproc_wrapper $xpa dmstat |& $text
+
+    Net Counts
+    *
+    button
+    ds9_functs  $xpa  |& $text
+
+    Photometry (srcflux)
+    *EVT* *evt*
+    button
+    $param(srcflux); ds9_aper.sh $xpa "$energy" "$model" "$pmvals" "$absmodel" "$apmvals" "$psfmethod" |& $text
+
+    Chandra Coordinates
+    *
+    button
+    ds9_imgproc_wrapper $xpa dmcoords |& $text
+
+    Spectral Fit
+    *EVT* *evt*
+    button
+    $param(spectral); ds9_specfit.sh $xpa $model $add_model $grpcts $elo $ehi $specfit_method $specfit_stat $specfit_absmodel $specfit_absxtra '$extra' |& $text
+
+    2D Image Fit
+    *
+    button
+    $param(imagefit); ds9_imgfit.sh $xpa $img_mdl1 $img_mdl2 x$img_psf x$img_exp $imgfit_method $imgfit_stat |& $text
+
+    Source Fill
+    *
+    button
+    $param(filth); ds9_imgproc_wrapper $xpa dmfilth $fillmeth |& $text
+endbuttonbar
 
 
 # ------------------------------------------------------
@@ -705,7 +764,7 @@ hmenu CIAO tools (DAX)
     Spectral Fit
     *EVT* *evt*
     menu
-    $param(spectral); ds9_specfit.sh $xpa $model $add_model $grpcts $elo $ehi $specfit_method $specfit_stat $specfit_absmodel '$extra' |& $text
+    $param(spectral); ds9_specfit.sh $xpa $model $add_model $grpcts $elo $ehi $specfit_method $specfit_stat $specfit_absmodel $specfit_absxtra '$extra' |& $text
  
     ---
 
@@ -805,7 +864,12 @@ hmenu CIAO tools (DAX)
     Adaptive Bin
     *
     menu
-    $param(bin); ds9_imgproc_wrapper $xpa dmnautilus $snr |& $text
+    $param(bin); ds9_imgproc_wrapper $xpa dmnautilus $snr $nautilus_method |& $text
+
+    Adaptive Bin (Radial)
+    *
+    menu
+    $param(dmradar); ds9_imgproc_wrapper $xpa dmradar $rad_snr $rad_xcen $rad_ycen $rad_meth $rad_shape $rad_in $rad_out $rad_start $rad_range $rad_ell $rad_rot $rad_radmin $rad_angmin |& $text
     
     Distrance Transform
     *

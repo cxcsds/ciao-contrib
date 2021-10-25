@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2019-2020  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2019-2021  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -104,6 +104,12 @@ class ImageProcTask():
         self.infile = self.infile+ffilt
         self.tool.infile = self.infile
 
+
+    def run_tool(self):
+        'Wrapper to run tool'
+        return self.tool()
+
+
     def run(self):
         'Do it'
 
@@ -121,7 +127,8 @@ class ImageProcTask():
 
             print(self.tool)
             print("")
-            verb = self.tool()
+            verb = self.run_tool()
+
             if verb:
                 print(verb)
             self.send_output()
@@ -386,6 +393,24 @@ class ImageProcTaskImgOut(ImageProcTask):
         if "yes" == pget("dax", "tile"):
             self.xpaset_p(['tile', ])
 
+    def run_tool(self):
+        'Runs tool.  Overrides outfile to provide nice blocks name'
+
+        if hasattr(self.tool, "outfile"):
+            # If the tool has an outfile, then add the
+            # tool name as the extension name, eg
+            #    tmp_XYZ123_dmimgadapt.fits[dmimgadapt]
+            # This sets the block name to something "nice" and
+            # informative, and deterministic.
+            fname = self.tool.outfile
+            self.tool.outfile = self.tool.outfile + f"[{self.toolname}]"
+            verb = self.tool()
+            self.tool.outfile= fname
+        else:
+            verb = self.tool()
+
+        return verb
+
 
 class ImageProcTaskRegionOut(ImageProcTask):
     'Classes that send output region to ds9'
@@ -406,9 +431,15 @@ class ImageProcTaskRegionOut(ImageProcTask):
         nrows = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
         if nrows.decode().strip() == '0':
             print("\n\nNo sources detected\n")
-        else:
-            self.xpaset_p(['regions', 'load', outreg])
-            print("\n\nRegions have been loaded in the current frame.\n")
+            return
+
+        self.xpaset_p(['regions', 'load', outreg])
+        print("\n\nRegions have been loaded in the current frame.\n")
+
+        from paramio import pget
+        if "yes" == pget("dax", "prism"):
+            self.xpaset_p(["prism", self.tool.outfile])
+
 
 
 class ImageProcTaskPlotOut(ImageProcTask):
@@ -418,6 +449,10 @@ class ImageProcTaskPlotOut(ImageProcTask):
         'Send plot to da9'
         cmd = ['ds9_plot_blt', self.plotfile, self.title, self.xpa]
         sp.run(cmd, check=True)
+
+        from paramio import pget
+        if "yes" == pget("dax", "prism"):
+            self.xpaset_p(["prism", self.tool.outfile])
 
 
 class ImageProcTaskTextOut(ImageProcTask):
@@ -505,8 +540,32 @@ class Dmnautilus(ImageProcTaskImgOut):
     toolname = 'dmnautilus'
 
     def set_args(self, args):
-        'ARGS: SNR'
+        'ARGS: SNR, method'
         self.tool.snr = args[0]
+        self.tool.method = args[1]
+
+
+class Dmradar(ImageProcTaskImgOut):
+    'CIAO dmradar tool'
+
+    toolname = 'dmradar'
+
+    def set_args(self, args):
+        '''ARGS: SNR, xcen, ycen methd shape inner outer start range
+        ellipticity rotang minrad minangle'''
+        self.tool.snr = args[0]
+        self.tool.xcenter = args[1]
+        self.tool.ycenter = args[2]
+        self.tool.method = args[3]
+        self.tool.shape = args[4]
+        self.tool.rinner = args[5]
+        self.tool.router = args[6]
+        self.tool.astart = args[7]
+        self.tool.arange = args[8]
+        self.tool.ellipticity = args[9]
+        self.tool.rotang = args[10]
+        self.tool.minradius = args[11]
+        self.tool.minangle = args[12]
 
 
 class Dmimgdist(ImageProcTaskImgOut):
@@ -751,7 +810,6 @@ class Skyfov(ImageProcTaskRegionOut):
 
     def set_args(self, args):
         'Args: none'
-        self.use_eventfile()
         auxfiles = self.find_aux()
         self.tool.mskfile = auxfiles["mask"]
         self.tool.aspect = auxfiles["asol"]
@@ -1510,7 +1568,7 @@ def map_tool_to_object(toolname, xpa, args):
                'glvary': Glvary, 'pfold': Pfold,
                'dme_pha': Dmepha, 'dme_pi': Dmepi, 'dme_time': Dmetime,
                'dme_expno': Dmeexpno, 'dme_generic': Dmegeneric,
-               'dmcopy': Dmcopy}
+               'dmcopy': Dmcopy, 'dmradar': Dmradar}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
