@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "01 November 2021"
+toolver  = "02 November 2021"
 
 import sys
 import os
@@ -968,6 +968,13 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 
     """
 
+    # Do we have any C++ models?
+    #
+    have_cxx = []
+    for mdl in mdls:
+        if mdl.language == 'C++ style':
+            have_cxx.append(mdl)
+
     modname_slashes = modname.replace('.', '/')
     outdir = f"src/{modname_slashes}/src"
     mkdir(outdir)
@@ -988,9 +995,41 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 
 '''
 
+    if len(have_cxx) > 0:
+        # cppModelWrapper is defined in XSFunctions/funcWrappers.cxx
+        # so should be available in libXSFunctions. It doesn't appear
+        # to be declared in an include file so we need ot specify it
+        # explicitly.
+        #
+        out += '''void cppModelWrapper(const double* energy, int nFlux, const double* params,
+       int spectrumNumber, double* flux, double* fluxError, const char* initStr,
+       int nPar, void (*cppFunc)(const RealArray&, const RealArray&,
+       int, RealArray&, RealArray&, const string&));
+
+'''
+
+        out += '''extern "C" {
+'''
+
+        for cxxmdl in have_cxx:
+
+            out += f'  void {cxxmdl.funcname}'
+            out += '(const RealArray& energyArray, const RealArray& params, int spectrumNumber, RealArray& flux, RealArray& fluxErr, const string& initString);\n'
+
+            out += f'  void C_{cxxmdl.funcname}'
+            out += '(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr) {\n'
+            out += f'    const size_t nPar = {len(cxxmdl.pars)};\n'
+            out += '    cppModelWrapper(energy, nFlux, params, spectrumNumber, flux, fluxError, initStr, nPar, '
+            out += f'{cxxmdl.funcname});\n'
+            out += '  }\n'
+
+        out += '''
+}
+'''
+
     out += cxxcode
 
-    # This should be fixed in Sherpa bt work around it here.
+    # This should be fixed in Sherpa but work around it here.
     if not cxxcode.endswith(';'):
         out += ';\n'
 
@@ -1237,7 +1276,8 @@ def convert_xspec_user_model(modulename, modelfile,
     # to Keith) - which accepts 3 parameters. Since the wrapper code
     # includes an invariant on the number of parameters, this would
     # complicate things, so for now exclude them. This particular
-    # model has since been fixed in XSPEC, but the check remains.
+    # model has since been fixed in XSPEC, but the check remains,
+    # even though it is also part of the xspec utility library.
     #
     funcnames = {}
     for mdl in mdlinfo:
