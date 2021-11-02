@@ -348,6 +348,10 @@ def get_lookup_table(toolname, pathfrom=None):
     strongly suggested that pathfrom is set to __file__ when
     called from the script, so that <dir> becomes the
     location of the script.
+
+    Ideally this would use importlib.resources or importlib.metadata
+    but we're not there yet.
+
     """
 
     if pathfrom is None:
@@ -355,9 +359,9 @@ def get_lookup_table(toolname, pathfrom=None):
     else:
         fname = pathfrom
     dirpath = os.path.dirname(os.path.realpath(fname))
-    fname = "{}_header_lookup.txt".format(toolname)
+    fname = f"{toolname}_header_lookup.txt"
 
-    v3("Looking for the lookup table for: " + toolname)
+    v3(f"Looking for the lookup table for: {toolname}")
 
     # The assumption is that the first of these is going to match
     # most use cases (conda and non-conda builds).
@@ -381,12 +385,12 @@ def get_lookup_table(toolname, pathfrom=None):
 
     for f in infiles:
         f = os.path.normpath(f)
-        v3("Looking for: " + f)
+        v3(f"Looking for: {f}")
         if os.path.exists(f):
             return f
 
     raise IOError("Unable to find the merging rules " +
-                  "for {} in\n{}".format(toolname, infiles))
+                  f"for {toolname} in\n{infiles}")
 
 
 def fix_bunit(infile, outfile, verbose=0):
