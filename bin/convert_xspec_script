@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2020
+# Copyright (C) 2020, 2021
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -29,6 +29,7 @@ Usage:
 
       --clean
       --clobber
+      --verbose n or -v n where n is 0, 1, 2, 3, 4, 5
 
       --version
       --help
@@ -51,7 +52,7 @@ from sherpa_contrib.xspec import xcm
 
 
 TOOLNAME = "convert_xspec_script"
-TOOLVER = "09 December 2020"
+TOOLVER = "02 November 2021"
 
 lw.initialize_logger(TOOLNAME, verbose=1)
 V1 = lw.make_verbose_level(TOOLNAME, 1)
@@ -66,7 +67,7 @@ The conversion is not guaranteed to match XSPEC perfectly.
 """
 
 COPYRIGHT_STR = """
-Copyright (C) 2020
+Copyright (C) 2020, 2021
           Smithsonian Astrophysical Observatory
 
 This program is free software; you can redistribute it and/or modify
@@ -125,10 +126,14 @@ if __name__ == "__main__":
                         default=False,
                         help="Set to overwrite output files, otherwise script exits")
 
+    parser.add_argument("--verbose", "-v", dest="verbose", type=int,
+                        choices=range(0, 6), default=1,
+                        help="Verbose level; higher for more screen output")
+
     # Ideally you could use these without giving any of the required options,
     # but I do not want to support that just now.
     #
-    parser.add_argument("--version", "-v", dest="list_version",
+    parser.add_argument("--version", dest="list_version",
                         action="store_true",
                         help="List the version of the script and exit.")
     parser.add_argument("--copyright", dest="list_copyright",
@@ -139,7 +144,7 @@ if __name__ == "__main__":
     arglist = lw.preprocess_arglist(sys.argv[1:])
     args = parser.parse_args(arglist)
 
-    # lw.set_verbosity(args.verbose)
+    lw.set_verbosity(args.verbose)
 
     if args.list_version:
         V1(TOOLVER)

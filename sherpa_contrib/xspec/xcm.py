@@ -27,9 +27,8 @@ analysis in Sherpa.
 
 """
 
-import logging
-
 from collections import defaultdict
+import os
 
 import numpy as np
 
@@ -41,11 +40,14 @@ from sherpa.utils.err import ArgumentErr, DataErr
 import sherpa.astro.instrument
 import sherpa.models.parameter
 
+import ciao_contrib.logger_wrapper as lw
+
 
 __all__ = ("convert", )
 
-lgr = logging.getLogger(__name__)
-dbg = lgr.debug
+lgr = lw.initialize_module_logger(__name__)
+v1 = lgr.verbose1
+v2 = lgr.verbose2
 del lgr
 
 
@@ -120,7 +122,7 @@ def notice(spectrum, lo, hi, ignore=False):
         elo = d._channel_to_energy(lo)
         ehi = d._channel_to_energy(hi)
 
-        dbg(f"Converting group {lo}-{hi} to {elo:.3f}-{ehi:.3f} keV [ignore={ignore}]]")
+        v2(f"Converting group {lo}-{hi} to {elo:.3f}-{ehi:.3f} keV [ignore={ignore}]]")
         d.notice(elo, ehi, ignore=ignore)
         return
 
@@ -128,7 +130,7 @@ def notice(spectrum, lo, hi, ignore=False):
         whi = d._channel_to_energy(lo)
         wlo = d._channel_to_energy(hi)
 
-        dbg(f"Converting group {lo}-{hi} to {wlo:.5f}-{whi:.5f} A [ignore={ignore}]]")
+        v2(f"Converting group {lo}-{hi} to {wlo:.5f}-{whi:.5f} A [ignore={ignore}]]")
         d.notice(wlo, whi, ignore=ignore)
         return
 
@@ -139,7 +141,7 @@ def notice(spectrum, lo, hi, ignore=False):
     clo = d._group_to_channel(lo)
     chi = d._group_to_channel(hi)
 
-    dbg(f"Converting group {lo}-{hi} to channels {clo}-{chi} [ignore={ignore}]]")
+    v2(f"Converting group {lo}-{hi} to channels {clo}-{chi} [ignore={ignore}]]")
     d.notice(clo, chi, ignore=ignore)
 
 
@@ -175,7 +177,7 @@ def subtract(spectrum):
     try:
         ui.subtract(spectrum)
     except DataErr:
-        print(f"Dataset {spectrum} has no background data!")
+        v1(f"Dataset {spectrum} has no background data!")
 
 
 def _mklabel(func):
@@ -406,10 +408,11 @@ def parse_tie(pars, add_import, add, par, pline):
     line = line.translate({32: None})
 
     # Build up the link expression. The state token indicates
-    # whether we are processing a function like abs or sin.
+    # whether we are processing a function like abs or sin, but it
+    # currently isn't actually used.
     #
     expr = ''
-    state = 'normal'
+    # state = 'normal'
     token = ''
     exponentiation = False
     while line != '':
@@ -484,7 +487,7 @@ def expand_token(add_import, pars, pname, token):
     ltoken = token.lower()
 
     if ltoken == 'mean':
-        print(f"Use of MEAN found in parameter tie for {pname}: please review")
+        v1(f"Use of MEAN found in parameter tie for {pname}: please review")
         return 'mean'
 
     if ltoken in ["exp", "sin", "cos", "tan", "sqrt", "abs",
@@ -606,7 +609,7 @@ def parse_ranges(ranges):
 
     chantype = "channel"
 
-    def convert(val):
+    def lconvert(val):
         global chantype
         if '.' in val:
             chantype = "other"
@@ -627,15 +630,15 @@ def parse_ranges(ranges):
     for r in ranges.split(','):
         rs = r.split('-')
         if len(rs) == 1:
-            end = convert(rs[0])
+            end = lconvert(rs[0])
             start = end
             #if len(out) == 0:
             #    start = 1  # is this correct?
             #else:
             #    start = end
         elif len(rs) == 2:
-            start = convert(rs[0])
-            end = convert(rs[1])
+            start = lconvert(rs[0])
+            end = lconvert(rs[1])
         else:
             raise ValueError(f"Unexpected range in '{ranges}'")
 
@@ -747,7 +750,7 @@ def convert_model(expr, postfix, groups, names):
 
 
     # Let's remove the spaces
-    dbg(f"Processing model expression: {expr}")
+    v2(f"Processing model expression: {expr}")
     expr = expr.translate({32: None})
 
     if len(groups) == 1:
@@ -778,23 +781,51 @@ def convert_model(expr, postfix, groups, names):
         if start == end:
             return ctr
 
-        name = f"xs{expr[start:end]}"
-        dbg(f"Identified model expression '{name}'")
+        name = expr[start:end]
+        v2(f"Identified model expression '{name}'")
+
+        # Special case table models, which have the form
+        #   atable{filename}
+        #   mtable{filename}
+        #   etable{filename}
+        #
+        table = None
+        if name.startswith('atable{') or name.startswith('mtable{') or name.startswith('etable{'):
+            if not name.endswith('}'):
+                raise ValueError("Expected ?table{filename} but sent: '{name}'")
+
+            table = (name[0:6], name[7:-1])
+            if not os.path.isfile(table[1]):
+                raise OSError(f"Unable to find XSPEC {table[0]}: '{table[1]}'")
 
         for i, grp in enumerate(groups, 1):
-            try:
-                mdl = session.create_model_component(name, mkname(ctr, grp))
-            except ArgumentErr:
-                raise ValueError(f"Unrecognized XSPEC model '{name[2:]}' in {expr}") from None
 
-            out[i - 1].append((mdl.name.split('.'), mdl))
+            locname = mkname(ctr, grp)
+
+            if table is not None:
+                is_etable = table[0] == 'etable'
+                mdl = xspec.read_xstable_model(locname, table[1], etable=is_etable)
+                session._tbl_models.append(mdl)
+                session._add_model_component(mdl)
+
+                out[i - 1].append((mdl.name.split('.'), mdl, 'TABLEMODEL', table))
+
+            else:
+
+                name = f"xs{name}"
+                try:
+                    mdl = session.create_model_component(name, locname)
+                except ArgumentErr:
+                    raise ValueError(f"Unrecognized XSPEC model '{name[2:]}' in {expr}") from None
+
+                out[i - 1].append((mdl.name.split('.'), mdl))
 
             # This only needs to be checked for the first group.
             #
             if i == 1:
                 if isinstance(mdl, xspec.XSConvolutionKernel):
                     if storage['convolution'] is not None:
-                        print("Convolution found within a convolution expession. This is not handled correctly.")
+                        v1("Convolution found within a convolution expession. This is not handled correctly.")
                     else:
                         storage['convolution'] = storage['depth']
                         storage['lastterm'] = 'convolution'
@@ -805,6 +836,9 @@ def convert_model(expr, postfix, groups, names):
 
                 elif isinstance(mdl, xspec.XSAdditiveModel):
                     storage['lastterm'] = 'additive'
+
+                elif isinstance(mdl, xspec.XSTableModel):
+                    storage['lastterm'] = 'additive' if table[0] == 'atable' else 'multiplicative'
 
                 else:
                     raise RuntimeError(f"Unrecognized XSPEC model: {mdl.__class__}")
@@ -825,7 +859,7 @@ def convert_model(expr, postfix, groups, names):
         if storage['convolution'] == storage['depth']:
             add_sep(")")
         elif storage['convolution'] > storage['depth']:
-            print("WARNING: convolution model may not be handled correctly.")
+            v1("WARNING: convolution model may not be handled correctly.")
 
         storage['convolution'] = None
 
@@ -910,10 +944,10 @@ def convert_model(expr, postfix, groups, names):
     check_end_convolution(storage)
 
     if storage['convolution'] is not None:
-        print("WARNING: convolution model may not be handled correctly.")
+        v1("WARNING: convolution model may not be handled correctly.")
 
     if storage['depth'] != 0:
-        print("WARNING: unexpected issues handling brackets in the model")
+        v1("WARNING: unexpected issues handling brackets in the model")
 
     return out
 
@@ -1056,10 +1090,10 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
         toks = xline.split()
         ntoks = len(toks)
         command = toks[0].lower()
-        dbg(f"[{command}] - {xline}")
+        v2(f"[{command}] - {xline}")
 
         if command in ['bayes', 'systematic']:
-            dbg(f"Skipping")
+            v2(f"Skipping: {command}")
             continue
 
         if command == 'method':
@@ -1113,7 +1147,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
 
             # We skip the delta setting
             if toks[1] == 'delta':
-                dbg("Skipping 'xset delta'")
+                v2("Skipping 'xset delta'")
                 continue
 
             # At the moment force this to a string value. This may
@@ -1247,7 +1281,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
 
             # I find it useful to point out the models being processed
             #
-            print(xline)
+            v1(xline)
             madd(f"# {xline}")
 
             if ntoks == 1:
@@ -1310,8 +1344,19 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
                         continue
 
                     mtype, mname = cpt[0]
-                    madd(f"{mname} = XXcreate_model_component('{mtype}', '{mname}')",
-                         expand=True)
+
+                    # special case table model; this should not be special-cased!
+                    #
+                    if len(cpt) == 4:
+                        madd(f"XXload_xstable_model('{mname}', '{cpt[3][1]}', etable={cpt[3][0] == 'etable'})",
+                             expand=True)
+
+                    elif len(cpt) == 2:
+                        madd(f"{mname} = XXcreate_model_component('{mtype}', '{mname}')",
+                             expand=True)
+
+                    else:
+                        raise RuntimeError(f"Internal error: cpt={cpt}")
 
             # Create the list of all parameters, so we can set up links.
             # Note that we store these with the label, not sourcenumber,
@@ -1346,7 +1391,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
                         try:
                             pline = intext.pop(0).strip()
                         except IndexError:
-                            print(f"Unable to find parameter value for {par.name} - skipping other parameters")
+                            v1(f"Unable to find parameter value for {par.name} - skipping other parameters")
                             escape = True
                             break
 
@@ -1381,7 +1426,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
 
             continue
 
-        print(f"SKIPPING '{xline}'")
+        v1(f"SKIPPING '{xline}'")
 
     # We need to create the source models. This is left till here because
     # Sherpa handles "multiple specnums" differently to XSPEC.
