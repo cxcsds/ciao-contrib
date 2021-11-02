@@ -90,14 +90,12 @@
       </PARA>
 
       <PARA title="Table models">
-	Sherpa already supports additive and multiplicative
-	table models using the
+	Sherpa already supports additive, multiplicative, and
+	exponential
+	XSPEC table models using the
 	<HREF link="https://cxc.harvard.edu/sherpa/ahelp/load_xstable_model.html">load_xstable_model</HREF>
-	command; this was added in CIAO 4.9
-        and replaces the support for XSPEC table models in
-        the
-	<HREF link="https://cxc.harvard.edu/sherpa/ahelp/load_table_model.html">load_table_model</HREF>
-        command.
+	command (support for exponential table models was added
+	in CIAO 4.14).
       </PARA>
 
       <PARA title="Removing the models">
@@ -304,21 +302,16 @@ os.environ["RELLINE_TABLES"] = "/data/models/relxill"
       <PARA>
         Starting Sherpa will display a line for each message, which can
 	be useful but quickly gets annoying. To hide these messages
-	use:
+	use the SherpaVerbosity context managed (new in CIAO 4.14):
       </PARA>
-<VERBATIM>
-import logging
+      <VERBATIM>
+from sherpa.utils.logging import SherpaVerbosity
 
-lgr = logging.getLogger('sherpa')
-olvl = lgr.level
-lgr.level = logging.WARN
+with SherpaVerbosity('WARN'):
+    import carbatm.ui
+    import relxill.ui
 
-import carbatm.ui
-import relxill.ui
-
-lgr.level = logging.INFO
-
-del olvl, lgr
+del SherpaVerbosity
 </VERBATIM>
 
       <PARA title="Notes">
@@ -456,14 +449,14 @@ undefined symbol: _gfortran_copy_string
       </PARA>
       <PARA>
 	<SYNTAX>
-	  <LINE>&upr; python setup.py develop</LINE>
+	  <LINE>&upr; pip install . --verbose</LINE>
 	</SYNTAX>
       </PARA>
       <PARA>
 	as it should provide more information. Possible problems are
 	models that refer to XSPEC code from older (or newer) versions
 	of XSPEC than used by CIAO, as well as access to certain parts of
-	the XSPEC build system (such as the FFTW3 FORTRAN interface).
+	the XSPEC build system.
 	Some of these can be worked around - such as removing the problematic
 	models or tweaking how the extension module is built in setup.py -
 	and the <HREF link="https://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
@@ -515,13 +508,16 @@ undefined symbol: _gfortran_copy_string
 	the language used for this routine.
 	The parsing follows the definition given in the
 	<HREF link="https://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSappendixLocal.html">&xspec;
-	  appendix on local models</HREF>.
+	appendix on local models</HREF> and is based on
+	the sherpa.astro.utils.xspec.parse_xspec_model_description
+	routine from Sherpa.
       </PARA>
       <PARA title="Creating the compiled code">
 	The compiled code is buuilt following the approach Sherpa
 	uses to build its interface to the XSPEC model library.
 	The C++ code is generated in the src/{modname}/src/_models.cxx
-	file.
+	file. The sherpa.astro.utils.xspec.create_xspec_code
+	routine is used to create the files.
       </PARA>
 
       <PARA title="What files are compiled?">
@@ -552,8 +548,17 @@ undefined symbol: _gfortran_copy_string
     <ADESC title="Changes in the scripts 4.14.0 (December 2021) release">
       <PARA>
 	The script has been updated to handle changes in XSPEC 12.12.0 (as it
-	makes building packages easier) and in Sherpa. At present there
-	are still problems with C++ models.
+	makes building packages easier) and in Sherpa. In particular the
+	parsing of XSPEC model files is now handled by the
+	sherpa.astro.utils.xspec.parse_xspec_model_description
+	routine and the code generation relies on the
+	sherpa.astro.utils.xspec.create_xspec_code routine,
+	both new in Sherpa 4.14.0.
+      </PARA>
+      <PARA>
+	Please contact the
+	<HREF link="https://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	if you are unable to run the script with a local model.
       </PARA>
     </ADESC>
 
@@ -654,6 +659,6 @@ undefined symbol: _gfortran_copy_string
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>November 2021</LASTMODIFIED>
+    <LASTMODIFIED>December 2021</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
