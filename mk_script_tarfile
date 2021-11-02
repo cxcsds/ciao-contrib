@@ -1,127 +1,173 @@
 #!/usr/bin/env python
 
-"""
-Usage:
-  ./mk_script_tarfile <number or dev>
+"""Usage:
+  ./mk_script_tarfile <versino string>
 
 Aim:
 
 Create the tar file for the contributed scripts package, using
-either the identifier "dev" or the number (the main CIAO version
-is picked up automatically from the ciao-x.y/ directory).
-
-For CIAO 4.9 one version is created, which has both Python 2.7 and
-3.5 directory names in it. This may turn out to be a bad idea,
-in which case two versions will be created. This is still the case
-for CIAO 4.10.
-
-Whilst we could automate the choice of number, it seems safer
-to make the user specify it manually.
+the dotted vresino string, which shuold be 4.14.0 or 4.14.dev
+(adjust versino appropriately).
 
 The VERSION file (ciao-<>/contrib/VERSION.CIAO_scripts) is not
 tracked by git.
+
+The approach taken by this script has changed - it was manual, then
+based on setuptools - but now with setuptools moving to a buildm
+rather than install, system we are going back to running things
+manually.
 
 Files or directories called tests are not included in the tar
 file. This may be changed in the future (it may be useful to
 be able to run tests from an installed version), but the tests
 are currently very ad-hoc so it's not worth it.
 
-The copy argument has been removed.
-
 """
 
-import sys
-import os
+from collections import defaultdict
 import glob
-import time
+import os
+from pathlib import Path
+import shutil
 import subprocess as sbp
+import sys
+import time
 
-def get_ciao_version():
-    """Set up the CIAO version values based on the ciao-x.y/
-    directory in the current working directory.
-    """
 
-    dnames = [dname for dname in glob.glob("ciao-*.*")
-              if os.path.isdir(dname)]
-    if len(dnames) == 0:
-        sys.stderr.write("ERROR: no directory matching ciao-*.* found\n")
-        sys.exit(1)
-
-    elif len(dnames) != 1:
-        sys.stderr.write("ERROR: found {} ".format(len(dnames)) +
-                         "directories matching ciao-*.*!\n")
-        sys.exit(1)
-
-    toks = dnames[0][5:].split('.')
-    if len(toks) != 2:
-        raise IOError("Unexpected directory name {}".format(dnames[0]))
-
-    majver = toks[0]
-    minver = toks[1]
-    return { "minver": minver,
-             "majver": majver,
-             "version_dotted": "%s.%s" % (majver, minver),
-             "root": dnames[0] }
-
-def build_dist( rel_num, ver, prefix ):
+def build_dist(version, dirname, outdir, python="python3.8"):
     """Build contrib scripts package into a separate temp dir"""
 
-    install_dir = "{}/ciao-{}/contrib".format(prefix,rel_num)
+    outdir = Path(outdir)
+    outdir /= dirname
+    if outdir.exists():
+        raise OSError(f"Exists: {outdir}")
 
-    build_cmd = ["python", "setup.py",
-        "--version={}.{}".format(rel_num,ver),
-        "build", "--executable", "/usr/bin/env python",
-        "install", "--prefix", install_dir]
-    sbp.check_call( build_cmd)
+    outdir /= "contrib"
+    if outdir.exists():
+        raise OSError(f"Exists: {outdir}")
+
+    # This uses the default mode for the parent directories.
+    #
+    outdir.mkdir(parents=True)
+
+    # Copy directories over to this directory
+    #
+    for basedir in ["bin", "share/doc/xml", "data", "config", "param"]:
+        newdir = outdir / basedir
+        newdir.mkdir(parents=True)
+        nfiles = 0
+        for infile in glob.glob(f"{basedir}/*"):
+            if infile.endswith('~'):
+                continue
+
+            bname = os.path.basename(infile)
+            if bname.startswith('#'):
+                continue
+
+            shutil.copy2(infile, str(outdir / infile))
+            nfiles += 1
+
+        print(f'Copy to {basedir}: {nfiles} files')
+
+    # Create the lib structure. Unlike the other directories here we have
+    # to recurse into directories.
+    #
+    libdir = outdir / "lib" / python / "site-packages"
+    libdir.mkdir(parents=True)
+
+    for infile in ["lightcurves.py"]:
+        shutil.copy2(infile, str(libdir / infile))
+
+    for basedir in ['ciao_contrib', 'coords', 'crates_contrib', 'dax',
+                    'sherpa_contrib']:
+        for dirpath, dirnames, filenames in os.walk(basedir):
+            newdir = libdir / dirpath
+            newdir.mkdir()
+
+            # copy over the files
+            nfiles = 0
+            for infile in filenames:
+                if infile.endswith('~') or infile.startswith('#'):
+                    continue
+
+                shutil.copy2(f'{dirpath}/{infile}', str(newdir / infile))
+                nfiles += 1
+
+            print(f'Copy to lib/{python}/site-packages/{dirpath}: {nfiles} files')
+
+    # Create the egg info file: is it needed?
+    #
+    if python == 'python':
+        raise RuntimeError("What should the egg version be now?")
+
+    pyver = python[6:]
+    eggfile = libdir / f"ciao_contrib-{version}-py{pyver}.egg-info"
+    with open(eggfile, 'wt') as fh:
+        fh.write(f'''Metadata-Version: 1.0
+Name: ciao-contrib
+Version: {version}
+Summary: CIAO Contributed scripts
+Home-page: https://github.com/cxcsds/ciao-contrib/
+Author: CXCSDS and Friends
+Author-email: cxchelp@cfa.harvard.edu
+License: GNU GPL v3
+Description: UNKNOWN
+Platform: UNKNOWN
+''')
+
+    # Need to ensure all the bin files have a valid shebang - fortunately we
+    # don't need to replace anything so this is more a check.
+    #
+    scripts = defaultdict(int)
+    for infile in glob.glob(f"{outdir}/bin/*"):
+
+        firstline = open(infile, 'rt').readline().rstrip()
+        if not firstline.startswith('#!'):
+            raise OSError(f"shebang line for {infile}: {firstline}")
+
+        toks = firstline[2:].lstrip().split()
+
+        if (len(toks) == 1) and (toks[0] in ['/bin/sh', '/bin/bash']):
+            scripts[toks[0]] += 1
+            continue
+
+        if len(toks) != 2:
+            raise OSError(f"shebang line for {infile}: {firstline}")
+
+        if toks[0] != '/usr/bin/env':
+            raise OSError(f"shebang line for {infile}: {firstline}")
+
+        scripts[toks[1]] += 1
+
+    print("Script breakdown:")
+    for k, v in scripts.items():
+        print(f"  {k:10s}: {v}")
+
+    print("")
+
+    # libs
+
+    # Copy files over
+    #
+    for infile in ["Changes.CIAO_scripts", "README_CIAO_scripts"]:
+        shutil.copy2(infile, str(outdir / infile))
+
+    # Create version file
+    #
+    with open(outdir / 'VERSION.CIAO_scripts', 'wt') as fh:
+        datestr = f"scripts {version} "
+        datestr += time.strftime("%A, %B %e, %Y")
+        fh.write(datestr)
+        fh.write('\n')
+        print(f"Updated VERSION file: {datestr}")
 
 
-
-def make_tarfile(ver, cwd):
+def make_tarfile(tarfilegz, dname):
     """Create versioned tar file"""
 
-    cver = get_ciao_version()
+    print(f"Building {tarfilegz}")
 
-    if ver == "dev":
-        ver = ver.upper()
-    else:
-        ver = str(ver)
-
-    verstr = "%s.%s.%s" % (cver["majver"], cver["minver"], ver)
-
-
-    tarfile = "%s-contrib-%s.tar" % (cver["root"], ver)
-    tarfile = os.path.join( cwd, tarfile )
-    tarfilegz = tarfile + ".gz"
-    print("Tar file: {}".format(tarfile))
-
-    if ver != "DEV" and \
-            (os.path.exists(tarfile) or os.path.exists(tarfilegz)):
-
-        sys.stderr.write("ERROR: output file already exists\n")
-        sys.stderr.write("         {}\n".format(tarfile))
-        sys.stderr.write("         {}\n".format(tarfilegz))
-        sys.stderr.write("       Does the version number need updating?")
-        sys.stderr.write("\n\n")
-        sys.exit(1)
-
-    # Remove backup (*~) files
-    # (let find do this)
-    #
-    sbp.check_call(["find", ".", "-name", "*~", "-exec", "rm", "{}", ";"])
-
-    verfile = os.path.join(cver["root"], "contrib", "VERSION.CIAO_scripts")
-    print("Updating {} with current date and release number".format(verfile))
-    datestr = "scripts %s " % verstr
-    datestr += time.strftime("%A, %B %e, %Y")
-    with open(verfile, 'w') as fh:
-        fh.write(datestr)
-        fh.write("\n")
-
-    print("Building {}".format(tarfile))
-
-    # This does not keep soft links, which means that the python2.7/3.5
-    # split doubles the files (it's not a lot of space, but still).
-    # Do we have links anywhere else?
+    # This does not keep soft links.
     #
     # sbp.check_call(["tar", "chf", tarfile, "./" + cver["root"]])
     #
@@ -129,46 +175,83 @@ def make_tarfile(ver, cwd):
     for ename in [".gitignore", "tests", "__pycache__"]:
         args.append("--exclude={}".format(ename))
 
-    args.extend(["-cf", tarfile, "./" + cver["root"]])
-
+    args.extend(["-czf", tarfilegz, f"./{dname}"])
     sbp.check_call(args)
-    sbp.check_call(["gzip", "-f", tarfile])
+    print(f"\nCreated: {tarfilegz}")
 
-    print("\nCreated: {}".format(tarfilegz))
 
+def is_int(x):
+    try:
+        v = int(x)
+    except ValueError:
+        sys.stderr.write("ERROR: version string should be 4.14.0 or 4.14.dev\n")
+        sys.exit(1)
+
+    if v < 1:
+        sys.stderr.write("ERROR: major and minor terms must be >= 1\n")
+        sys.exit(1)
+
+
+def is_micro(x):
+    if x.upper() == 'DEV':
+        return 'DEV'
+
+    try:
+        v = int(x)
+    except ValueError:
+        sys.stderr.write("ERROR: version string should be 4.14.0 or 4.14.dev\n")
+        sys.exit(1)
+
+    if v < 0:
+        sys.stderr.write("ERROR: micro terms must be >= 0\n")
+        sys.exit(1)
+
+    return x
 
 
 if __name__ == "__main__":
 
     nargs = len(sys.argv)
-    if nargs != 3:
-        sys.stderr.write("Usage: %s <release> <number or dev>\n" % sys.argv[0])
-        sys.stderr.write("Example: %s 4.13 1\n" % sys.argv[0])
+    if nargs != 2:
+        sys.stderr.write(f"Usage: {sys.argv[0]} <release>\n\n")
+        sys.stderr.write(f"Examples:\n")
+        sys.stderr.write(f"  {sys.argv[0]} 4.14.0\n")
+        sys.stderr.write(f"  {sys.argv[0]} 4.14.dev\n")
+        sys.stderr.write('\n')
         sys.exit(1)
 
-    rel_num = sys.argv[1]
-    try:
-        release_number = float(rel_num)
-    except ValueError:
-        sys.stderr.write("ERROR: CIAO release must be a real number not %s\n" % rel_num)
+    userversion = sys.argv[1]
+    toks = userversion.split('.')
+    if len(toks) != 3:
+        sys.stderr.write("ERROR: version string should be 4.14.0 or 4.14.dev\n")
         sys.exit(1)
 
+    is_int(toks[0])
+    is_int(toks[1])
 
-    ver = sys.argv[2]
-    if ver != "dev":
-        try:
-            ver = int(ver)
-            if ver < 0:
-                sys.stderr.write("Error: version number must be >= 0, not %d\n" % ver)
-                sys.exit(1)
+    major = toks[0]
+    minor = toks[1]
+    micro = is_micro(toks[2])
 
-        except ValueError:
-            sys.stderr.write("ERROR: version must be an integer or the string dev, not %s\n" % ver)
+    dirname = f"ciao-{major}.{minor}"
+    version = f"{major}.{minor}.{micro}"
+
+    cwd = os.getcwd()
+    tarfile = f"{dirname}-contrib-{micro}.tar"
+    tarfile = os.path.join(cwd, tarfile)
+    tarfilegz = f'{tarfile}.gz'
+
+    if micro != 'DEV':
+        if os.path.exists(tarfile) or os.path.exists(tarfilegz):
+            sys.stderr.write("ERROR: output file already exists\n")
+            sys.stderr.write(f"         {tarfile}\n")
+            sys.stderr.write(f"         {tarfilegz}\n")
+            sys.stderr.write("       Does the version number need updating?")
+            sys.stderr.write("\n\n")
             sys.exit(1)
 
     from tempfile import TemporaryDirectory
-    with TemporaryDirectory( prefix="ciao-"+rel_num ) as tmpdir:
-        build_dist(rel_num, ver, tmpdir)
-        cwd = os.getcwd()
+    with TemporaryDirectory(prefix=dirname) as tmpdir:
+        build_dist(version, dirname, tmpdir)
         os.chdir(tmpdir)
-        make_tarfile(ver, cwd)
+        make_tarfile(tarfilegz, dirname)
