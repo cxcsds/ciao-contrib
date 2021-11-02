@@ -23,6 +23,8 @@
       <LINE/>
       <LINE>Unlike most CIAO contributed scripts, there is no parameter file.</LINE>
       <LINE/>
+      <LINE>If infile or outfile are - then stdin or stdout are used, respectively.</LINE>
+      <LINE/>
       <LINE>The supported command-line flags can be found using -h/--help:</LINE>
       <LINE/>
       <LINE>--clean     if the script should start with a call to clean</LINE>
@@ -230,6 +232,30 @@ set_source(1, m1(m2 * m3))
 	</DESC>
       </QEXAMPLE>
 
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&upr; echo "model phabs(apec)" | &tool; - -</LINE>
+	  <LINE>model phabs(apec)</LINE>
+	  <LINE>Unable to find parameter value for nH - skipping other parameters</LINE>
+	  <LINE>from sherpa.astro.ui import *</LINE>
+	  <LINE/>
+	  <LINE/>
+	  <LINE># model phabs(apec)</LINE>
+	  <LINE>m1 = create_model_component('xsphabs', 'm1')</LINE>
+	  <LINE>m2 = create_model_component('xsapec', 'm2')</LINE>
+	  <LINE/>
+	  <LINE># Set up the model expressions</LINE>
+	  <LINE>#</LINE>
+	  <LINE>set_source(1, m1 * (m2))</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Convert the input from stdin - in this case the string "model phabs(apec)" -
+	    and write the output to stdin.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
     </QEXAMPLELIST>
 
     <ADESC title="Known Problems">
@@ -257,9 +283,8 @@ set_source(1, m1(m2 * m3))
       </PARA>
       <PARA title="Unsupported models">
 	Only additive, multiplicative, and convolution models are
-	recognized. Models added in XSPEC 12.11.0 will produce
-	an output but the resulting code can will fail when a
-	model is evaluated (as CIAO 4.13 uses XSPEC 12.10.1).
+	recognized. Only models included in XSPEC 12.12.0 (used in
+	CIAO 4.14) are available.
       </PARA>
       <PARA title="Unsupported commands">
 	Some commands are ignored by the script, but others will
@@ -281,9 +306,10 @@ set_source(1, m1(m2 * m3))
 
     <ADESC title="Changes in the scripts 4.14.0 (December 2021) release">
       <PARA>
-	Updated for changes in Sherpa. Support XSPEC table models using
-	atable, mtable, and etable expressions.
-	Added the --verbose flag.
+	Updated for changes in Sherpa. Support XSPEC table models
+	using atable, mtable, and etable expressions.  Input and
+	output can no be taken from stdin and stdout respectively by
+	using the "-" name.  Added the --verbose flag.
       </PARA>
     </ADESC>
 

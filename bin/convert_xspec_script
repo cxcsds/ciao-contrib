@@ -97,17 +97,23 @@ def check_clobber(fname):
 @lw.handle_ciao_errors(TOOLNAME, TOOLVER)
 def convert(infile, outfile, clean=False, clobber=False):
 
-    if not clobber:
+    if outfile != '-' and not clobber:
         check_clobber(outfile)
 
-    try:
-        cts = open(infile, 'r')
-    except OSError as oe:
-        raise OSError(f"Unable to read from '{infile}'") from oe
+    if infile == '-':
+        cts = sys.stdin
+    else:
+        try:
+            cts = open(infile, 'r')
+        except OSError as oe:
+            raise OSError(f"Unable to read from '{infile}'") from oe
 
     out = xcm.convert(cts, clean=clean)
-    with open(outfile, 'w') as fh:
-        fh.write(out)
+    if outfile == '-':
+        sys.stdout.write(out)
+    else:
+        with open(outfile, 'w') as fh:
+            fh.write(out)
 
 
 if __name__ == "__main__":
@@ -115,8 +121,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=HELP_STR,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
 
-    parser.add_argument("infile", help="XCM file to convert")
-    parser.add_argument("outfile", help="Sherpa file to create")
+    parser.add_argument("infile", help="XCM file to convert (- for stdin)")
+    parser.add_argument("outfile", help="Sherpa file to create (- for stdout)")
 
     parser.add_argument("--clean", dest="clean", action="store_true",
                         default=False,
