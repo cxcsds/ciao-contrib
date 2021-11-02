@@ -42,8 +42,8 @@ def test_have_ascds_install():
 
 
 def test_expected_tools():
-    assert len(ALL_TOOLS) == 179
-    assert len(STANDARD_TOOLS) == 164
+    assert len(ALL_TOOLS) == 180
+    assert len(STANDARD_TOOLS) == 165
 
 
 @pytest.mark.parametrize("expected", STANDARD_TOOLS)
@@ -401,6 +401,8 @@ def test_write_parfile_standard(toolname, tmp_path):
         assert nwrong == 1
     elif toolname == 'dmkeypar':
         assert nwrong == 2
+    elif toolname == 'dmradar':
+        assert nwrong == 1
     elif toolname == 'dmreadpar':
         assert nwrong == 3
     elif toolname == 'dmregrid':
