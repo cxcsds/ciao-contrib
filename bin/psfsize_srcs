@@ -1,22 +1,22 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 
- 
+
 # Copyright (C) 2013,2016 Smithsonian Astrophysical Observatory
-# 
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-# 
+#
 from __future__ import print_function
 
 
@@ -53,7 +53,7 @@ def lookup_psffile_in_caldb( calfile ):
     """
     Lookup REEF caldb file -- calfile itself not currently used
     """
-    
+
     c = cldb.Caldb( "chandra", None, "REEF")
     myfile = c.search
     if len(myfile) != 1:
@@ -64,16 +64,16 @@ def lookup_psffile_in_caldb( calfile ):
 
 def get_psf_size( psffile, theta, phi, energy, fraction, pixsize=1 ):
     """
-    Get PSF size for given fration/theta/phi    
+    Get PSF size for given fration/theta/phi
     """
-    
+
     def initalize_psf( calfile ):
         """ Open PSF file """
         if not calfile or calfile[0:5] == 'CALDB':
             calfile = lookup_psffile_in_caldb( calfile )
         psf = psfInit( calfile )
         return psf
-    
+
     if len(theta) != len(phi) :
         raise LookupError("Must have same number of theta & phi values")
 
@@ -95,7 +95,7 @@ def get_keys_from_crate( myfile ):
 
 def parse_ebands( energy ):
     """
-    Parse energy band string    
+    Parse energy band string
     """
     csc = { 'broad' : 2.3, 'soft' : 0.92, 'ultrasoft' : 0.4, 'medium' : 1.56, 'hard' : 3.8, 'wide' : 1.5 }
     if energy in csc:
@@ -106,14 +106,14 @@ def parse_ebands( energy ):
         return retval
     except ValueError:
         pass # okay,will try other combos
-    
+
     if ':' not in energy:
         raise ValueError("Unknown energy {}".format(energy))
-    
+
     ee=energy.split(":")
     if 3 != len(ee):
         raise ValueError("Bad energy range format {}".format(energy))
-    
+
     try:
         retval = float(ee[2])
         return retval
@@ -123,19 +123,19 @@ def parse_ebands( energy ):
 
 def write_output(outfile, radii, ra_vals, dec_vals, coords, mykeys):
     """
-    Write output file 
-    """    
+    Write output file
+    """
     shape = ['circle'] * len(radii)
     component = range(1,len(radii)+1)
 
-    cnam = [x.upper() for x in [ 'shape', 'x', 'y', 'r', 'component', 
-        'ra', 'dec', 'theta', 'phi', 'detx', 'dety', "chip_id", "chipx", 
+    cnam = [x.upper() for x in [ 'shape', 'x', 'y', 'r', 'component',
+        'ra', 'dec', 'theta', 'phi', 'detx', 'dety', "chip_id", "chipx",
         "chipy", "near_chip_edge"]]
     cval = [ shape, coords["x"], coords["y"],
-        radii, component, ra_vals, dec_vals, 
-        coords["theta"], coords["phi"], coords["detx"], coords["dety"], 
+        radii, component, ra_vals, dec_vals,
+        coords["theta"], coords["phi"], coords["detx"], coords["dety"],
         coords["chip_id"], coords["chipx"], coords["chipy"], coords["offchip"] ]
-    units = ['', 'pixel', 'pixel', 'pixel', '', 'deg', 'deg', 'arcmin', 
+    units = ['', 'pixel', 'pixel', 'pixel', '', 'deg', 'deg', 'arcmin',
         'deg', "pixel", "pixel", "", "pixel", "pixel", ""]
     desc = [ 'region geometry',
         'X center',
@@ -171,10 +171,10 @@ def write_output(outfile, radii, ra_vals, dec_vals, coords, mykeys):
     lt.get_parameter("SCALE").set_value(coords["pixsize"])
     lt.get_parameter("OFFSET").set_value( 0.0 )
     lt.name = "CEL_R"
-    rc = tab.get_column("r")    
+    rc = tab.get_column("r")
     # Crates bug won't allow transform to be set? Error on write()
     #rc._set_transform(lt)
-        
+
     for k in mykeys:
         ck = pc.CrateKey()
         ck.name = k
@@ -186,13 +186,13 @@ def write_output(outfile, radii, ra_vals, dec_vals, coords, mykeys):
 
 def check_chip_edge( coords, mykeys, edge ):
     """
-    
+
     """
-    
+
     if mykeys["INSTRUME"].lower() == "hrc":
         coords["offchip"] = [False]*len(coords["chipx"])
         return
-    
+
     coords["offchip"] = [False]*len(coords["chipx"])
 
     xmin = 1 +edge
@@ -201,14 +201,14 @@ def check_chip_edge( coords, mykeys, edge ):
 
     if "FIRSTROW" not in mykeys or "NROWS" not in mykeys:
         verb0("Missing 'FIRSTROW' or 'NROWS' keyword, cannot determine if this is a subarray dataset")
-    
+
     # Handle subarray, (doesn't do windows)
     ylo = mykeys["FIRSTROW"] if "FIRSTROW" in mykeys else 1
     nrow = mykeys["NROWS"] if "NROWS" in mykeys else 1024
 
     ymin =  ylo + edge
     ymax = (nrow-1) - edge
-    
+
     def offchip( pos):
         x = pos[0]
         y = pos[1]
@@ -217,8 +217,8 @@ def check_chip_edge( coords, mykeys, edge ):
         return True
 
     coords["offchip"] = list(map( offchip, zip(coords["chipx"], coords["chipy"] )))
-    
-    
+
+
 
 
 #
@@ -228,9 +228,9 @@ def check_chip_edge( coords, mykeys, edge ):
 def main():
     from ciao_contrib.runtool import add_tool_history
     from ciao_contrib._tools.fileio import outfile_clobber_checks
-    
+
     # get parameters
-    pars = get_params(toolname, "rw", sys.argv, 
+    pars = get_params(toolname, "rw", sys.argv,
         verbose={"set":lw.set_verbosity, "cmd":verb1} )
 
     outfile_clobber_checks(pars["clobber"], pars["outfile"] )
@@ -242,20 +242,20 @@ def main():
     energy = parse_ebands( pars["energy"] )
 
     # Convert ra/dec to theta/phi and x/y
-    myfile = read_file( pars["infile"] ) 
+    myfile = read_file( pars["infile"] )
     mykeys = get_keys_from_crate( myfile )
     coords = cel_to_chandra( mykeys, ra_vals, dec_vals )
 
     check_chip_edge( coords, mykeys, AcisEdge )
 
     # Get PSF size
-    radii = get_psf_size( pars["psffile"], coords["theta"], coords["phi"], 
+    radii = get_psf_size( pars["psffile"], coords["theta"], coords["phi"],
         energy, float(pars["ecf"]), coords["pixsize"] )
 
     # Write output
     write_output(pars["outfile"], radii, ra_vals, dec_vals, coords, mykeys)
     add_tool_history( pars["outfile"], toolname, pars, toolversion=__revision__)
-    
+
 
 if __name__ == "__main__":
     try:
@@ -264,4 +264,3 @@ if __name__ == "__main__":
         print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
-    

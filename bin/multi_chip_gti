@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 
 #
 # Copyright (C) 2013-2014,2016 Smithsonian Astrophysical Observatory
@@ -42,18 +42,18 @@ from ciao_contrib.runtool import make_tool
 def input_order( infile, todo ):
     """
     Get the order of the CCDs in the subspace from the input.
-    
+
     This is important since ONTIME/LIVETIME/EXPOSURE are taken
-    from the *first* GTI, ie the first CCD in the subspace.  
+    from the *first* GTI, ie the first CCD in the subspace.
     """
-    
+
     from pycrates import read_file
     tab = read_file(infile)
-    
+
     ret_order = []
     ii = 0
 
-    # Ugh.  Wish there was a better way to get the number of 
+    # Ugh.  Wish there was a better way to get the number of
     # subspace components.
     while True:
         try:
@@ -61,7 +61,7 @@ def input_order( infile, todo ):
             subspace = tab.get_subspace_data( ii, "ccd_id")
         except Exception as e:
             break
-    
+
         for lo,hi in zip( subspace.range_min, subspace.range_max+1):
             for ccd in range( lo, hi ):
                 if ccd in ret_order:
@@ -74,7 +74,7 @@ def input_order( infile, todo ):
     t2 = dict(todo)
     # Only include ccds that are in the infile subspace already
     todo = [(x,t2[x]) for x in ret_order if x in t2 ]
-    
+
     return todo
 
 
@@ -84,8 +84,8 @@ def make_tempfile( tmpdir, suffix):
     """
     from tempfile import NamedTemporaryFile
 
-    class DelMe(str):    
-        # Trick to make sure temp files are always deleted.  
+    class DelMe(str):
+        # Trick to make sure temp files are always deleted.
         # As long as filename is passed around file will remain.
         # when filename goes away, garbage collection will delete it
         #
@@ -101,7 +101,7 @@ def make_tempfile( tmpdir, suffix):
 
     #
     # FWIW: There is a race condition here.  From the time the
-    # tempfile is closed (or goes out of scope) until the tool 
+    # tempfile is closed (or goes out of scope) until the tool
     # actually opens/creates it, the same tempfile name could be
     # generated again (say by another process).
     #
@@ -111,7 +111,7 @@ def make_tempfile( tmpdir, suffix):
     return outfile
 
 
-def prep_infile( cf, tmpdir ):    
+def prep_infile( cf, tmpdir ):
     """
     Create a copy of the input gti file that now has a CCD_ID subspace
     """
@@ -134,7 +134,7 @@ def prep_infile( cf, tmpdir ):
     # Remove CCD_ID column, subspace remains
     outfile = make_tempfile( tmpdir, "dmcopy_{}.gti".format(ccd))
     dmcopy( "{}[cols -ccd_id]".format( tmp2 ), outfile, clobber=True)
-    
+
     return outfile
 
 
@@ -147,7 +147,7 @@ def merge_files( infiles, outfile ):
     dmmerge = make_tool( "dmmerge")
     dmmerge( infiles, outfile, clobber=True, lookupTab="")
     return outfile
-    
+
 
 def not_none( ccd_fname ):
     """
@@ -174,23 +174,23 @@ def main():
     ccds = ["i0", "i1", "i2", "i3", "s0", "s1", "s2", "s3", "s4", "s5"]
 
     # Load parameters
-    pars = get_params(toolname, "rw", sys.argv, 
+    pars = get_params(toolname, "rw", sys.argv,
                 verbose={"set":lw.set_verbosity, "cmd":verb1} )
 
     outfile_clobber_checks(pars["clobber"], pars["outfile"] )
 
     # Load *_gti parameters
     fnames = [ pars["{}_gti".format(x)] for x in ccds ]
-    
+
     # Determine which parameters are not "none" or blank
-    todo = [x for x in enumerate(fnames) if not_none(x)] 
+    todo = [x for x in enumerate(fnames) if not_none(x)]
 
     # Re-order ccds based on input file (if any)
     if not_none( (None, pars["infile"] )):
         todo = input_order( pars["infile"], todo )
 
     # Add ccd suspace to files
-    infiles = [prep_infile(t,pars["tmpdir"]) for t in todo ] 
+    infiles = [prep_infile(t,pars["tmpdir"]) for t in todo ]
 
     # Merge files
     merge_files( infiles, pars["outfile"] )
@@ -210,4 +210,3 @@ if __name__ == "__main__":
         print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
-  

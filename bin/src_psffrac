@@ -1,22 +1,22 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 
- 
+
 # Copyright (C) 2013,2016 Smithsonian Astrophysical Observatory
-# 
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-# 
+#
 
 from __future__ import print_function
 
@@ -47,7 +47,7 @@ def lookup_psffile_in_caldb( calfile ):
     """
     Lookup REEF caldb file -- calfile itself not currently used
     """
-    
+
     c = cldb.Caldb( "chandra", None, "REEF")
     myfile = c.search
     if len(myfile) != 1:
@@ -58,19 +58,19 @@ def lookup_psffile_in_caldb( calfile ):
 
 def get_psf_fractions( psffile, theta, phi, energy, radii, pixsize ):
     """
-    Get PSF size for given fration/theta/phi    
+    Get PSF size for given fration/theta/phi
     """
-    
+
     def initalize_psf( calfile ):
         """ Open PSF file """
         if not calfile or calfile.startswith('CALDB'):
             calfile = lookup_psffile_in_caldb( calfile )
         psf = psfInit( calfile )
         return psf
-    
+
     psf = initalize_psf( psffile )
     if len(theta) != len(phi) :
-        raise LookupError("Must have same number of theta & phi values")    
+        raise LookupError("Must have same number of theta & phi values")
 
     return [ psfFrac( psf, energy, tp[0],tp[1], pixsize*tp[2]) for tp in zip(theta,phi,radii)]
 
@@ -88,7 +88,7 @@ def sky_to_cel( myfile, x_vals, y_vals ):
         ra.append( sky[0][0] )
         dec.append( sky[0][1] )
     return ra,dec
-    
+
 
 
 def get_keys_from_crate( myfile ):
@@ -103,7 +103,7 @@ def get_keys_from_crate( myfile ):
 
 def parse_ebands( energy ):
     """
-    Parse energy band string    
+    Parse energy band string
     """
     csc = { 'broad' : 2.3, 'soft' : 0.92, 'ultrasoft' : 0.4, 'medium' : 1.56, 'hard' : 3.8, 'wide' : 1.5 }
     if energy in csc:
@@ -114,14 +114,14 @@ def parse_ebands( energy ):
         return retval
     except ValueError:
         pass # okay,will try other combos
-    
+
     if ':' not in energy:
         raise ValueError("Unknown energy {}".format(energy))
-    
+
     ee=energy.split(":")
     if 3 != len(ee):
         raise ValueError("Bad energy range format {}".format(energy))
-    
+
     try:
         retval = float(ee[2])
         return retval
@@ -131,21 +131,21 @@ def parse_ebands( energy ):
 
 def write_output(outfile, sky_x,sky_y,radii, ra_vals, dec_vals, coords, frac, mykeys):
     """
-    Write output file 
-    """    
+    Write output file
+    """
     shape = ['circle'] * len(radii)
     component = list(range(1,len(radii)+1))
     bgfrac = [0.0] * len(radii)
 
 
-    cnam = [x.upper() for x in [ 'shape', 'x', 'y', 'r', 'component', 
-        'ra', 'dec', 'theta', 'phi', 'detx', 'dety','chip_id', 'chipx', 
+    cnam = [x.upper() for x in [ 'shape', 'x', 'y', 'r', 'component',
+        'ra', 'dec', 'theta', 'phi', 'detx', 'dety','chip_id', 'chipx',
         'chipy', 'psffrac', 'bg_psffrac']]
-    cval = [ shape, sky_x, sky_y, radii, component, ra_vals, dec_vals, 
+    cval = [ shape, sky_x, sky_y, radii, component, ra_vals, dec_vals,
         coords["theta"], coords["phi"], coords["detx"], coords["dety"],
         coords["chip_id"], coords["chipx"], coords["chipy"],
         frac, bgfrac ]
-    units = ['', 'pixel', 'pixel', 'pixel', '', 'deg', 'deg', 'arcmin', 
+    units = ['', 'pixel', 'pixel', 'pixel', '', 'deg', 'deg', 'arcmin',
         'deg', 'pixel', 'pixel','', 'pixel', 'pixel','', '']
     desc = [ 'region geometry',
         'X center',
@@ -176,7 +176,7 @@ def write_output(outfile, sky_x,sky_y,radii, ra_vals, dec_vals, coords, frac, my
         cr.unit = units[ii]
         cr.values = cval[ii]
         tab.add_column( cr )
-    
+
     for k in mykeys:
         ck = pc.CrateKey()
         ck.name = k
@@ -184,7 +184,7 @@ def write_output(outfile, sky_x,sky_y,radii, ra_vals, dec_vals, coords, frac, my
         tab.add_key( ck )
 
     tab.write( outfile=outfile, clobber=True )
-    
+
 
 
 def parse_regions( region_stk, infile):
@@ -194,7 +194,7 @@ def parse_regions( region_stk, infile):
     from tempfile import NamedTemporaryFile
 
     import stk as stk
-    
+
     regions = stk.build( region_stk )
     all_files = []
     for region in regions:
@@ -206,21 +206,21 @@ def parse_regions( region_stk, infile):
         except:
             reg = "region({})".format(region)
             rr = regParse( reg )
-    
+
         tmproot = NamedTemporaryFile( dir=os.environ["ASCDS_WORK_PATH"])
         tfile = tmproot.name
         tmproot.close()
-    
+
         # convert to FITS and in physical coordinates
-    
+
         dmmakereg.region = reg
         dmmakereg.outfile = tfile
         dmmakereg.wcsfile = infile
         dmmakereg.kernel = 'fits'
         dmmakereg.clobber = True
-    
+
         verb2( dmmakereg() )
-    
+
         all_files.append( tfile )
 
     tmproot = NamedTemporaryFile( dir=os.environ["ASCDS_WORK_PATH"])
@@ -230,31 +230,31 @@ def parse_regions( region_stk, infile):
     verb2( dmmerge( infile=all_files, outfile=tfile, clobber=True) )
 
     for ff in all_files:
-        os.remove( ff) 
-    
+        os.remove( ff)
+
     tab = read_file( tfile )
-    
-    _shapes = tab.get_column("shape").values.tolist()    
+
+    _shapes = tab.get_column("shape").values.tolist()
 
     try:
         shapes = [ x.decode("ascii") for x in _shapes ]  ## For now anyways
     except:
         shapes = _shapes
-            
+
     # shape must be a circle
     check = [ x.lower() == 'circle' for x in shapes]
     if not all(check):
         raise ValueError("Only circle shapes are allowed")
-    
+
     xx = tab.get_column("x").values.tolist()
     yy = tab.get_column("y").values.tolist()
 
     # r's are arrays, get 1st element from each row
     rr = tab.get_column("r").values.tolist()
     rr = [ r[0] for r in rr ]
-    
+
     os.remove( tfile )
-    
+
     return xx,yy,rr
 
 
@@ -265,9 +265,9 @@ def parse_regions( region_stk, infile):
 def main():
     from ciao_contrib._tools.fileio import outfile_clobber_checks
     from ciao_contrib.runtool import add_tool_history
-    
+
     # get parameters
-    pars = get_params(toolname, "rw", sys.argv, 
+    pars = get_params(toolname, "rw", sys.argv,
         verbose={"set":lw.set_verbosity, "cmd":verb1} )
 
 
@@ -287,15 +287,15 @@ def main():
     ra_vals, dec_vals = sky_to_cel( myfile, sky_x,sky_y)
 
     coords = cel_to_chandra( mykeys, ra_vals, dec_vals )
-    
+
     # Get PSF size
-    frac = get_psf_fractions( pars["psffile"], coords["theta"], coords["phi"], 
+    frac = get_psf_fractions( pars["psffile"], coords["theta"], coords["phi"],
         energy, radii, coords["pixsize"])
 
     # Write output
     write_output(pars["outfile"], sky_x,sky_y,radii, ra_vals, dec_vals, coords, frac, mykeys)
     add_tool_history( pars["outfile"], toolname, pars, toolversion=__revision__)
-    
+
 
 if __name__ == "__main__":
     try:

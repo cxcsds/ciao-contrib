@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 
 #
 # Copyright (C) 2013-2021 Smithsonian Astrophysical Observatory
@@ -44,7 +44,7 @@ CDA_SERVER="https://cxc.cfa.harvard.edu/cdaftp/arcftp/ChandraCalDB"
 
 def wrap_urlopen(url):
     """Wrap simple urlopen with a Request object w/ custom User-Agent
-    
+
     The ciao-install version of python doesn't setup the ssl certificates
     correctly so we have to access the cxc site w/o verification.
     """
@@ -90,7 +90,7 @@ def retrieve_config_files(baseurl, newver, rootdir, outdir):
     #
     init_output_dir("{}/config".format(outdir))
 
-    for dd in ["acis", "hrc", "default"]:        
+    for dd in ["acis", "hrc", "default"]:
         init_output_dir("{}/data/chandra/{}".format(outdir, dd))
 
         for ff in ["caldb.indx", "key.config"]:
@@ -103,7 +103,7 @@ def retrieve_config_files(baseurl, newver, rootdir, outdir):
             with open(outfile, "wb") as out_indx:
                 out_indx.write(p)
 
-            ftype = "config" if ff.endswith("config") else "indx"     
+            ftype = "config" if ff.endswith("config") else "indx"
             outfile="{}/config/{}-{}.{}".format(outdir,dd,newver,ftype)
             with open(outfile, "wb") as out_indx2:
                 out_indx2.write(p)
@@ -184,7 +184,7 @@ def filter_config(newver, outdir):
         fp.write("setenv CALDB {}\n".format(outdir))
         fp.write("setenv CALDBCONFIG {}/config/CHANDRA-{}.config\n".format(outdir, newver))
         fp.write("setenv CALDBALIAS none\n")
-        
+
     outconfig = "{}/config/caldbinit-{}.sh".format(outdir, newver)
     with open(outconfig, "w") as fp:
         fp.write("export CALDB={}\n".format(outdir))
@@ -303,7 +303,7 @@ def retrieve_caldb_file(baseurl, rootdir, looking_for, outdir, clobber, missing)
 
             url="{}/{}/{}".format(baseurl, zz, hasnam)
             page = wrap_urlopen(url)
-            
+
             if 'Content-Length' in page.headers:
                 fsize = int(page.headers['Content-Length'])
             else:
@@ -316,7 +316,7 @@ def retrieve_caldb_file(baseurl, rootdir, looking_for, outdir, clobber, missing)
 
             outfp = open(outfile, "wb")
 
-            if fsize is None: 
+            if fsize is None:
                 # page len unknown, skip hashes
                 outfp.write(page.read())
             else:
@@ -432,7 +432,7 @@ def get_tools(infile):
     from pycrates import read_file
     in_crate = read_file(infile,mode='r')
     grating = in_crate.get_key_value("GRATING")
-    
+
 
     acis_process_events = { 'grade' : None,        # 'gradefile'
                             'grdimg' : None,       # 'grade_image_file'
@@ -491,7 +491,7 @@ def get_tools(infile):
         }
 
 
-    retval = [pixlib, ardlib, acis_process_events, mkwarf, mkarf, 
+    retval = [pixlib, ardlib, acis_process_events, mkwarf, mkarf,
               mkpsfmap, mkacisrmf, hrc_process_events, misc]
 
     if grating.lower() in ['hetg', 'letg']:
@@ -529,7 +529,7 @@ def setup_caldb_environment(outdir, newconfig):
     os.environ["CALDB"] = outdir
     os.environ["CALDBCONFIG"] = "{}/software/tools/caldb.config".format(outdir)  # newconfig
     os.environ["CALDBALIAS"] = "None"
-    
+
     return oldcaldb
 
 
@@ -617,12 +617,12 @@ def print_new_setup(oldcaldb, outdir):
         verb0("source {}/software/tools/caldbinit.sh".format(outdir))
         verb0("")
 
-        
-        
-        
-        
-    
-    
+
+
+
+
+
+
 
 
 def locate_infile(infile):
