@@ -2863,6 +2863,7 @@ def merge(process,
           psfmerge=None,
           threshold=False,
           clobber=False,
+          pathfrom=None,
           tmpdir="/tmp/"):
     """Combine the fluximage outputs into single images.
     outfiles is the output of setup_output_names().
@@ -2871,6 +2872,13 @@ def merge(process,
     It is required that if PSF maps be created, psfmerge not be None,
     and if they are not created psfmerge is None. This is not checked
     for here.
+
+    Parameters
+    ----------
+    pathfrom : str or None, optional
+        The location of the script (i.e. it's __file__ value) as this
+        is used to find the lookup table,
+
     """
 
     nobs = sum(process)
@@ -2902,9 +2910,10 @@ def merge(process,
     elif verbose == 4:
         verbose = 5
 
-    ltable = run.get_lookup_table('obsidmerge', pathfrom=__file__)
+    pathfrom = __file__ if pathfrom is None else pathfrom
+    ltable = run.get_lookup_table('obsidmerge', pathfrom=pathfrom)
 
-    v3("Modifying lookup table: {}".format(ltable))
+    v3(f"Modifying lookup table: {ltable}")
     newtab = create_lookup_table(ltable, obsinfos,
                                  tmpdir=tmpdir)
     ltable = newtab.name
@@ -2912,7 +2921,7 @@ def merge(process,
     # We could do this in parallel, but may not be a good idea if the
     # data sets are large, so leave as is for now.
     #
-    v1("\nCombining {} observations.".format(nobs))
+    v1(f"\nCombining {nobs} observations.")
     if threshold:
         obsid_images = outfiles['out_thresh_images']
         obsid_expmaps = outfiles['out_thresh_expmaps']
@@ -3012,19 +3021,14 @@ def validate_obsinfo_params(obsinfos,
         for obs in obsinfos[1:]:
             (rai, deci) = obs.tangentpoint
             sepdeg = coords.utils.point_separation(ra0, dec0, rai, deci)
-            separcmin = sepdeg * 3600.0
-            v2("Separation in tangent-point of {} from {} is {} arcsec".format(obs.obsid,
-                                                                               obsinfos[0].obsid,
-                                                                               separcmin))
+            separcsec = sepdeg * 3600.0
+            v2(f"Separation in tangent-point of {obs.obsid} from {obsinfos[0].obsid} is {separcsec} arcsec")
 
             if sepdeg > tol:
                 # .2f requires that the tolerance is not significantly smaller
                 # than 0.1 arcsec.
-                v1("WARNING: Tangent points differ by {:.2f} arcsec: {} vs {}".format(
-                    separcmin,
-                    obs.get_evtfile(),
-                    obsinfos[0].get_evtfile()))
-                v2("(ra,dec) = {},{} vs {},{}".format(ra0, dec0, rai, deci))
+                v1(f"WARNING: Tangent points differ by {separcsec:.2f} arcsec: {obs.get_evtfile()} vs {obsinfos[0].get_evtfile()}")
+                v2(f"(ra,dec) = {ra0},{dec0} vs {rai},{deci}")
 
     # Set up ancillary files
     #
@@ -3060,12 +3064,12 @@ def handle_xygrid(pfile, instrument, pars, params):
                 elif instrument == 'HRC':
                     params['bin'] = 32
                 else:
-                    raise ValueError("Internal error: unknown INSTRUME={}".format(instrument))
+                    raise ValueError(f"Internal error: unknown INSTRUME={instrument}")
 
             else:
                 params['bin'] = paramio.pgetd(pfile, 'binsize')
                 if params['bin'] <= 0:
-                    raise ValueError("binsize={} is not valid, it must be a number greater than zero.".format(params['bin']))
+                    raise ValueError(f"binsize={params['bin']} is not valid, it must be a number greater than zero.")
 
         else:
             params['maxsize'] = paramio.pgeti(pfile, 'maxsize')
