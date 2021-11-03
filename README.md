@@ -29,17 +29,28 @@ https://heasarc.nasa.gov/lheasoft/ These files are located in
 `ciao-<version>/contrib/share/xspec/` and are released with the
 same conditions as HEASoft (which we believe to be the Public Domain).
 
-# Issues
-
-It might be preferrable to use distutils (`setup.py`) to create the
-Python package, rather than the current system, but that depends on
-how it plays with the CIAO installation system.
-
-Tests are not included in this repository. Some will be added, but
-regression tests may not be (as they can take time to run, require
-a lot of data, and may rely on unreleased versions of CIAO).
-
 # Tasks
+
+## How to develop a new script/module or fix an issue
+
+I suggest using a conda installation of CIAO which **does not** contain
+the `ciao-contrib` package. With this environment activated you make
+the changes to the repository and then
+
+```
+% pip install pytest
+% pip install .
+% pytest
+```
+
+You can probably use an editable install (`pip install -e .`) but I am
+not sure that's great (there's a bunch of code we have that tries to
+determine how to behave depending on how the files are arranged, and
+it's better to run your tests with the conda layout set up).
+
+You should also be able to do this with a ciao-install installation,
+but the `pip install .` does not quite match what the ciao-install
+installation does, so there may be subtle, lurking dragons.
 
 ## How to create a tarball for the CIAO CM team
 
@@ -131,7 +142,7 @@ could be improved but for now I have not bothered). The last two lines
 are just to remind Doug that he really needs to look at the INDEF
 handling for min/max values.
 
-## The CIAO versions file
+## The CIAO versions file (only used by ciao-install)
 
 The `make_versions_file` should be started after CIAO has been set up, and
 returns the versions of the various packages needed for the
