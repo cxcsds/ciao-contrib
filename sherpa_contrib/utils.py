@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2009, 2010, 2011, 2012, 2014, 2015, 2016, 2019
+#  Copyright (C) 2009, 2010, 2011, 2012, 2014, 2015, 2016, 2019, 2021
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -73,7 +73,7 @@ __all__ = ["renorm", "get_instmap_weights", "save_instmap_weights",
 
 # Should this use its own logger, derived from the Sherpa one?
 logger = logging.getLogger("sherpa")
-warn = logger.warn
+warn = logger.warning
 error = logger.error
 info = logger.info
 del logger
@@ -114,7 +114,7 @@ class InstMapWeights:
 
     def __str__(self):
         def fmt(key, val):
-            return "{0:10} = {1}".format(key, str(val))
+            return f"{key:10} = {val}"
 
         names = ["id", "modelexpr", "xlo", "xhi", "xmid", "weight",
                  "fluxtype"]
@@ -132,8 +132,8 @@ class InstMapWeights:
         if fluxtype in self._valid_fluxtypes:
             self.fluxtype = fluxtype
         else:
-            emsg = "fluxtype set to {} but must be one of: {}".format(
-                fluxtype, " ".join(self._valid_fluxtypes))
+            emsg = f"fluxtype set to {fluxtype} but must be " + \
+                "one of: {}".format(" ".join(self._valid_fluxtypes))
             raise ValueError(emsg)
 
         # Set up the xlo/xhi/xmid arrays
@@ -156,10 +156,10 @@ class InstMapWeights:
         src = mdl(self._xlo, self._xhi)[:-1]
         if np.any(src < 0.0):
             emsg = "There are negative values in your source " + \
-                "model (id={0})!".format(self.id)
+                f"model (id={self.id})!"
             raise RuntimeError(emsg)
         if np.all(src <= 0.0):
-            emsg = "The source model for id={0} ".format(self.id) + \
+            emsg = f"The source model for id={self.id} " + \
                 "evaluates to 0!"
             raise RuntimeError(emsg)
 
@@ -248,8 +248,7 @@ class InstMapWeights:
         #          clobber=clobber)
 
         if not clobber and os.path.exists(filename):
-            raise IOError("{} exists and ".format(filename) +
-                          "clobber=False")
+            raise IOError(f"{filename} exists and clobber=False")
 
         elo = self.xlo[0]
         ehi = self.xhi[-1]
@@ -264,12 +263,12 @@ class InstMapWeights:
             fh.write('#TEXT/SIMPLE\n')
             fh.write('# X WEIGHT\n')
             fh.write('#\n')
-            fh.write("# DATE = {} / ".format(stime))
+            fh.write(f"# DATE = {stime} / ")
             fh.write("Date and time of file creation\n")
-            fh.write("# MODELEXPR = {}\n".format(self.modelexpr))
-            fh.write("# ENERG_LO = {} / ".format(elo))
+            fh.write(f"# MODELEXPR = {self.modelexpr}\n")
+            fh.write(f"# ENERG_LO = {elo} / ")
             fh.write("[keV] Minimum energy\n")
-            fh.write("# ENERG_HI = {} / ".format(ehi))
+            fh.write(f"# ENERG_HI = {ehi} / ")
             fh.write("[keV] Maximum energy\n")
             fh.write('#\n')
             for (x, weight) in zip(self.xmid, self.weight):
@@ -277,9 +276,9 @@ class InstMapWeights:
                 # and the energy values to also be "nice" then
                 # rely on the default formatting rules used by
                 # Python.
-                fh.write("{} {}\n".format(x, weight))
+                fh.write(f"{x} {weight}\n")
 
-        info("Created: {}".format(filename))
+        info(f"Created: {filename}")
 
     def plot(self, overplot=False, clearwindow=True, **kwargs):
         """Plot the weights values.
@@ -339,8 +338,7 @@ class InstMapWeights:
         hplot.y = self.weight.astype(np.float32)
         hplot.xlabel = 'Energy (keV)'
         hplot.ylabel = 'Weights'
-        hplot.title = 'Weights for {}: '.format(self.id) + \
-                      ' {}'.format(self.modelexpr)
+        hplot.title = f'Weights for {self.id}:  {self.modelexpr}'
 
         # There is no validation of the preference values.
         #
@@ -411,7 +409,7 @@ class InstMapWeights:
 
         elif nargs != 1:
             emsg = "_estimate_expmap() takes 2 or 4 arguments " + \
-                "({} given)".format(nargs + 1)
+                f"({nargs + 1} given)"
             raise TypeError(emsg)
 
         else:
@@ -426,7 +424,7 @@ class InstMapWeights:
                 specresp = cr.get_column("SPECRESP").values.copy()
             except ValueError as e:
                 fname = cr.get_filename()
-                raise ValueError("Crate {} - {}".format(fname, e))
+                raise ValueError(f"Crate {fname} - {e}") from None
 
         # Interpolate using the mid-point of the ARF
         # onto the mid-point of the grid if necessary.
@@ -478,7 +476,7 @@ class InstMapWeights:
         nargs = len(args)
         if nargs != 1 and nargs != 3:
             emsg = "estimate_expmap() takes 2 or 4 " + \
-                "arguments ({0} given)".format(nargs + 1)
+                f"arguments ({nargs + 1} given)"
             raise TypeError(emsg)
         return self._estimate_expmap(*args)
 
@@ -507,7 +505,7 @@ class InstMapWeights1DInt(InstMapWeights):
 
         else:
             emsg = "Internal error: need to handle .xlo/xhi " + \
-                "lengths of {0} and {1}!".format(nlo, nhi)
+                f"lengths of {nlo} and {nhi}!"
             raise RuntimeError(emsg)
 
 
@@ -681,13 +679,11 @@ def save_instmap_weights(*args, **kwargs):
     fname = "save_instmap_weights"
     nargs = len(args)
     if nargs == 0:
-        emsg = "{}() takes at least 1 argument ".format(fname) + \
-            "(0 given)"
+        emsg = f"{fname}() takes at least 1 argument (0 given)"
         raise TypeError(emsg)
 
     if nargs > 3:
-        emsg = "{}() takes at most 3 arguments ".format(fname) + \
-            "({} given)".format(nargs)
+        emsg = f"{fname}() takes at most 3 arguments ({nargs} given)"
         raise TypeError(emsg)
 
     # The default values
@@ -726,8 +722,8 @@ def save_instmap_weights(*args, **kwargs):
 
     for (n, v) in kwargs.items():
         if n not in argnames:
-            emsg = "{}() got an unexpected ".format(fname) + \
-                "keyword argument '{}'".format(n)
+            emsg = f"{fname}() got an unexpected " + \
+                f"keyword argument '{n}'"
             raise TypeError(emsg)
         user[n] = v
 
@@ -949,7 +945,7 @@ def estimate_weighted_expmap(id=None, arf=None, elo=None, ehi=None,
 # https://github.com/sherpa/sherpa/issues/104
 #
 def renorm(id=None, cpt=None, bkg_id=None, names=None,
-           limscale=1000.0):
+           limscale=10000.0):
     """Change the normalization of a model to match the data.
 
     The idea is to change the normalization to be a better match to
@@ -960,6 +956,10 @@ def renorm(id=None, cpt=None, bkg_id=None, names=None,
     calculation without first doing a fit. It is also only going to
     give reasonable results for models where the predicted data of a
     model is linearly related to the normalization.
+
+    .. versionchanged:: 4.14.0
+       The limscale parameter was changed from 1000 to 10000 since
+       the normalization can be very-sensitive to absorption parameters.
 
     Parameters
     ----------
@@ -1039,9 +1039,9 @@ def renorm(id=None, cpt=None, bkg_id=None, names=None,
 
     Change the minimum and maximum values of the normalization
     parameter to be the calculated value divided by and multiplied by
-    1e4 respectively (these changes are made to the soft limits).
+    1e3 respectively (these changes are made to the soft limits).
 
-    >>> renorm(limscale=1e4)
+    >>> renorm(limscale=1e3)
 
     """
 
@@ -1063,7 +1063,10 @@ def renorm(id=None, cpt=None, bkg_id=None, names=None,
         # In this case the get_[bkg_]model call is not needed above,
         # but leave in as it at least ensures there's a model defined
         # for the data set.
-        m = cpt
+        #
+        # We need to include the response
+        rsp = ui.get_response(id=id)
+        m = rsp(cpt)
 
     pars = [p for p in m.pars if p.name.lower() in matches and
             not p.frozen]
@@ -1075,6 +1078,11 @@ def renorm(id=None, cpt=None, bkg_id=None, names=None,
         return
 
     yd = d.get_dep(filter=True).sum()
+    if yd <= 0:
+        # assume that something odd is going odd here so do nothing
+        error("data sum evaluated to <= 0; no re-scaling attempted")
+        return
+
     ym = d.eval_model_to_fit(m).sum()
 
     # argh; these are numpy floats, and they do not throw a
@@ -1123,7 +1131,7 @@ def renorm(id=None, cpt=None, bkg_id=None, names=None,
                 # this should be impossible
                 reason = "for an unknown reason"
 
-            info("Parameter {} is restricted ".format(p.fullname) +
+            info(f"Parameter {p.fullname} is restricted " +
                  reason)
 
 # End
