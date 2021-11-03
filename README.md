@@ -43,31 +43,34 @@ a lot of data, and may rely on unreleased versions of CIAO).
 
 ## How to create a tarball for the CIAO CM team
 
+This has **changed** in CIAO 4.14, with the internals of the script
+and the arguments.
+
 A) a development release
 
-    % ./mk_script_tarfile 4.12 dev
+    % ./mk_script_tarfile 4.14.dev
 
 will create the file
 
-    ciao-4.12-contrib-DEV.tar.gz
+    ciao-4.14-contrib-DEV.tar.gz
 
 with a version file that looks like
 
-    % cat ciao-4.12/contrib/VERSION.CIAO_scripts 
-    scripts 4.12.DEV Friday, December 12, 2014
+    % cat ciao-4.14/contrib/VERSION.CIAO_scripts
+    scripts 4.14.DEV Friday, December 10, 2021
 
 B) a release candidate
 
-    % ./mk_script_tarfile 4.12 2
+    % ./mk_script_tarfile 4.14.0
 
 will create the file
 
-    ciao-4.12-contrib-2.tar.gz
+    ciao-4.14-contrib-0.tar.gz
 
 with a version file that looks like
 
-    % cat ciao-4.12/contrib/VERSION.CIAO_scripts 
-    scripts 4.12.2 Friday, December 12, 2014
+    % cat ciao-4.14/contrib/VERSION.CIAO_scripts
+    scripts 4.14.0 Friday, December 10, 2021
 
 At present there is no system to automatically look up the version
 number.
@@ -104,7 +107,7 @@ An example run:
     Input directores:
       /proj/xena/ciaot_install/osx64.131202/ciao-4.7
       ciao-4.7/contrib
-   
+
     Note: converting AXAF_HRC-I_QE_FILE -> AXAF_HRC_I_QE_FILE
     Note: converting AXAF_HRC-I_QEU_FILE -> AXAF_HRC_I_QEU_FILE
     ...
@@ -117,7 +120,7 @@ An example run:
       xoffset,i,h,INDEF,INDEF,INDEF,"celldetect offset of x axis from optical axis"
     Note: minval/maxval is INDEF in
       yoffset,i,h,INDEF,INDEF,INDEF,"celldetect offset of y axis from optical axis"
-   
+
     Created: ciao-4.7/contrib/lib/python2.7/site-packages/ciao_contrib/runtool.py
 
 The first lines tell you where it is looking for the tools and
