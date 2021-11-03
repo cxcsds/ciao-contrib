@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2019, 2020
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2019, 2020, 2021
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -36,17 +36,21 @@ can be broken down into
 
 """
 
+import functools
 import os
 import sys
 import shutil
 import tempfile
 
+import cxcdm
 import paramio
+from region import CXCRegion
+import stk
 
 import ciao_contrib.logger_wrapper as lw
 
 from ciao_contrib.param_wrapper import open_param_file
-from ciao_contrib.runtool import add_tool_history
+from ciao_contrib.runtool import add_tool_history, make_tool
 
 import ciao_contrib._tools.fileio as fileio
 import ciao_contrib._tools.merging as merging
@@ -56,11 +60,12 @@ import ciao_contrib._tools.utils as utils
 from ciao_contrib._tools.taskrunner import TaskRunner
 
 toolname = 'reproject_obs'
-__revision__ = '05 November 2020'
+__revision__ = '03 November 2021'
 
 lgr = lw.initialize_logger(toolname)
 v1 = lgr.verbose1
 v3 = lgr.verbose3
+v4 = lgr.verbose4
 
 
 def get_par(argv):
@@ -108,7 +113,7 @@ def get_par(argv):
     pars['asolfiles'] = paramio.pgetstr(pfile, 'asolfiles')
     if pars['asolfiles'].lower() == "none":
         raise ValueError("The asolfiles argument can not be set to " +
-                         "{}".format(pars['asolfiles']))
+                         f"{pars['asolfiles']}")
 
     merging.setup_obsid_asol(obsinfos, pars['asolfiles'])
 
@@ -193,6 +198,77 @@ def _link_or_copy_file(infile, outfile, linkfile=True):
     return True
 
 
+def get_content(infile):
+    """Return the CONTENT keyword of the file.
+
+    Parameters
+    ----------
+    infile : str
+        The input file. It must contain a CONTENT keyword.
+
+    """
+
+    v4(f"Checking CONTENT keyword of {infile}")
+    bl = cxcdm.dmBlockOpen(infile, update=False)
+    try:
+        keys = cxcdm.dmKeyRead(bl, 'CONTENT')
+        content = keys[1].decode('ascii')
+        return content
+    finally:
+        cxcdm.dmBlockClose(bl)
+
+
+def make_reprojected_fov(obsid, evtfile, asolfiles, msk, outfile):
+    """Create the FOV file using the reprojected data.
+
+    The skyfov method depends on the type of the aspect solution,
+    as given by the CONTENT type:
+
+        ASPSOL (pre DS 10.8.3)  - use method=minmax
+        ASPSOLOBI               - use method=convexhull
+
+    """
+
+    afiles = stk.build(asolfiles)
+    contents = set([get_content(f) for f in afiles])
+    if len(contents) != 1:
+        emsg = f"Multiple types of aspect solution found: " + \
+            f"{', '.join(contents)}\n  {asolfiles}"
+        raise OSError(emsg)
+
+    content = contents.pop()
+    if content == 'ASPSOLOBI':
+        method = 'convexhull'
+    elif content == 'ASPSOL':
+        method = 'minmax'
+    else:
+        raise OSError(f"Invalid CONTENT={content} in aspect solution")
+
+    v3(f"skyfov: obsid={obsid}  CONTENT={content}  method={method}")
+
+    skyfov = make_tool('skyfov')
+    skyfov.punlearn()
+    skyfov(infile=evtfile,
+           outfile=outfile,
+           aspect=asolfiles,  # assume not so long we need a stack file
+           mskfile=msk,
+           kernel="FITS",
+           method=method,
+           clobber=True)
+
+
+def combined_fovs(fovs, outfile):
+    """Create the combined FOV.
+
+    This loses the CCD_ID column.
+    """
+
+    v3("Combining FOV files")
+    shapes = [CXCRegion(f) for f in fovs]
+    combined = functools.reduce(lambda x, y: x + y, shapes)
+    combined.write(outfile, fits=True, clobber=True)
+
+
 def dmhedit_line(key, value):
     """Return a string that can be used as line in a
     file sent to dmhedit to change key to value.
@@ -275,7 +351,8 @@ def link_ancillary_files(taskrunner,
     nor is the header updated. A warning is displayed to the user.
 
     Support for PBK files was removed in CIAO 4.6 and for multi-obi
-    observations was added during CIAO 4.7.
+    observations was added during CIAO 4.7. Creating of FOV files
+    was added in CIAO 4.14.
     """
 
     outroot = outdir + outhead
@@ -309,6 +386,7 @@ def link_ancillary_files(taskrunner,
     tasks = []
     store = {}
     asolcache = {}
+    asoltasks = {}
     for obs in obsinfos:
 
         # The key we use ignores the cycle but may include the OBI
@@ -322,7 +400,7 @@ def link_ancillary_files(taskrunner,
             afiles = obs.get_asol()
             nfiles = len(afiles)
             if nfiles == 0:
-                raise IOError("*Internal error* ObsId {} has no aspect solution.".format(obsid))
+                raise IOError(f"*Internal error* ObsId {obsid} has no aspect solution.")
 
             elif nfiles == 1:
                 newname = f"{outroot}{label}.asol"
@@ -333,6 +411,8 @@ def link_ancillary_files(taskrunner,
                                     newname,
                                     linkfile=linkfiles)
                 tasks.append(taskname)
+                asoltasks[key] = [taskname]
+                asolcache[key] = newname
                 newname = os.path.basename(newname)
 
             elif nfiles > 26:
@@ -346,10 +426,11 @@ def link_ancillary_files(taskrunner,
 
             else:
                 newnames = []
+                asoltasks[key] = []
                 for (idx, afile) in enumerate(afiles):
                     idval = chr(97 + idx)
                     newname = f"{outroot}{label}{idval}.asol"
-                    newnames.append(os.path.basename(newname))
+                    newnames.append(newname)
                     taskname = f"link-asol-{label}-{idval}"
                     taskrunner.add_task(taskname, [stask],
                                         link_or_copy_file,
@@ -357,15 +438,14 @@ def link_ancillary_files(taskrunner,
                                         newname,
                                         linkfile=linkfiles)
                     tasks.append(taskname)
+                    asoltasks[key].append(taskname)
 
                 newname = ','.join(newnames)
-
-            asolcache[key] = newname
+                asolcache[key] = newname
+                newname = ','.join([os.path.basename(n) for n in newnames])
 
         # this stores by the tuple (OBS_ID, Cycle, OBI_NUM)
         store[obsid] = {'asol': newname}
-
-    asolcache = None
 
     if instrume.lower() == 'hrc':
         itype = 'dtf'
@@ -391,7 +471,7 @@ def link_ancillary_files(taskrunner,
 
         if filetype in store[obsid]:
             raise IOError("*Internal error* multiple " +
-                          "filetype={} for obsid={}".format(filetype, obsid))
+                          f"filetype={filetype} for obsid={obsid}")
 
         (key, label) = get_key_label(obsid)
         try:
@@ -409,7 +489,7 @@ def link_ancillary_files(taskrunner,
             newname = os.path.basename(newname)
             instcache[obsid.obsid] = newname
 
-        store[obsid][filetype] = newname
+        store[obsid][filetype] = os.path.basename(newname)
 
     def link_file(obsid, filetype, filename):
         if filename is None:
@@ -421,10 +501,10 @@ def link_ancillary_files(taskrunner,
 
         if filetype in store[obsid]:
             raise IOError("*Internal error* multiple " +
-                          "filetype={} for obsid={}".format(filetype, obsid))
+                          f"filetype={filetype} for obsid={obsid}")
 
-        newname = "{}{}.{}".format(outroot, obsid, filetype)
-        taskname = labelconv("link-{}-{}".format(filetype, obsid))
+        newname = f"{outroot}{obsid}.{filetype}"
+        taskname = labelconv(f"link-{filetype}-{obsid}")
         taskrunner.add_task(taskname, [stask],
                             link_or_copy_file,
                             filename,
@@ -432,13 +512,37 @@ def link_ancillary_files(taskrunner,
                             linkfile=linkfiles)
         tasks.append(taskname)
         store[obsid][filetype] = os.path.basename(newname)
+        return (taskname, newname)
 
+    fovtasks = []
+    fovfiles = []
     for obs in obsinfos:
         obsid = obs.obsid
         link_file(obsid, 'bpix', obs.get_ancillary_('bpix'))
-        link_file(obsid, 'mask', obs.get_ancillary_('mask'))
+        (mtask, mfile) = link_file(obsid, 'mask', obs.get_ancillary_('mask'))
         if itype is not None:
             link_file_inst(obsid, itype, obs.get_ancillary_(itype))
+
+        # make the FOV file
+        #
+        key = get_key_label(obsid)[0]
+        taskname = labelconv(f"fov-{obsid}")
+        pretasks = [mtask] + asoltasks[key]
+        fovname = f"{outroot}{obsid}.fov"
+        evtfile = f"{outroot}{obsid}_reproj_evt.fits"  # assume this is correct
+        taskrunner.add_task(taskname, pretasks, make_reprojected_fov,
+                            obsid, evtfile, asolcache[key], mfile, fovname)
+        tasks.append(taskname)
+        fovtasks.append(taskname)
+        fovfiles.append(fovname)
+
+    # Create the combined FOV file
+    #
+    taskname = labelconv("combined-fov")
+    outfov = f"{outroot}merged.fov"
+    taskrunner.add_task(taskname, fovtasks, combined_fovs,
+                        fovfiles, outfov)
+    tasks.append(taskname)
 
     etask = labelconv("link-ancillary-end")
     taskrunner.add_barrier(etask, tasks)
@@ -474,7 +578,7 @@ def link_ancillary_files(taskrunner,
         except KeyError:
             # At a minimum expect to update the asol header
             raise IOError("*Internal error* no header updates for " +
-                          "ObsId {} ({})".format(obsid, reprofile))
+                          f"ObsId {obsid} ({reprofile})")
 
         taskname = labelconv(f"update-header-{obsid}")
         taskrunner.add_task(taskname, [etask],
