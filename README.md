@@ -43,7 +43,7 @@ a lot of data, and may rely on unreleased versions of CIAO).
 
 ## How to create a tarball for the CIAO CM team
 
-This has **changed** in CIAO 4.14, bith the internals of the script
+This has **changed** in CIAO 4.14, with the internals of the script
 and the arguments.
 
 A) a development release
