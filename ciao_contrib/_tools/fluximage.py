@@ -2583,7 +2583,8 @@ def run_fluximage_tasks(taskrunner, labelconv,
                         random=0,
                         clobber=False,
                         cleanup=True,
-                        parallel=False
+                        parallel=False,
+                        pathfrom=None
                         ):
     """Run the various stages.
 
@@ -2595,9 +2596,17 @@ def run_fluximage_tasks(taskrunner, labelconv,
 
     The random parameter is currently onlu used with the
     background subtraction task.
+
+    Parameters
+    ----------
+    pathfrom : str or None, optional
+        The location of the script (i.e. it's __file__ value) as this
+        is used to find the lookup table,
+
     """
 
-    lookup_table = run.get_lookup_table("fluximage", pathfrom=__file__)
+    pathfrom = __file__ if pathfrom is None else pathfrom
+    lookup_table = run.get_lookup_table("fluximage", pathfrom=pathfrom)
     if units == 'default':
         normflag = 'no'
     elif units == 'area':
