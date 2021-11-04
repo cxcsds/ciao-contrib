@@ -38,6 +38,9 @@ moved to using the runtool module.
 
 import os
 import subprocess as sbp
+import tempfile
+
+import numpy as np
 
 import paramio
 
@@ -236,21 +239,70 @@ def dmimgcalc_add(infiles, outfile,
                   verbose=0,
                   clobber=False,
                   lookupTab=None,
-                  tmpdir="/tmp/"):
+                  tmpdir="/tmp/",
+                  nchunk=100):
     """Add up all the images in infiles (an array) to create outfile,
     using dmimgcalc.
 
     If lookupTab is not None it is passed to dmimgcalc.
+
+    To avoid problems with the command argument getting too long we
+    chunk the data up into nchunk files at a maximum, and sum up the
+    individual chunks. It's not obvious when it's a problem but we
+    have had crashes when ~160 files have been combined even though I
+    can combine a larger number of files, which suggests that it's the
+    length of the total command string - see #481. So pick a
+    hopefully-safe chunk size. There is however a limit: 100**2,
+    just because I can't be bothered with recursion here. If we
+    are trying to add this many files we are probably going to
+    have problems anyway!
+
     """
 
-    inames = ["img{}".format(i) for i in range(1, len(infiles) + 1)]
-    op = "+".join(inames)
+    nfiles = len(infiles)
+    if nfiles <= nchunk:
+        v3(f"Summing up {nfiles} files: {outfile}")
+        inames = [f"img{i}" for i in range(1, nfiles + 1)]
+        op = "+".join(inames)
 
-    dmimgcalc(infiles, outfile, op,
-              verbose=verbose,
-              clobber=clobber,
-              tmpdir=tmpdir,
-              lookupTab=lookupTab)
+        dmimgcalc(infiles, outfile, op,
+                  verbose=verbose,
+                  clobber=clobber,
+                  tmpdir=tmpdir,
+                  lookupTab=lookupTab)
+        return
+
+    # Try to use an equal number of files per chunk
+    chunking = int(np.ceil(nfiles / nchunk))
+
+    v3(f"Summing up {nfiles} files into {chunking} chunks: {outfile}")
+
+    # We could recurse, but let's error out if we have too-many
+    # files.
+    if chunking >= nchunk:
+        raise ValueError(f"Sent too many images to add: {nfiles}")
+
+    start = 0
+    tmpfiles = []
+    while start < nfiles:
+        filelist = infiles[start:start + nchunk]
+        v3(f" - summing chunk of {len(filelist)} files")
+
+        tmpfile = tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.img')
+        tmpfiles.append(tmpfile)
+        dmimgcalc_add(filelist, tmpfile.name,
+                      verbose=verbose, clobber=True,
+                      lookupTab=lookupTab, tmpdir=tmpdir,
+                      nchunk=nchunk)
+
+        start += nchunk
+
+    # Now add up the chunks
+    v3(f"-> summing up the chunks: {outfile}")
+    dmimgcalc_add([t.name for t in tmpfiles], outfile,
+                  verbose=verbose, clobber=clobber,
+                  lookupTab=lookupTab, tmpdir=tmpdir,
+                  nchunk=nchunk)
 
 
 def dmkeypar(infile, key, rtype='string'):
