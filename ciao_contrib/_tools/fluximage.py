@@ -1705,20 +1705,20 @@ def make_exposure_maps(taskrunner, labelconv, preconditions,
                                    verbose=verbose,
                                    clobber=clobber,
                                    cleanup=cleanup)
-    else:
-        return combine_expmap_chips(taskrunner, labelconv, [etask],
-                                    outhead,
-                                    enbands,
-                                    obs.obsid,
-                                    chips,
-                                    matchfile,
-                                    obs.detector,
-                                    lookup_table,
-                                    tmpdir,
-                                    parallel=parallel,
-                                    verbose=verbose,
-                                    clobber=clobber,
-                                    cleanup=cleanup)
+
+    return combine_expmap_chips(taskrunner, labelconv, [etask],
+                                outhead,
+                                enbands,
+                                obs.obsid,
+                                chips,
+                                matchfile,
+                                obs.detector,
+                                lookup_table,
+                                tmpdir,
+                                parallel=parallel,
+                                verbose=verbose,
+                                clobber=clobber,
+                                cleanup=cleanup)
 
 
 def run_mkpsfmap(outfile, matchfile, energy, wgtfile, ecf,
