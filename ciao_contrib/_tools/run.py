@@ -472,6 +472,7 @@ def fix_bunit(infile, outfile, verbose=0):
     bunit = fileio.get_image_units(infile)
     tunit = fileio.get_image_units(outfile)
     if bunit != tunit:
+        v3(f"BUNIT check: was {tunit} but expect {bunit} in {outfile}")
         dmhedit_key(outfile, 'BUNIT', bunit, verbose=verbose)
 
 
