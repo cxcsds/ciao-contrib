@@ -9,7 +9,7 @@
 <cxchelptopics>
   <ENTRY key="&rname;" context="tools"
 	 refkeywords="reproject event events obsid observation observations obsid obsids reproject_obsid
-                      obs multi coadd coadded merge
+                      obs multi coadd coadded merge asol fov field view
                       tangent point plane reprojection common
 	             "
 	 seealsogroups="mergescripts"
@@ -77,7 +77,7 @@
       <QEXAMPLE>
 	<SYNTAX>
           <LINE>&pr; &rname; 5826/,5827/ reproj/</LINE>
-	  <LINE>&pr; ds9 reproj/merged_evt.fits</LINE>
+	  <LINE>&pr; ds9 reproj/merged_evt.fits -bin factor 8 -scale log -region reproj/merged.fov</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
@@ -669,6 +669,10 @@
 	  <DATA>MASKFILE</DATA>
 	  <DATA>obsid.mask</DATA><DATA>Mask file.</DATA>
 	</ROW>
+	<ROW>
+	  <DATA>FOVFILE</DATA>
+	  <DATA>obsid.fov</DATA><DATA>The field-of-view file for the reprojected obervation.</DATA>
+	</ROW>
       </TABLE>
       <PARA>
 	If the linkfiles parameter is set to yes then
@@ -680,7 +684,7 @@
       </PARA>
       <PARA>
         The headers of the reprojected event files are updated so that
-	they reference the new file names. This allows tools like
+	they reference the new file names (apart from FOVFILE). This allows tools like
 	&fname; and fluximage to pick the files up automatically when given just
 	the name of the reprojected event file.
       </PARA>
@@ -737,7 +741,11 @@
 	<ITEM>
 	  For each new event file the ancillary files are either
 	  linked, or copied, to the output location. The header of the event file
-	  is updated so that it points to these new files.
+	  is updated so that it points to these new files. At this point the
+	  per-observation FOV files are created using the reprojected event
+	  files. A combined FOV file (merged.fov) is also created which includes
+	  the individual FOV regions (the CCD_ID information is not included in
+	  this file).
 	</ITEM>
 
 	<ITEM>
@@ -750,6 +758,14 @@
 	</ITEM>
 
       </LIST>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.14.0 (December 2021) release">
+      <PARA>
+	The script now generates the FOV file for each reprojected event file
+	and a combined region file (merged.fov) that includes all the individual
+	observation FOV files.
+      </PARA>
     </ADESC>
 
     <ADESC title="Changes in the scripts 4.13.0 (December 2020) release">
@@ -876,7 +892,7 @@
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>December 2020</LASTMODIFIED>
+    <LASTMODIFIED>December 2021</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>
