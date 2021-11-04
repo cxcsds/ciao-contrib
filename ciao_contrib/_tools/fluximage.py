@@ -306,6 +306,19 @@ def name_asphist(head, num, blockname=False):
     return o
 
 
+def name_fov(head, obs):
+    """The name of the FOV file.
+
+    Unlike the other obsids we use the obsid label.
+    """
+
+    label = f"{obs.obsid.obsid}"
+    if obs.obsid.is_multi_obi:
+        label += f"_{obs.obsid.obi:03d}"
+
+    return f"{head}{label}.fov"
+
+
 def base_name(head, enband, num=None):
     """The base of most of the names."""
 
@@ -582,6 +595,43 @@ def make_asphist(taskrunner, labelconv,
     taskrunner.add_barrier(etask, tasks)
 
     return etask
+
+
+def make_fov(taskrunner, labelconv,
+             obs,
+             asolobj, chips,
+             outpath,
+             parallel=True,
+             tmpdir="/tmp",
+             verbose=0,
+             clobber=False):
+    """Create the FOV file
+
+    Notes
+    -----
+    The tmpdir, verbose, and clobber arguments are unused.
+
+    """
+
+    # Do I need to bother with the chip filter here or can I just
+    # use obs.get_evtfile()? I'm going to be careful just in case.
+    #
+    chipstr = ','.join([str(c) for c in chips])
+    evtfile = f"{obs.get_evtfile()}[{obs.get_chipname()}={chipstr}]"
+
+    task = labelconv("fov")
+    taskrunner.add_task(task, [],
+                        run.make_fov,
+                        evtfile,
+                        asolobj.name,
+                        obs.get_ancillary('mask'),
+                        name_fov(outpath, obs),
+                        # tmpdir=tmpdir,
+                        # verbose=verbose,
+                        # clobber=clobber
+                        )
+
+    return task
 
 
 def reproject_bgnd(blanksky_map, outfile, asolfile, matchfile,
@@ -1137,8 +1187,8 @@ def instrument_map_hrc(obs, outpath, chips, energies, binval, units):
     if obs.detector == "HRC-I":
         detsubsys = "HRC-I"
         nbins = get_imap_nbins(binval, 16384)
-        pixelgrid = f"1:16384:#{0},1:16384:#{nbins}"
-        v3(f"HRC-I instrument map will be {nbibs} pixels square.")
+        pixelgrid = f"1:16384:#{nbins},1:16384:#{nbins}"
+        v3(f"HRC-I instrument map will be {nbins} pixels square.")
 
         if units == "time":
             detsubsys += ";IDEAL"
@@ -2379,10 +2429,14 @@ def clobber_checks(files, clobber=False):
 
 
 def get_output_filenames(outpath, enbands, chips,
+                         obs=None,
                          blanksky=False,
                          psf=False,
                          thresh=False):
-    """Returns information on the files to be produced"""
+    """Returns information on the files to be produced
+
+    obs is allowed to be an optional argument but we expect it to be set.
+    """
 
     # TODO: split up exposure maps into per-observation and per-chip
     # TODO: the logic here is spread out too much and should be consolidated
@@ -2452,6 +2506,12 @@ def get_output_filenames(outpath, enbands, chips,
     if psf:
         outputs["psfmaps"] = utils.getUniqueSynset(psfmaps)
         saved["psfmaps"] = outputs["psfmaps"]
+
+    # FOV file
+    #
+    if obs is not None:
+        outputs["fovs"] = [name_fov(outpath, obs)]
+        saved["fovs"] = outputs["fovs"]
 
     return (outputs, saved)
 
@@ -2541,6 +2601,12 @@ def print_output(outputs, cleanup=False):
                         add_files("instrument map", files["instmaps"])])
 
     try:
+        created.append(add_files("observation FOV",
+                                 files["fovs"]))
+    except KeyError:
+        pass
+
+    try:
         created.append(add_files("clipped exposure map",
                                  files["expmap_thresh"]))
     except KeyError:
@@ -2596,7 +2662,7 @@ def run_fluximage_tasks(taskrunner, labelconv,
     bkginfo is None or the tuple (methodname, methodparams,
     bkgevtfile).
 
-    The random parameter is currently onlu used with the
+    The random parameter is currently only used with the
     background subtraction task.
 
     Parameters
@@ -2609,6 +2675,7 @@ def run_fluximage_tasks(taskrunner, labelconv,
 
     pathfrom = __file__ if pathfrom is None else pathfrom
     lookup_table = run.get_lookup_table("fluximage", pathfrom=pathfrom)
+
     if units == 'default':
         normflag = 'no'
     elif units == 'area':
@@ -2634,6 +2701,21 @@ def run_fluximage_tasks(taskrunner, labelconv,
                            verbose=verbose,
                            clobber=clobber
                            )
+
+    # Note: we have already created the FOV file to calculate the
+    # grid, but instead of re-using that let's just create a
+    # new version. Or do we just use the existing FOV file?
+    #
+    fovtask = make_fov(taskrunner, labelconv,
+                       obs,
+                       asolobj,
+                       chips,
+                       outpath,
+                       parallel=parallel,
+                       tmpdir=tmpdir,
+                       verbose=verbose,
+                       clobber=clobber
+                       )
 
     imgtask = make_event_images(taskrunner, labelconv,
                                 obs,
@@ -2679,7 +2761,8 @@ def run_fluximage_tasks(taskrunner, labelconv,
                                   cleanup=cleanup
                                   )
 
-    fluxtask = make_fluxed_images(taskrunner, labelconv, [imgtask, emaptask],
+    fluxtask = make_fluxed_images(taskrunner, labelconv,
+                                  [imgtask, emaptask],
                                   enbands,
                                   obs.obsid,
                                   outpath,

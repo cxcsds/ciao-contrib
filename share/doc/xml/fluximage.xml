@@ -65,7 +65,7 @@
 	  <LINE>&pr; cd 1843</LINE>
 	  <LINE>&pr; chandra_repro indir=. outdir=repro</LINE>
 	  <LINE>&pr; fluximage . fluxed/</LINE>
-	  <LINE>&pr; ds9 fluxed/broad_flux.img</LINE>
+	  <LINE>&pr; ds9 fluxed/broad_flux.img -region fluxed/1843.fov</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
@@ -92,7 +92,8 @@
 	    directory).
 	    Finally ds9 is used to view the exposure-corrected
 	    image, the name of which includes the energy range, effective
-	    energy used and the binning factor.
+	    energy used and the binning factor. The FOV file, which indicates
+	    the extent of the observation, is also shown in the ds9 window.
 	  </PARA>
 	  <PARA>
 	    Note that reprocessing your data - whether via chandra_repro or
@@ -247,7 +248,7 @@
 	  <LINE>&pr; cd 6202</LINE>
 	  <LINE>&pr; chandra_repro indir=. outdir=repro</LINE>
 	  <LINE>&pr; fluximage repro/ fluxed/</LINE>
-	  <LINE>&pr; ds9 fluxed/wide_flux.img</LINE>
+	  <LINE>&pr; ds9 fluxed/wide_flux.img -region fluxed/6202.fov</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
@@ -1308,11 +1309,13 @@
 	<ROW><DATA>E</DATA><DATA>Optional PSF map (no threshold)</DATA><DATA>outroot_blabel.psfmap</DATA></ROW>
 	<ROW><DATA>C</DATA><DATA>Clipped counts image</DATA><DATA>outroot_blabel_thresh.img</DATA></ROW>
 	<ROW><DATA>C</DATA><DATA>Clipped exposure map</DATA><DATA>outroot_blabel_thresh.expmap</DATA></ROW>
+	<ROW><DATA>A</DATA><DATA>FOV file</DATA><DATA>outroot_obsid.fov</DATA></ROW>
 	<ROW><DATA>A</DATA><DATA>Exposure-corrected image</DATA><DATA>outroot_blabel_flux.img</DATA></ROW>
       </TABLE>
 
       <PARA>
 	where blabel is either the band name (e.g. soft, broad, ...),
+	obsid is the observation number (and can include the OBI number for the small number of multi-OBI observations),
 	"lo-hi" where lo and hi are the limits of the
 	range (keV for ACIS, PI for HRC), or band1 to bandn (when using spectral
 	weight files).
@@ -1538,7 +1541,7 @@
 	science analysis threads</HREF>.  The following steps are taken to create the data products:
       </PARA>
       <LIST>
-	<ITEM>skyfov and get_fov_limits: to determine the output image area</ITEM>
+	<ITEM>skyfov and get_fov_limits: to determine the output image area, and to create the FOV file</ITEM>
 	<ITEM>dmcopy: to create an events image with the specified binning factor</ITEM>
 	<ITEM>hrc_bkgrnd_lookup, reproject_events, and dmimgcalc: to subtract the particle background (HRC-I only)</ITEM>
 	<ITEM>asphist: to build the aspect histogram(s)</ITEM>
@@ -1581,6 +1584,13 @@
 	is used to filter the particle background file; this
 	value is displayed on screen and written to the background
 	files as the STATFILT keyword.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.14.0 (December 2021) release">
+      <PARA>
+	The script now generates the FOV file for the observation, which
+	is called &lt;obsid&gt;.fov in the outroot location.
       </PARA>
     </ADESC>
 
@@ -1779,6 +1789,6 @@
 	listing of known bugs.
       </PARA>
     </BUGS>
-    <LASTMODIFIED>February 2021</LASTMODIFIED>
+    <LASTMODIFIED>December 2021</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
