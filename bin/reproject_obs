@@ -42,15 +42,13 @@ import sys
 import shutil
 import tempfile
 
-import cxcdm
 import paramio
 from region import CXCRegion
-import stk
 
 import ciao_contrib.logger_wrapper as lw
 
 from ciao_contrib.param_wrapper import open_param_file
-from ciao_contrib.runtool import add_tool_history, make_tool
+from ciao_contrib.runtool import add_tool_history
 
 import ciao_contrib._tools.fileio as fileio
 import ciao_contrib._tools.merging as merging
@@ -60,7 +58,7 @@ import ciao_contrib._tools.utils as utils
 from ciao_contrib._tools.taskrunner import TaskRunner
 
 toolname = 'reproject_obs'
-__revision__ = '03 November 2021'
+__revision__ = '04 November 2021'
 
 lgr = lw.initialize_logger(toolname)
 v1 = lgr.verbose1
@@ -196,65 +194,6 @@ def _link_or_copy_file(infile, outfile, linkfile=True):
         shutil.copyfile(ifile, ofile)
 
     return True
-
-
-def get_content(infile):
-    """Return the CONTENT keyword of the file.
-
-    Parameters
-    ----------
-    infile : str
-        The input file. It must contain a CONTENT keyword.
-
-    """
-
-    v4(f"Checking CONTENT keyword of {infile}")
-    bl = cxcdm.dmBlockOpen(infile, update=False)
-    try:
-        keys = cxcdm.dmKeyRead(bl, 'CONTENT')
-        content = keys[1].decode('ascii')
-        return content
-    finally:
-        cxcdm.dmBlockClose(bl)
-
-
-def make_reprojected_fov(obsid, evtfile, asolfiles, msk, outfile):
-    """Create the FOV file using the reprojected data.
-
-    The skyfov method depends on the type of the aspect solution,
-    as given by the CONTENT type:
-
-        ASPSOL (pre DS 10.8.3)  - use method=minmax
-        ASPSOLOBI               - use method=convexhull
-
-    """
-
-    afiles = stk.build(asolfiles)
-    contents = set([get_content(f) for f in afiles])
-    if len(contents) != 1:
-        emsg = f"Multiple types of aspect solution found: " + \
-            f"{', '.join(contents)}\n  {asolfiles}"
-        raise OSError(emsg)
-
-    content = contents.pop()
-    if content == 'ASPSOLOBI':
-        method = 'convexhull'
-    elif content == 'ASPSOL':
-        method = 'minmax'
-    else:
-        raise OSError(f"Invalid CONTENT={content} in aspect solution")
-
-    v3(f"skyfov: obsid={obsid}  CONTENT={content}  method={method}")
-
-    skyfov = make_tool('skyfov')
-    skyfov.punlearn()
-    skyfov(infile=evtfile,
-           outfile=outfile,
-           aspect=asolfiles,  # assume not so long we need a stack file
-           mskfile=msk,
-           kernel="FITS",
-           method=method,
-           clobber=True)
 
 
 def combined_fovs(fovs, outfile):
@@ -530,8 +469,8 @@ def link_ancillary_files(taskrunner,
         pretasks = [mtask] + asoltasks[label]
         fovname = f"{outroot}{obsid}.fov"
         evtfile = f"{outroot}{obsid}_reproj_evt.fits"  # assume this is correct
-        taskrunner.add_task(taskname, pretasks, make_reprojected_fov,
-                            obsid, evtfile, asolcache[label], mfile, fovname)
+        taskrunner.add_task(taskname, pretasks, run.make_fov,
+                            evtfile, asolcache[label], mfile, fovname)
         tasks.append(taskname)
         fovtasks.append(taskname)
         fovfiles.append(fovname)
@@ -690,31 +629,32 @@ def reproject_obsids():
     if params['verbose'] > 0 and params['verbose'] < 5:
         params['verbose'] -= 1
 
-    file_checks(params['obsinfos'],
-                params['outdir'],
-                params['outhead'],
+    obsinfos = params['obsinfos']
+    outdir = params['outdir']
+    outhead = params['outhead']
+
+    file_checks(obsinfos, outdir, outhead,
                 clobber=params['clobber'])
 
     taskrunner = TaskRunner()
     (ref_files, rtask, warnings) = get_ref(taskrunner, lambda s: s,
                                            params['instrument'],
-                                           params['obsinfos'],
+                                           obsinfos,
                                            params['refcoord'],
-                                           params['outdir'],
-                                           params['outhead'],
+                                           outdir,
+                                           outhead,
                                            linkfiles=params['linkfiles'],
                                            tmpdir=params['tmpdir'],
                                            verbose=params['verbose'],
                                            parallel=params['parallel'])
 
     if params['evtmerge']:
-        mevtfile = merging.merged_evt_name(params['outdir'],
-                                           params['outhead'])
+        mevtfile = merging.merged_evt_name(outdir, outhead)
         merge_evt_files(taskrunner,
                         [rtask],
                         ref_files,
                         mevtfile,
-                        params['obsinfos'],
+                        obsinfos,
                         tmpdir=params['tmpdir'],
                         clobber=params['clobber'],
                         verbose=params['verbose'])
@@ -729,6 +669,21 @@ def reproject_obsids():
 
     spacer = '     '
     v1("\nThe following files were created:\n")
+
+    if len(obsinfos) == 1:
+       v1("The reprojected FOV file:")
+    else:
+        v1("The reprojected FOV files:")
+
+    for obs in obsinfos:
+        v1(f"{spacer}{outdir}{outhead}{obs.obsid}.fov")
+
+    v1("")
+    if len(obsinfos) > 1:
+        v1("The combined FOV file:")
+        v1(f"{spacer}{outdir}{outhead}merged.fov")
+        v1("")
+
     if len(ref_files) == 1:
         v1("The reprojected event file:")
     else:

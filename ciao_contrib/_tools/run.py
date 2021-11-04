@@ -42,7 +42,9 @@ import tempfile
 
 import numpy as np
 
+import cxcdm
 import paramio
+import stk
 
 import ciao_contrib.logger_wrapper as lw
 
@@ -61,13 +63,14 @@ __all__ = (
     "dmkeypar",
     "dmhedit_key", "dmhedit_file",
     "get_lookup_table",
-    "fix_bunit"
-    # TODO: skyfov
+    "fix_bunit",
+    "make_fov"
     )
 
 lgr = lw.initialize_module_logger('_tools.run')
 v2 = lgr.verbose2
 v3 = lgr.verbose3
+v4 = lgr.verbose4
 
 
 def run(tname, targs):
@@ -475,5 +478,79 @@ def fix_bunit(infile, outfile, verbose=0):
         v3(f"BUNIT check: was {tunit} but expect {bunit} in {outfile}")
         dmhedit_key(outfile, 'BUNIT', bunit, verbose=verbose)
 
+
+def get_content(infile):
+    """Return the CONTENT keyword of the file.
+
+    Parameters
+    ----------
+    infile : str
+        The input file. It must contain a CONTENT keyword.
+
+    """
+
+    v4(f"Checking CONTENT keyword of {infile}")
+    bl = cxcdm.dmBlockOpen(infile, update=False)
+    try:
+        keys = cxcdm.dmKeyRead(bl, 'CONTENT')
+        content = keys[1].decode('ascii')
+        return content
+    finally:
+        cxcdm.dmBlockClose(bl)
+
+
+def make_fov(evtfile, asolfiles, msk, outfile):
+    """Create the FOV file (FITS format).
+
+    Parameters
+    ----------
+    evtfile : str
+        The event file to use.
+    asolfiles : str
+        The aspect solution, or solutions. When multiple files
+        separate them with a ','. The aspect solution files must
+        have the same CONTENT keyword.
+    msk : str
+        The mask file
+    outfile : str
+        The output file. It will be over-written if it already
+        exists.
+
+    Notes
+    -----
+    The skyfov method depends on the type of the aspect solution,
+    as given by the CONTENT type:
+
+        ASPSOL (pre DS 10.8.3)  - use method=minmax
+        ASPSOLOBI               - use method=convexhull
+
+    """
+
+    afiles = stk.build(asolfiles)
+    contents = set([get_content(f) for f in afiles])
+    if len(contents) != 1:
+        emsg = f"Multiple types of aspect solution found: " + \
+            f"{', '.join(contents)}\n  {asolfiles}"
+        raise OSError(emsg)
+
+    content = contents.pop()
+    if content == 'ASPSOLOBI':
+        method = 'convexhull'
+    elif content == 'ASPSOL':
+        method = 'minmax'
+    else:
+        raise OSError(f"Invalid CONTENT={content} in aspect solution: {asolfiles}")
+
+    v3(f"skyfov: CONTENT={content}  method={method} -> {outfile}")
+
+    skyfov = rt.make_tool('skyfov')
+    skyfov.punlearn()
+    skyfov(infile=evtfile,
+           outfile=outfile,
+           aspect=asolfiles,  # assume not so long we need a stack file
+           mskfile=msk,
+           kernel="FITS",
+           method=method,
+           clobber=True)
 
 # End
