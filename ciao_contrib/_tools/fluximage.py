@@ -92,8 +92,8 @@ def add_defargs(args, clobber, verbose):
     else:
         clstr = "no"
 
-    args.append("clobber={}".format(clstr))
-    args.append("verbose={}".format(verbose))
+    args.append(f"clobber={clstr}")
+    args.append(f"verbose={verbose}")
 
 
 def add_band_keywords(infile, enband, tmpdir="/tmp"):
@@ -108,18 +108,18 @@ def add_band_keywords(infile, enband, tmpdir="/tmp"):
                                         suffix=".band.keys")
     try:
         tfile.write("#add\n")
-        tfile.write("COMMENT =Adding keywords for band={}\n".format(enband.bandlabel))
+        tfile.write(f"COMMENT =Adding keywords for band={enband.bandlabel}\n")
         if enband.colname == "energy":
             # For ACIS data we require that both loval and hival are included
-            tfile.write("ENERGYLO = {} / [keV] Min photon energy in the image\n".format(enband.loval))
-            tfile.write("ENERGYHI = {} / [keV] Max photon energy in the image\n".format(enband.hival))
+            tfile.write(f"ENERGYLO = {enband.loval} / [keV] Min photon energy in the image\n")
+            tfile.write(f"ENERGYHI = {enband.hival} / [keV] Max photon energy in the image\n")
 
         else:
             colname = enband.colname.upper()
             if enband.loval is not None:
-                tfile.write("{}LO = {} / [{}] Min value in the image\n".format(colname, enband.loval, enband.units))
+                tfile.write(f"{colname}LO = {enband.loval} / [{enband.units}] Min value in the image\n")
             if enband.hival is not None:
-                tfile.write("{}HI = {} / [{}] Max value in the image\n".format(colname, enband.hival, enband.units))
+                tfile.write(f"{colname}HI = {enband.hival} / [{enband.units}] Max value in the image\n")
 
         tfile.flush()
 
@@ -140,19 +140,19 @@ def add_dmh_keyword(fh, keyval):
     (name, value, unit, desc) = keyval
 
     # need to be careful with string values
-    fh.write("{} = ".format(name))
+    fh.write(f"{name} = ")
     if isinstance(value, str):
         if "/" in value:
-            fh.write("'{}'".format(value))
+            fh.write(f"'{value}'")
         else:
-            fh.write("\"'{}'\"".format(value))
+            fh.write(f"\"'{value}'\"")
     else:
-        fh.write("{}".format(value))
+        fh.write(f"{value}")
 
     if unit != "" or desc != "":
         fh.write(" /")
         if unit != "":
-            fh.write(" [{}]".format(unit))
+            fh.write(f" [{unit}]")
 
         if desc != "":
             fh.write(" " + desc)
@@ -206,9 +206,9 @@ def cleanup_files_task(filenames, msg=None):
     'Cleaning up ')."""
 
     if msg is not None:
-        v2("Cleaning up {}".format(msg))
+        v2(f"Cleaning up {msg}")
 
-    v3("Deleting files: {}".format(filenames))
+    v3(f"Deleting files: {filenames}")
     for filename in filenames:
         os.unlink(filename)
 
@@ -277,7 +277,7 @@ def warn_unfilled_pixels(xr, yr, nr, binsize):
     else:
         wstr = "column"
 
-    v1("Fluxed image will underestimate the last {} since the exposure".format(wstr))
+    v1(f"Fluxed image will underestimate the last {wstr} since the exposure")
     v1("map is overestimated there. This is because the requested width and height")
     v1("is not a whole number of pixels.")
 
@@ -299,11 +299,25 @@ def name_asphist(head, num, blockname=False):
     If blockname is True then [asphist] is appended.
     """
 
-    o = "{}{}.asphist".format(head, num)
+    o = f"{head}{num}.asphist"
     if blockname:
         o += "[asphist]"
 
     return o
+
+
+def base_name(head, enband, num=None):
+    """The base of most of the names."""
+
+    if enband is None:
+        raise ValueError("Internal error - base_name called with enband=None")
+
+    out = f"{head}"
+    if num is not None:
+        out += f"{num}_"
+
+    out += f"{enband.bandlabel}"
+    return out
 
 
 def name_instmap(head, num, enband):
@@ -311,7 +325,7 @@ def name_instmap(head, num, enband):
     when evaluated with the given energy band.
     """
 
-    return "{}{}_{}.instmap".format(head, num, enband.bandlabel)
+    return f"{base_name(head, enband, num=num)}.instmap"
 
 
 def name_expmap(head, enband, num=None):
@@ -322,10 +336,7 @@ def name_expmap(head, enband, num=None):
     the exposure map is for all chips/ccds.
     """
 
-    if num is None:
-        return "{}{}.expmap".format(head, enband.bandlabel)
-    else:
-        return "{}{}_{}.expmap".format(head, num, enband.bandlabel)
+    return f"{base_name(head, enband, num=num)}.expmap"
 
 
 def name_expmap_thresh(head, enband):
@@ -334,7 +345,7 @@ def name_expmap_thresh(head, enband):
     num argument).
     """
 
-    return "{}{}_thresh.expmap".format(head, enband.bandlabel)
+    return f"{base_name(head, enband)}_thresh.expmap"
 
 
 def name_psfmap(head, enband, thresh=False):
@@ -342,9 +353,8 @@ def name_psfmap(head, enband, thresh=False):
     given energy band.
     """
 
-    head = "{}{}".format(head, enband.bandlabel)
     mid = "_thresh" if thresh else ""
-    return "{}{}.psfmap".format(head, mid)
+    return f"{base_name(head, enband)}{mid}.psfmap"
 
 
 def name_image(head, enband):
@@ -353,17 +363,14 @@ def name_image(head, enband):
     See also name_image_thresh() and name_fluxed().
     """
 
-    if enband is None:
-        raise ValueError("Internal error - name_image called with enband=None")
-
-    return "{}{}.img".format(head, enband.bandlabel)
+    return f"{base_name(head, enband)}.img"
 
 
 def name_image_thresh(head, enband):
     """The thresholded image for the given energy band.
     """
 
-    return "{}{}_thresh.img".format(head, enband.bandlabel)
+    return f"{base_name(head, enband)}_thresh.img"
 
 
 def name_fluxed(head, enband):
@@ -371,7 +378,7 @@ def name_fluxed(head, enband):
     energy band.
     """
 
-    return "{}{}_flux.img".format(head, enband.bandlabel)
+    return f"{base_name(head, enband)}_flux.img"
 
 
 def name_hrci_particle_background(head, enband):
@@ -379,7 +386,7 @@ def name_hrci_particle_background(head, enband):
     for the given image.
     """
 
-    return "{}{}_particle_bgnd.img".format(head, enband.bandlabel)
+    return f"{base_name(head, enband)}_particle_bgnd.img"
 
 
 def name_hrci_unsubtracted_background(head, enband):
@@ -387,7 +394,7 @@ def name_hrci_unsubtracted_background(head, enband):
     the full image data - i.e. before background subtraction).
     """
 
-    return "{}{}_unsubtracted.img".format(head, enband.bandlabel)
+    return f"{base_name(head, enband)}_unsubtracted.img"
 
 
 # TODO: this is used by flux/merge_obs; should they use get_output_filenames()
@@ -431,7 +438,7 @@ def fluximage_output(outdir, outhead, obsids, enbands,
         estr = enband.bandlabel
 
         for obsid in obsids:
-            head = "{}{}{}_".format(outdir, outhead, obsid)
+            head = f"{outdir}{outhead}{obsid}_"
 
             out['images'][estr].append(name_image(head, enband))
             out['expmaps'][estr].append(name_expmap(head, enband))
@@ -512,10 +519,10 @@ def run_asphist(outpath, asolobj, chip, evtfile, filt, dtffile,
 
         args = ["infile=" + asolobj.name,
                 "outfile=" + name_asphist(outpath, chip),
-                "evtfile={}[{}={}]".format(evtfile, filt, chip),
+                f"evtfile={evtfile}[{filt}={chip}]",
                 "dtffile=" + dtffile,
-                "max_bin={}".format(nbins),
-                "res_xy={}".format(res_xy),
+                f"max_bin={nbins}",
+                f"res_xy={res_xy}",
                 "mode=h"]
         add_defargs(args, clobber, verbose)
         run.run("asphist", args)
@@ -590,7 +597,7 @@ def reproject_bgnd(blanksky_map, outfile, asolfile, matchfile,
             "outfile=" + outfile,
             "aspect=" + asolfile,
             "match=" + matchfile,
-            "random={}".format(random)]
+            f"random={random}"]
     add_defargs(args, clobber, verbose)
     run.run("reproject_events", args)
 
@@ -613,7 +620,8 @@ def _get_keywords(filename, keywords):
     for keyword in keywords:
         rval = cr.get_key(keyword)
         if rval is None:
-            raise IOError("Unable to find keyword {} in {}".format(keyword, filename))
+            raise IOError(f"Unable to find keyword {keyword} in {filename}")
+
         # do not return the CrateKey object so that we give a chance
         # for the Crate to be freed, in case the Key somehow retains
         # a reference to the parent crate.
@@ -647,12 +655,12 @@ def _get_nrows(filename):
         # In CIAO 4.6 the error messages from read_file may not
         # include the filename. This may have been fixed by CIAO 4.8
         # but leaving in for now
-        raise IOError("Unable to open '{}'\n{}".format(filename, ie))
+        raise IOError(f"Unable to open '{filename}'\n{ie}") from None
 
     try:
         return cr.get_nrows()
     except AttributeError:
-        raise IOError("Unable to find the number of rows in {}; is it an image?".format(filename))
+        raise IOError(f"Unable to find the number of rows in {filename}; is it an image?") from None
 
 
 def calc_exposure_ratio(file1, file2):
@@ -665,7 +673,7 @@ def calc_exposure_ratio(file1, file2):
     # is unlikely to be needed here, but just in case
     e1 = _get_keyword(file1, 'EXPOSURE')
     e2 = _get_keyword(file2, 'EXPOSURE')
-    v2("Exposure scaling: {}={} {}={}".format(file1, e1, file2, e2))
+    v2(f"Exposure scaling: {file1}={e1} {file2}={e2}")
 
     return (e1, e2)
 
@@ -677,9 +685,7 @@ def calc_count_ratio(file1, file2, filterstr):
 
     nr1 = _get_nrows(file1 + filterstr)
     nr2 = _get_nrows(file2 + filterstr)
-    v2("Count scaling {}: {}={} {}={}".format(filterstr,
-                                              file1, nr1,
-                                              file2, nr2))
+    v2(f"Count scaling {filterstr}: {file1}={nr1} {file2}={nr2}")
 
     return (nr1, nr2)
 
@@ -697,7 +703,7 @@ def validate_bkgparams(method, params):
 
     """
 
-    v3("Validating bkgparams={} for method={}".format(params, method))
+    v3(f"Validating bkgparams={params} for method={method}")
     if method != "particle":
         return params
 
@@ -705,7 +711,7 @@ def validate_bkgparams(method, params):
     if bkg == '' or (bkg.startswith('[') and bkg.endswith(']')):
         return bkg
 
-    raise ValueError("Invalid bkgparams filter, expected empty string or [..] but sent {}".format(bkg))
+    raise ValueError(f"Invalid bkgparams filter, expected empty string or [..] but sent {bkg}")
 
 
 def scale_hrci_background(enband,
@@ -756,14 +762,13 @@ def scale_hrci_background(enband,
         (bkgfact1, bkgfact2) = calc_count_ratio(events, bkgevents, bkgparams)
     else:
         # should have been caught earlier
-        raise ValueError("Internal error: bkgmethod={} is not supported by scale_hrci_background".format(bkgmethod))
+        raise ValueError(f"Internal error: bkgmethod={bkgmethod} is not supported by scale_hrci_background")
 
     bkgscale = bkgfact1 * 1.0 / bkgfact2
 
-    v2("Background subtraction: method={} scale={}".format(bkgmethod, bkgscale))
+    v2(f"Background subtraction: method={bkgmethod} scale={bkgscale}")
 
-    dmcopy("{}[bin {}]{}[opt type=i4]".format(bkgevents, bin_filter,
-                                              enband.dmfilterstr),
+    dmcopy(f"{bkgevents}[bin {bin_filter}]{enband.dmfilterstr}[opt type=i4]",
            bkgimg, clobber=True, verbose="0")
 
     # To avoid changing downstream code (which is expecting the file
@@ -778,7 +783,7 @@ def scale_hrci_background(enband,
     dmcopy(img, rawimg, clobber=True, verbose="0")
 
     dmimgcalc([rawimg, bkgimg], img,
-              "img1-({}*img2)".format(bkgscale),
+              f"img1-({bkgscale}*img2)",
               lookupTab=ltable,
               verbose=verbose, clobber=True,
               tmpdir=tmpdir)
@@ -860,9 +865,9 @@ def make_images_hrci(enbands,
         lbl = ""
     else:
         lbl = "s"
-    imsg = "Subtracting HRC-I background{} for obsid {}".format(lbl, obsid)
+    imsg = f"Subtracting HRC-I background{lbl} for obsid {obsid}"
     v1(imsg)
-    v2("Background scaling: method={} params={}".format(bkgmethod, bkgparams))
+    v2(f"Background scaling: method={bkgmethod} params={bkgparams}")
 
     # The aim of the following is to improve the history - i.e. tracing what
     # happened from the dmhistory output - rather than speed/simplicity,
@@ -906,7 +911,7 @@ def create_event_image(infile, outfile,
     exposure-corrected image.
     """
 
-    v4("Binning up {} to {}".format(infile, outfile))
+    v4(f"Binning up {infile} to {outfile}")
     tmpfile = tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.img')
 
     # As we want to exclude the GTI blocks we do not want to
@@ -1114,7 +1119,7 @@ def get_imap_nbins(maxsize, npixels):
     if xs == []:
         # We should not be able to get here and hit this situation, but
         # just in case
-        raise ValueError("Unable to find any binsizes for npixels={} and max binsize={}".format(npixels, maxsize))
+        raise ValueError(f"Unable to find any binsizes for npixels={npixels} and max binsize={maxsize}")
 
     return npixels // xs[0]
 
@@ -1132,8 +1137,8 @@ def instrument_map_hrc(obs, outpath, chips, energies, binval, units):
     if obs.detector == "HRC-I":
         detsubsys = "HRC-I"
         nbins = get_imap_nbins(binval, 16384)
-        pixelgrid = "1:16384:#{0},1:16384:#{0}".format(nbins)
-        v3("HRC-I instrument map will be {} pixels square.".format(nbins))
+        pixelgrid = f"1:16384:#{0},1:16384:#{nbins}"
+        v3(f"HRC-I instrument map will be {nbibs} pixels square.")
 
         if units == "time":
             detsubsys += ";IDEAL"
@@ -1148,20 +1153,20 @@ def instrument_map_hrc(obs, outpath, chips, energies, binval, units):
         pixelgrid = "1:4096:#4096,1:16456:#16456"
 
     else:
-        raise ValueError("Invalid DETNAM={} for HRC ({})".format(obs.detector, obs.get_evtfile()))
+        raise ValueError(f"Invalid DETNAM={obs.detector} for HRC ({obs.get_evtfile()})")
 
     badpix = obs.get_ancillary('bpix')
     if badpix == "CALDB":
         ardlib = None
     elif badpix == "NONE":
-        ardlib = "AXAF_{}_BADPIX_FILE=NONE".format(obs.detector)
+        ardlib = f"AXAF_{obs.detector}_BADPIX_FILE=NONE"
     else:
-        ardlib = "AXAF_{}_BADPIX_FILE={}[BADPIX]".format(obs.detector, badpix)
+        ardlib = f"AXAF_{obs.detector}_BADPIX_FILE={badpix}[BADPIX]"
 
     mask = obs.get_ancillary('mask')
     for j in chips:
         if obs.detector == "HRC-S":
-            detsubsys = "HRC-S{}".format(j)
+            detsubsys = f"HRC-S{j}"
             if units == "time":
                 detsubsys += ";IDEAL"
 
@@ -1170,7 +1175,7 @@ def instrument_map_hrc(obs, outpath, chips, energies, binval, units):
         if mask == "":
             maskfile = ""
         else:
-            maskfile = "{}[MASK{}]".format(mask, j)
+            maskfile = f"{mask}[MASK{j}]"
 
         for energy in energies:
             # Arguments are: outfile, maskfile, obsfile, detsubsys, monoenergy, weightfile, ardlib
@@ -1274,8 +1279,8 @@ def run_mkinstmap(outfile, mfile, obsfile, detsubsys, grating,
                 "obsfile=" + obsfile,
                 "detsubsys=" + detsubsys,
                 "grating=" + grating,
-                "spectrumfile={}".format(weightfile),
-                "monoenergy={}".format(monoenergy),
+                f"spectrumfile={weightfile}",
+                f"monoenergy={monoenergy}",
                 "mirror=" + mirror,
                 "dafile=" + dafile,
                 "mode=h"
@@ -1337,23 +1342,23 @@ def make_instrument_maps(taskrunner, labelconv, preconditions,
                                 units)
 
     else:
-        raise ValueError("Invalid INSTRUME={} keyword.".format(obs.instrument))
+        raise ValueError(f"Invalid INSTRUME={obs.instrument} keyword.")
 
     tasks = []
     for arg in mkinstmap_args:
 
         if arg == mkinstmap_args[0]:
             if len(mkinstmap_args) == 1:
-                smsg = "Creating instrument map for obsid {}".format(obs.obsid)
+                smsg = f"Creating instrument map for obsid {obs.obsid}"
             else:
-                smsg = "Creating {} instrument maps for obsid {}".format(len(mkinstmap_args), obs.obsid)
+                smsg = f"Creating {len(mkinstmap_args)} instrument maps for obsid {obs.obsid}"
         else:
             smsg = None
 
         (outfile, mfile, obsfile, detsubsys, monoenergy, wgtfile, ardlib) = arg
 
         # use the output file name as the label
-        task = labelconv("imap-{}".format(outfile))
+        task = labelconv(f"imap-{outfile}")
 
         taskrunner.add_task(task, preconditions, run_mkinstmap,
                             outfile, mfile, obsfile, detsubsys, obs.grating,
@@ -1576,7 +1581,7 @@ def single_expmap_chips(taskrunner, labelconv, preconditions,
 
         # image with only one interesting block, so do not need
         # option=all in the dmcopy call
-        task = labelconv("imap-copy-{}".format(infile))
+        task = labelconv(f"imap-copy-{infile}")
         taskrunner.add_task(task, preconditions,
                             dmcopy, infile, outfile,
                             verbose=verbose, clobber=clobber)
@@ -1615,9 +1620,9 @@ def combine_expmap_chips(taskrunner, labelconv, preconditions,
     nchips = len(chips)
     nruns = len(enbands)
     if nruns == 1:
-        smsg = "Combining {} exposure maps for obsid {}".format(nchips, obsid)
+        smsg = f"Combining {nchips} exposure maps for obsid {obsid}"
     else:
-        smsg = "Combining {} exposure maps for {} bands (obsid {})".format(nchips, nruns, obsid)
+        smsg = f"Combining {nchips} exposure maps for {nruns} bands (obsid {obsid})"
 
     tasks = []
     for enband in enbands:
@@ -1626,7 +1631,7 @@ def combine_expmap_chips(taskrunner, labelconv, preconditions,
         # stack file in any location.
         #
         expmaps = [name_expmap(fouthead, enband, num=j) for j in chips]
-        task = labelconv("reproj-emap-{}".format(enband.bandlabel))
+        task = labelconv(f"reproj-emap-{enband.bandlabel}")
         taskrunner.add_task(task, preconditions,
                             combine_emaps,
                             expmaps, matchfile, name_expmap(outhead, enband),
@@ -1637,7 +1642,7 @@ def combine_expmap_chips(taskrunner, labelconv, preconditions,
         smsg = None
 
         if cleanup:
-            task2 = labelconv("reproj-emap-{}-cleanup".format(enband.bandlabel))
+            task2 = labelconv(f"reproj-emap-{enband.bandlabel}-cleanup")
             taskrunner.add_task(task2, [task],
                                 cleanup_files_task, expmaps)
             tasks.append(task2)
@@ -1886,7 +1891,7 @@ def run_expcorr_image(imgfile, emapfile, outfile, lookup_table,
         v1(message)
 
     with new_pfiles_environment(ardlib=False, copyuser=False, tmpdir=tmpdir):
-        v3("Creating fluxed image: {}".format(outfile))
+        v3(f"Creating fluxed image: {outfile}")
         dmimgcalc2(imgfile, emapfile, outfile + "[PFLUX_IMAGE]",
                    "div", lookupTab=lookup_table,
                    verbose=verbose, clobber=clobber)
@@ -1899,7 +1904,7 @@ def run_expcorr_image(imgfile, emapfile, outfile, lookup_table,
         # Fix up the BUNIT field
         img_units = fileio.get_image_units(imgfile)
         emap_units = fileio.get_image_units(emapfile)
-        v3("BUNIT cleanup: img={} emap={}".format(img_units, emap_units))
+        v3(f"BUNIT cleanup: img={img_units} emap={emap_units}")
 
         # Some of these checks are not really necessary but left in in case
         # some of the tools change their BUNIT handling
@@ -1907,7 +1912,7 @@ def run_expcorr_image(imgfile, emapfile, outfile, lookup_table,
         if img_units == emap_units:
             fmap_units = fileio.get_image_units(outfile)
             if fmap_units != emap_units:
-                v3("Cleaning out fluxed units from {} to ''".format(fmap_units))
+                v3(f"Cleaning out fluxed units from {fmap_units} to ''")
                 dmhedit_key(outfile, 'BUNIT', '')
 
         else:
@@ -1933,7 +1938,7 @@ def run_expcorr_image(imgfile, emapfile, outfile, lookup_table,
             else:
                 nkey += '/(' + emap_units + ')'
 
-            v3("New BUNIT={}".format(nkey))
+            v3(f"New BUNIT={nkey}")
             dmhedit_key(outfile, 'BUNIT', nkey)
 
 
@@ -1970,7 +1975,7 @@ def make_fluxed_images(taskrunner, labelconv, preconditions,
 
     nthresh = len(thresh_args)
     if nthresh > 0:
-        smsg = "Thresholding data for obsid {}".format(obsid)
+        smsg = f"Thresholding data for obsid {obsid}"
 
         tasks = []
         for (imgfile, expmap, img_thrfile, exp_thrfile) in thresh_args:
@@ -1992,8 +1997,7 @@ def make_fluxed_images(taskrunner, labelconv, preconditions,
             tasks.append(etask)
 
             if cleanup:
-                ctask = labelconv("cleanup-{}-{}".format(img_thrfile,
-                                                         exp_thrfile))
+                ctask = labelconv(f"cleanup-{img_thrfile}-{exp_thrfile}")
                 taskrunner.add_task(ctask, [itask, etask],
                                     cleanup_files_task,
                                     [imgfile, expmap])
@@ -2002,9 +2006,9 @@ def make_fluxed_images(taskrunner, labelconv, preconditions,
 
     ncalc = len(imcalc_args)
     if ncalc == 1:
-        smsg = "Exposure-correcting image for obsid {}".format(obsid)
+        smsg = f"Exposure-correcting image for obsid {obsid}"
     else:
-        smsg = "Exposure-correcting {} images for obsid {}".format(ncalc, obsid)
+        smsg = f"Exposure-correcting {ncalc} images for obsid {obsid}"
 
     tasks = []
     for (imgfile, expmap, fluxmap) in imcalc_args:
@@ -2053,7 +2057,7 @@ def find_blanksky_hrci(obsinfo, verbose=True, bgndmap=None, tmpdir=None):
     """
 
     evtfile = obsinfo.get_evtfile()
-    v3("Looking for HRC-I background file for {}".format(evtfile))
+    v3(f"Looking for HRC-I background file for {evtfile}")
 
     if bgndmap is None:
         bname = _find_blanksky_hrci_caldb(evtfile, verbose=verbose,
@@ -2062,8 +2066,7 @@ def find_blanksky_hrci(obsinfo, verbose=True, bgndmap=None, tmpdir=None):
         bname = _find_blanksky_hrci_manual(evtfile, bgndmap, verbose=verbose)
 
     if verbose and (bname is not None):
-        msg = "Background file for {} found: {}".format(evtfile, bname)
-        v1(msg)
+        v1(f"Background file for {evtfile} found: {bname}")
 
     return bname
 
@@ -2090,13 +2093,13 @@ def _find_blanksky_hrci_caldb(evtfile, verbose=True, tmpdir=None):
         if hbl_status != 0:
             v3(" . hrc_bkgrnd_lookup call failed")
             if verbose:
-                msg = "No HRC-I background file for {}, so skipping background subtraction.".format(evtfile)
+                msg = f"No HRC-I background file for {evtfile}, so skipping background subtraction."
                 v1(msg)
 
             return None
 
         hrci_bkg = paramio.pgetstr("hrc_bkgrnd_lookup", "outfile")
-        v3(" . hrc_bkgrnd_lookup found {}".format(hrci_bkg))
+        v3(f" . hrc_bkgrnd_lookup found {hrci_bkg}")
 
         # clean up file name for user consumption
         # os.path routines might be cleaner
@@ -2123,7 +2126,7 @@ def _find_blanksky_hrci_caldb(evtfile, verbose=True, tmpdir=None):
         if not os.path.exists(hrci_bkg):
             v3(" . hrc bkgrnd file not found on disk")
             if verbose:
-                msg = "The background for {} is not in the CALDB, so skipping background subtraction.".format(evtfile)
+                msg = f"The background for {evtfile} is not in the CALDB, so skipping background subtraction."
                 v1(msg)
 
             return None
@@ -2135,17 +2138,17 @@ def _find_blanksky_hrci_manual(evtfile, bgndmap, verbose=True):
     "Find the HRC-I background file using the given dictionary"
 
     key = evtfile
-    v3("CALDB override: using a background map, with key={}".format(key))
+    v3(f"CALDB override: using a background map, with key={key}")
     try:
         bname = bgndmap[key]
-        v3(" -> found {}".format(bname))
+        v3(f" -> found {bname}")
 
     except KeyError:
-        v3(" -> No match for key={} from file={} in bgndmap={}".format(key, evtfile, bgndmap))
+        v3(f" -> No match for key={key} from file={evtfile} in bgndmap={bgndmap}")
 
         if verbose:
             msg = "WARNING: No HRC-I background file for " + \
-                  "{}, so skipping background subtraction.".format(evtfile)
+                  f"{evtfile}, so skipping background subtraction."
             v1(msg)
 
         return None
@@ -2159,7 +2162,7 @@ def _find_blanksky_hrci_manual(evtfile, bgndmap, verbose=True):
         if not os.path.exists(bname):
             v3(" -> hrc bkgrnd file not found on disk!")
             if verbose:
-                msg = "WARNING: The background for {}".format(evtfile) + \
+                msg = f"WARNING: The background for {evtfile}" + \
                       " is not found, so skipping background subtraction."
                 v1(msg)
 
@@ -2193,24 +2196,23 @@ def find_status_filter(infile, obsid, tmpdir="/tmp"):
     # Need to convert from np.string_ to Python string
     statbits = str(read_first_row(status.name, "col2"))
     status.close()
-    v2("Finding status bit filter for ObsId {} from: {}".format(obsid,
-                                                                statbits))
+    v2(f"Finding status bit filter for ObsId {obsid} from: {statbits}")
 
     # I had planned to report this at verbose=2 but that is
     # *very* noisy, so adding it to the verbose=1 level,
     # since it's important to know.
     spos = statbits.find("[status=")
     if spos == -1:
-        v1("WARNING: no STATUS filter found in {} so unable to filter background for obsid {}!".format(infile, obsid))
+        v1(f"WARNING: no STATUS filter found in {infile} so unable to filter background for obsid {obsid}!")
         return ""
 
     epos = statbits.find("]", spos)
     if epos == -1:
-        v1("WARNING: illegal STATUS filter found in {} so unable to filter background for obsid {}!".format(infile, obsid))
+        v1(f"WARNING: illegal STATUS filter found in {infile} so unable to filter background for obsid {obsid}!")
         return ""
 
     statbits = statbits[spos:epos + 1]
-    v1("Background filter (obsid {}): {}".format(obsid, statbits))
+    v1(f"Background filter (obsid {obsid}): {statbits}")
     return statbits
 
 
@@ -2229,7 +2231,7 @@ def blanksky_hrci(caldbfile, infile, tmpdir, obsid, verbose):
     to correct this.
     """
 
-    v1("Setting up the HRC-I background for obsid {}".format(obsid))
+    v1(f"Setting up the HRC-I background for obsid {obsid}")
 
     bkg_stat = tempfile.NamedTemporaryFile(dir=tmpdir,
                                            suffix='.bkgevt')
@@ -2239,7 +2241,7 @@ def blanksky_hrci(caldbfile, infile, tmpdir, obsid, verbose):
         shutil.copyfile(caldbfile, bkg_stat.name)
 
     else:
-        v2("Background file contains a DM filter ({})".format(dmfilt) +
+        v2(f"Background file contains a DM filter ({dmfilt})" +
            " so need to dmcopy it")
         # Only expect a single block in the background files, so
         # do not need to add in option="all" here
@@ -2306,7 +2308,7 @@ def blanksky_hrci(caldbfile, infile, tmpdir, obsid, verbose):
                 has_obi_num = True
 
         # add in the STATFILT keyword
-        p.write('statfilt,s,h,"{}",,,"STATUS filter"\n'.format(statfilter))
+        p.write(f'statfilt,s,h,"{statfilter}",,,"STATUS filter"\n')
 
         h.close()
         p.close()
@@ -2326,7 +2328,7 @@ def blanksky_hrci(caldbfile, infile, tmpdir, obsid, verbose):
         if not has_obi_num:
             try:
                 run.run("dmhedit",
-                        ["infile={}".format(bkg_stat.name),
+                        [f"infile={bkg_stat.name}",
                          "filelist=",
                          "operation=delete",
                          "key=OBI_NUM",
@@ -2355,10 +2357,10 @@ def clobber_checks(files, clobber=False):
     file name, array, or dictionary) are the file names.
     """
 
-    v3("Clobber checks with clobber={}".format(clobber))
+    v3(f"Clobber checks with clobber={clobber}")
     fnames = []
     for (key, vals) in files.items():
-        v4("Checking for {} files.".format(key))
+        v4(f"Checking for {key} files.")
         if isinstance(vals, str):
             v4(" ... a single file")
             fnames.append(vals)
@@ -2459,7 +2461,7 @@ def add_history(outputs, cmdline_pars, toolname, toolversion,
     """add a history entry to the header of the output files
     """
 
-    v3("Updating file headers with history record for {}\n".format(toolname))
+    v3(f"Updating file headers with history record for {toolname}\n")
 
     # This used to select which files from outputs to add history records to.
     # It now just does everything, since it is "safer" (e.g. if a new
@@ -2500,7 +2502,7 @@ def add_files(label, fnames):
     else:
         x = "s are"
 
-    return " The {}{}:{}\n".format(label, x, clean_names(fnames))
+    return f" The {label}{x}:{clean_names(fnames)}\n"
 
 
 # TODO: fix to deal with clipped/thresholded exposure maps
