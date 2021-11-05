@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013, 2014, 2015, 2016
+# Copyright (C) 2013, 2014, 2015, 2016, 2021
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -72,7 +72,7 @@ def normalize_path(fname, start='.'):
     """
 
     if not os.path.isabs(fname):
-        raise ValueError("Expected an absolute path for fname={}".format(fname))
+        raise ValueError(f"Expected an absolute path for fname={fname}")
 
     cpath = os.getcwd()
     if os.path.commonprefix([cpath, fname]) in ['', '/']:
@@ -81,7 +81,7 @@ def normalize_path(fname, start='.'):
         return os.path.relpath(fname, start=start)
 
 
-class ObsInfo(object):
+class ObsInfo:
     """Represent an observation in a form useful to fluximage,
     merge_obs, and related codes. It may be useful for other cases.
     """
@@ -99,7 +99,7 @@ class ObsInfo(object):
         #
         (keys, cols) = fileio.get_keys_cols_from_file(infile)
         if cols is None:
-            raise IOError("{} is an image, not a table!".format(infile))
+            raise IOError(f"{infile} is an image, not a table!")
 
         try:
             self._instrument = keys['INSTRUME']
@@ -108,10 +108,10 @@ class ObsInfo(object):
             self._tstart = keys['TSTART']
             self._tstop = keys['TSTOP']
         except KeyError as ke:
-            raise IOError("File {} is missing the {} keyword!".format(infile, ke.args[0]))
+            raise IOError(f"File {infile} is missing the {ke.args[0]} keyword!") from None
 
         if self._instrument not in ['ACIS', 'HRC']:
-            raise IOError("Unsupported INSTRUME={} in {}.".format(self._instrument, infile))
+            raise IOError(f"Unsupported INSTRUME={self._instrument} in {infile}.")
 
         self._obsid = utils.make_obsid_from_headers(keys, infile=infile)
 
@@ -144,8 +144,7 @@ class ObsInfo(object):
         self._ancillary = {}
 
     def __str__(self):
-        return "ObsInfo: file={} ObsId={}".format(self.evtfile,
-                                                  self.obsid)
+        return f"ObsInfo: file={self.evtfile} ObsId={self.obsid}"
 
     @property
     def evtfile(self):
@@ -172,7 +171,7 @@ class ObsInfo(object):
         try:
             return self._header[key]
         except KeyError:
-            raise KeyError("The event file {} has no {} keyword".format(self.get_evtfile(), key))
+            raise KeyError(f"The event file {self.get_evtfile()} has no {key} keyword") from None
 
     def has_column(self, colname):
         "Does the event file contain this column (case insensitive name)"
@@ -248,7 +247,7 @@ class ObsInfo(object):
             # should not happen due to check in __init__ but leave
             # here, just in case code changes or some agent decided
             # to change the _instrument field.
-            raise ValueError("Unsupported INSTRUME={} in {}".format(self._instrument, self._evtfile))
+            raise ValueError(f"Unsupported INSTRUME={self._instrument} in {self._evtfile}")
 
     def get_asol_(self, indir='.'):
         """Return the location of the asol file(s), relative to the
@@ -262,26 +261,26 @@ class ObsInfo(object):
 
         evtfile = self.get_evtfile()
         try:
-            v3("Looking for asol ancillary file for {} in cache.".format(evtfile))
+            v3(f"Looking for asol ancillary file for {evtfile} in cache.")
             fnames = self._ancillary['asol']
-            v3(" -> {} (cached)".format(fnames))
+            v3(f" -> {fnames} (cached)")
         except KeyError:
-            v2("Looking for asol file(s) in header of {}".format(evtfile))
+            v2(f"Looking for asol file(s) in header of {evtfile}")
             fnames = ancillary.find_ancillary_files_header(self._header,
                                                            ['asol'],
                                                            cwd=self._evtdir,
                                                            absolute=True,
                                                            keepnone=True
                                                            )
-            v3("Response={}".format(fnames))
+            v3(f"Response={fnames}")
             fnames = fnames[0]
             if fnames is not None:
-                v3("Validating as aspsols: {}".format(fnames))
+                v3(f"Validating as aspsols: {fnames}")
                 for fname in fnames:
                     fileio.validate_asol(fname)
 
                 fnames = fileio.sort_mjd(fnames)
-                v3("After time-sorting, aspsols: {}".format(fnames))
+                v3(f"After time-sorting, aspsols: {fnames}")
 
             # Store the time-sorted list
             self._ancillary['asol'] = fnames
@@ -305,12 +304,12 @@ class ObsInfo(object):
             evtfile = self.get_evtfile()
             try:
                 asolfile = self._header['ASOLFILE']
-                raise IOError("ASOLFILE={} from {} not found.".format(asolfile, evtfile))
+                raise IOError(f"ASOLFILE={asolfile} from {evtfile} not found.")
             except KeyError:
                 # Could throw a KeyError but then downstream code may expect
                 # the full message to be the missing key. Could throw a
                 # ValueError, but leave as IOError to match the other failure.
-                raise IOError("Event file {} has no ASOLFILE keyword.".format(evtfile))
+                raise IOError(f"Event file {evtfile} has no ASOLFILE keyword.") from None
 
         return rval
 
@@ -330,10 +329,10 @@ class ObsInfo(object):
             # should not happen due to check in __init__ but leave
             # here, just in case code changes or some agent decided
             # to change the _instrument field.
-            raise ValueError("Unsupported INSTRUME={} in {}".format(self._instrument, self._evtfile))
+            raise ValueError(f"Unsupported INSTRUME={self._instrument} in {self._evtfile}")
 
         if atype not in atypes:
-            raise ValueError("Invalid ancillary type '{}' for {}; must be one of {}".format(atype, self.get_evtfile(), atypes))
+            raise ValueError(f"Invalid ancillary type '{atype}' for {self.get_evtfile()}; must be one of {atypes}")
 
     def get_ancillary_(self, atype, indir='.'):
         """Return the location of the ancillary file, relative to the
@@ -354,17 +353,17 @@ class ObsInfo(object):
         self._validate_ancillary_type(atype)
         evtfile = self.get_evtfile()
         try:
-            v3("Looking for {} ancillary file for {} in cache.".format(atype, evtfile))
+            v3(f"Looking for {atype} ancillary file for {evtfile} in cache.")
             fname = self._ancillary[atype]
-            v3(" -> {} (cached)".format(fname))
+            v3(f" -> {fname} (cached)")
         except KeyError:
-            v2("Looking for {} file in header of {}".format(atype, evtfile))
+            v2(f"Looking for {atype} file in header of {evtfile}")
             fnames = ancillary.find_ancillary_files_header(self._header,
                                                            [atype],
                                                            cwd=self._evtdir,
                                                            absolute=True,
                                                            keepnone=True)
-            v3("Response={}".format(fnames))
+            v3(f"Response={fnames}")
             fname = fnames[0]
             if fname is not None:
                 fname = fname[0]
@@ -408,13 +407,13 @@ class ObsInfo(object):
         fname = self.get_ancillary_(atype, indir=indir)
         if fname is None:
             evtfile = self.get_evtfile()
-            key = "{}FILE".format(atype.upper())
+            key = f"{atype.upper()}FILE"
             try:
                 keyval = self._header[key]
-                raise IOError("{}={} from {} not found".format(key, keyval, evtfile))
+                raise IOError(f"{key}={keyval} from {evtfile} not found")
             except KeyError:
                 # See get_asol() for choice of IOError here
-                raise IOError("Event file {} has no {} keyword.".format(evtfile, key))
+                raise IOError(f"Event file {evtfile} has no {key} keyword.") from None
 
         return fname
 
@@ -437,12 +436,12 @@ class ObsInfo(object):
         evtfile = self.get_evtfile()
         filenames = []
         for asol in asolfiles:
-            v3("Verifying asol file: {}".format(asol))
+            v3(f"Verifying asol file: {asol}")
             if not os.path.exists(asol):
                 if os.path.exists(asol + '.gz'):
                     asol += '.gz'
                 else:
-                    raise IOError("Unable to find aspect solution file: {}".format(asol))
+                    raise IOError(f"Unable to find aspect solution file: {asol}")
 
             asol = os.path.normpath(os.path.abspath(asol))
             fileio.validate_asol(asol)
@@ -450,11 +449,10 @@ class ObsInfo(object):
 
         try:
             oldfiles = self._ancillary['asol']
-            v3("Over-riding ASOLFILE={} for {}".format(oldfiles,
-                                                       evtfile))
+            v3(f"Over-riding ASOLFILE={oldfiles} for {evtfile}")
 
         except KeyError:
-            v3("Setting asol files for {}".format(evtfile))
+            v3(f"Setting asol files for {evtfile}")
 
         self._ancillary['asol'] = fileio.sort_mjd(filenames)
 
@@ -483,7 +481,7 @@ class ObsInfo(object):
         """
 
         evtfile = self.get_evtfile()
-        v3("[set_ancillary:obsid={}] Verifying {} file: {}".format(self.obsid, atype, aname))
+        v3(f"[set_ancillary:obsid={self.obsid}] Verifying {atype} file: {aname}")
         skipnames = ['NONE']
         if atype == 'bpix':
             skipnames.append('CALDB')
@@ -495,16 +493,16 @@ class ObsInfo(object):
                 if os.path.exists(aname + '.gz'):
                     aname += '.gz'
                 else:
-                    raise IOError("Unable to find {} file: {}".format(atype, aname))
+                    raise IOError(f"Unable to find {atype} file: {aname}")
 
             aname = os.path.normpath(os.path.abspath(aname))
 
         try:
             oldfile = self._ancillary[atype]
-            v3("Over-riding {}FILE={} for {}".format(atype.upper(), oldfile, evtfile))
+            v3(f"Over-riding {atype.upper()}FILE={oldfile} for {evtfile}")
 
         except KeyError:
-            v3("Setting {} file for {}".format(atype, evtfile))
+            v3(f"Setting {atype} file for {evtfile}")
 
         self._ancillary[atype] = aname
 

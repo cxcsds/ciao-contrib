@@ -954,6 +954,9 @@ def validate_obsinfo(infiles, colcheck=True):
         if so, set the ObsId object for the relevant observations
         to include the OBI when converting to a string
 
+        NOTE that the multi-obs check has been left in, but some
+        of it is not needed as ObsInfo now enforces it.
+
     The return value is a list of
     ciao_contrib._tools.obsinfo.ObsInfo objects
 
@@ -988,15 +991,18 @@ def validate_obsinfo(infiles, colcheck=True):
     #
     obsids = {}
 
+    has_bad_multi_obi = []
     for infile in sinfiles:
         v3(f"Checking input file: {infile}")
         try:
             obs = ObsInfo(infile)
+
+        except utils.MultiObiError as exc:
+            has_bad_multi_obi.append(infile)
+            blank_line = True
+            continue
+
         except Exception as exc:
-            # With the move to the obsinfo we have lost the specific
-            # messages about why a file is skipped, but the information
-            # should hopefully still be provided to the user.
-            # v1("Skipping {}: {}".format(infile, exc))
             v1(f"Skipping file: {exc}")
             blank_line = True
             continue
@@ -1006,14 +1012,12 @@ def validate_obsinfo(infiles, colcheck=True):
             blank_line = True
             continue
 
-        # The following is trying to be too clever,
-        # in that the expected behavior is to raise the error.
-        try:
+        if obs.obsid in obsids:
             v1(f"Skipping {infile} as both it and {obsids[obs.obsid]} have OBS_ID={obs.obsid}.")
             blank_line = True
             continue
-        except KeyError:
-            obsids[obs.obsid] = infile
+
+        obsids[obs.obsid] = infile
 
         if len(obsinfos) == 1:
             filelabel = "file is"
@@ -1080,14 +1084,35 @@ def validate_obsinfo(infiles, colcheck=True):
         sort_order = { 'P' : 2, 'S' : 1, None: 0 }
 
         sort_tag = sort_order[obs.obsid.cycle]
-        time_tag= (obs.tstart,sort_tag) # tuples sort too
+        time_tag = (obs.tstart, sort_tag)  # tuples sort too
         obsinfos.append((time_tag, obs))
+
+    # Report warnings about multi_OBI files that have been skipped.
+    #
+    nbad = len(has_bad_multi_obi)
+    if nbad > 0:
+        if nbad == 1:
+            msg = "The following multi-OBI dataset was missing an OBI_NUM value:"
+        else:
+            msg = "The following multi-OBI datasets were missing an OBI_NUM value:"
+
+        v1("")
+        v1(msg)
+        for bad in has_bad_multi_obi:
+            v1(f"  {bad}")
+
+        v1("")
+        v1("The splitobs script should be used to separate the OBI components.")
+        v1("")
 
     ninfiles = len(obsinfos)
     if ninfiles == 0:
         raise IOError("No valid event files were found.")
 
     # Now do a multi-obi/interleaved check
+    # - note the multi-obi check should not be needed now as
+    #   ObsInfo now handles this, but I have not checked exactly all
+    #   the checks in this section
     #
     v3("Looking for interleaved/multi-OBI datasets")
     nobsids = {}
@@ -2922,6 +2947,12 @@ def merge(process,
     # data sets are large, so leave as is for now.
     #
     v1(f"\nCombining {nobs} observations.")
+
+    # Combine the FOV files
+    #
+    outfov = outfiles['combinedfov']
+    run.combined_fovs(outfiles['fovs'], outfov)
+
     if threshold:
         obsid_images = outfiles['out_thresh_images']
         obsid_expmaps = outfiles['out_thresh_expmaps']
@@ -2979,6 +3010,7 @@ def merge(process,
     if psfmerge is not None:
         display("The combined PSF map", outfiles['out_psfmaps'])
 
+    display("The combined FOV", [outfov])
     display("The co-added exposure-corrected image", outfiles['out_fluxmaps'])
 
 

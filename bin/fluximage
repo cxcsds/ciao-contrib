@@ -72,7 +72,7 @@ def handle_ancillary_input(obs, anctype, ancfile):
         warnmsg = ''
 
     if ancfile == "":
-        keyname = "{}FILE".format(anctype.upper())
+        keyname = f"{anctype.upper()}FILE"
         filename = obs.get_ancillary_(anctype)
 
         # local, rather than absolute path that .evtfile would return
@@ -86,21 +86,21 @@ def handle_ancillary_input(obs, anctype, ancfile):
             hdrval = None
 
         if hdrval is None:
-            v1("WARNING - {} keyword not found in {}.{}".format(keyname, infile, warnmsg))
+            v1(f"WARNING - {keyname} keyword not found in {infile}.{warnmsg}")
             obs.set_ancillary(anctype, 'NONE')
 
         elif filename is None:
-            v1("WARNING - {}={} not found for {}.{}".format(keyname, hdrval, infile, warnmsg))
+            v1(f"WARNING - {keyname}={hdrval} not found for {infile}.{warnmsg}")
             obs.set_ancillary(anctype, 'NONE')
 
         elif filename.lower() == 'none':
-            v1("WARNING - {} set to NONE in {}.{}".format(keyname, infile, warnmsg))
+            v1(f"WARNING - {keyname} set to NONE in {infile}.{warnmsg}")
 
         else:
-            v1("{} file {} found.".format(anctype.capitalize(), filename))
+            v1(f"{anctype.capitalize()} file {filename} found.")
 
     elif ancfile.lower() == "none":
-        v1("WARNING - {}file parameter set to NONE.{}".format(anctype, warnmsg))
+        v1(f"WARNING - {anctype}file parameter set to NONE.{warnmsg}")
         obs.set_ancillary(anctype, 'NONE')
 
     else:
@@ -177,7 +177,7 @@ def get_par(argv):
 
     evtfiles = fileio.expand_evtfiles_stack(pars['infile'])
     if len(evtfiles) == 0:
-        raise IOError("Unable to find any event files matching {}.".format(pars['infile']))
+        raise IOError(f"Unable to find any event files matching {pars['infile']}.")
     elif len(evtfiles) > 1:
         raise IOError("Found multiple matches to infile={}\n  {}\n".format(pars['infile'], " ".join(evtfiles)))
 
@@ -185,7 +185,7 @@ def get_par(argv):
     infile = params['infile']
 
     if infile != pars['infile']:
-        v1("Using event file {}".format(infile))
+        v1(f"Using event file {infile}")
 
     """
     # We assume that the first [ character indicates a DM filter,
@@ -218,7 +218,7 @@ def get_par(argv):
     v3("Processing input file")
     obs = obsinfo.ObsInfo(infile)
     if obs.nrows == 0:
-        raise IOError("There are no events in {}".format(infile))
+        raise IOError(f"There are no events in {infile}")
 
     # Now we have the instrument, we can validate the bands
     params["enbands"] = bands.validate_bands(obs.instrument, params["enbands"])
@@ -238,7 +238,7 @@ def get_par(argv):
         else:
             params['bin'] = paramio.pgetd(pfile, 'binsize')
             if params['bin'] <= 0:
-                raise ValueError("binsize={} is not valid, it must be a number greater than zero.".format(params['bin']))
+                raise ValueError(f"binsize={params['bin']} is not valid, it must be a number greater than zero.")
 
         params['xrange'] = None
         params['yrange'] = None
@@ -263,7 +263,7 @@ def get_par(argv):
         raise ValueError("asolfile can not be NONE.")
     elif pars['asolfile'] == "":
         for afile in obs.get_asol():
-            v1("Aspect solution {} found.".format(afile))
+            v1(f"Aspect solution {afile} found.")
     else:
         obs.set_asol(stk.build(pars['asolfile']))
 
@@ -274,14 +274,14 @@ def get_par(argv):
         v3('Looking in header for BPIXFILE keyword')
         badpix = obs.get_ancillary_('bpix')
         if badpix is None:
-            v1("WARNING - BPIXFILE={} not found for {}. Using CALDB version instead.".format(obs.get_keyword('BPIXFILE'), infile))
+            v1(f"WARNING - BPIXFILE={obs.get_keyword('BPIXFILE')} not found for {infile}. Using CALDB version instead.")
             obs.set_ancillary('bpix', 'CALDB')
 
         elif badpix.lower() == 'none':
-            v1("WARNING - BPIXFILE set to NONE in {}. The exposure map will be too high for bad pixels and columns.".format(infile))
+            v1(f"WARNING - BPIXFILE set to NONE in {infile}. The exposure map will be too high for bad pixels and columns.")
 
         else:
-            v1("Bad-pixel file {} found.".format(badpix))
+            v1(f"Bad-pixel file {badpix} found.")
 
     elif badpix == "caldb":
         v1("CalDB bad-pixel file is being used.")
@@ -299,11 +299,11 @@ def get_par(argv):
         if not os.path.isfile(badpix):
             badpix += '.gz'
             if not os.path.isfile(badpix):
-                raise IOError("Unable to find bad pixel file={} (or .gz version)".format(pars['badpixfile']))
+                raise IOError(f"Unable to find bad pixel file={pars['badpixfile']} (or .gz version)")
 
             v3("Found .gz version of badpixfile.")
 
-        v1("Bad-pixel file {}".format(badpix))
+        v1(f"Bad-pixel file {badpix}")
         obs.set_ancillary('bpix', badpix)
 
     # Both BPIX and MASK files depend on the cycle of an interleaved observation
@@ -312,7 +312,7 @@ def get_par(argv):
         checkval = obs.obsid.obsid
         get_obsid_fn = fileio.get_obsid
     else:
-        v3("This appears to be an interleaved observation: cycle={}".format(obs.obsid.cycle))
+        v3(f"This appears to be an interleaved observation: cycle={obs.obsid.cycle}")
         checkval = obs.obsid
         get_obsid_fn = fileio.get_obsid_object
 
@@ -321,7 +321,7 @@ def get_par(argv):
     if badpix not in ["CALDB", "NONE"]:
         badpixobsid = get_obsid_fn(badpix)
         if badpixobsid != checkval:
-            raise ValueError("The ObsID of the badpix and event files do not match: {} vs {}".format(badpixobsid, checkval))
+            raise ValueError(f"The ObsID of the badpix and event files do not match: {badpixobsid} vs {checkval}")
 
     v3("Validating MASKFILE")
     pars["maskfile"] = paramio.pgetstr(pfile, "maskfile")
@@ -330,7 +330,7 @@ def get_par(argv):
     if mask != "NONE":
         maskobsid = get_obsid_fn(mask)
         if maskobsid != checkval:
-            raise ValueError("The ObsID of the mask and event files do not match: {} vs {}".format(maskobsid, checkval))
+            raise ValueError(f"The ObsID of the mask and event files do not match: {maskobsid} vs {checkval}")
 
     # As of CIAO 4.6 there is no need for the pbkfile parameter.
     if obs.instrument == "HRC":
@@ -367,7 +367,7 @@ def get_par(argv):
         #
         params['psfecf'] = paramio.pgetd(pfile, 'psfecf')
         if params['psfecf'] <= 0 or params['psfecf'] > 1:
-            raise ValueError("psfecf={} is not valid, it must be > 0 and <= 1".format(params['psfecf']))
+            raise ValueError(f"psfecf={params['psfecf']} is not valid, it must be > 0 and <= 1")
 
     # only used (at present) for background subtraction
     params['random'] = paramio.pgeti(pfile, 'random')
@@ -442,9 +442,9 @@ def fluximage():
     if chips is None:
         if xrng is None and yrng is None:
             # this should have been caught earlier
-            raise ValueError("Unexpected: infile={} is empty.".format(evtfile))
+            raise ValueError(f"Unexpected: infile={evtfile} is empty.")
 
-        emsg = "Observation {} does not cover".format(evtfile)
+        emsg = f"Observation {evtfile} does not cover"
         if xrng is not None:
             emsg += " x={}:{}".format(*xrng)
         if yrng is not None:
@@ -489,6 +489,7 @@ def fluximage():
 
     # What files are we going to create?
     outputs = fi.get_output_filenames(outpath, enbands, chips,
+                                      obs=obs,
                                       blanksky=(bkginfo is not None),
                                       psf=want_psf,
                                       thresh=utils.thresh_is_set(thresh))
@@ -504,21 +505,20 @@ def fluximage():
                                                   tmpdir=tmpdir
             )
 
-        grid = "x={0},y={1}".format(xgrid, ygrid)
+        grid = f"x={xgrid},y={ygrid}"
         ox = xgrid.nbins
         oy = ygrid.nbins
         pixsize = utils.sky_to_arcsec(obs.instrument, xgrid.size)
 
-        v1("The output images will have {} by {} pixels, pixel size of {} arcsec,".format(int(ox), int(oy), pixsize))
-        v1("    and cover {}.".format(grid))
+        v1(f"The output images will have {int(ox)} by {int(oy)} pixels, pixel size of {pixsize} arcsec,")
 
     else:
         grid = xygrid
         (ox, oy) = params['sizes']
 
-        v1("The output images will have {} by {} pixels,".format(int(ox), int(oy)))
-        v1("    and cover {}.".format(grid))
+        v1(f"The output images will have {int(ox)} by {int(oy)} pixels,")
 
+    v1(f"    and cover {grid}.")
     v1("")
     taskrunner = TaskRunner()
 
@@ -543,7 +543,7 @@ def fluximage():
     fi.add_history(outputs, pars, toolname, __revision__,
                    cleanup=cleanup)
 
-    v3("{} has run to completion.".format(sys.argv[0]))
+    v3(f"{sys.argv[0]} has run to completion.")
     fi.print_output(outputs, cleanup=cleanup)
 
 
