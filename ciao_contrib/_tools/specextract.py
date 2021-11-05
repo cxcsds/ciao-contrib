@@ -416,7 +416,6 @@ class ParDicts(object):
 
             if colname == "chipy":
                 return int(float(src_y))
-
         
         cr = pcr.read_file(file)
 
@@ -642,8 +641,8 @@ class ParDicts(object):
                 ra,dec,delme = utils.parse_refpos(refcoord.replace(","," "))
 
                 dmcoords.opt = "cel"
-                dmcoords.ra = str(ra)
-                dmcoords.dec = str(dec)
+                dmcoords.ra = ra
+                dmcoords.dec = dec
 
                 dmcoords()
 
@@ -669,8 +668,8 @@ class ParDicts(object):
 
                     # convert to chip coordinates
                     dmcoords.opt = "sky"
-                    dmcoords.x = str(skyx)
-                    dmcoords.y = str(skyy)
+                    dmcoords.x = skyx
+                    dmcoords.y = skyy
 
                     dmcoords()
 
