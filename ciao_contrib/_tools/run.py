@@ -36,6 +36,7 @@ moved to using the runtool module.
 
 """
 
+import functools
 import os
 import subprocess as sbp
 import tempfile
@@ -44,6 +45,7 @@ import numpy as np
 
 import cxcdm
 import paramio
+from region import CXCRegion
 import stk
 
 import ciao_contrib.logger_wrapper as lw
@@ -64,7 +66,8 @@ __all__ = (
     "dmhedit_key", "dmhedit_file",
     "get_lookup_table",
     "fix_bunit",
-    "make_fov"
+    "make_fov",
+    "combined_fovs"
     )
 
 lgr = lw.initialize_module_logger('_tools.run')
@@ -552,5 +555,40 @@ def make_fov(evtfile, asolfiles, msk, outfile):
            kernel="FITS",
            method=method,
            clobber=True)
+
+
+def combined_fovs(fovs, outfile, fits=True, clobber=True):
+    """Create the combined FOV.
+
+    This loses the CCD_ID column.
+    """
+
+    v3(f"Combining FOV files: {outfile}")
+
+    # CXCRegion has an ugly error message if the file does not exist
+    # - 'regParse() Could not parse region string or file' - so provide
+    # something a bit nicer. Hopefully users will never see this.
+    #
+    for f in fovs:
+        if not os.path.isfile(f):
+            raise OSError(f"Unable to find FOV file: {f}")
+
+    shapes = [CXCRegion(f) for f in fovs]
+    combined = functools.reduce(lambda x, y: x + y, shapes)
+    combined.write(outfile, fits=fits, clobber=clobber)
+
+    if not fits:
+        return
+
+    # For FITS files we change HDUCLAS2/CONTENT from REGION to FOV
+    # (CIAO 4.14)
+    #
+    v3(f"Adjusting HDUCLAS2/CONTENT keywords of {outfile}")
+    bl = cxcdm.dmBlockOpen(outfile, update=True)
+    try:
+        cxcdm.dmKeyWrite(bl, 'HDUCLAS2', 'FOV')
+        cxcdm.dmKeyWrite(bl, 'CONTENT', 'FOV')
+    finally:
+        cxcdm.dmBlockClose(bl)
 
 # End

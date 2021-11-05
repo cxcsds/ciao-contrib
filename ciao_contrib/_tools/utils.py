@@ -156,6 +156,9 @@ class ObsId:
     Use the make_obsid_from_headers() routine if you have a dictionary
     of headers.
 
+    Experimental change: for multi-obi observations we error out if
+    obi is not set.
+
     """
 
     def __init__(self, obsid, cycle=None, obi=None):
@@ -207,6 +210,14 @@ class ObsId:
 
         self._is_multi_obi = False
 
+        # experimental support for multi-obi cases
+        #
+        if is_multi_obi_obsid(obsid):
+            if obival is None:
+                raise ValueError(f"For multi-OBI datasets like {obsid} the obi argument must be set")
+
+            self._is_multi_obi = True
+
     @property
     def obsid(self):
         "The ObsId value."
@@ -233,6 +244,7 @@ class ObsId:
         """
         return self._is_multi_obi
 
+    # TODO: take this away????
     @is_multi_obi.setter
     def is_multi_obi(self, flag):
         if flag and self.obi is None:
