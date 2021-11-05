@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016
+#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2021
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -97,7 +97,7 @@ def is_multi_obi_obsid(obsid):
     try:
         return int(obsid) in _multi_obi_obsids
     except ValueError:
-        raise ValueError("obsid argument does not appear to be an integer: {}".format(obsid))
+        raise ValueError(f"obsid argument does not appear to be an integer: {obsid}")
 
 
 # TODO: should the file name be provided to ObsId so that error
@@ -105,7 +105,7 @@ def is_multi_obi_obsid(obsid):
 #
 
 @functools.total_ordering
-class ObsId(object):
+class ObsId:
     """Represents an observation, as specified by
     an OBS_ID value and, optionally:
 
@@ -116,27 +116,25 @@ class ObsId(object):
       obi_num
         for multi-obi datasets.
 
-    Unlike the header of the ACIS file, the cycle
-    attribute will only be present if this file
-    appears to be part of an interleaved-mode
+    Unlike the header of the ACIS file, the cycle attribute will only
+    be present if this file appears to be part of an interleaved-mode
     observation (either CYCLE=S or TIMEDELB!=0).
 
-    The presence of the OBI_NUM keyword in a file depends
-    on how it was processed (if an archive evt2 file then
-    it may not have the keyword [*], but if processed via
-    chandra_repro then it should have it).
+    The presence of the OBI_NUM keyword in a file depends on how it
+    was processed (if an archive evt2 file then it may not have the
+    keyword [*], but if processed via chandra_repro then it should
+    have it).
 
-    [*] multi-obi datasets will not have it because they
-    are formed by merging together the different OBIs
-    which results in the keyword being removed.
+    [*] multi-obi datasets will not have it because they are formed by
+    merging together the different OBIs which results in the keyword
+    being removed.
 
-    Converting to a string uses the observation
-    id followed by "e1" if a primary observation
-    or "e2" if a secondary observation. The decision
-    to append "_{:03d}.format(obi)" to this string is
-    controlled by the is_multi_obi attribute. I am not 100% happy
-    with this interface - hard to reason about - but it
-    makes some things easier.
+    Converting to a string uses the observation id followed by "e1" if
+    a primary observation or "e2" if a secondary observation. The
+    decision to append "_{:03d}.format(obi)" to this string is
+    controlled by the is_multi_obi attribute. I am not 100% happy with
+    this interface - hard to reason about - but it makes some things
+    easier.
 
     Objects are judged to be equal based on
 
@@ -144,19 +142,20 @@ class ObsId(object):
       2) cycle (primary before secondary)
       3) OBI_NUM (lower values first; None/undefined is "first")
 
-    So the ordering is nothing to do with time (even though
-    for many cases it will end up so, it is not guaranteed). Also,
-    as the values are strings, the comparison is done using
-    string rather than numeric rules (apart from OBI_NUM).
+    So the ordering is nothing to do with time (even though for many
+    cases it will end up so, it is not guaranteed). Also, as the
+    values are strings, the comparison is done using string rather
+    than numeric rules (apart from OBI_NUM).
 
-    If an ObsId is marked as being multi-obi, then it is checked
-    to make sure we recognize it (as there's a small set of
-    such observations, and it is not expected to increase,
-    this is a feasible check). This behavior may change,
-    as more experience is gained with the multi-OBI case.
+    If an ObsId is marked as being multi-obi, then it is checked to
+    make sure we recognize it (as there's a small set of such
+    observations, and it is not expected to increase, this is a
+    feasible check). This behavior may change, as more experience is
+    gained with the multi-OBI case.
 
-    Use the make_obsid_from_headers() routine if you
-    have a dictionary of headers.
+    Use the make_obsid_from_headers() routine if you have a dictionary
+    of headers.
+
     """
 
     def __init__(self, obsid, cycle=None, obi=None):
@@ -178,12 +177,12 @@ class ObsId(object):
         single OBI of a multi-OBI dataset, it may not be important).
         """
 
-        v3("ObsId sent obsid={} cycle={} obi={}".format(obsid, cycle, obi))
+        v3(f"ObsId sent obsid={obsid} cycle={cycle} obi={obi}")
         if obsid.lower() == "merged":
-            raise ValueError("The OBS_ID value is '{}'".format(obsid))
+            raise ValueError(f"The OBS_ID value is '{obsid}'")
 
         if cycle not in [None, 'P', 'S']:
-            v1("WARNING: ObsId {} has unrecognized CYCLE={}, assuming not interleaved.".format(obsid, cycle))
+            v1(f"WARNING: ObsId {obsid} has unrecognized CYCLE={cycle}, assuming not interleaved.")
             cycle = None
 
         obival = None
@@ -191,11 +190,11 @@ class ObsId(object):
             try:
                 obival = int(obi)
                 if obival < 0:
-                    v1("WARNING: ObsId {} has obi={} which is < 0; ignoring.".format(obsid, obi))
+                    v1(f"WARNING: ObsId {obsid} has obi={obi} which is < 0; ignoring.")
                     obival = None
 
             except ValueError:
-                v1("WARNING: ObsId {} has invalid obi={} (expected integer); ignoring.".format(obsid, obi))
+                v1(f"WARNING: ObsId {obsid} has invalid obi={obi} (expected integer); ignoring.")
 
         # Note: store obi as an integer value; it's an integer in
         # the header, so retain that here. The choice to display as
@@ -225,23 +224,24 @@ class ObsId(object):
 
     @property
     def is_multi_obi(self):
-        """Is this marked as a multi-OBI observation (so that
-        the OBI value is included in the string
-        representation of the ObsId)? This can only be set
-        if the OBI value is not None, and if the ObsId is
-        recognized as a multi-OBI dataset (it errors out,
-        as a safety precaution; this might be relaxed).
+        """Is this marked as a multi-OBI observation (so that the OBI value is
+        included in the string representation of the ObsId)? This can
+        only be set if the OBI value is not None, and if the ObsId is
+        recognized as a multi-OBI dataset (it errors out, as a safety
+        precaution; this might be relaxed).
+
         """
         return self._is_multi_obi
 
     @is_multi_obi.setter
     def is_multi_obi(self, flag):
         if flag and self.obi is None:
-            raise ValueError("Unable to set multi-obi flag for ObsId {} as no OBI value.".format(self.obsid))
-        v3("Checking if ObsId {} (with OBI={}) is a multi-OBI dataset".format(self.obsid, self.obi))
-        v4("ObsId {} has type {}".format(self.obsid, type(self.obsid)))
+            raise ValueError(f"Unable to set multi-obi flag for ObsId {self.obsid} as no OBI value.")
+
+        v3(f"Checking if ObsId {self.obsid} (with OBI={self.obi}) is a multi-OBI dataset")
+        v4(f"ObsId {self.obsid} has type {type(self.obsid)}")
         if flag and not is_multi_obi_obsid(self.obsid):
-            raise ValueError("ObsId {} is not recognized as a multi-OBI dataset.".format(self.obsid))
+            raise ValueError(f"ObsId {self.obsid} is not recognized as a multi-OBI dataset.")
 
         self._is_multi_obi = flag
 
@@ -249,25 +249,24 @@ class ObsId(object):
     # it (since it's not needed in the vast-majority of ObsIds). To support
     # multi-OBI datasets, the is_multi_obi flag can be changed by the caller
     # (since it's not obvious we can tell from an ObsId/OBI value whether
-    # it's a multi-obi dataset)
+    # it's a multi-obi dataset). Technically we now can, but this comment
+    # is from an earlier version of the code.
     #
     def __str__(self):
         """The OBI is included if is_multi_obi is set on the object
         (and there is an OBI value to include)."""
-        out = "{}".format(self.obsid)
+        out = f"{self.obsid}"
         if self.cycle == 'P':
             out += 'e1'
         elif self.cycle == 'S':
             out += 'e2'
         if self.is_multi_obi and self.obi is not None:
-            out += "_{:03d}".format(self.obi)
+            out += f"_{self.obi:03d}"
         return out
 
     def __repr__(self):
         "This is only for debugging rather than being valid Python"
-        return "ObsId({},cycle={},obi={})".format(self.obsid,
-                                                  self.cycle,
-                                                  self.obi)
+        return f"ObsId({self.obsid},cycle={self.cycle},obi={self.obi})"
 
     # no checks to avoid attribute errors if used with an invalid rhs
     def __eq__(self, rhs):
@@ -307,7 +306,7 @@ def make_obsid_from_headers(headers, infile=None):
     """
 
     if infile is not None:
-        v3("Looking for ObsId from headers of {}.".format(infile))
+        v3(f"Looking for ObsId from headers of {infile}.")
     else:
         v3("Looking for ObsId from headers.")
 
@@ -318,17 +317,17 @@ def make_obsid_from_headers(headers, infile=None):
         if infile is None:
             emsg += "."
         else:
-            emsg += " in {}.".format(infile)
+            emsg += f" in {infile}."
         raise KeyError(emsg)
     except TypeError:
         raise TypeError("The input must accept string indexing.")
 
     if obsid.lower() == "merged":
-        emsg = "The OBS_ID value is '{}'".format(obsid)
+        emsg = f"The OBS_ID value is '{obsid}'"
         if infile is None:
             emsg += "."
         else:
-            emsg += " in {}.".format(infile)
+            emsg += f" in {infile}."
         raise ValueError(emsg)
 
     try:
@@ -337,38 +336,38 @@ def make_obsid_from_headers(headers, infile=None):
         try:
             timedelb = float(timedelb)
         except ValueError:
-            v3("ObsId: obsid={} cycle={} unable to convert timedelb={}".format(obsid, cycle, timedelb))
+            v3(f"ObsId: obsid={obsid} cycle={cycle} unable to convert timedelb={timedelb}")
             cycle = None
 
         if timedelb > 0:
-            v3("TIMEDEL={} is > 0 so assuming interleaved.".format(timedelb))
+            v3(f"TIMEDEL={timedelb} is > 0 so assuming interleaved.")
         else:
-            v3("TIMEDEL={} is <= 0 so assuming non-interleaved.".format(timedelb))
+            v3(f"TIMEDEL={timedelb} is <= 0 so assuming non-interleaved.")
             cycle = None
 
     except KeyError:
-        v3("ObsId: obsid={}; does not contain CYCLE or TIMEDELB.".format(obsid))
+        v3(f"ObsId: obsid={obsid}; does not contain CYCLE or TIMEDELB.")
         cycle = None
 
     if cycle not in [None, 'P', 'S']:
-        v1("WARNING: ObsId {} has unrecognized CYCLE={}, assuming not interleaved.".format(obsid))
+        v1(f"WARNING: ObsId {obsid} has unrecognized CYCLE={cycle}, assuming not interleaved.")
         cycle = None
 
     try:
         obi = headers['OBI_NUM']
     except KeyError:
-        v3("ObsId: obsid={}; does not contain OBI_NUM".format(obsid))
+        v3(f"ObsId: obsid={obsid}; does not contain OBI_NUM")
         obi = None
 
-    v3("ObsId: obsid={} cycle={} obi={}".format(obsid, cycle, obi))
+    v3(f"ObsId: obsid={obsid} cycle={cycle} obi={obi}")
     return ObsId(obsid, cycle=cycle, obi=obi)
 
 
 def print_version(toolname, version):
     """Print the name and version of the script"""
 
-    v1("Running {}".format(toolname))
-    v1("Version: {}\n".format(version))
+    v1(f"Running {toolname}")
+    v1(f"Version: {version}\n")
 
 
 def split_outroot(outroot):
@@ -395,7 +394,7 @@ def split_outroot(outroot):
     else:
         outhead = head + "_"
 
-    v3("Splitting outroot parameter: {} to dirname={} head={}".format(outroot, outdir, outhead))
+    v3(f"Splitting outroot parameter: {outroot} to dirname={outdir} head={outhead}")
     return (outdir, outhead)
 
 
@@ -413,8 +412,9 @@ def to_number(inval):
         try:
             out = float(inval)
         except ValueError:
-            raise ValueError("Unable to convert '{0}' to a number.".format(inval))
+            raise ValueError(f"Unable to convert '{inval}' to a number.") from None
 
+    # should we use out.is_integer()?
     if int(out) == out:
         return int(out)
     else:
@@ -464,7 +464,7 @@ def parse_range(rstr):
 
     toks = rstr.split(":")
     if len(toks) != 3:
-        raise ValueError("Expected a:b:c or a:b:#c, not {}".format(rstr))
+        raise ValueError(f"Expected a:b:c or a:b:#c, not {rstr}")
 
     toks = [tok.strip() for tok in toks]
     lo = to_number(toks[0])
@@ -472,14 +472,14 @@ def parse_range(rstr):
     if toks[2][0] == '#':
         nbins = to_number(toks[2][1:])
         if nbins <= 0:
-            raise ValueError("Number of bins must be > 0 in {}".format(rstr))
+            raise ValueError(f"Number of bins must be > 0 in {rstr}")
 
         binsize = (hi - lo) * 1.0 / nbins
 
     else:
         binsize = to_number(toks[2])
         if binsize <= 0:
-            raise ValueError("The binsize must be > 0 in {}".format(rstr))
+            raise ValueError(f"The binsize must be > 0 in {rstr}")
 
         nbins = (hi - lo) * 1.0 / binsize
 
@@ -502,11 +502,11 @@ def parse_xygrid(gstr):
     in the output image for each axis.
     """
 
-    v3("Verifying xygrid={}".format(gstr))
+    v3(f"Verifying xygrid={gstr}")
 
     with rt.new_pfiles_environment(ardlib=False, copyuser=False):
         devnull = open('/dev/null', 'w')
-        sbp.call(["get_sky_limits", "image={}".format(gstr)],
+        sbp.call(["get_sky_limits", f"image={gstr}"],
                  stdout=devnull, stderr=devnull)
         devnull.close()
         xygrid = paramio.pgetstr("get_sky_limits", "xygrid")
@@ -516,7 +516,7 @@ def parse_xygrid(gstr):
 
     xystk = xygrid.split(",")
     if len(xystk) != 2:
-        raise ValueError("xygrid should be a filename or 2 ranges separated by a comma, not '{}'!".format(xygrid))
+        raise ValueError(f"xygrid should be a filename or 2 ranges separated by a comma, not '{xygrid}'!")
 
     # Note: lose some info if there is an error
     try:
@@ -524,14 +524,14 @@ def parse_xygrid(gstr):
         yrng = parse_range(xystk[1])
 
     except ValueError:
-        raise ValueError("xygrid should be a filename or xlo:xhi:#nx or dx,ylo:yhi:#ny or dy, not '{}'!".format(xygrid))
+        raise ValueError(f"xygrid should be a filename or xlo:xhi:#nx or dx,ylo:yhi:#ny or dy, not '{xygrid}'!") from None
 
     xbinsize = xrng[2]
     ybinsize = yrng[2]
 
     # We pick the smaller binsize (expect them to be the same)
     if xbinsize != ybinsize:
-        v1("WARNING: X and Y axis bin sizes are different ({} vs {}); using the smaller.".format(xbinsize, ybinsize))
+        v1(f"WARNING: X and Y axis bin sizes are different ({xbinsize} vs {ybinsize}); using the smaller.")
         binsize = min(xbinsize, ybinsize)
     else:
         binsize = xbinsize
@@ -539,7 +539,7 @@ def parse_xygrid(gstr):
     if int(binsize) == binsize:
         binsize = int(binsize)
 
-    return ("x={},y={}".format(xystk[0], xystk[1]), binsize,
+    return (f"x={xystk[0]},y={xystk[1]}", binsize,
             (xrng[0], xrng[1]), (yrng[0], yrng[1]), (xrng[3], yrng[3]))
 
 
@@ -563,7 +563,7 @@ def parse_refpos(refpos):
         v3("Reference position is a file.")
         return (None, None, refpos)
 
-    v3("Extracting reference position from " + refpos)
+    v3(f"Extracting reference position from {refpos}")
 
     # Assume that no spaces are used to separate out
     # sexagesimal formats, so that we can treat the
@@ -571,7 +571,7 @@ def parse_refpos(refpos):
     #
     coord = stk.build(refpos)
     if len(coord) != 2:
-        raise ValueError("Unable to parse {} as a ra and dec value.".format(refpos))
+        raise ValueError(f"Unable to parse {refpos} as a ra and dec value.")
 
     ra = coords.format.ra2deg(coord[0])
     dec = coords.format.dec2deg(coord[1])
@@ -589,7 +589,7 @@ def sky_to_arcsec(instrume, pixsize):
     elif instrume == 'HRC':
         return pixsize * 0.1318
     else:
-        raise ValueError("Invalid instrume={} argument, expected ACIS or HRC.".format(instrume))
+        raise ValueError(f"Invalid instrume={instrume} argument, expected ACIS or HRC.")
 
 
 def process_tmpdir(tmpdir):
@@ -606,10 +606,10 @@ def process_tmpdir(tmpdir):
 
     dname = os.path.abspath(tmpdir)
     if not os.path.exists(dname):
-        raise IOError("The temporary directory {} does not exist!".format(dname))
+        raise IOError(f"The temporary directory {dname} does not exist!")
 
     if not os.path.isdir(dname):
-        raise IOError("The temporary directory {} is not actually a directory!".format(dname))
+        raise IOError(f"The temporary directory {dname} is not actually a directory!")
 
     os.environ["ASCDS_WORK_PATH"] = dname
     return dname
