@@ -159,38 +159,23 @@ def test_obsid_basic_obi_invalid_not_a_number(verbose1, caplog):
 
 
 def test_obsid_multi_obi_no_obi():
-    """Pick a known multi-obi case
+    """Pick a known multi-obi case"""
 
-    Perhaps we should error out in this case?
-    """
+    with pytest.raises(utils.MultiObiError) as me:
+        utils.ObsId('3057')
 
-    o = utils.ObsId('3057')
-    assert o.obsid == '3057'
-    assert o.cycle is None
-    assert o.obi is None
-    assert not o.is_multi_obi
-
-    assert str(o) == '3057'
+    assert str(me.value) == 'For multi-OBI datasets like 3057 the obi argument must be set'
 
 
 def test_obsid_multi_obi():
-    """Pick a known multi-obi case
-
-    Note that we do not set the is_multi_obi flag
-    automatically, which could be wrong.
-
-    """
+    """Pick a known multi-obi case"""
 
     o = utils.ObsId('3057', obi='002')
     assert o.obsid == '3057'
     assert o.cycle is None
     assert o.obi == 2
-    assert not o.is_multi_obi
-
-    assert str(o) == '3057'
-
-    o.is_multi_obi = True
     assert o.is_multi_obi
+
     assert str(o) == '3057_002'
 
 

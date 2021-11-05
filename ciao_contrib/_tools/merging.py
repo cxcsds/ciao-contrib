@@ -991,15 +991,18 @@ def validate_obsinfo(infiles, colcheck=True):
     #
     obsids = {}
 
+    has_bad_multi_obi = []
     for infile in sinfiles:
         v3(f"Checking input file: {infile}")
         try:
             obs = ObsInfo(infile)
+
+        except utils.MultiObiError as exc:
+            has_bad_multi_obi.append(infile)
+            blank_line = True
+            continue
+
         except Exception as exc:
-            # With the move to the obsinfo we have lost the specific
-            # messages about why a file is skipped, but the information
-            # should hopefully still be provided to the user.
-            # v1("Skipping {}: {}".format(infile, exc))
             v1(f"Skipping file: {exc}")
             blank_line = True
             continue
@@ -1081,14 +1084,35 @@ def validate_obsinfo(infiles, colcheck=True):
         sort_order = { 'P' : 2, 'S' : 1, None: 0 }
 
         sort_tag = sort_order[obs.obsid.cycle]
-        time_tag= (obs.tstart, sort_tag) # tuples sort too
+        time_tag = (obs.tstart, sort_tag)  # tuples sort too
         obsinfos.append((time_tag, obs))
+
+    # Report warnings about multi_OBI files that have been skipped.
+    #
+    nbad = len(has_bad_multi_obi)
+    if nbad > 0:
+        if nbad == 1:
+            msg = "The following multi-OBI dataset was missing an OBI_NUM value:"
+        else:
+            msg = "The following multi-OBI datasets were missing an OBI_NUM value:"
+
+        v1("")
+        v1(msg)
+        for bad in has_bad_multi_obi:
+            v1(f"  {bad}")
+
+        v1("")
+        v1("The splitobs script should be used to separate the OBI components.")
+        v1("")
 
     ninfiles = len(obsinfos)
     if ninfiles == 0:
         raise IOError("No valid event files were found.")
 
     # Now do a multi-obi/interleaved check
+    # - note the multi-obi check should not be needed now as
+    #   ObsInfo now handles this, but I have not checked exactly all
+    #   the checks in this section
     #
     v3("Looking for interleaved/multi-OBI datasets")
     nobsids = {}
