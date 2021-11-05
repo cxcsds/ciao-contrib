@@ -36,14 +36,12 @@ can be broken down into
 
 """
 
-import functools
 import os
 import sys
 import shutil
 import tempfile
 
 import paramio
-from region import CXCRegion
 
 import ciao_contrib.logger_wrapper as lw
 
@@ -58,7 +56,7 @@ import ciao_contrib._tools.utils as utils
 from ciao_contrib._tools.taskrunner import TaskRunner
 
 toolname = 'reproject_obs'
-__revision__ = '04 November 2021'
+__revision__ = '05 November 2021'
 
 lgr = lw.initialize_logger(toolname)
 v1 = lgr.verbose1
@@ -196,18 +194,6 @@ def _link_or_copy_file(infile, outfile, linkfile=True):
     return True
 
 
-def combined_fovs(fovs, outfile):
-    """Create the combined FOV.
-
-    This loses the CCD_ID column.
-    """
-
-    v3("Combining FOV files")
-    shapes = [CXCRegion(f) for f in fovs]
-    combined = functools.reduce(lambda x, y: x + y, shapes)
-    combined.write(outfile, fits=True, clobber=True)
-
-
 def dmhedit_line(key, value):
     """Return a string that can be used as line in a
     file sent to dmhedit to change key to value.
@@ -304,6 +290,14 @@ def link_ancillary_files(taskrunner,
         but not CYCLE.
         """
 
+        # I would lile to just set
+        #    label = str(obsid)
+        # but although that works for multi-obi cases, which
+        # is what we care about here, it does not for interleaved
+        # data, as label would end in "e1" or "e2". So for now
+        # we recreate some - but not all - of the __str__ method
+        # of ciao_contrib._tools.utils.Obsid.
+        #
         key = obsid.obsid
         if obsid.is_multi_obi:
             label = f"{obsid.obsid}_{obsid.obi:03d}"
@@ -479,7 +473,7 @@ def link_ancillary_files(taskrunner,
     #
     taskname = labelconv("combined-fov")
     outfov = f"{outroot}merged.fov"
-    taskrunner.add_task(taskname, fovtasks, combined_fovs,
+    taskrunner.add_task(taskname, fovtasks, run.combined_fovs,
                         fovfiles, outfov)
     tasks.append(taskname)
 
@@ -556,14 +550,12 @@ def get_ref(taskrunner, labelconv,
 
     infiles = []
     outfiles = []
-    obsids = []
     asolfiles = []
     for obs in obsinfos:
         infiles.append(obs.get_evtfile())
         outfile = merging.obsid_reproj_evt_name(outdir, outhead, obs.obsid)
         outfiles.append(outfile)
         asolfiles.append(obs.get_asol())
-        obsids.append(obs.obsid)
 
     etask = merging.reproject_event_files(taskrunner,
                                           labelconv,

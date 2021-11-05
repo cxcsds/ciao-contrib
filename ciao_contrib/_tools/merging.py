@@ -954,6 +954,9 @@ def validate_obsinfo(infiles, colcheck=True):
         if so, set the ObsId object for the relevant observations
         to include the OBI when converting to a string
 
+        NOTE that the multi-obs check has been left in, but some
+        of it is not needed as ObsInfo now enforces it.
+
     The return value is a list of
     ciao_contrib._tools.obsinfo.ObsInfo objects
 
@@ -1006,14 +1009,12 @@ def validate_obsinfo(infiles, colcheck=True):
             blank_line = True
             continue
 
-        # The following is trying to be too clever,
-        # in that the expected behavior is to raise the error.
-        try:
+        if obs.obsid in obsids:
             v1(f"Skipping {infile} as both it and {obsids[obs.obsid]} have OBS_ID={obs.obsid}.")
             blank_line = True
             continue
-        except KeyError:
-            obsids[obs.obsid] = infile
+
+        obsids[obs.obsid] = infile
 
         if len(obsinfos) == 1:
             filelabel = "file is"
@@ -1080,7 +1081,7 @@ def validate_obsinfo(infiles, colcheck=True):
         sort_order = { 'P' : 2, 'S' : 1, None: 0 }
 
         sort_tag = sort_order[obs.obsid.cycle]
-        time_tag= (obs.tstart,sort_tag) # tuples sort too
+        time_tag= (obs.tstart, sort_tag) # tuples sort too
         obsinfos.append((time_tag, obs))
 
     ninfiles = len(obsinfos)
@@ -2922,6 +2923,12 @@ def merge(process,
     # data sets are large, so leave as is for now.
     #
     v1(f"\nCombining {nobs} observations.")
+
+    # Combine the FOV files
+    #
+    outfov = outfiles['combinedfov']
+    run.combined_fovs(outfiles['fovs'], outfov)
+
     if threshold:
         obsid_images = outfiles['out_thresh_images']
         obsid_expmaps = outfiles['out_thresh_expmaps']
@@ -2979,6 +2986,7 @@ def merge(process,
     if psfmerge is not None:
         display("The combined PSF map", outfiles['out_psfmaps'])
 
+    display("The combined FOV", [outfov])
     display("The co-added exposure-corrected image", outfiles['out_fluxmaps'])
 
 

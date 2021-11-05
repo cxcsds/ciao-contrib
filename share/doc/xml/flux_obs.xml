@@ -64,10 +64,13 @@
 	creating this directory if necessary.
 	The output files include:
       </PARA>
-      <!-- WHY use a list for one item here? -->
       <LIST>
-	<ITEM>reproj/broad&flname;, the exposure-corrected
-	broad-band image.</ITEM>
+	<ITEM>
+	  reproj/broad&flname;, the exposure-corrected broad-band image;
+	</ITEM>
+	<ITEM>
+	  reproj/merged.fov, the merged FOV file from all the observations.
+	</ITEM>
       </LIST>
 
       <PARA>
@@ -92,6 +95,7 @@
 	  <LINE>&upr; punlearn &rname; &fname;</LINE>
 	  <LINE>&upr; &rname; 5826/repro/acisf05826_repro_evt2.fits,5827/repro/acisf05827_repro_evt2.fits reproj/</LINE>
 	  <LINE>&upr; &fname; reproj/ m87</LINE>
+	  <LINE>&upr; ds9 m87_broad&flname; -region m87_merged.fov</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
@@ -159,6 +163,7 @@
       <QEXAMPLE>
 	<SYNTAX>
 	  <LINE>&upr; &fname; "merged/*reproj_evt.fits" merged/</LINE>
+	  <LINE>&upr; ds9 merged/broad&flname; -region merged/merged.fov</LINE>
 	</SYNTAX>
 	<DESC>
 	  <PARA>
@@ -1451,6 +1456,7 @@
       <TABLE>
 	<CAPTION>Combined data</CAPTION>
 	<ROW><DATA>Type</DATA><DATA>Filename</DATA></ROW>
+	<ROW><DATA>Merged FOV file</DATA><DATA>outroot_merged.fov</DATA></ROW>
 	<ROW><DATA>Counts image</DATA><DATA>outroot_blabel.img</DATA></ROW>
 	<ROW><DATA>Combined exposure map</DATA><DATA>outroot_blabel.expmap</DATA></ROW>
 	<ROW><DATA>Clipped counts image</DATA><DATA>outroot_blabel_thresh.img</DATA></ROW>
@@ -1465,6 +1471,7 @@
       <TABLE>
 	<CAPTION>Per-observation data</CAPTION>
 	<ROW><DATA>Type</DATA><DATA>Filename</DATA></ROW>
+	<ROW><DATA>FOV file</DATA><DATA>outroot_obsid.fov</DATA></ROW>
 	<ROW><DATA>Counts image</DATA><DATA>outroot_obsid_blabel.img</DATA></ROW>
 	<ROW><DATA>Combined exposure map</DATA><DATA>outroot_obsid_blabel.expmap</DATA></ROW>
 	<ROW><DATA>Clipped counts image</DATA><DATA>outroot_obsid_blabel_thresh.img</DATA></ROW>
@@ -1528,6 +1535,15 @@
       <PARA title="Interleaved mode">
 	For interleaved-mode data, "e1" or "e2" is appended to the ObsId
 	value when creating file names.
+      </PARA>
+
+      <PARA title="Multi-OBI datasets">
+	There are 30 ObsIds which contain multiple OBI segments. If the
+	data has been split using
+	<HREF link="https://cxc.harvard.edu/ciao/ahelp/splitobs.html">splitobs</HREF>
+	then they can be combined using &mname;, but the ObsId labels
+	will contain the suffix _00n (where n is the OBI_NUM value
+	from the header).
       </PARA>
 
       <!--
@@ -1708,6 +1724,12 @@
 	</ITEM>
 
 	<ITEM>
+	  A FOV file for each observation is created using the reprojected
+	  event files. These regions are combined to create the merged
+	  FOV file.
+	</ITEM>
+
+	<ITEM>
 	  For each band, the counts images and exposure maps are summed,
 	  and used to create exposure-corrected images,
 	  one per band. Any observation PSF maps are combined together,
@@ -1727,7 +1749,12 @@
 	to this the combination could cause the script to fail).
       </PARA>
       <PARA>
-	There have been improvements to the handling of a large number
+	The script now generates the FOV file for each reprojected event file
+	and a combined region file (merged.fov) that includes all the individual
+	observation FOV files.
+      </PARA>
+      <PARA>
+	There have been improvements to how the script handles a large number
 	of observations.
       </PARA>
     </ADESC>

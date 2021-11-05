@@ -63,6 +63,7 @@ from ciao_contrib.runtool import new_pfiles_environment
 from ciao_contrib.runtool import add_tool_history
 
 import ciao_contrib._tools.fileio as fileio
+from ciao_contrib._tools.obsinfo import ObsInfo
 import ciao_contrib._tools.utils as utils
 
 import ciao_contrib._tools.run as run
@@ -316,6 +317,11 @@ def name_fov(head, obs):
 
     """
 
+    if not isinstance(obs, ObsInfo):
+        raise ValueError(f'Internal error: sending {type(obs)} and not an ObsInfo!')
+
+    v4(f"name_fov: head={head} obs.obsid={obs.obsid}")
+
     # Remember, obs.obsid includes any OBI number if needed.
     #
     label = str(obs.obsid)
@@ -420,7 +426,7 @@ def name_hrci_unsubtracted_background(head, enband):
 # TODO: this is used by flux/merge_obs; should they use get_output_filenames()
 #       instead (since fluximage uses that).
 #
-def fluximage_output(outdir, outhead, obsids, enbands,
+def fluximage_output(outdir, outhead, obsinfos, enbands,
                      psf=False,
                      threshold=False):
     """Return a dictionary listing all the output files that
@@ -453,11 +459,19 @@ def fluximage_output(outdir, outhead, obsids, enbands,
     if psf:
         out['psfmaps'] = start()
 
+    # FOV file info:
+    #   fovs lists the individual names
+    #   combinedfov lists the combined name
+    #
+    out['fovs'] = []
+    out['combinedfov'] = f"{outdir}{outhead}merged.fov"
+
     # Going for simple over efficient.
     for enband in enbands:
         estr = enband.bandlabel
 
-        for obsid in obsids:
+        for obs in obsinfos:
+            obsid = obs.obsid
             head = f"{outdir}{outhead}{obsid}_"
 
             out['images'][estr].append(name_image(head, enband))
@@ -470,6 +484,9 @@ def fluximage_output(outdir, outhead, obsids, enbands,
             if psf:
                 out['psfmaps'][estr].append(name_psfmap(head, enband,
                                                         thresh=threshold))
+
+            # FOV
+            out['fovs'].append(name_fov(head, obs))
 
     return out
 
