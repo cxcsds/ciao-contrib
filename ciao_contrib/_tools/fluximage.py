@@ -309,12 +309,19 @@ def name_asphist(head, num, blockname=False):
 def name_fov(head, obs):
     """The name of the FOV file.
 
-    Unlike the other obsids we use the obsid label.
+    Unlike the other obsids we use the obsid label. This is okay for
+    fluximage but becomes problematic for merge_obs, when the head
+    label already includes the obsid label. For now we hack around
+    this, but this needs to be re-worked.
+
     """
 
-    label = f"{obs.obsid.obsid}"
-    if obs.obsid.is_multi_obi:
-        label += f"_{obs.obsid.obi:03d}"
+    # Remember, obs.obsid includes any OBI number if needed.
+    #
+    label = str(obs.obsid)
+    if head.endswith(f'{label}_'):
+        v3(f"WARNING: name_fov sent head={head} - need to fix")
+        return head[:-1] + '.fov'
 
     return f"{head}{label}.fov"
 
