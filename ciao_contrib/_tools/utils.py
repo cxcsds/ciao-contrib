@@ -100,6 +100,13 @@ def is_multi_obi_obsid(obsid):
         raise ValueError(f"obsid argument does not appear to be an integer: {obsid}")
 
 
+class MultiObiError(ValueError):
+    """Handle an ObsId with multi OBIs but OBI_NUM is not set"""
+
+    # when did it become okay to use an empty class statement?
+    pass
+
+
 # TODO: should the file name be provided to ObsId so that error
 #       messages can be more illuminating?
 #
@@ -214,7 +221,7 @@ class ObsId:
         #
         if is_multi_obi_obsid(obsid):
             if obival is None:
-                raise ValueError(f"For multi-OBI datasets like {obsid} the obi argument must be set")
+                raise MultiObiError(f"For multi-OBI datasets like {obsid} the obi argument must be set")
 
             self._is_multi_obi = True
 
