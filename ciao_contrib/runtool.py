@@ -1925,7 +1925,7 @@ class CIAOToolDirect(CIAOTool):
         rval = proc.returncode
         self._runtimes["code"] = rval
 
-        v4(f"{seld._toolname} finished at {time.asctime(etime)}")
+        v4(f"{self._toolname} finished at {time.asctime(etime)}")
         self._runtimes["end"] = etime
         self._runtimes["delta"] = _time_delta(stime, etime)
         self._runtimes["output"] = sout
