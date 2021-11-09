@@ -1908,7 +1908,7 @@ class CIAOToolDirect(CIAOTool):
         args = self._get_command_line_args(simplify=False, nameall=True)
         v5(f"Argument list for {self._toolname} = \n{args}")
         pargs = [self._toolname, "mode=hl"]
-        pargs.extend(["{name}={val}" for (name, val) in args])
+        pargs.extend([f"{name}={val}" for (name, val) in args])
         stime = time.localtime()
         v4(f"Starting {self._toolname} at {time.asctime(stime)}")
         self._runtimes = {"start": stime, "args": args}
