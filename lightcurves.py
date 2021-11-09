@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2008, 2009, 2010, 2011, 2014, 2015, 2016, 2017, 2018, 2019
+#  Copyright (C) 2008, 2009, 2010, 2011, 2014, 2015, 2016, 2017, 2018, 2019, 2021
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -36,14 +36,13 @@ Threads:
 
 """
 
+from itertools import groupby
+from operator import itemgetter
 import tempfile
 
 import numpy as np
 
 import pycrates as pcr
-
-from itertools import groupby
-from operator import itemgetter
 
 from ciao_contrib.runtool import dmcopy, dmgti
 
@@ -57,7 +56,7 @@ import matplotlib.pyplot as plt
 # __all__ = ("lc_sigma_clip", "lc_sigma_uclip", "lc_clean")
 __all__ = ("lc_sigma_clip", "lc_clean")
 
-__revision = "28 August 2020"
+__revision = "09 November 2021"
 
 
 def _write_gti_text(outfile, tstart, tend):
@@ -84,7 +83,7 @@ def _write_gti_text(outfile, tstart, tend):
 
     def card(name, value, comment=None, unit=None):
         "Add the record card to the file"
-        tfile.write("{:<8s}= ".format(name))
+        tfile.write(f"{name:<8s}= ")
 
         # following checks not ideal but sufficient for now
         if isinstance(value, str):
@@ -111,7 +110,7 @@ def _write_gti_text(outfile, tstart, tend):
 
         tfile.write(" /")
         if unit is not None:
-            tfile.write(" [{}]".format(unit))
+            tfile.write(f" [{unit}]")
         if comment is not None:
             tfile.write(" " + comment)
         tfile.write("\n")
@@ -123,7 +122,7 @@ def _write_gti_text(outfile, tstart, tend):
     card("HDUCLASS", "ASC")
     card("HDUCLAS1", "FILTER")
     card("ORIGIN", "ASC", comment="Source of FITS file")
-    card("CREATOR", "lightcurves - {}".format(__revision),
+    card("CREATOR", f"lightcurves - {__revision}",
          comment="tool that created this output")
     card("CONTENT", "GTI", comment="Data product identification")
     card("TTYPE1", "TIME", comment="Time column")
@@ -151,7 +150,7 @@ def _write_gti_text(outfile, tstart, tend):
     card("HDUCLAS1", "GTI")
     card("HDUCLAS2", "STANDARD")
     card("ORIGIN", "ASC", comment="Source of FITS file")
-    card("CREATOR", "lightcurves - {}".format(__revision),
+    card("CREATOR", f"lightcurves - {__revision}",
          comment="tool that created this output")
     card("DSTYP1", "TIME", comment="DM Keyword: Descriptor name.")
     card("DSVAL1", "TABLE", unit="s")
@@ -161,7 +160,7 @@ def _write_gti_text(outfile, tstart, tend):
     tfile.write("END\n\n")
 
     for (tlo, thi) in zip(tstart, tend):
-        tfile.write("{:19.13e} {:19.13e}\n".format(tlo, thi))
+        tfile.write(f"{tlo:19.13e} {thi:19.13e}\n")
 
     tfile.flush()
 
@@ -181,7 +180,7 @@ class LightCurve:
 
     def __init__(self, filename, verbose=1):
         self.filename = filename
-        self.verbose = verbose == 1
+        self.verbose = verbose
         self.__read_data()
 
         # The storage is rather redundant here (e.g. filter and clean_gti
@@ -199,6 +198,13 @@ class LightCurve:
         self.method = None
         self.userlimit = None
 
+    def report(self, msg):
+        """Display the message if verbose is not 0."""
+        if self.verbose == 0:
+            return
+
+        print(msg)
+
     def __read_data(self):
         """
         Reads in the data from the filename and performs simple validation.
@@ -214,16 +220,15 @@ class LightCurve:
         elif cr.column_exists("rate"):
             self.ratename = "rate"
         else:
-            raise IOError("No count_rate or rate column in file '{}'".format(self.filename))
+            raise IOError(f"No count_rate or rate column in file '{self.filename}'")
 
         self.time = cr.get_column("time").values.copy()
         if self.time.size < 1:
-            raise IOError("No data read in from the lightcurve '{}'".format(self.filename))
+            raise IOError(f"No data read in from the lightcurve '{self.filename}'")
         elif self.time.size < 2:
-            raise IOError("Only 1 time bin found in the lightcurve '{}'".format(self.filename))
+            raise IOError(f"Only 1 time bin found in the lightcurve '{self.filename}'")
 
-        if self.verbose:
-            print("Total number of bins in lightcurve   = {:d}".format(self.time.size))
+        self.report(f"Total number of bins in lightcurve   = {self.time.size:d}")
 
         self.rate = cr.get_column(self.ratename).values.copy()
 
@@ -234,13 +239,13 @@ class LightCurve:
             # We do not make use of this filter, so commenting out for now
             # filter = self.exposure <= 0.0
 
-            if self.verbose:
+            if self.verbose > 0:
                 nsmall = sum((self.exposure < self.bin_width) &
                              (self.exposure > 0.0))
                 n0 = sum(self.exposure <= 0.0)
-                print("Max length of one bin                = {:g} s".format(self.bin_width))
-                print("Num. bins with a smaller exp. time   = {:d}".format(nsmall))
-                print("Num. bins with exp. time = 0         = {:d}".format(n0))
+                print(f"Max length of one bin                = {self.bin_width:g} s")
+                print(f"Num. bins with a smaller exp. time   = {nsmall:d}")
+                print(f"Num. bins with exp. time = 0         = {n0:d}")
 
         else:
             self.exposure = None
@@ -265,14 +270,14 @@ class LightCurve:
 
         self.filter = self.rate > 0.0
         if any(self.filter) is False:
-            raise IOError("No rows with a count rate > 0 ({})".format(self.filename))
+            raise IOError(f"No rows with a count rate > 0 ({self.filename})")
 
         # Is there a better way to do this?
         self.gti = self.filter
         self.bti = np.logical_not(self.filter)
 
-        if self.verbose and any(self.bti):
-            print("Number of bins with a rate of 0 ct/s = {}\n".format(self.bti.sum()))
+        if self.verbose > 0 and any(self.bti):
+            print(f"Number of bins with a rate of 0 ct/s = {self.bti.sum()}\n")
 
         self.mean_rate_original = self.rate.mean()
         self.mean_rate_filtered = self.rate[self.gti].mean()
@@ -342,7 +347,7 @@ class LightCurve:
         pend, = np.where(x == -1)
 
         if pstart.size != pend.size:
-            raise ValueError("Internal error: pstart/end lengths are {} and {}!".format(pstart.size, pend.size))
+            raise ValueError(f"Internal error: pstart/end lengths are {pstart.size} and {pend.size}!")
 
         # Filter out those intervals that do not contain minlength
         # elements.
@@ -350,7 +355,7 @@ class LightCurve:
         pnum = pend - pstart
         lcheck = pnum >= minlength
         if not np.any(lcheck):
-            raise ValueError("Error: there are no periods which pass the minlength ({}) check!".format(minlength))
+            raise ValueError(f"Error: there are no periods which pass the minlength ({minlength}) check!")
 
         i, = np.where(lcheck)
         pend -= 1
@@ -375,7 +380,7 @@ class LightCurve:
         approximate as it depends on the GTI intervals in the input file
         as well."""
 
-        if not self.verbose:
+        if self.verbose < 1:
             return
 
         if (tlo is None) != (thi is None):
@@ -403,7 +408,8 @@ class LightCurve:
             exposure /= 1.0e3
 
         # ustr    = ["  ((time >= {:f}) && (time < {:f})) ; {:.2f} ksec, bin {}".format(s,e,d,c) for c,s,e,d in zip(ctr,tlo,thi,exposure)]
-        ustr = ["  ((time >= {}) && (time < {})) ; {:.2f} ksec, bin {}".format(repr(s), repr(e), d, c) for c, s, e, d in zip(ctr, tlo, thi, exposure)]
+        ustr = [f"  ((time >= {repr(s)}) && (time < {repr(e)})) ; {d:.2f} ksec, bin {c}"
+                for c, s, e, d in zip(ctr, tlo, thi, exposure)]
 
         n = len(tlo)
         if n == 1:
@@ -413,19 +419,18 @@ class LightCurve:
         print("")
         if 'EXPOSURE' in self.labels:
             print("  Exposure time of lightcurve = {:.2f} ks".format(self.labels["EXPOSURE"] / 1000.0))
-        print("  Filtered exposure time      = {:.2f} ks".format(exposure.sum()))
+        print(f"  Filtered exposure time      = {exposure.sum():.2f} ks")
         if 'DTCOR' in self.labels:
-            print("  DTCOR value                 = {:g}".format(self.labels["DTCOR"]))
+            print(f"  DTCOR value                 = {self.labels['DTCOR']:g}")
 
     def create_userlimit_using_rates(self, minlim, maxlim):
         """Sets the userlimit field for the rate column to
         lie between minlim and maxlim."""
 
-        self.userlimit = "({}>{} && {}<{})".format(self.ratename, repr(minlim), self.ratename, repr(maxlim))
-        if self.verbose:
-            print("GTI limits calculated using a count-rate filter:\n  {}\n".format(self.userlimit))
-            print("The corresponding times are:")
-            self.report_userlimit_using_times(minlength=1)
+        self.userlimit = f"({self.ratename}>{repr(minlim)} && {self.ratename}<{repr(maxlim)})"
+        self.report(f"GTI limits calculated using a count-rate filter:\n  {self.userlimit}\n")
+        self.report("The corresponding times are:")
+        self.report_userlimit_using_times(minlength=1)
 
     # As moving towards writing out the GTI file manually for this case the
     # semantics of this routine no longer matches the name, in that we end
@@ -437,7 +442,8 @@ class LightCurve:
         # Hmm, should we just go for full accuracy? Not really worth it for
         # most cases
         # ulimits = ["((time>={})&&(time<{}))".format(repr(a), repr(b)) for a,b in zip(lo,hi)]
-        ulimits = ["((time>={:f})&&(time<{:f}))".format(a, b) for a, b in zip(lo, hi)]
+        ulimits = [f"((time>={a:f})&&(time<{b:f}))"
+                   for a, b in zip(lo, hi)]
         n = len(lo)
         if n == 1:
             self.userlimit = ulimits[0]
@@ -447,11 +453,10 @@ class LightCurve:
         # HACK: save the lo/hi/exposure values for use by _write_gti_text
         self.userlimit_bins = (lo, hi, exposure)
 
-        if self.verbose:
-            print("GTI limits calculated using a time filter:")
-            self.report_userlimit_using_times(tlo=lo, thi=hi,
-                                              exposure=exposure,
-                                              minlength=minlength)
+        self.report("GTI limits calculated using a time filter:")
+        self.report_userlimit_using_times(tlo=lo, thi=hi,
+                                          exposure=exposure,
+                                          minlength=minlength)
 
     def _add_plot_labels(self):
         """Add filename/object/obsid labels to the current plot,
@@ -525,10 +530,10 @@ class LightCurve:
         dmax = self.rate.max()
         nbins = (dmax - dmin) / rwidth
         if nbins > 1000:
-            print("Warning: Default bin width of {:g} count/s is too small as it produces".format(rwidth))
-            print("         {} bins.".format(nbins))
+            print(f"Warning: Default bin width of {rwidth:g} count/s is too small as it produces")
+            print(f"         {nbins} bins.")
             rwidth = (dmax - dmin) / 1000.0
-            print("         Replacing with a width of {:g} count/s".format(rwidth))
+            print(f"         Replacing with a width of {rwidth:g} count/s")
             print("         This may indicate that the lightcurve contains strong flares that")
             print("         require manual filtering.\n")
 
@@ -761,7 +766,7 @@ class LightCurve:
         if pattern == "none":
             return
 
-        cr = pcr.read_file("{}[gti]".format(gtiname))
+        cr = pcr.read_file(f"{gtiname}[gti]")
 
         try:
             xr = mplaxs[0].get_xlim()
@@ -893,8 +898,7 @@ class LightCurve:
         if self.userlimit is None:
             raise ValueError("calculate_gti_filter() must be run before create_gti_file()")
 
-        if self.verbose:
-            print("\nCreating GTI file")
+        self.report("\nCreating GTI file")
 
         # Do we write out the GTI manually?
         if hasattr(self, "userlimit_bins"):
@@ -902,10 +906,10 @@ class LightCurve:
                             self.userlimit_bins[1])
         else:
             dmgti.punlearn()
-            dmgti(self.filename, outfile, self.userlimit, clobber=True)
+            dmgti(self.filename, outfile, self.userlimit, clobber=True,
+                  verbose=self.verbose)
 
-        if self.verbose:
-            print("Created: {}".format(outfile))
+        self.report(f"Created: {outfile}")
 
 
 class CleanLightCurve(LightCurve):
@@ -914,7 +918,8 @@ class CleanLightCurve(LightCurve):
     def __init__(self, filename, verbose=1):
         LightCurve.__init__(self, filename, verbose=verbose)
         if self.exposure is None:
-            raise IOError("The lightcurve '{}' does not contain an EXPOSURE column!".format(filename))
+            raise IOError(f"The lightcurve '{filename}' does not contain an EXPOSURE column!")
+
         self.method = "lc_clean"
 
     def check_valid(self, minfrac):
@@ -950,20 +955,17 @@ class CleanLightCurve(LightCurve):
                 raise ValueError("Unable to calculate an initial GTI mean rate level via sigma clipping; the unclipped count rate is {0:g} +/- {1:g} ct/s".format(omean,clip*osigma))
             mean = self.rate[gti].mean()
 
-            if self.verbose:
-                print("Calculated an initial mean (sigma-clipped) rate of {:g} ct/s".format(mean))
+            self.report(f"Calculated an initial mean (sigma-clipped) rate of {mean:g} ct/s")
 
         else:
-            if self.verbose:
-                print("Using a fixed mean rate of {:g} ct/s".format(mean))
+            self.report(f"Using a fixed mean rate of {mean:g} ct/s")
 
         # Calculate the limits based on the mean value and sigma/scale clipping
         #
         if sigma is None:
             self.clean_min_rate = mean / scale
             self.clean_max_rate = mean * scale
-            if self.verbose:
-                print("Lightcurve limits use a scale factor of {:g} about this mean".format(scale))
+            self.report(f"Lightcurve limits use a scale factor of {scale:g} about this mean")
 
         else:
             # divide by the bin width so we can assume sigma=sqrt(signal)
@@ -971,11 +973,9 @@ class CleanLightCurve(LightCurve):
             sigval = np.sqrt(mean / self.bin_width)
             self.clean_min_rate = mean - sigma * sigval
             self.clean_max_rate = mean + sigma * sigval
-            if self.verbose:
-                print("Lightcurve limits clipped using {:g} sigma's about this mean".format(sigma))
+            self.report(f"Lightcurve limits clipped using {sigma:g} sigma's about this mean")
 
-        if self.verbose:
-            print("Filtering lightcurve between rates of {:g} and {:g} ct/s".format(self.clean_min_rate, self.clean_max_rate))
+        self.report(f"Filtering lightcurve between rates of {self.clean_min_rate:g} and {self.clean_max_rate:g} ct/s")
 
         self.clean_filter = (self.rate > self.clean_min_rate) & \
                             (self.rate < self.clean_max_rate)
@@ -983,16 +983,15 @@ class CleanLightCurve(LightCurve):
         if ngood == 0:
             raise ValueError("Error: no bins match rate={:g} to {:g} (data range is {:g} to {:g})".format(self.clean_min_rate, self.clean_max_rate,
                                                                                                           self.rate[self.filter].min(), self.rate.max()))
-        if self.verbose:
-            print("Number of good time bins = {}".format(ngood))
+
+        self.report(f"Number of good time bins = {ngood}")
 
         self.clean_gti = self.clean_filter
         self.clean_bti = np.logical_not(self.clean_gti)
 
         self.clean_mean_rate = self.rate[self.clean_gti].mean()
-        if self.verbose:
-            print("Rate filter:  {} <= {} < {} ".format(repr(self.clean_min_rate), self.ratename, repr(self.clean_max_rate)))
-            print("Mean level of filtered lightcurve = {} ct/s\n".format(repr(self.clean_mean_rate)))
+        self.report(f"Rate filter:  {repr(self.clean_min_rate)} <= {self.ratename} < {repr(self.clean_max_rate)}")
+        self.report(f"Mean level of filtered lightcurve = {repr(self.clean_mean_rate)} ct/s\n")
 
     def calculate_gti_filter(self):
         "Calculate the GTI filter limit (the userlimit string for dmgti)"
@@ -1019,7 +1018,7 @@ class SigmaClipBaseLightCurve(LightCurve):
         each point in sigmas.
         """
 
-        raise NotImplementedError("The _clip_data method has not been sub-classed by {}".format(self.__class__))
+        raise NotImplementedError(f"The _clip_data method has not been sub-classed by {self.__class__}")
 
     def calculate_filter(self, sigma=3.0, minlength=3):
         "Filter the light curve."
@@ -1055,9 +1054,8 @@ class SigmaClipBaseLightCurve(LightCurve):
         self.clean_max_rate = max_rate
         self.clean_mean_rate = self.rate[self.clean_gti].mean()
 
-        if self.verbose:
-            print("Rate filter:  {} <= {} < {} ".format(repr(self.clean_min_rate), self.ratename, repr(self.clean_max_rate)))
-            print("Mean level of filtered lightcurve = {} ct/s\n".format(repr(self.clean_mean_rate)))
+        self.report(f"Rate filter:  {repr(self.clean_min_rate)} <= {self.ratename} < {repr(self.clean_max_rate)}")
+        self.report(f"Mean level of filtered lightcurve = {repr(self.clean_mean_rate)} ct/s\n")
 
     def calculate_gti_filter(self, minlength=3):
         "Caculate the GTI filter limit (the userlimit string for dmgti)"
@@ -1163,47 +1161,51 @@ def lc_clean(filename, outfile=None, mean=None, clip=3.0, sigma=None,
     using the pattern and color determined by the pattern and pcol options
     (setting pattern to 'none' stops this display).
 
-    The verbose parameter can be set to 0 or 1 and determines whether
-    there is any screen output.
+    The verbose parameter can be set to 0, 1, 2, 3, 4, or 5 - although
+    the main difference is 0 (none) and not-zero (the only place verbose
+    is relevant beyond this is when calling dmgti).
+
     """
 
     # Check the arguments
     #
     if clip <= 0.0:
-        raise ValueError("clip argument must be > 0, not {:g}".format(clip))
+        raise ValueError(f"clip argument must be > 0, not {clip:g}")
+
     if sigma is None:
         if scale < 1.0:
-            raise ValueError("scale argument must be >= 1.0, not {:g}".format(scale))
+            raise ValueError(f"scale argument must be >= 1.0, not {scale:g}")
     elif sigma <= 0.0:
-        raise ValueError("sigma argument must be None or > 0, not {:g}".format(clip))
-    if verbose != 0 and verbose != 1:
-        raise ValueError("verbose argument must be 0 or 1, not {}".format(verbose))
+        raise ValueError(f"sigma argument must be None or > 0, not {sigma:g}")
+
+    if verbose not in [0, 1, 2, 3, 4, 5]:
+        raise ValueError(f"verbose argument must be 0 to 5 (integer), not {verbose}")
 
     if rateaxis not in ["x", "y"]:
-        raise ValueError("rateaxis argument must be 'x' or 'y', not '{}'".format(rateaxis))
+        raise ValueError(f"rateaxis argument must be 'x' or 'y', not '{rateaxis}'")
 
     # Let the user know what arguments are being used
     #
-    if verbose == 1:
+    if verbose > 0:
         print("Parameters used to clean the lightcurve are:")
-        print("  script version = {}".format(__revision))
-        print("  mean           = {}".format(mean))
-        print("  clip           = {:g}".format(clip))
+        print(f"  script version = {__revision}")
+        print(f"  mean           = {mean}")
+        print(f"  clip           = {clip:g}")
         if sigma is None:
-            print("  scale          = {:g}".format(scale))
+            print(f"  scale          = {scale:g}")
         else:
-            print("  sigma          = {:g}".format(sigma))
-        print("  minfrac        = {:g}".format(minfrac))
+            print(f"  sigma          = {sigma:g}")
+        print(f"  minfrac        = {minfrac:g}")
         if outfile is not None:
-            print("  outfile        = {}".format(outfile))
-        print("  plot           = {}".format(plot))
+            print(f"  outfile        = {outfile}")
+        print(f"  plot           = {plot}")
         if plot:
-            print("  rateaxis       = {}".format(rateaxis))
-            print("  color          = {}".format(gcol))
+            print(f"  rateaxis       = {rateaxis}")
+            print(f"  color          = {gcol}")
             if outfile is not None:
-                print("  pattern        = {}".format(pattern))
+                print(f"  pattern        = {pattern}")
                 if pattern != "none":
-                    print("  pattern color  = {}".format(pcol))
+                    print(f"  pattern color  = {pcol}")
         print("")
 
     lc = CleanLightCurve(filename, verbose=verbose)
@@ -1250,34 +1252,35 @@ def _lc_sigma_clip(obj, lbl, filename, outfile=None, sigma=3.0,
     # Check the arguments
     #
     if sigma <= 0.0:
-        raise ValueError("sigma argument must be > 0, not {:g}".format(sigma))
+        raise ValueError(f"sigma argument must be > 0, not {sigma:g}")
 
     minlength = int(minlength)  # deflare sends in a float rather than an int
     if minlength < 1:
-        raise ValueError("minlength argument must be >= 1, not {:d}".format(minlength))
-    if verbose != 0 and verbose != 1:
-        raise ValueError("verbose argument must be 0 or 1, not {}".format(verbose))
+        raise ValueError(f"minlength argument must be >= 1, not {minlength:d}")
+
+    if verbose not in [0, 1, 2, 3, 4, 5]:
+        raise ValueError(f"verbose argument must be 0 to 5 (integer), not {verbose}")
 
     if rateaxis not in ["x", "y"]:
-        raise ValueError("rateaxis argument must be 'x' or 'y', not '{}'".format(rateaxis))
+        raise ValueError(f"rateaxis argument must be 'x' or 'y', not '{rateaxis}'")
 
     # Let the user know what arguments are being used
     #
-    if verbose == 1:
+    if verbose > 0:
         print("Parameters used to clean the lightcurve are:")
-        print("  script version = {}".format(__revision))
-        print("  clipping       = {}".format(lbl))
-        print("  sigma          = {:g}".format(sigma))
-        print("  minlength      = {:d}".format(minlength))
+        print(f"  script version = {__revision}")
+        print(f"  clipping       = {lbl}")
+        print(f"  sigma          = {sigma:g}")
+        print(f"  minlength      = {minlength:d}")
         if outfile is not None:
-            print("  outfile        = {}".format(outfile))
-        print("  plot           = {}".format(plot))
-        print("  rateaxis       = {}".format(rateaxis))
-        print("  color          = {}".format(gcol))
+            print(f"  outfile        = {outfile}")
+        print(f"  plot           = {plot}")
+        print(f"  rateaxis       = {rateaxis}")
+        print(f"  color          = {gcol}")
         if outfile is not None:
-            print("  pattern        = {}".format(pattern))
+            print(f"  pattern        = {pattern}")
             if pattern != "none":
-                print("  pattern color  = {}".format(pcol))
+                print(f"  pattern color  = {pcol}")
         print("")
 
     lc = obj(filename, verbose=verbose)
@@ -1335,8 +1338,10 @@ def lc_sigma_clip(filename, outfile=None, sigma=3.0, minlength=3, plot=True,
     using the pattern and color determined by the pattern and pcol options
     (setting pattern to 'none' stops this display).
 
-    The verbose parameter can be set to 0 or 1 and determines whether
-    there is any screen output.
+    The verbose parameter can be set to 0, 1, 2, 3, 4, or 5 - although
+    the main difference is 0 (none) and not-zero (the only place verbose
+    is relevant beyond this is when calling dmgti).
+
     """
 
     _lc_sigma_clip(SigmaClipLightCurve, "symmetric",
@@ -1388,8 +1393,9 @@ def lc_sigma_uclip(filename, outfile=None, sigma=3.0, minlength=3, plot=True,
     using the pattern and color determined by the pattern and pcol options
     (setting pattern to 'none' stops this display).
 
-    The verbose parameter can be set to 0 or 1 and determines whether
-    there is any screen output.
+    The verbose parameter can be set to 0, 1, 2, 3, 4, or 5 - although
+    the main difference is 0 (none) and not-zero (the only place verbose
+    is relevant beyond this is when calling dmgti).
 
     """
 
