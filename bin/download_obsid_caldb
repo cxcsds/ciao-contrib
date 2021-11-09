@@ -18,17 +18,14 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from __future__ import print_function
-
 import os
 import sys
-
 
 import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "download_obsid_caldb"
-__revision__ = "04 October 2021"
+__revision__ = "09 November 2021"
 
 lw.initialize_logger(toolname)
 
@@ -433,6 +430,12 @@ def get_tools(infile):
     in_crate = read_file(infile,mode='r')
     grating = in_crate.get_key_value("GRATING")
 
+    # If not set this probably indicates that the input file is
+    # not an event file, or has been edited by an external process,
+    # so error out.
+    #
+    if grating is None:
+        raise ValueError(f'GRATING keyword is missing in {infile}')
 
     acis_process_events = { 'grade' : None,        # 'gradefile'
                             'grdimg' : None,       # 'grade_image_file'
