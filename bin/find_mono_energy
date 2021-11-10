@@ -1,5 +1,26 @@
 #!/usr/bin/env python
 
+#
+# Copyright (C) 2021
+# Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 USA.
+#
 
 """Compute monochromatic energy based on spectral model
 (incl responses) and band"""
@@ -7,12 +28,17 @@
 import sys
 
 import numpy as np
-from sherpa.astro.ui import *       # pylint: disable=wildcard-import
+
 from paramio import pset, paramopen, paramclose
+
+from sherpa.astro import ui
+
 import ciao_contrib.logger_wrapper as lw
+from ciao_contrib.param_soaker import get_params
+
 
 TOOLNAME = "find_mono_energy"
-__REVISION__ = "28 June 2021"
+__REVISION__ = "10 November 2021"
 
 DATASET_ID = "myid"
 
@@ -24,54 +50,57 @@ def setup_dataspace(arf, rmf):
     ARF and RMF with that dataset.
     """
 
-    _rmf = unpack_rmf(rmf)
+    _rmf = ui.unpack_rmf(rmf)
     chan_lo = _rmf.offset
     chan_hi = _rmf.detchans
 
-    _arf = unpack_arf(arf)
+    _arf = ui.unpack_arf(arf)
 
-    dataspace1d(chan_lo, chan_hi, id=DATASET_ID, dstype=DataPHA)
-    set_arf(DATASET_ID, _arf)
-    set_rmf(DATASET_ID, _rmf)
+    ui.dataspace1d(chan_lo, chan_hi, id=DATASET_ID, dstype=ui.DataPHA)
+    ui.set_arf(DATASET_ID, _arf)
+    ui.set_rmf(DATASET_ID, _rmf)
 
 
 def setup_model(model, model_params):
     "Set the source model"
 
     try:
-        set_model(DATASET_ID, model)
+        ui.set_model(DATASET_ID, model)
     except Exception as mybad:
-        raise ValueError(f"ERROR in model '{model}'\n{mybad}")
+        raise ValueError(f"ERROR with model={model}\n{mybad}")
 
     try:
         # pylint: disable=exec-used
         exec(model_params)
     except Exception as mybad:
-        raise ValueError(f'Error in paramvals={model_params}]\n{mybad}')
+        raise ValueError(f'Error with paramvals={model_params}\n{mybad}')
 
 
 def setup_band(band):
     "Parse the energy band"
 
-    csc = {'soft': '0.5:1.2', 'medium': '1.2:2.0', 'hard': '2.0:7.0',
-           'broad': '0.5:7.0', 'ultrasoft': '0.2:0.5',
-           'wide': '0.1:10.0'}
+    csc = {'soft': [0.5, 1.2], 'medium': [1.2, 2.0], 'hard': [2.0, 7.0],
+           'broad': [0.5, 7.0], 'ultrasoft': [0.2, 0.5],
+           'wide': [0.1, 10.0]}
 
     if band in csc:
-        elo, ehi = [float(x) for x in csc[band].split(":")]
+        elo, ehi = csc[band]
     elif band.count(":") != 1:
         raise ValueError(f"Unknown band value {band}")
     else:
-        elo, ehi = [float(x) for x in band.split(":")]
+        try:
+            elo, ehi = [float(x) for x in band.split(":")]
+        except ValueError:
+            raise ValueError(f"Band ranges must be numbers: sent '{band}'") from None
 
-    notice_id(DATASET_ID, elo, ehi)
+    ui.notice_id(DATASET_ID, elo, ehi)
 
 
 def compute_metric(metric):
     "Compute the metric based on the fluxed spectrum"
-    dater = get_model_plot(DATASET_ID)
+    dater = ui.get_model_plot(DATASET_ID)
 
-    emid = (dater.xlo+dater.xhi)/2.0
+    emid = dater.x
     delta_e = dater.xhi - dater.xlo
     if np.any(delta_e == 0):
         raise ValueError("Energy bins cannot have 0 width")
@@ -80,7 +109,7 @@ def compute_metric(metric):
     flux = flux / delta_e
 
     if metric == "mean":
-        mean_e = np.sum(flux*emid)/np.sum(flux)
+        mean_e = np.sum(flux * emid) / np.sum(flux)
     elif metric == "max":
         mean_e = emid[np.argmax(flux)]
     else:
@@ -92,7 +121,9 @@ def compute_metric(metric):
 def pset_output(mono_energy):
     "Save output back to own parameter file"
 
-    pfile = paramopen(TOOLNAME, "rwHL", sys.argv)   # allow @@
+    # having to call preprocess_arglist here is not ideal
+    args = lw.preprocess_arglist(sys.argv)
+    pfile = paramopen(TOOLNAME, "rwHL", args)   # allow @@
     pset(pfile, "energy", str(mono_energy))
     paramclose(pfile)
 
@@ -106,17 +137,18 @@ def clear_output():
 def main():
     "Main routine"
 
+    # Pre-process the argument list to handle special case
+    #
+    args = lw.preprocess_arglist(sys.argv)
+
     # Setup verbose
     lgr = lw.initialize_logger(TOOLNAME)
     verb1 = lgr.verbose1
 
     clear_output()
 
-    # get parameters
-    from ciao_contrib.param_soaker import get_params
-
     # Load parameters
-    pars = get_params(TOOLNAME, "rw", sys.argv,
+    pars = get_params(TOOLNAME, "rw", args,
                       verbose={"set": lw.set_verbosity, "cmd": verb1})
 
     setup_dataspace(pars["arffile"], pars["rmffile"])
