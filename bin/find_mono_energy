@@ -44,6 +44,11 @@ DATASET_ID = "myid"
 
 # pylint: disable=undefined-variable
 
+# Setup verbose
+lgr = lw.initialize_logger(TOOLNAME)
+verb1 = lgr.verbose1
+verb2 = lgr.verbose2
+
 
 def setup_dataspace(arf, rmf):
     """Setup the sherpa dataspace based on RMF grid and associate
@@ -93,6 +98,7 @@ def setup_band(band):
         except ValueError:
             raise ValueError(f"Band ranges must be numbers: sent '{band}'") from None
 
+    verb2(f"Selecting energy range {elo} - {ehi} keV")
     ui.notice_id(DATASET_ID, elo, ehi)
 
 
@@ -140,10 +146,6 @@ def main():
     # Pre-process the argument list to handle special case
     #
     args = lw.preprocess_arglist(sys.argv)
-
-    # Setup verbose
-    lgr = lw.initialize_logger(TOOLNAME)
-    verb1 = lgr.verbose1
 
     clear_output()
 
