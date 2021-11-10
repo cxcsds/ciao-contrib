@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY upr  "unix&#37;">
+]>
 <cxchelptopics>
-  <ENTRY context="tools" 
-    key="find_mono_energy" 
-    refkeywords="energy spectrum mono monochromatic mean average maximum arf rmf weighted response band bandpass model sherpa" 
+  <ENTRY context="tools"
+    key="find_mono_energy"
+    refkeywords="energy spectrum mono monochromatic mean average maximum arf rmf weighted response band bandpass model sherpa"
     seealsogroups="resptools"
     displayseealsogroups="shmodels">  <!-- Turns out no shmodels anymore -->
     <SYNOPSIS>Compute monochromatic for energy band given input spectrum and responses.</SYNOPSIS>
@@ -13,21 +15,21 @@
       energy appropriate for a specified energy band,
       spectral model, and instrument response.  The script
       provides two options to compute the appropriate energy: either
-      a spectrum weighted average value, or the energy where the 
-      spectrum is maximum. 
+      a spectrum weighted average value, or the energy where the
+      spectrum is maximum.
       </PARA>
     </DESC>
     <QEXAMPLELIST>
       <QEXAMPLE>
         <SYNTAX>
-          <LINE>$ find_mono_energy acis.arf acis.rmf \</LINE>
+          <LINE>&upr; find_mono_energy acis.arf acis.rmf \</LINE>
           <LINE>  model="xsphabs.abs1*xspowerlaw.pwrlaw" \</LINE>
           <LINE>  paramvals="pwrlaw.PhoIndex=2.0;abs1.nH=0.1" \</LINE>
           <LINE>  band=2.0:10.0 metric=mean</LINE>
         </SYNTAX>
         <DESC>
           <PARA>
-            In this example, we find the monochromatic energy for an energy 
+            In this example, we find the monochromatic energy for an energy
             band that goes from 2.0 to 10.0 keV, using an ACIS ARF and RMF
             as inputs.  We use an absorbed powerlaw as the spectral model
             and the output energy is computed as the spectrum weighted mean energy.
@@ -36,19 +38,23 @@
       </QEXAMPLE>
       <QEXAMPLE>
         <SYNTAX>
-          <LINE>$ find_mono_energy acis.arf acis.rmf \</LINE>
-          <LINE>  model="const1d.flat" \</LINE>
-          <LINE>  paramvals="flat.c0=100" \</LINE>
+          <LINE>&upr; find_mono_energy acis.arf acis.rmf \</LINE>
+          <LINE>  model="const1d.flat" paramvals= \</LINE>
           <LINE>  band=soft metric=max</LINE>
         </SYNTAX>
         <DESC>
           <PARA>In this example we use a flat/constant spectral model
           so the only weights are the effective area coming from
-          ARF. We also use the CSC soft energy with energy limits 
+          ARF. We also use the CSC soft energy with energy limits
           going from 0.5 to 1.2 keV, and compute the monochromatic energy
-          as the energy with the maximum spectrum, or in this case the maximum 
+          as the energy with the maximum spectrum, or in this case the maximum
           effective area in the band.
           </PARA>
+	  <PARA>
+	    Not that in this case the result does not depend on the
+	    normalization of the model (flat.c0), so we use the default value
+	    by clearing out the paramvals parameter.
+	  </PARA>
         </DESC>
       </QEXAMPLE>
     </QEXAMPLELIST>
@@ -56,9 +62,9 @@
       <PARAM name="arffile" reqd="yes" type="file">
         <SYNOPSIS>Input ARF file</SYNOPSIS>
         <DESC>
-          <PARA>The input ARF file is used to setup the energy 
+          <PARA>The input ARF file is used to setup the energy
           grid the spectral model is evaluated over. The spectrum
-          is weighted by the effective area in the ARF.          
+          is weighted by the effective area in the ARF.
           </PARA>
         </DESC>
       </PARAM>
@@ -82,7 +88,7 @@
           </PARA>
           <PARA>
               A constant model can be used to produce weights which
-              only include the effective area from the ARF. 
+              only include the effective area from the ARF.
           </PARA>
           <VERBATIM>model="const1d.flat" paramvals="flat.c0=100"</VERBATIM>
         </DESC>
@@ -91,22 +97,28 @@
         <SYNOPSIS>The parameter values for the spectral model.</SYNOPSIS>
         <DESC>
           <PARA>
-              This parameter contains the list of model parameter values.
+            This parameter contains the list of model parameter
+            values, following the same scheme as <HREF
+            link="https://cxc.harvard.edu/ciao/ahelp/modelflux.html">modelflux</HREF>,
+            namely "id.parameter=value" settings separated by
+            semi-colons.  The id values are the names given in the
+            model expression and ahelp on these names will list the
+            available parameters.
           </PARA>
         </DESC>
       </PARAM>
       <PARAM name="band" reqd="yes" type="string">
         <SYNOPSIS>Desired energy band</SYNOPSIS>
         <DESC>
-          <PARA>The monochromatic energy is computed for a 
+          <PARA>The monochromatic energy is computed for a
           specific energy band.
           </PARA>
           <PARA>
-           Users can specify the band as a colon separate pair of values, eg 
+           Users can specify the band as a colon separate pair of values, eg
           </PARA>
            <VERBATIM>band=2.0:10.0</VERBATIM>
            <PARA>
-           or can specify the band using the CSC nomenclature 
+           or can specify the band using the CSC nomenclature
           </PARA>
           <TABLE>
             <ROW>
@@ -137,12 +149,12 @@
       <PARAM name="metric" type="string" def="mean">
         <SYNOPSIS>Metric used to compute the monochromatic energy</SYNOPSIS>
         <DESC>
-          <PARA>There are two options to compute the monochromatic 
+          <PARA>There are two options to compute the monochromatic
           energy
           </PARA>
           <LIST>
             <ITEM>metric=mean : The monochromatic energy is computed as
-            the spectrum weighted mean energy.</ITEM> 
+            the spectrum weighted mean energy.</ITEM>
             <ITEM>metric=max : The monochromatic energy is taken to be the
             energy where the spectrum is maximum. </ITEM>
           </LIST>
@@ -153,20 +165,27 @@
         <SYNOPSIS>The output monochromatic energy</SYNOPSIS>
         <DESC>
           <PARA>
-            The tool stores the value of the monochromatic 
-            energy in its own parameter file in the "energy" 
+            The tool stores the value of the monochromatic
+            energy in its own parameter file in the "energy"
             parameter.  If there is a problem with the script,
             the energy parameter will be left blank.
           </PARA>
-          <PARA>The tool will also report the monochromatic energy to 
-          the terminal (if verbose>0).  
+          <PARA>The tool will also report the monochromatic energy to
+          the terminal (if verbose>0).
           </PARA>
         </DESC>
       </PARAM>
       <PARAM name="verbose" type="integer" min="0" max="5" def="1">
         <SYNOPSIS>Amount of tool chatter</SYNOPSIS>
         </PARAM>
-    </PARAMLIST>
+      </PARAMLIST>
+
+    <ADESC title="Changes in the scripts 4.14.0 (December 2021) release">
+      <PARA>
+	This script is new.
+      </PARA>
+    </ADESC>
+
     <ADESC title="About Contributed Software">
       <PARA>
         This script is not an official part of the CIAO release but is
@@ -184,6 +203,6 @@
         on the CIAO website for an up-to-date listing of known bugs.
       </PARA>
     </BUGS>
-    <LASTMODIFIED>July 2021</LASTMODIFIED>
+    <LASTMODIFIED>December 2021</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
