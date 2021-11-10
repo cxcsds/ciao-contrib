@@ -73,22 +73,18 @@
       </PARA>
       <PARA title='A fully Baysian computation'>
 	This tool is based on aprates, which performs a fully Baysian computation,
-	thus the result is not a (frequentist) confidence interval,
-	but should correctly be called credible interval.
-	However, given the common usage in astronomy, this tool uses the term CONF
-	as parameter and in the output.
+	thus the result is a credible interval (confidence interval
+	for the frequentist calculation), which is CONF parameter.
       </PARA>
       <PARA title='Upper limits vs. upper value for flux uncertainty'>
-	If the lower bound for the uncertainty of the flux reaches 0, only the upper
-	bound is reported. This number is sometimes erroneously used as the upper flux
-	limit for an undetected source, but strictly speaking the uncertainty on a flux
-	measurement and the upper limit of an undetected source are two different questions,
-	even though the numbers often come out to be in a similar range. When talking about the
-	upper limit for an undetected sources (the maximal flux that a source could have without
-	being detected), a single number for conf is not sufficient. Instead, two numbers are needed:
-	The probability of detecting a source in background fluctuations (false positive) and the
-	probability of missing a real source because it is compatible with background (false negative).
-	This calculation is beyond scope of this tool.
+
+	The tool does not return upper limits and that the reported
+	values are always calculated for the lower and upper confidence
+	bound. The upper limit calculation requires a detection
+	threshold which does not dependent on the number of counts or
+	the source flux. The detection threshold is not used in this
+	tool. See Kashyap et al 2010, for full discussion of the
+	difference between confidence bounds and upper limits.
       </PARA>
     </DESC>
 
@@ -508,7 +504,7 @@ Position                               0.5 - 1.2 keV                           1
 </VERBATIM>
 	  <PARA>
 	    We also see an example where the lower limit
-	    for the soft band rate and fluxes is compatible with 0 and only the upper end of the
+	    for the soft band rate and fluxes is compatible with 0 and only the upper bound of the
 	    range is given.
 	  </PARA>
 	</DESC>
@@ -1043,7 +1039,7 @@ bounds(region(my.reg))
 	<DESC>
 	  <PARA>
 	    The credible interval for the errors. If the
-	    net counts are 0, then only the upper end of the range is reported.
+	    net counts are 0, then only the upper bound of the interval is reported.
 	  </PARA>
 	</DESC>
       </PARAM>
@@ -1614,13 +1610,13 @@ bounds(region(my.reg))
 	    NET_RATE, assuming non-informative priors for the
 	    intensities in the source and background apertures.  The
 	    mode of the PDF is the NET_RATE_APER.  A value of 0
-	    indicates that only the upper end of the credible interval is available.</DATA>
+	    indicates that only the upper bound of the credible interval is available.</DATA>
 	</ROW>
 	<ROW>
 	  <DATA>NET_RATE_APER_LO</DATA>
 	  &nodmx;
-	  <DATA>Lower equal tail of the cradible interval on NET_RATE.  A value
-	  of NaN indicates that only the upper end of the credible interval is available as
+	  <DATA>Lower equal tail of the credible interval on NET_RATE.  A value
+	  of NaN indicates that only the upper bound of the credible interval is available as
 	  the NET_RATE_APER_HI value. </DATA>
 	</ROW>
 	<ROW>
@@ -1628,7 +1624,7 @@ bounds(region(my.reg))
 	  &nodmx;
 	  <DATA>Upper equal tail of the credible interval on NET_RATE.  If
 	  the _LO value is NaN and the RATE is 0 then this value
-	  represent the upper end of the credible interval of the count rate.</DATA>
+	  represent the upper bound of the credible interval for the count rate.</DATA>
 	</ROW>
     <ROW>
       <DATA>SRC_SIGNIFICANCE</DATA>
@@ -1662,7 +1658,7 @@ bounds(region(my.reg))
 	  &nodmx;
 	  <DATA>
 	    Lower bound of the credible interval for the model independent net flux computed
-	    by scaling the NET_RATE limits.  If only the upper end of the credible interval
+	    by scaling the NET_RATE limits.  If only the upper bound of the credible interval
 	    was computed then it is used to scale the values.
 	  </DATA>
 	</ROW>
@@ -1670,7 +1666,7 @@ bounds(region(my.reg))
 	  <DATA>NET_FLUX_APER_HI</DATA>
 	  &nodmx;
 	  <DATA>
-	    Same as NET_FLUX_APER_LO for the upper end of the credible interval.
+	    Same as NET_FLUX_APER_LO for the upper bound of the credible interval.
 	  </DATA>
 	</ROW>
 	<ROW>
@@ -1678,7 +1674,7 @@ bounds(region(my.reg))
 	  &nodmx;
 	  <DATA>
 	    A flag identifying whether the  NET_FLUX_APER limits are
-	    computed from the upper end of the credible interval (yes) or an observed NET_RATE (no).
+	    computed from the upper bound of the credible interval (yes) or an observed NET_RATE (no).
 	  </DATA>
 	</ROW>
     <ROW>
@@ -1720,7 +1716,7 @@ bounds(region(my.reg))
     <ROW>
       <DATA>NET_PHOTFLUX_APER_HI</DATA>
       &nodmx;
-      <DATA>The upper end of the credible interval of on the NET_PHOTFLUX_APER value obtained
+      <DATA>The upper bound of the credible interval of on the NET_PHOTFLUX_APER value obtained
       by scaling the NET_RATE_APER_HI value.</DATA>
     </ROW>
 
@@ -1744,12 +1740,12 @@ bounds(region(my.reg))
 	<ROW>
 	  <DATA>NET_MFLUX_APER_LO</DATA>
 	  &nodmx;
-	  <DATA>The lower end of the credible interval of NET_MFLUX_APER</DATA>
+	  <DATA>The lower bound of the credible interval of NET_MFLUX_APER</DATA>
 	</ROW>
 	<ROW>
 	  <DATA>NET_MFLUX_APER_HI</DATA>
 	  &nodmx;
-	  <DATA>The upper end of the credible interval in the NET_MFLUX_APER</DATA>
+	  <DATA>The upper bound of the credible interval in the NET_MFLUX_APER</DATA>
 	</ROW>
 	<ROW>
 	  <DATA>NET_UMFLUX_APER</DATA>
@@ -1761,12 +1757,12 @@ bounds(region(my.reg))
 	<ROW>
 	  <DATA>NET_UMFLUX_APER_LO</DATA>
 	  &nodmx;
-	  <DATA>Lower end of credible interval for unabsorbed model flux</DATA>
+	  <DATA>Lower bound of credible interval for unabsorbed model flux</DATA>
 	</ROW>
 	<ROW>
 	  <DATA>NET_UMFLUX_APER_HI</DATA>
 	  &nodmx;
-	  <DATA>Upper end of the credible interval for the unabsorbed model flux</DATA>
+	  <DATA>Upper bound of the credible interval for the unabsorbed model flux</DATA>
 	</ROW>
       </TABLE>
 
@@ -1856,12 +1852,12 @@ bounds(region(my.reg))
 </ROW>
 <ROW>
 <DATA>MERGED_NET_RATE_APER_LO</DATA>
-<DATA>Lower end of the credible interval of merged net rate computed using
+<DATA>Lower bound of the credible interval of merged net rate computed using
 aprates, the total counts, and exposure weighted PSFs</DATA>
 </ROW>
 <ROW>
 <DATA>MERGED_NET_RATE_APER_HI</DATA>
-<DATA>Same as previous for the upper end of the credible interval.</DATA>
+<DATA>Same as previous for the upper bound of the credible interval.</DATA>
 </ROW>
 <ROW>
 <DATA>MERGED_RATE_AREASCAL</DATA>
@@ -1882,12 +1878,12 @@ images.
 <ROW>
 <DATA>MERGED_NET_APRATES_PHOTFLUX_APER_LO</DATA>
 <DATA>
-    The aprates_photflux lower end of credible interval
+    The aprates_photflux lower bound of credible interval
 </DATA>
 </ROW>
 <ROW>
 <DATA>MERGED_NET_APRATES_PHOTFLUX_APER_HI</DATA>
-<DATA>    The aprates_photflux upper end of credible interval
+<DATA>    The aprates_photflux upper bound of credible interval
 </DATA>
 </ROW>
 <ROW>
@@ -1913,13 +1909,13 @@ The merged net photon flux by weighted averaging the per-observation values.
 </ROW>
 <ROW>
 <DATA>MERGED_NET_PHOTFLUX_APER_LO</DATA>
-<DATA>The lower end of the credible inerval for the net photon flux computed by scaling
+<DATA>The lower bound of the credible interval for the net photon flux computed by scaling
 the net rate errors.
 </DATA>
 </ROW>
 <ROW>
 <DATA>MERGED_NET_PHOTFLUX_APER_HI</DATA>
-<DATA>Same as above for the upper end of the credible interval.
+<DATA>Same as above for the upper bound of the credible interval.
 </DATA>
 </ROW>
 <ROW>
@@ -1941,12 +1937,12 @@ factor (MFLUX_CNV).
 </ROW>
 <ROW>
 <DATA>MERGED_NET_MFLUX_APER_LO</DATA>
-<DATA>Same as above for the lower end of credible interval
+<DATA>Same as above for the lower bound of credible interval
 </DATA>
 </ROW>
 <ROW>
 <DATA>MERGED_NET_MFLUX_APER_HI</DATA>
-<DATA>Same as above for the upper end of the credible interval.
+<DATA>Same as above for the upper bound of the credible interval.
 </DATA>
 </ROW>
 <ROW>
@@ -1956,11 +1952,11 @@ model component</DATA>
 </ROW>
 <ROW>
 <DATA>MERGED_NET_UMFLUX_APER_LO</DATA>
-<DATA>Same as above for the lower end of credible interval</DATA>
+<DATA>Same as above for the lower bound of credible interval</DATA>
 </ROW>
 <ROW>
 <DATA>MERGED_NET_UMFLUX_APER_HI</DATA>
-<DATA>Same as above for the upper end of credible interval</DATA>
+<DATA>Same as above for the upper bound of credible interval</DATA>
 </ROW>
 <ROW>
 <DATA>TOTAL_FLUX_APER</DATA>
