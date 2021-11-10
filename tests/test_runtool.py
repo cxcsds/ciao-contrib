@@ -42,8 +42,8 @@ def test_have_ascds_install():
 
 
 def test_expected_tools():
-    assert len(ALL_TOOLS) == 180
-    assert len(STANDARD_TOOLS) == 165
+    assert len(ALL_TOOLS) == 181
+    assert len(STANDARD_TOOLS) == 166
 
 
 @pytest.mark.parametrize("expected", STANDARD_TOOLS)
@@ -419,6 +419,10 @@ def test_write_parfile_standard(toolname, tmp_path):
         assert nwrong == 1
     elif toolname == 'find_chandra_obsid':
         assert nwrong == 5
+    elif toolname == 'find_mono_energy':
+        # we get energy written out as "" but in the param file it's not
+        # set
+        assert nwrong == 1
     elif toolname == 'get_src_region':
         assert nwrong == 3
     elif toolname == 'glvary':
