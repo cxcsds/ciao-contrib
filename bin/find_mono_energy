@@ -48,22 +48,53 @@ DATASET_ID = "myid"
 lgr = lw.initialize_logger(TOOLNAME)
 verb1 = lgr.verbose1
 verb2 = lgr.verbose2
+verb3 = lgr.verbose3
 
 
-def setup_dataspace(arf, rmf):
+def setup_dataspace(arffile, rmffile):
     """Setup the sherpa dataspace based on RMF grid and associate
     ARF and RMF with that dataset.
+
+    Parameters
+    ----------
+    arf : str
+        The name of the ARF to use.
+    emf : str
+        The name of the RMF to use.
+
     """
 
-    _rmf = ui.unpack_rmf(rmf)
-    chan_lo = _rmf.offset
-    chan_hi = _rmf.detchans
+    if rmffile.strip() != '':
+        verb3(f"Loading RMF from {rmffile}")
+        rmf = ui.unpack_rmf(rmffile)
+        verb3(f"RMF contains {rmf.detchans} channels, starting at {rmf.offset}")
+    else:
+        rmf = None
 
-    _arf = ui.unpack_arf(arf)
+    if arffile.strip() != '':
+        verb3(f"Loading ARF from {arffile}")
+        arf = ui.unpack_arf(arffile)
+        verb3(f"ARF contains {len(arf.specresp)} entries")
+    else:
+        arf = None
+
+    if arf is None and rmf is None:
+        raise ValueError("At least one of arffile or rmffile must be set")
+
+    if rmf is not None:
+        chan_lo = rmf.offset
+        chan_hi = rmf.detchans
+    else:
+        chan_lo = 1
+        chan_hi = len(arf.specresp)
 
     ui.dataspace1d(chan_lo, chan_hi, id=DATASET_ID, dstype=ui.DataPHA)
-    ui.set_arf(DATASET_ID, _arf)
-    ui.set_rmf(DATASET_ID, _rmf)
+
+    if arf is not None:
+        ui.set_arf(DATASET_ID, arf)
+
+    if rmf is not None:
+        ui.set_rmf(DATASET_ID, rmf)
 
 
 def setup_model(model, model_params):
@@ -86,6 +117,9 @@ def setup_model(model, model_params):
         ui.set_model(DATASET_ID, model)
     except Exception as mybad:
         raise ValueError(f"ERROR with model={model}\n{mybad}") from mybad
+
+    verb3("Starting source model:")
+    verb3(ui.get_source(DATASET_ID))
 
     if model_params.strip() == '':
         return
@@ -121,7 +155,18 @@ def setup_band(band):
 
 
 def compute_metric(metric):
-    "Compute the metric based on the fluxed spectrum"
+    """Compute the metric based on the fluxed spectrum
+
+    Parameters
+    ----------
+    metric : {"mean", "max"}
+        How is the monochromatic energy to be calculated?
+
+    """
+
+    verb3("Full model expression:")
+    verb3(ui.get_model(DATASET_ID))
+
     dater = ui.get_model_plot(DATASET_ID)
 
     emid = dater.x
