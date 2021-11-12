@@ -67,16 +67,34 @@ def setup_dataspace(arf, rmf):
 
 
 def setup_model(model, model_params):
-    "Set the source model"
+    """Set the source model
+
+    Parameters
+    ----------
+    model : str
+        The model expression containing modelname.instancename terms
+        following Sherpa.
+    model_params : str
+        The parameter expression. This can actually be any valid Python
+        string but is expected to be instancename.paramname=value terms
+        separated by semi-colons. It can also contain commands like
+        'set_xsabund("lodd")'. This string can be empty.
+
+    """
 
     try:
         ui.set_model(DATASET_ID, model)
     except Exception as mybad:
         raise ValueError(f"ERROR with model={model}\n{mybad}") from mybad
 
+    if model_params.strip() == '':
+        return
+
     try:
+        # Evaluate the parameter expressions within the ui namespace.
+        #
         # pylint: disable=exec-used
-        exec(model_params)
+        exec(model_params, vars(ui))
     except Exception as mybad:
         raise ValueError(f'Error with paramvals={model_params}\n{mybad}') from mybad
 
