@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2010, 2011, 2012, 2014, 2015, 2018, 2019
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010, 2011, 2012, 2014, 2015, 2018, 2019, 2021
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -561,17 +561,109 @@ def combined_fovs(fovs, outfile, fits=True, clobber=True):
     """Create the combined FOV.
 
     This loses the CCD_ID column.
+
+    Notes
+    -----
+    The WCS transform is copied if it is attached to the EQPOS
+    column and is the same (at least as shown by the MATRIX
+    representation) in all files.
+
     """
 
-    v3(f"Combining FOV files: {outfile}")
+    v3(f"Combining FOV files: {outfile} from {len(fovs)} FOVs")
 
-    # CXCRegion has an ugly error message if the file does not exist
-    # - 'regParse() Could not parse region string or file' - so provide
-    # something a bit nicer. Hopefully users will never see this.
+    # Read in the files to extract the WCS mapping. This also
+    # checks the files exist, and gives a nicer error than
+    # CXCRegion() does if the file does not exist.
     #
+    # Some of the checking is a bit OTT for FOV files, but let's
+    # try to be thorough.
+    #
+    trans_name = None
+    trans_unit = None
+    trans_cpt0 = None
+    trans_cpt1 = None
+    trans_type = None
+    trans_vals = None
+    trans_pars = None
+    wcs = True
     for f in fovs:
-        if not os.path.isfile(f):
-            raise OSError(f"Unable to find FOV file: {f}")
+        v3(f'Checking FOV for EQPOS transform: {f}')
+        try:
+            bl = cxcdm.dmBlockOpen(f, update=False)
+        except OSError as oe:
+            raise OSError(f"Unable to find FOV file: {f}") from oe
+
+        try:
+            # Do we have a POS column?
+            try:
+                pos = cxcdm.dmTableOpenColumn(bl, 'POS')
+            except RuntimeError:
+                v3('No POS column so no WCS')
+                wcs = False
+                break
+
+            # Do we have transform info? For now assume only a single
+            # coordinate transform is attached to POS.
+            #
+            ncoord = cxcdm.dmDescriptorGetNoCoords(pos)
+            v3(f'Number of coords attached to POS: {ncoord}')
+            if ncoord > 1:
+                v2(f'WARNING: {f} has multiple coordinates attached to POS!')
+
+            if ncoord != 1:
+                wcs = False
+                break
+
+            dd = cxcdm.dmDescriptorGetCoord(pos)
+            tr_name = cxcdm.dmGetName(dd)
+            tr_unit = cxcdm.dmGetUnit(dd)
+            tr_type = cxcdm.dmCoordGetTransformType(dd)
+            tr_vals = cxcdm.dmCoordGetTransform(dd)
+            tr_pars = cxcdm.dmCoordGetParams(dd)
+
+            # unlike the other calls this will error out if the
+            # transform is not 2D, but let's live with that.
+            #
+            tr_cpt0 = cxcdm.dmGetCptName(dd, 1)
+            tr_cpt1 = cxcdm.dmGetCptName(dd, 2)
+
+            if trans_name is None:
+                v3('First FOV file, so copying WCS data')
+                trans_name = tr_name
+                trans_unit = tr_unit
+                trans_cpt0 = tr_cpt0
+                trans_cpt1 = tr_cpt1
+                trans_type = tr_type
+                trans_vals = tr_vals
+                trans_pars = tr_pars
+                continue
+
+            # Check for equal transorms. Technically the name does not
+            # have to match.
+            #
+            v3('Checking wether WCS info matches')
+            if (trans_name != tr_name) or \
+               (trans_unit != tr_unit) or \
+               (trans_type != tr_type) or \
+               (trans_cpt0 != tr_cpt0) or \
+               (trans_cpt1 != tr_cpt1) or \
+               not np.all(trans_vals[0] == tr_vals[0]) or \
+               not np.all(trans_vals[1] == tr_vals[1]) or \
+               not np.all(trans_vals[2] == tr_vals[2]) or \
+               not np.all(trans_pars == tr_pars):
+                v3(f'Note: WCS does not match {f} compared to {fovs[0]}')
+                v4(f'Name: {trans_name} {tr_name}')
+                v4(f'Cpts: {trans_cpt0},{trans_cpt1} {tr_cpt0},{tr_cpt1}')
+                v4(f'Unit: {trans_unit} {tr_unit}')
+                v4(f'Type: {trans_type} {tr_type}')
+                v4(f'Vals: {trans_vals} {tr_vals}')
+                v4(f'Pars: {trans_pars} {tr_pars}')
+                wcs = False
+
+        finally:
+            v3(f'Closing check of FOV: {f}')
+            cxcdm.dmBlockClose(bl)
 
     shapes = [CXCRegion(f) for f in fovs]
     combined = functools.reduce(lambda x, y: x + y, shapes)
@@ -581,13 +673,36 @@ def combined_fovs(fovs, outfile, fits=True, clobber=True):
         return
 
     # For FITS files we change HDUCLAS2/CONTENT from REGION to FOV
-    # (CIAO 4.14)
+    # (CIAO 4.14), and also add in the WCS transform if all files
+    # had the same transform.
     #
-    v3(f"Adjusting HDUCLAS2/CONTENT keywords of {outfile}")
+    v3(f"Adjusting HDUCLAS2/CONTENT keywords and EQPOS column of {outfile}")
     bl = cxcdm.dmBlockOpen(outfile, update=True)
     try:
+        v3("-> HDUCLAS2/CONTENT")
         cxcdm.dmKeyWrite(bl, 'HDUCLAS2', 'FOV')
         cxcdm.dmKeyWrite(bl, 'CONTENT', 'FOV')
+
+        pos = None
+        if wcs:
+            try:
+                pos = cxcdm.dmTableOpenColumn(bl, 'POS')
+            except RuntimeError:
+                # In CIAO 4.14 the error is just an empty RutimeError.
+                # We could error out here but let's just skip the WCS
+                # (which should not be possible).
+                #
+                v3(f"WARNING: {outfile} does not contain a POS column when it should")
+                pos = None
+
+        # Ugly code to avoid too-much nesting
+        if pos is not None:
+            v3("-> WCS transform")
+            cxcdm.dmCoordCreate(pos, 'EQPOS', trans_unit,
+                                [trans_cpt0, trans_cpt1],
+                                trans_type[0], trans_vals[0], trans_vals[1],
+                                trans_vals[2], trans_pars)
+
     finally:
         cxcdm.dmBlockClose(bl)
 

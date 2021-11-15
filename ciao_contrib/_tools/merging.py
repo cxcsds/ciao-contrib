@@ -2952,6 +2952,8 @@ def merge(process,
     #
     outfov = outfiles['combinedfov']
     run.combined_fovs(outfiles['fovs'], outfov)
+    rt.add_tool_history(outfov, toolname, pars,
+                        toolversion=toolversion)
 
     if threshold:
         obsid_images = outfiles['out_thresh_images']
