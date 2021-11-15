@@ -360,6 +360,11 @@ def check_conda_versions(ciao):
     for chan in {v['channel'] for v in found.values()}:
         channels.extend(["-c", chan])
 
+    # Add in conda-forge, after the ones we installed CIAO with.
+    # Is this a great idea?
+    #
+    channels.extend(["-c", "conda-forge"])
+
     # We use --no-update-deps since the expected users of this
     # functionality are likely to want to know just if the CIAO packages
     # need updating, not any dependency.
