@@ -3144,6 +3144,13 @@ parinfo['find_chandra_obsid'] = {
     }
 
 
+parinfo['find_mono_energy'] = {
+    'istool': True,
+    'req': [ParValue("arffile","f","Input ARF file",None),ParValue("rmffile","f","Input RMF file",None),ParValue("model","s","Sherpa model expression",'xsphabs.abs1*xspowerlaw.pwrlaw'),ParValue("paramvals","s","Model parameter values",'pwrlaw.PhoIndex=2.0;abs1.nH=0.1'),ParValue("band","s","Energy band (CSC name, eg soft, or colon separated elo:ehi)",None)],
+    'opt': [ParSet("metric","s","Metric used to compute characteristic energy",'mean',["mean","max"]),ParValue("energy","f","Output energy",None),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
+    }
+
+
 parinfo['flux_obs'] = {
     'istool': True,
     'req': [ParValue("infiles","s","Input events files",None),ParValue("outroot","f","Root of output files",None)],
