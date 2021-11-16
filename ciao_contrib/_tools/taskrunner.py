@@ -31,11 +31,11 @@ style approach, but this is dangerous.
 
 """
 
-import time
 import multiprocessing
-from queue import Empty
-
 import pickle
+from queue import Empty
+import random
+import time
 
 from ..logger_wrapper import initialize_module_logger
 
@@ -59,21 +59,34 @@ v4 = lgr.verbose4
 
 
 class TaskRunner:
-    """Given a set of tasks with pre-conditions,
-    run them in order. The tasks can be added to
-    at any time before the run_tasks method is
+    """Given a set of tasks with pre-conditions, run them in order. The
+    tasks can be added to at any time before the run_tasks method is
     called.
 
-    The task names and preconditions just need to
-    be objects that can be displayed, compared
-    for equality/used in a set, and can be pickled
-    (although strings are primarily used/tested).
+    The task names and preconditions just need to be objects that can
+    be displayed, compared for equality/used in a set, and can be
+    pickled (although strings are primarily used/tested).
+
+    Parameters
+    ----------
+    randomize_insert : bool, optional
+        If True (default is False) then the tasks are randomly added
+        to the task queue, rather than in the order they were added.
+        Note that this only really makes a difference when a barrier
+        is selected that causes a number of new tasks to be added;
+        note that this randomness is added when the tasks are added to
+        the queue and not when we ask "what is the next job to
+        process", which would be a better way to do it. It's also
+        unclear what the get method of JoinableQueue actually does to
+        select the next entry.
+
     """
 
-    def __init__(self):
+    def __init__(self, randomize_insert=False):
         """Set up the task runner."""
 
         self._clean()
+        self.randomize_insert = randomize_insert
 
     def _clean(self):
         "Prepare for a new set of tasks"
@@ -214,7 +227,7 @@ class TaskRunner:
             task queue, runs it, then sends the name of
             the task to the results queue once finished.
 
-            Does this need to be derived from ctx.Process>
+            Does this need to be derived from ctx.Process?
             """
 
             def __init__(self, task_queue, result_queue):
@@ -287,6 +300,8 @@ class TaskRunner:
 
         # what tasks can be run now?
         deltasks = []
+        newtasks = []
+        ntotal = len(self._torun)
         for v in self._torun.values():
             name = v[0]
             preconditions = v[1]
@@ -303,13 +318,23 @@ class TaskRunner:
             else:
                 raise ValueError(f"Internal error: task info = {v}")
 
-            task_queue.put(taskarg)
+            newtasks.append(taskarg)
 
         if len(deltasks) == 0:
             raise ValueError("Unable to start since all the tasks have at least one precondition")
 
         for deltask in deltasks:
             del self._torun[deltask]
+
+        # Add the selected tasks to the queue.
+        #
+        if self.randomize_insert:
+            random.shuffle(newtasks)
+
+        for newtask in newtasks:
+            task_queue.put(newtask)
+
+        v4(f"TaskRunner: starting {len(newtasks)} tasks out of {ntotal}")
 
         # If this process is starved of time then it may not
         # add a task to a queue, even if a process is idle.
@@ -370,6 +395,7 @@ class TaskRunner:
 
             # Can we run any new tasks?
             deltasks = []
+            newtasks = []
             for v in self._torun.values():
                 name = v[0]
                 preconditions = v[1]
@@ -393,10 +419,20 @@ class TaskRunner:
                 else:
                     raise ValueError(f"Internal error: task info = {v}")
 
-                task_queue.put(taskarg)
+                newtasks.append(taskarg)
 
             for deltask in deltasks:
                 del self._torun[deltask]
+
+            # Add the selected tasks to the queue.
+            #
+            if self.randomize_insert:
+                random.shuffle(newtasks)
+
+            for newtask in newtasks:
+                task_queue.put(newtask)
+
+            v4(f"TaskRunner: adding {len(newtasks)} tasks out of {ntotal}")
 
         # Wait for everything to finish.
         #
