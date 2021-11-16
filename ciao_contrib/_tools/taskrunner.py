@@ -1,6 +1,6 @@
 #
-# Copyright (C) 2012, 2015, 2016, 2019, 2020
-#           Smithsonian Astrophysical Observatory
+# Copyright (C) 2012, 2015, 2016, 2019, 2020, 2021
+# Smithsonian Astrophysical Observatory
 #
 #
 #
@@ -27,7 +27,7 @@ before being run.
 Changes in multiprocessing in Python 3.8 means that on macOS the
 spawn method is used by default. This gives subtly-different results
 (e.g. screen output is different) so we attempt to force the fork
-style approach, but this (is dangerous*.
+style approach, but this is dangerous.
 
 """
 
@@ -102,17 +102,17 @@ class TaskRunner:
         cyclical dependencies).
         """
 
-        v3("TaskRunner: adding task {}".format(name))
+        v3(f"TaskRunner: adding task {name}")
 
         if not hasattr(func, "__call__"):
-            raise ValueError("The function for task {} is not callable".format(name))
+            raise ValueError(f"The function for task {name} is not callable")
 
         if self._seen(name):
-            raise ValueError("Task {} has already been added to this runner".format(name))
+            raise ValueError(f"Task {name} has already been added to this runner")
 
         for pname in preconditions:
             if not self._seen(pname):
-                raise ValueError("Precondition {} of task {} has not been added to this runner".format(pname, name))
+                raise ValueError(f"Precondition {pname} of task {name} has not been added to this runner")
 
         # Ideally this should not happen but just in case I forget
         # and use a data type that can't be serialized
@@ -122,11 +122,11 @@ class TaskRunner:
             pickle.dumps(args)
             pickle.dumps(kwargs)
         except pickle.PicklingError:
-            raise ValueError("Internal error: unable to serialize arguments for task={}".format(name))
+            raise ValueError(f"Internal error: unable to serialize arguments for task={name}")
 
         self._torun[name] = (name, preconditions, func, args, kwargs)
         self._names.add(name)
-        v3("TaskRunner: task {} has been added to the queue.".format(name))
+        v3(f"TaskRunner: task {name} has been added to the queue.")
 
     def add_barrier(self, name, preconditions, msg=None):
         """Add a barrier which ensures that all the
@@ -144,19 +144,19 @@ class TaskRunner:
         empty.
         """
 
-        v3("TaskRunner: adding barrier {}".format(name))
+        v3(f"TaskRunner: adding barrier {name}")
         if self._seen(name):
-            raise ValueError("Task {} has already been added to this runner".format(name))
+            raise ValueError(f"Task {name} has already been added to this runner")
 
         for pname in preconditions:
             if not self._seen(pname):
-                raise ValueError("Precondition {} of the barrier {} has not been added to this runner".format(pname, name))
+                raise ValueError(f"Precondition {pname} of the barrier {name} has not been added to this runner")
 
         try:
             pickle.dumps(name)
             pickle.dumps(msg)
         except pickle.PicklingError:
-            raise ValueError("Internal error: unable to serialize arguments for task={}".format(name))
+            raise ValueError(f"Internal error: unable to serialize arguments for task={name}")
 
         self._torun[name] = (name, preconditions, msg)
         self._names.add(name)
@@ -193,7 +193,7 @@ class TaskRunner:
             f("Running tasks in serial.")
             self._run_serial()
         else:
-            f("Running tasks in parallel with {} processors.".format(processes))
+            f(f"Running tasks in parallel with {processes} processors.")
             self._run_parallel(processes, context=context)
 
         self._clean()
@@ -202,7 +202,7 @@ class TaskRunner:
         "Run the tasks in parallel"
 
         stime = time.localtime()
-        v4("TaskRunner (parallel, processes={}): started {}".format(processes, time.asctime(stime)))
+        v4(f"TaskRunner (parallel, processes={processes}): started {time.asctime(stime)}")
 
         ntasks = len(self._torun)
         finished = set()
@@ -232,40 +232,40 @@ class TaskRunner:
                 try:
                     while True:
                         taskinfo = self.task_queue.get()
-                        v3("TaskHandler {} retrieved taskinfo={}".format(name, taskinfo))
+                        v3(f"TaskHandler {name} retrieved taskinfo={taskinfo}")
 
                         if taskinfo is None:
-                            v3("TaskHandler {} told to quit".format(name))
+                            v3(f"TaskHandler {name} told to quit")
                             self.task_queue.task_done()
                             break
 
                         elif len(taskinfo) == 4:
-                            v3("TaskHandler {} running taskinfo={}".format(name, taskinfo))
+                            v3(f"TaskHandler {name} running taskinfo={taskinfo}")
                             (taskname, func, args, kwargs) = taskinfo
                             try:
-                                v3("TaskHandler {} starting task {}".format(name, taskname))
+                                v3(f"TaskHandler {name} starting task {taskname}")
                                 func(*args, **kwargs)
-                                v3("TaskHandler {} finshed task {}".format(name, taskname))
+                                v3(f"TaskHandler {name} finshed task {taskname}")
                             except BaseException as be:
-                                v3("TaskHandler {} task {} - caught exception {}/{}".format(name, taskname, type(be), be))
+                                v3(f"TaskHandler {name} task {taskname} - caught exception {type(be)}/{be}")
                                 self.task_queue.task_done()
                                 self.result_queue.put((True, be))
                                 break
 
                         elif len(taskinfo) == 2:
-                            v3("TaskHandler {} sent barrier: {}".format(name, taskinfo))
+                            v3(f"TaskHandler {name} sent barrier: {taskinfo}")
                             (taskname, taskmsg) = taskinfo
                             if taskmsg is not None:
                                 v1(taskmsg)
 
                         else:
-                            v3("TaskHandler {} sent invalid taskinfo={}".format(name, taskinfo))
+                            v3(f"TaskHandler {name} sent invalid taskinfo={taskinfo}")
                             self.task_queue.task_done()
                             self.result_queue.put((True,
-                                                   ValueError("Task queue argument: {}".format(taskinfo))))
+                                                   ValueError(f"Task queue argument: {taskinfo}")))
                             break
 
-                        v3("TaskHandler {} reporting that task={} is finished.".format(name, taskname))
+                        v3(f"TaskHandler {name} reporting that task={taskname} is finished.")
                         self.task_queue.task_done()
                         self.result_queue.put((False, taskname))
 
@@ -277,10 +277,10 @@ class TaskRunner:
                     # I do not send a task_done message to self.task_queue
                     # as I no idea what the state is here.
                     #
-                    v3("TaskHandler {} - caught exception {}/{}".format(name, type(be), be))
+                    v3(f"TaskHandler {name} - caught exception {type(be)}/{be}")
                     self.result_queue.put((True, be))  # possibly excessive
 
-                v3("TaskHandler {} exiting.".format(name))
+                v3(f"TaskHandler {name} exiting.")
 
         queue = ctx.Queue()
         task_queue = ctx.JoinableQueue()
@@ -295,13 +295,13 @@ class TaskRunner:
 
             deltasks.append(name)
             if len(v) == 3:
-                v3("TaskRunner: selected barrier {}".format(name))
+                v3(f"TaskRunner: selected barrier {name}")
                 taskarg = (name, v[2])
             elif len(v) == 5:
-                v3("TaskRunner: selected task {}".format(name))
+                v3(f"TaskRunner: selected task {name}")
                 taskarg = (name, v[2], v[3], v[4])
             else:
-                raise ValueError("Internal error: task info = {}".format(v))
+                raise ValueError(f"Internal error: task info = {v}")
 
             task_queue.put(taskarg)
 
@@ -319,7 +319,7 @@ class TaskRunner:
         # happening then not adding to the load is probably
         # a good idea anyway.
         #
-        v4("TaskRunner (parallel, processes={}): starting workers".format(processes))
+        v4(f"TaskRunner (parallel, processes={processes}): starting workers")
         workers = [TaskHandler(task_queue, queue)
                    for i in range(processes)]
 
@@ -330,7 +330,7 @@ class TaskRunner:
         # if any new ones can be started. Once all
         # the jobs have ended close down the workers.
         #
-        v4("TaskRunner (parallel, processes={}): waiting for jobs".format(processes))
+        v4(f"TaskRunner (parallel, processes={processes}): waiting for jobs")
         while True:
             (errflag, taskout) = queue.get()
 
@@ -357,7 +357,7 @@ class TaskRunner:
 
                 raise taskout
 
-            v4("TaskRunner: received result from task {}".format(taskout))
+            v4(f"TaskRunner: received result from task {taskout}")
 
             # Can we stop the workers?
             finished.add(taskout)
@@ -385,13 +385,13 @@ class TaskRunner:
                 deltasks.append(name)
 
                 if len(v) == 3:
-                    v3("TaskRunner: selected barrier {}".format(name))
+                    v3(f"TaskRunner: selected barrier {name}")
                     taskarg = (name, v[2])
                 elif len(v) == 5:
-                    v3("TaskRunner: selected task {}".format(name))
+                    v3(f"TaskRunner: selected task {name}")
                     taskarg = (name, v[2], v[3], v[4])
                 else:
-                    raise ValueError("Internal error: task info = {}".format(v))
+                    raise ValueError(f"Internal error: task info = {v}")
 
                 task_queue.put(taskarg)
 
@@ -408,13 +408,13 @@ class TaskRunner:
         task_queue.join()
 
         etime = time.localtime()
-        v4("TaskRunner (parallel, processes={}): stopped {}".format(processes, time.asctime(etime)))
+        v4(f"TaskRunner (parallel, processes={processes}): stopped {time.asctime(etime)}")
 
     def _run_serial(self):
         "Run the tasks in serial"
 
         stime = time.localtime()
-        v4("TaskRunner (serial): started {}".format(time.asctime(stime)))
+        v4(f"TaskRunner (serial): started {time.asctime(stime)}")
 
         ntasks = len(self._torun)
         finished = set()
@@ -435,28 +435,28 @@ class TaskRunner:
                     continue
 
                 if len(v) == 3:
-                    v3("TaskRunner (serial): running barrier {}".format(name))
+                    v3(f"TaskRunner (serial): running barrier {name}")
                     if v[2] is not None:
                         v1(v[2])
 
                 elif len(v) == 5:
-                    v3("TaskRunner (serial): running task {}".format(name))
+                    v3(f"TaskRunner (serial): running task {name}")
                     v[2](*v[3], **v[4])
 
                 else:
-                    raise ValueError("Internal error: task info={}".format(v))
+                    raise ValueError(f"Internal error: task info={v}")
 
                 deltask = name
                 break
 
             if deltask is None:
-                raise ValueError("Unable to find any task to run from {}".format(self._torun))
+                raise ValueError(f"Unable to find any task to run from {self._torun}")
 
             finished.add(deltask)
             del self._torun[deltask]
 
         etime = time.localtime()
-        v4("TaskRunner (serial): stopped {}".format(time.asctime(etime)))
+        v4(f"TaskRunner (serial): stopped {time.asctime(etime)}")
 
 
 def get_nproc(nproc=None):
@@ -483,7 +483,7 @@ def get_nproc(nproc=None):
             if int(nproc) != nproc:
                 raise ValueError("dummy")
         except ValueError:
-            raise ValueError("nproc arument must be an integer, sent {}".format(nproc))
+            raise ValueError(f"nproc arument must be an integer, sent {nproc}")
 
         if nproc == 0:
             raise ValueError("nproc argument can not be 0")
