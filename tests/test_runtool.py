@@ -605,6 +605,115 @@ def test_write_parfile_par(toolname, tmp_path):
         assert nwrong == 0
 
 
+def test_write_params_same_directory(tmp_path, verbose5):
+    """Check issue #448"""
+
+    # Technically we cuold run when pfiles is None
+    pfiles = rt.get_pfiles(userdir=True)
+    assert pfiles is not None
+    assert len(pfiles) == 1
+
+    os.chdir(tmp_path)
+
+    # The parameter file is written to the userdir
+    #
+    outfile = pathlib.Path(pfiles[0]) / 'dmcopy.par'
+
+    # We can not depend on the file not existing
+    # assert not outfile.exists()
+
+    tool = rt.make_tool('dmcopy')
+    tool.infile = '../foo/bar.fits[foo=23:][cols bob]'
+    tool.verbose = 2
+    tool.clobber = True
+    tool.write_params()
+
+    assert outfile.exists()
+
+    cts = outfile.read_text()
+    lines = cts.split('\n')
+    assert len(lines) == 8
+    assert lines[0] == 'infile,f,a,"../foo/bar.fits[foo=23:][cols bob]",,,"Input dataset/block specification"'
+    assert lines[1] == 'outfile,f,a,"",,,"Output dataset name"'
+    assert lines[2] == 'kernel,s,h,"default",,,"Output file format type"'
+    assert lines[3] == 'option,s,h,"",,,"Option - force output type"'
+    assert lines[4] == 'verbose,i,h,2,0,5,"Debug Level"'
+    assert lines[5] == 'clobber,b,h,yes,,,"Clobber existing file"'
+    assert lines[6] == 'mode,s,h,"hl",,,'
+    assert lines[7] == ''
+
+
+@pytest.mark.parametrize("filename", ['other.par', 'dmcopy.par'])
+def test_write_params_same_directory_renamed(filename, tmp_path, verbose5):
+    """Check issue #448"""
+
+    os.chdir(tmp_path)
+    outfile = tmp_path / filename
+
+    assert not outfile.exists()
+
+    tool = rt.make_tool('dmcopy')
+    tool.infile = '../foo/bar.fits[foo=23:][cols bob]'
+    tool.verbose = 2
+    tool.clobber = True
+    tool.write_params(filename)
+
+    assert outfile.exists()
+
+    cts = outfile.read_text()
+    lines = cts.split('\n')
+    assert len(lines) == 8
+    assert lines[0] == 'infile,f,a,"../foo/bar.fits[foo=23:][cols bob]",,,"Input dataset/block specification"'
+    assert lines[1] == 'outfile,f,a,"",,,"Output dataset name"'
+    assert lines[2] == 'kernel,s,h,"default",,,"Output file format type"'
+    assert lines[3] == 'option,s,h,"",,,"Option - force output type"'
+    assert lines[4] == 'verbose,i,h,2,0,5,"Debug Level"'
+    assert lines[5] == 'clobber,b,h,yes,,,"Clobber existing file"'
+    assert lines[6] == 'mode,s,h,"hl",,,'
+    assert lines[7] == ''
+
+
+@pytest.mark.parametrize("filename", [None, 'other.par', pytest.param('dmcopy.par', marks=pytest.mark.xfail)])
+def test_write_params_same_directory_pfiles(filename, tmp_path, verbose5):
+    """Check issue #448"""
+
+    dname = tmp_path / 'temp'
+    with rt.new_pfiles_environment(dirname=dname, ardlib=False, copyuser=False):
+
+        # This should have been created via new_pfiles_environment
+        os.chdir(dname)
+
+        # The parameter file is written to the userdir
+        #
+        if filename is None:
+            outfile = dname / 'dmcopy.par'
+        else:
+            outfile = dname / filename
+
+        # We can not depend on the file not existing
+        # assert not outfile.exists()
+
+        tool = rt.make_tool('dmcopy')
+        tool.infile = '../foo/bar.fits[foo=23:][cols bob]'
+        tool.verbose = 2
+        tool.clobber = True
+        tool.write_params(filename)
+
+        assert outfile.exists()
+        cts = outfile.read_text()
+
+    lines = cts.split('\n')
+    assert len(lines) == 8
+    assert lines[0] == 'infile,f,a,"../foo/bar.fits[foo=23:][cols bob]",,,"Input dataset/block specification"'
+    assert lines[1] == 'outfile,f,a,"",,,"Output dataset name"'
+    assert lines[2] == 'kernel,s,h,"default",,,"Output file format type"'
+    assert lines[3] == 'option,s,h,"",,,"Option - force output type"'
+    assert lines[4] == 'verbose,i,h,2,0,5,"Debug Level"'
+    assert lines[5] == 'clobber,b,h,yes,,,"Clobber existing file"'
+    assert lines[6] == 'mode,s,h,"hl",,,'
+    assert lines[7] == ''
+
+
 @pytest.mark.parametrize("val,ptype",
                          [(True, "bool"),
                           (1, "int"),
