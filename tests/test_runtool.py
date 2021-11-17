@@ -605,7 +605,8 @@ def test_write_parfile_par(toolname, tmp_path):
         assert nwrong == 0
 
 
-def test_write_params_same_directory(tmp_path, verbose5):
+@pytest.mark.parametrize("filename", [None, 'dmcopy.par'])
+def test_write_params_same_directory(filename, tmp_path, verbose5):
     """Check issue #448"""
 
     # Technically we cuold run when pfiles is None
@@ -621,36 +622,6 @@ def test_write_params_same_directory(tmp_path, verbose5):
 
     # We can not depend on the file not existing
     # assert not outfile.exists()
-
-    tool = rt.make_tool('dmcopy')
-    tool.infile = '../foo/bar.fits[foo=23:][cols bob]'
-    tool.verbose = 2
-    tool.clobber = True
-    tool.write_params()
-
-    assert outfile.exists()
-
-    cts = outfile.read_text()
-    lines = cts.split('\n')
-    assert len(lines) == 8
-    assert lines[0] == 'infile,f,a,"../foo/bar.fits[foo=23:][cols bob]",,,"Input dataset/block specification"'
-    assert lines[1] == 'outfile,f,a,"",,,"Output dataset name"'
-    assert lines[2] == 'kernel,s,h,"default",,,"Output file format type"'
-    assert lines[3] == 'option,s,h,"",,,"Option - force output type"'
-    assert lines[4] == 'verbose,i,h,2,0,5,"Debug Level"'
-    assert lines[5] == 'clobber,b,h,yes,,,"Clobber existing file"'
-    assert lines[6] == 'mode,s,h,"hl",,,'
-    assert lines[7] == ''
-
-
-@pytest.mark.parametrize("filename", ['other.par', 'dmcopy.par'])
-def test_write_params_same_directory_renamed(filename, tmp_path, verbose5):
-    """Check issue #448"""
-
-    os.chdir(tmp_path)
-    outfile = tmp_path / filename
-
-    assert not outfile.exists()
 
     tool = rt.make_tool('dmcopy')
     tool.infile = '../foo/bar.fits[foo=23:][cols bob]'
@@ -673,7 +644,37 @@ def test_write_params_same_directory_renamed(filename, tmp_path, verbose5):
     assert lines[7] == ''
 
 
-@pytest.mark.parametrize("filename", [None, 'other.par', pytest.param('dmcopy.par', marks=pytest.mark.xfail)])
+def test_write_params_same_directory_renamed(tmp_path, verbose5):
+    """Check issue #448"""
+
+    os.chdir(tmp_path)
+    outfile = tmp_path / 'other.par'
+
+    assert not outfile.exists()
+
+    tool = rt.make_tool('dmcopy')
+    tool.infile = '../foo/bar.fits[foo=23:][cols bob]'
+    tool.verbose = 2
+    tool.clobber = True
+    tool.write_params('other.par')
+
+    assert outfile.exists()
+
+    cts = outfile.read_text()
+    lines = cts.split('\n')
+    assert len(lines) == 8
+    assert lines[0] == 'infile,f,a,"../foo/bar.fits[foo=23:][cols bob]",,,"Input dataset/block specification"'
+    assert lines[1] == 'outfile,f,a,"",,,"Output dataset name"'
+    assert lines[2] == 'kernel,s,h,"default",,,"Output file format type"'
+    assert lines[3] == 'option,s,h,"",,,"Option - force output type"'
+    assert lines[4] == 'verbose,i,h,2,0,5,"Debug Level"'
+    assert lines[5] == 'clobber,b,h,yes,,,"Clobber existing file"'
+    assert lines[6] == 'mode,s,h,"hl",,,'
+    assert lines[7] == ''
+
+
+#@pytest.mark.parametrize("filename", [None, 'other.par', pytest.param('dmcopy.par', marks=pytest.mark.xfail)])
+@pytest.mark.parametrize("filename", [None, 'other.par', 'dmcopy.par'])
 def test_write_params_same_directory_pfiles(filename, tmp_path, verbose5):
     """Check issue #448"""
 
