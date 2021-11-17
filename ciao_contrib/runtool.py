@@ -1,6 +1,6 @@
 #
-# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019
-#           Smithsonian Astrophysical Observatory
+# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021
+# Smithsonian Astrophysical Observatory
 #
 #
 # This program is free software; you can redistribute it and/or modify
@@ -374,7 +374,7 @@ parameter" or https://cxc.harvard.edu/ciao/ahelp/parameter.html for
 more information) is used.
 
 The module provides a set_pfiles() routine which changes the location
-of the user directory for parameter files. See 'help set_pfiles' for
+of the user directory for parameter files. See 'help(set_pfiles)' for
 more information on this. The get_pfiles() routine provides access to
 the current settings.
 
@@ -401,7 +401,7 @@ An example of its use is
               mki(monoenergy=energy,
                   out=f"imap{ccd}_e{energy}.fits")
 
-See 'help new_pfiles_environment' for more information.
+See 'help(new_pfiles_environment)' for more information.
 
 Using multiple versions of a tool
 =================================
@@ -1169,6 +1169,7 @@ class CIAOParameter(object):
 
         try:
             ofile = pio.paramgetpath(toolname)
+
             v5(f"Copying par file {ofile} to {parfile}")
             with open(ofile, "r") as ifh:
                 for line in ifh.readlines():
@@ -1202,6 +1203,7 @@ class CIAOParameter(object):
             # v2("WARNING: $ASCDS_WORK_PATH is not set, using /tmp to create a parameter file for {}".format(self._toolname))
             tmpdir = None
 
+        v4(f"Opening parameter file with mode=wLH: '{parfile}'")
         try:
             fp = pio.paramopen(parfile, "wLH")
 
@@ -1267,16 +1269,13 @@ class CIAOParameter(object):
             # Try to provide a helpful message to the user. The
             # paramio module raises Exceptions, so we want to
             # replace these by some generic text, but leave
-            # anything more-specific alone. In Python 2.7 this was
-            # done by differentiating between Exception and
-            # StandardError but this does not work in Python 3,
-            # so use an explicit check on the type.
+            # anything more-specific alone.
             #
             if type(ee) == Exception:
                 raise IOError("Unable to write to parameter file:\n" +
-                              f"  {parfile}")
-            else:
-                raise
+                              f"  {parfile}") from ee
+
+            raise
 
     def _update_parfile_verify(self, parfile, stackfiles):
         """Part of _update_parfile(): here we verify that the
@@ -1364,9 +1363,9 @@ class CIAOParameter(object):
             #
             if type(ee) == Exception:
                 raise IOError("Unable to check values in parameter " +
-                              f"file:\n  {parfile}")
-            else:
-                raise
+                              f"file:\n  {parfile}") from ee
+
+            raise
 
     def _update_parfile(self, parfile):
         """Update the supplied file, which is assumed to be a
@@ -1515,7 +1514,7 @@ class CIAOParameter(object):
         None.
         """
 
-        if parfile is None:
+        if parfile is None or parfile in [self._toolname, f'{self._toolname}.par']:
             pname = self._toolname
 
         else:
