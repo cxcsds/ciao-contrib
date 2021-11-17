@@ -466,8 +466,14 @@ def check_conda_versions(ciao):
     print(f"  conda update {tokens} --no-deps \\")
 
     # use a set to ensure we don't repeat the same channel
-    for chan in {v['channel'] for v in found.values()}:
+    all_channels = {v['channel'] for v in found.values()}
+    for chan in all_channels:
         print(f"{spacing}-c {chan} \\")
+
+    # Fake in a conda-forge line. Do we really need this?
+    #
+    if 'conda-forge' not in all_channels:
+        print(f"{spacing}-c conda-forge \\")
 
     print(f"{spacing}--dry-run")
     print("")
