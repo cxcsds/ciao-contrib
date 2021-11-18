@@ -2740,7 +2740,7 @@ parinfo['csmooth'] = {
 parinfo['dax'] = {
     'istool': False,
     'req': [],
-    'opt': [ParValue("outdir","f","Location of the output files for dax",'${ASCDS_WORK_PATH}/ds9_dax.${USER}'),ParValue("tile","b","Change ds9 into tile mode when adding new images?",False),ParValue("progress_bar","b","Show progress bar when tasks are running?",True),ParValue("random_seed","i","Random seed for any tasks the require one",-1)],
+    'opt': [ParValue("outdir","f","Location of the output files for dax",'${ASCDS_WORK_PATH}/ds9_dax.${USER}'),ParValue("tile","b","Change ds9 into tile mode when adding new images?",False),ParValue("progress_bar","b","Show progress bar when tasks are running?",True),ParValue("random_seed","i","Random seed for any tasks the require one",-1),ParValue("prism","b","Launch prism to view output tables?",False)],
     }
 
 
