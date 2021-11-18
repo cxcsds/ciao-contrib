@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2013-2020 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2021 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "30 November 2020"
+__revision__ = "18 November 2021"
 
 import os
 
@@ -2025,7 +2025,17 @@ def merge_get_counts( infiles ):
         else: # ACIS
             cc = int(tab.get_column("chip_id").values[0])
             assert cc in range(10)
-            retval['exptime'].append( tab.get_key_value("LIVTIME{}".format(cc)))
+            etime = tab.get_key_value("LIVTIME{}".format(cc))
+            if etime is None:
+                # For sources right on the edge of the chip, they 
+                # can be inside the FOV (includes dither), but the 
+                # chip_id value itself is computed
+                # at the mean pointing, so it may be on another 
+                # chip, which is no turned on. If this happens, just
+                # set exposure time to LIVETIME (to be consistent w/ 
+                # individual obi)
+                etime = tab.get_key_value("LIVETIME")
+            retval['exptime'].append(etime)
 
     return retval
 
