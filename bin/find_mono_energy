@@ -38,7 +38,7 @@ from ciao_contrib.param_soaker import get_params
 
 
 TOOLNAME = "find_mono_energy"
-__REVISION__ = "12 November 2021"
+__REVISION__ = "18 November 2021"
 
 DATASET_ID = "myid"
 
@@ -49,6 +49,7 @@ lgr = lw.initialize_logger(TOOLNAME)
 verb1 = lgr.verbose1
 verb2 = lgr.verbose2
 verb3 = lgr.verbose3
+verb4 = lgr.verbose4
 
 
 def setup_dataspace(arffile, rmffile):
@@ -167,7 +168,35 @@ def compute_metric(metric):
     verb3("Full model expression:")
     verb3(ui.get_model(DATASET_ID))
 
+    # Ensure the analysis is in energy units and the model is plotted
+    # as counts, not counts/kev (we don't care about whether it's
+    # normalised by the exposure time). This is true for CIAO 4.14;
+    # it may change in the future - e.g. see the exploratory work
+    # at https://github.com/sherpa/sherpa/pull/1085
+    #
+    # Note that for "normal" Chandra observations this does not matter,
+    # since the bin-width is constant in energy space, but this could
+    # be used for non-Chandra data or for 'unusual' Chandra data.
+    #
+    ui.set_analysis(id=DATASET_ID, quantity='energy', type='counts')
+    verb4(f"Data:\n{ui.get_data(DATASET_ID)}")
+
+    # It wuold be nice if Sherpa gave us a nice way to do
+    # this, but it's currently a bit messy (in particular
+    # sorting out the bin edges), so rely on this approach.
+    #
     dater = ui.get_model_plot(DATASET_ID)
+    verb4(f"Model:\n{dater}")
+
+    # Check the y-axis units: this should not happen but just in case.
+    # It is also technically dependent on the plottin backend in use by
+    # Sherpa (e.g. to potentially add LaTeX-like capabilities).
+    #
+    if dater.xlabel != 'Energy (keV)':
+        verb1(f"Note: the model evaluation is not in keV but {dater.xlabel}")
+
+    if dater.ylabel not in ['Counts', 'Counts/s']:
+        verb1(f"Note: the model evaluation creates {dater.ylabel} and not Counts")
 
     emid = dater.x
     flux = dater.y
