@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2013-2020 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2021 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "30 November 2020"
+__revision__ = "18 November 2021"
 
 import os
 
@@ -52,8 +52,8 @@ class delme( str ):
     root name.  Under normal conditions they are removed automatically
     however, if there is an error then since the threads
     are independent we can't be sure which files were created and
-    what needs to be cleaned up.
-
+    what needs to be cleaned up.  
+    
     Using this delme() class, we id the files that should always be
     removed -- either will be via the normal code paths, or if
     not when the string gets deleted/goes out of scope, the
@@ -66,7 +66,7 @@ class delme( str ):
 
 
 class Params(object):
-    '''I tried to use a named tuple for this, but they don't
+    '''I tried to use a named tuple for this, but they don't 
     pickle very well, and were completely broken on OSX py3.8.
     So instead i'll use this dummy class to hold the parameter
     values as individual attributes (to be added later)'''
@@ -75,7 +75,7 @@ class Params(object):
 
 def gorm( infile ):
     """
-    Wrapper around the os.remove command -- setting SAVE_ALL to anything
+    Wrapper around the os.remove command -- setting SAVE_ALL to anything 
     will keep all temp products
     """
     if 'SAVE_ALL' not in os.environ:
@@ -124,7 +124,7 @@ def get_root( myparams, at_energy ):
 
 def run_roi( infile, fovfile, tmproot="/tmp", bkgmode='mul', bkgradius=3, bkgfunction='mul', bkgfactor=1 ):
     """
-    Create src and background regions for each source
+    Create src and background regions for each source    
     """
     roi = make_tool("roi")
     roi.punlearn()  # make sure clean for num_srcs below
@@ -166,10 +166,10 @@ def del_temp_regions_files( tmpregs ):
             gorm(ff)
 
 
-def locate_fovfile( myparams ):
+def locate_fovfile( myparams ):    
     myroot = myparams.outroot
 
-    dot = "" if os.path.isdir(myroot) else "."
+    dot = "" if os.path.isdir(myroot) else "."    
     fov = myparams.fovfile if not is_none(myparams.fovfile) else myroot+dot+"fov"
     return(fov)
 
@@ -185,7 +185,7 @@ def run_split_roi( myparams ):
 
     # since we are already fixed at 90% at 1kev, fix
     # background to be 5x and 1x src regions.
-
+    
     fov = locate_fovfile( myparams)
 
     roi_files = run_roi( myroot+"srcs.fits", fov,
@@ -195,13 +195,13 @@ def run_split_roi( myparams ):
     mycmd = ["splitroi",
              myroot+r"????_reg.fits",
              myroot ]
-
+             
     if 0 != sp.call( mycmd ):
         raise Exception("Problem running {}".format(mycmd))
 
     del_temp_regions_files( roi_files)
 
-    #~# splitroi always puts a '.'
+    #~# splitroi always puts a '.' 
     #~ if os.path.isdir(myroot):
         #~ dot=""
     #~ else:
@@ -214,7 +214,7 @@ def run_split_roi( myparams ):
 
 def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
     """
-
+    
     """
     from cxcdm import dmTableOpen, dmTableClose, dmTableGetNoRows
     from region import regParse, regRegionString
@@ -231,13 +231,13 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
         raise ValueError("Number of bkgreg regions ({}) must match number of 'pos' values ({})".format(len(bkg_stk), nrows))
     if len(src_stk) != len(bkg_stk):
         raise ValueError("Number of srcreg regions ({}) and bkgreg regions ({}) must be the same".format(len(src_stk), len(bkg_stk)))
-
+    
 
     def region_to_phys( reg ):
         dmmakereg = make_tool("dmmakereg")
         tmproot = NamedTemporaryFile( dir=tmpdir)
         tfile = tmproot.name
-        tmproot.close()
+        tmproot.close()        
 
         dmmakereg.region=reg
         dmmakereg.outfile=tfile
@@ -245,13 +245,13 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
         dmmakereg.wcsfile=infile
         dmmakereg.clobber=True
         dmmakereg.verbose=0
-        dmmakereg()
+        dmmakereg()        
 
         rr=regParse( "region({})".format(dmmakereg.outfile ))
         gorm( tfile )
         return regRegionString( rr )
 
-
+    
     def validate_region( reg ):
         try:
             rr = regParse( reg )
@@ -277,25 +277,25 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
     with open( outbkg, "w" ) as fp:
         for b in bb:
             fp.write( b+"\n")
-
+    
     return delme("@-"+outsrc),delme("@-"+outbkg)
 
 
 def choose_skyfov_method( asolfiles ):
     """
     Choose skyfov method parameter based on ASOL CONTENT keyword
-
+    
     In Repro-5, there will be a new aspect solution file.  It will
     differ from the previous file in how the offsets (DY,DZ) are
-    applied. With these new files we can start to use the new
-    skyfov convex hull algorithm.
-    """
+    applied. With these new files we can start to use the new 
+    skyfov convex hull algorithm.    
+    """    
 
     skyfov_choices={ 'ASPSOLOBI' : 'convexhull' , 'ASPSOL' : 'minmax' }
     if asolfiles is None or 1 != len(asolfiles):
         # New obi based asol, there will be 1 file per obi (by design)
         return skyfov_choices["ASPSOL"]
-
+    
     asol=read_file(asolfiles[0])
     flavor=asol.get_key_value("CONTENT")
     if flavor not in skyfov_choices:
@@ -304,7 +304,7 @@ def choose_skyfov_method( asolfiles ):
 
 
 def run_skyfov( myparams ):
-
+    
     import ciao_contrib._tools.obsinfo as o
     skyfov = make_tool("skyfov")
 
@@ -312,7 +312,7 @@ def run_skyfov( myparams ):
 
     obs = o.ObsInfo( myparams.infile )
     asol_files = obs.get_asol() if 0 == len(myparams.asolfile) else myparams.asolfile
-
+    
     skyfov.infile= myparams.infile
     skyfov.aspect = asol_files
     skyfov.kernel = "FITS"
@@ -320,18 +320,18 @@ def run_skyfov( myparams ):
     skyfov.outfile = myparams.outroot+dot+"fov"
     skyfov.method = choose_skyfov_method( asol_files )
     skyfov.clobber = True
-
+    
     x = skyfov()
-    if x:
+    if x: 
         verb2(x)
-
+    
 
 def check_pos_in_srcreg( infile, srcs ):
     """
-        TODO:  This routine is not used.  There is
-        a DM bug that stops parsing region files after
+        TODO:  This routine is not used.  There is 
+        a DM bug that stops parsing region files after 
         reading a .gz file that causes this routine to fail.
-    """
+    """    
     from region import regParse, regInsideRegion
     from cxcdm import dmTableOpen, dmGetData, dmTableOpenColumn, dmTableClose, dmTableGetNoRows
 
@@ -342,10 +342,10 @@ def check_pos_in_srcreg( infile, srcs ):
     #dmTableClose(tab)
     xpos = [10]*len(srcs)
     ypos = [100]*len(srcs)
-
+    
 
     for ii,ss in enumerate( stk.build(srcs) ):
-
+        
         rr = regParse( ss )
         if not regInsideRegion( rr, xpos[ii], ypos[ii] ):
             verb0("Warning position {} at x={}, y={} is not inside source region".format( ii+1, xpos[ii], ypos[ii] ))
@@ -354,8 +354,8 @@ def check_pos_in_srcreg( infile, srcs ):
 def save_regions( myparams, regions, flavor ):
     """
         !!! TODO: Use new region module in ciao4.10 instead of dmmakereg
-
-    """
+    
+    """    
     dmmakereg = make_tool("dmmakereg")
 
     # CIAO 4.10 changes to NULL regions no longer creates a fake
@@ -364,7 +364,7 @@ def save_regions( myparams, regions, flavor ):
         ss = stk.build(regions)
     except ValueError as ve:
         ss = [ "point(0,0)" ]
-
+    
     with open( regions[2:], "w" ) as oo:  # 2 => skip "@-"
         for ii in range( len(ss)):
             outfile = "{}{:04d}_{}reg.fits".format(myparams.outroot, ii+1, flavor)
@@ -383,7 +383,7 @@ def save_regions( myparams, regions, flavor ):
             tmpreg.close()
 
             oo.write( "region({})\n".format(outfile))
-
+    
     return regions
 
 
@@ -421,19 +421,19 @@ def make_regions( myparams ):
     srcbkg = [is_none( myparams.srcreg ),is_none( myparams.bkgreg )]
 
     if all(srcbkg):
-        src,bkg = run_split_roi( myparams )
+        src,bkg = run_split_roi( myparams )        
     elif any(srcbkg):
         raise ValueError("Either both srcreg and bkgreg must be specified or neither can be specified")
-    else:
-        src,bkg = validate_src_and_bkg_regions( myroot, myparams.infile, myparams.tmpdir,
+    else:        
+        src,bkg = validate_src_and_bkg_regions( myroot, myparams.infile, myparams.tmpdir, 
             myparams.srcreg, myparams.bkgreg )
         #check_pos_in_srcreg( psfsize_srcs.outfile, src )
-
+    
     src = save_regions( myparams, src, "src" )
     bkg = save_regions( myparams, bkg, "bkg" )
-
+    
     return src,bkg
-
+    
 
 
 
@@ -497,7 +497,7 @@ def get_counts( myparams, at_energy, src, bkg ):
     Get the counts in the region using dmextract.
     We add the input columns from the PSF script with dmpaste
     """
-
+    
     dmextract = make_tool("dmextract")
     dmpaste = make_tool("dmpaste")
 
@@ -547,17 +547,17 @@ def get_counts( myparams, at_energy, src, bkg ):
     write_key( intab, "EMIN", elo, "Lower energy bounds", "keV")
     write_key( intab, "EMAX", ehi, "Upper energy bounds", "keV")
     intab.write()
-
+    
 
 def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
     """
     Run saotrace and psf_project_ray to simulate the PSF
     """
 
-    ### Note to future self:  saotrace pipes everything
+    ### Note to future self:  saotrace pipes everything 
     ### so it inheriently is already parallelized, trying to run
     ### in parallel will only cause massive slowness.  But marx isn't
-    ### so we could see some benifit from do those in parallel.
+    ### so we could see some benifit from do those in parallel.  
 
 
     if simulator == 'saotrace':
@@ -571,7 +571,7 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
     else:
         raise ValueError("Unknown simulator")
 
-
+    
     verb1("Simulating psfs using {}".format(simulator))
 
     myroot = get_root( myparams, at_energy )
@@ -579,11 +579,11 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
 
     src_stk = stk.build(src)
     nrow = len(src_stk)
-
+    
     eng = parse_mono_energy( at_energy )
 
     psf_files = []
-
+    
     for ii in range( 1,nrow+1):
         verb2("Working on src {}".format(ii))
 
@@ -618,15 +618,15 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
         simulate_psf.keepiter=False
         simulate_psf.random_seed=myparams.random_seed
         simulate_psf.verbose=0
-
+            
         vv = simulate_psf()
-        if vv:
+        if vv: 
             verb2(vv)
-
+            
         psf_files.append(outroot+".psf")
-
+    
     return psf_files
-
+        
 
 
 def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
@@ -668,7 +668,7 @@ def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
 
     if len( src_stk ) != len(psf_stk):
         raise ValueError("Must have as many psffiles as pos/src values")
-
+    
     fov = locate_fovfile( myparams)
     fov = [fov]*len(src_stk)
 
@@ -680,7 +680,7 @@ def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
         tmproot = NamedTemporaryFile( dir=myparams.tmpdir)
         tfile = tmproot.name
         tmproot.close()
-
+        
         dmextract.infile = s
         dmextract.bkg    = b
         dmextract.outfile = tfile
@@ -704,31 +704,31 @@ def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
     dmstat( infile=outfile+"[cols COUNTS]" )
     if float(dmstat.out_min) < 0:
         raise ValueError("PSF fraction cannot be negative")
-
+        
     if float(dmstat.out_max) > 1.01:
         # Why 1.01?  The MARX generated PSFs are normalized correctly
-        # but are stored in single precision. This can lead to
+        # but are stored in single precision. This can lead to 
         # PSFs which sum to something just above unity, eg 1.00000081
         #
         # That would be OK, since we threshold for this in aprates.
-        # But, if user supplied own PSF created w/ chart and they
+        # But, if user supplied own PSF created w/ chart and they 
         # have not normalized PSFs (ie integer counts), then we need
         # to catch this and error out.
         #
-        # So then, 1.01, is meant to allow the marx type FPE "noise"
+        # So then, 1.01, is meant to allow the marx type FPE "noise" 
         # while preventing users from supplying truly poorly
-        # normalized images.
+        # normalized images. 
         raise ValueError("PSF must be normalized to sum less than 1")
 
     dmstat.punlearn()
     dmstat( infile=outfile+"[cols BG_COUNTS]" )
     if float(dmstat.out_min) < 0:
         raise ValueError("PSF fraction cannot be negative")
-
+        
     if float(dmstat.out_max) > 1.01:
         raise ValueError("PSF must be normalized to sum less than 1")
-
-
+    
+        
     dmpaste.infile    = myroot+"{}".format(__osuf__)
     dmpaste.pastefile = outfile+"[cols PSFFRAC=counts,BG_PSFFRAC=bg_counts]"
     dmpaste.outfile   = delme(dmpaste.infile+".tmp")
@@ -747,7 +747,7 @@ def get_psf_from_region( myparams, at_energy, src, bkg ):
 
     dmpaste = make_tool("dmpaste")
     src_psffrac = make_tool("src_psffrac")
-
+    
     verb2("Converting coords and looking up PSF size")
 
     myroot = get_root(myparams, at_energy)
@@ -759,7 +759,7 @@ def get_psf_from_region( myparams, at_energy, src, bkg ):
     src_psffrac.psffile=myparams.ecffile
     src_psffrac.verbose=myparams.verbose
     src_psffrac.clobber=myparams.clobber
-
+    
     verb2( src_psffrac() )
 
     dmpaste.infile    = myroot+__osuf__
@@ -769,7 +769,7 @@ def get_psf_from_region( myparams, at_energy, src, bkg ):
     dmpaste.verbose = myparams.verbose
     verb2( dmpaste() )
 
-    os.rename( dmpaste.outfile, dmpaste.infile )
+    os.rename( dmpaste.outfile, dmpaste.infile )    
     gorm( src_psffrac.outfile )
 
 
@@ -788,7 +788,7 @@ def get_ideal_psf( myparams, at_energy, src, bkg ):
     dmtcalc.clobber = myparams.clobber
     dmtcalc.verbose = myparams.verbose
     verb2(dmtcalc())
-
+    
     os.rename( dmtcalc.outfile, dmtcalc.infile )
 
 
@@ -855,9 +855,9 @@ def run_arfcorr_and_dme( myparams, at_energy, src, bkg,ii):
 
         verb2(arfcorr())
         ac_out = arfcorr.outfile
-
+    
     fov = locate_fovfile( myparams)
-
+    
     dmextract.infile = "{}[cntFrac=region({})][bin sky={}]".format(ac_out, fov,src )
     dmextract.bkg = "{}[cntFrac=region({})][bin sky={}]".format(ac_out, fov, bkg )
     dmextract.outfile=myroot+"_{:04d}_model.psffrac".format(ii)
@@ -927,7 +927,7 @@ def run_aprates( c_s, a_s, alpha, c_b, a_b, beta, exposure, conf, outfile ):
     """
     aprates = make_tool("aprates")
 
-    def write_null( outfile ):
+    def write_null( outfile ):        
         with open(outfile, "w") as fp:
             fp.write("src_rate_mode,r,h,INDEF,,,\n")
             fp.write("src_rate_err_lo,r,h,INDEF,,,\n")
@@ -940,11 +940,11 @@ def run_aprates( c_s, a_s, alpha, c_b, a_b, beta, exposure, conf, outfile ):
     if 0 == c_s and 0 == c_b:
         write_null( outfile )
         return
-
+        
     if 0 == a_s:
         write_null( outfile )
         return
-
+        
     if 0 == alpha:
         write_null( outfile )
         return
@@ -976,7 +976,7 @@ def run_aprates( c_s, a_s, alpha, c_b, a_b, beta, exposure, conf, outfile ):
 
     if aa:
         verb4(aa)
-
+        
         pdf = outfile.replace(".par", ".prob")
         pdata = aa.split("\n")
 
@@ -1001,7 +1001,7 @@ def get_livetime_keywords( infile ):
     isn't there).  Also return just LIVETIME keyword value for HRC
     and in case it lands on a chip that isn't on.
     """
-
+       
     tab = read_file( infile )
     live_times = [ tab.get_key_value("LIVTIME{}".format(n)) for n in range(10)]
     the_live_time = tab.get_key_value( "LIVETIME")
@@ -1013,7 +1013,7 @@ def get_net_rate_aper( taskrunner, myparams, at_energy, src, bkg ):
     Wrapper around aprates that runs them in parallel then collects
     the outputs
     """
-
+    
     verb1("Getting net rate and confidence limits")
 
     myroot = get_root( myparams, at_energy )
@@ -1048,11 +1048,11 @@ def get_net_rate_aper( taskrunner, myparams, at_energy, src, bkg ):
             myparams.conf, outfile  )
     return outfiles
 
-
+    
 def add_aprates_to_output( myparams, at_energy, outfiles):
     """
-    """
-
+    """    
+    
     myroot = get_root( myparams, at_energy)
     intab = read_file( myroot+__osuf__, mode="rw")
 
@@ -1099,7 +1099,7 @@ def run_eff2evt( infile, outfile, energy):
     eff2evt.energy = energy
     eff2evt.clobber = True
     ee = eff2evt()
-
+    
     if ee:
         verb2(ee)
 
@@ -1116,7 +1116,7 @@ def run_eff2evt( infile, outfile, energy):
 
 def add_array_to_crate( intab,colname, vals,desc, unit ):
     """
-    add an array to crate
+    add an array to crate 
     """
     from pycrates import CrateData
     cd = CrateData()
@@ -1132,13 +1132,13 @@ def bound_src_and_bkg( src, bkg, tmpdir ):
     For fluximage and arfcorr we do not really care about filtering the
     image/data ... but we need to create a "seed" image (or subspace) that
     is the correct size to include both the source and background regions.
-    Trying different DM syntaxes has lead to problems so we
+    Trying different DM syntaxes has lead to problems so we 
     go ahead an just create the box that bounds the bounding boxes
     of the source and backgroudnds.
-
+    
     """
-
-    def bounds( ss ):
+    
+    def bounds( ss ):        
         dmmakereg = make_tool("dmmakereg")
 
         tmproot = NamedTemporaryFile(dir=tmpdir)
@@ -1149,24 +1149,24 @@ def bound_src_and_bkg( src, bkg, tmpdir ):
         dmmakereg.wcsfile=""
         dmmakereg.clobber=True
         dmmakereg.verbose=0
-        dmmakereg()
+        dmmakereg()        
 
         tab = read_file( tfile )
         xx = tab.get_column("x").values[0]
         yy = tab.get_column("y").values[0]
-        tmproot.close()
-
+        tmproot.close()        
+        
         return xx[0],yy[0],xx[1],yy[1]
-
+        
     sxmin,symin,sxmax,symax = bounds(src)
     bxmin,bymin,bxmax,bymax = bounds(bkg)
-
+    
     llx = min( [sxmin,bxmin] )-1
     lly = min( [symin,bymin] )-1
-
+    
     urx = max( [sxmax,bxmax] )+1
     ury = max( [symax,bymax] )+1
-
+    
     rr = "rectangle({},{},{},{})".format(llx,lly,urx,ury)
 
     return rr
@@ -1177,13 +1177,13 @@ def run_fluximage( infile, outroot, at_energy, src, bkg, myparams ):
     Create a postage stamp size image around the source and background.
 
     """
-
+    
     fluximage = make_tool("fluximage")
     dmextract = make_tool("dmextract")
 
     fov = locate_fovfile( myparams)
 
-
+    
     fluximage.infile = infile
     fluximage.outroot = outroot
     fluximage.bands = at_energy
@@ -1192,21 +1192,21 @@ def run_fluximage( infile, outroot, at_energy, src, bkg, myparams ):
     fluximage.clobber = True
     fluximage.asolfile = myparams.asolfile
     fluximage.badpixfile = myparams.bpixfile
-    fluximage.maskfile = myparams.mskfile
+    fluximage.maskfile = myparams.mskfile 
     fluximage.dtffile = myparams.dtffile
     fluximage.verbose = myparams.verbose
     fluximage.cleanup = 'SAVE_ALL' not in os.environ
     fluximage.tmpdir = myparams.tmpdir
     fluximage.background = "none"
-
+    
     try:
         # Note: something odd happens when fluximage throws an
         # exception and is wrapped in one of the loggers, eg
         # verb2(fluximage()).  What ends up happening is that the thread
         # that is running stops (well, maybe it hangs) -- basically, no
-        # other processes can use that thread anymore.  If more
-        # fluximage's throw exceptions than there are CPUs, then
-        # srcflux just hangs.  So I need to run and report the
+        # other processes can use that thread anymore.  If more 
+        # fluximage's throw exceptions than there are CPUs, then 
+        # srcflux just hangs.  So I need to run and report the 
         # output in two separate actions.
         ff = fluximage()
         if ff:
@@ -1228,7 +1228,7 @@ def run_fluximage( infile, outroot, at_energy, src, bkg, myparams ):
         verb2(dmextract())
 
         ##
-        # Let's go ahead and keep these
+        # Let's go ahead and keep these 
         #
         #if os.path.exists( myroot+"_thresh.expmap"):
         #    gorm(myroot+"_thresh.expmap")
@@ -1236,14 +1236,14 @@ def run_fluximage( infile, outroot, at_energy, src, bkg, myparams ):
         #    gorm(myroot+"_flux.img")
         #if os.path.exists( myroot+"_thresh.img"):
         #    gorm(myroot+"_thresh.img")
-
+        
     except Exception as e:
         verb0(str(e))
         verb3("Problem running fluximage for {}, results set to NaN".format(outroot))
         with open( outroot+".exp", "w" ) as fp:
             fp.write("#COUNTS\tBG_COUNTS\tMEAN_SRC_EXP\tMEAN_BG_EXP\n")
             fp.write("NaN\tNaN\tNaN\tNaN\n")
-
+        
 
 
 def get_fluximage_flux( taskrunner, myparams, at_energy, src, bkg ):
@@ -1257,7 +1257,7 @@ def get_fluximage_flux( taskrunner, myparams, at_energy, src, bkg ):
     inroot = myparams.infile
     src_stk = stk.build( src )
     bkg_stk = stk.build( bkg )
-
+    
     srcfiles = []
     for ii in range(1,len(src_stk)+1):
         bound = bound_src_and_bkg(src_stk[ii-1], bkg_stk[ii-1], myparams.tmpdir)
@@ -1268,9 +1268,9 @@ def get_fluximage_flux( taskrunner, myparams, at_energy, src, bkg ):
         taskrunner.add_task( outfile, "", run_fluximage,
             infile, outfile, at_energy, src_stk[ii-1], bkg_stk[ii-1], myparams )
         srcfiles.append( delme(outfile+".exp") )
-
+    
     return srcfiles
-
+    
 
 
 
@@ -1315,7 +1315,7 @@ def get_model_independent_flux( taskrunner, myparams, at_energy, src, bkg ):
         taskrunner.add_task( outfile, "", run_eff2evt,
             infile, outfile, mono )
         srcfiles.append( delme(outfile) )
-
+    
     bkgfiles = []
     for ii in range(1,len(bkg_stk)+1):
         infile = inroot+"[sky={}]".format(bkg_stk[ii-1])
@@ -1323,13 +1323,13 @@ def get_model_independent_flux( taskrunner, myparams, at_energy, src, bkg ):
         taskrunner.add_task( outfile, "", run_eff2evt,
             infile, outfile, mono )
         bkgfiles.append( delme(outfile+"[cols BG_FLUX_APER=FLUX_APER]" ))
-
+    
     return( srcfiles, bkgfiles )
 
 
 def add_photflux_to_outfile( myparams, at_energy, photfiles ):
     """
-
+    
     """
     verb1("Appending photflux results onto output")
     myroot = get_root( myparams, at_energy )
@@ -1357,7 +1357,7 @@ def add_photflux_to_outfile( myparams, at_energy, photfiles ):
         gorm( dd )
     gorm( myroot+"_photflux")
 
-
+    
 
 def add_effevt_to_outfile( myparams, at_energy, srcfiles, bkgfiles ):
     """
@@ -1407,8 +1407,8 @@ def scale_eff2evt_fluxes( myparams, at_energy):
     S = a*F + N
     B = b*F + r*N
 
-    where S = counts in src region, B = counts in bkg region,
-    a = psf frac in src, b = fraction of src psf in bkg,
+    where S = counts in src region, B = counts in bkg region, 
+    a = psf frac in src, b = fraction of src psf in bkg, 
     F = source flux, N = background, r = aperature area scale.
 
     Solve for N.
@@ -1492,13 +1492,13 @@ def get_single_keyword( infile, keyword ):
     try:
         val = _val.decode("ascii")
     except:
-        val = _val
+        val = _val    
     dmTableClose(tab)
     return val
 
 
 class OutsideFOV( Exception ):
-
+    
     def __init__(self, msg):
         self.msg = msg
     def __str__(self):
@@ -1510,7 +1510,7 @@ class FailAndSkip( RuntimeError ):
         self.msg = msg
     def __str__(self):
         return self.msg
-
+    
 
 
 def run_specextract( myparams, outroot, srcreg, bkgreg, ii, at_energy ):
@@ -1522,7 +1522,7 @@ def run_specextract( myparams, outroot, srcreg, bkgreg, ii, at_energy ):
 
     verb1("Making response files for {}".format(outroot))
 
-    myroot = get_root( myparams, at_energy )
+    myroot = get_root( myparams, at_energy )    
     xx = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "xpos")
     yy = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "ypos")
     ra = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "rapos")
@@ -1533,7 +1533,7 @@ def run_specextract( myparams, outroot, srcreg, bkgreg, ii, at_energy ):
         raise OutsideFOV("{}".format(ii))
 
     infile = myparams.infile
-
+    
     with newpf(tmpdir=myparams.tmpdir, copyuser=False, ardlib=False) as foo:
         specextract2 = make_tool("specextract")
         specextract2.infile  = "{}[sky={}]".format(infile,srcreg)
@@ -1552,10 +1552,10 @@ def run_specextract( myparams, outroot, srcreg, bkgreg, ii, at_energy ):
         else:
             specextract2.refcoord = "{:.12} +{:.12}".format(ra,dec)
 
-
+        
         specextract2.weight = True
         #specextract.correctpsf = False # we run separately below so no psf double corrections
-
+        
         # no grouping, leave for user, default grids, etc.
         specextract2.clobber = myparams.clobber
         specextract2.verbose = myparams.verbose
@@ -1576,7 +1576,7 @@ def run_specextract( myparams, outroot, srcreg, bkgreg, ii, at_energy ):
                 raise FailAndSkip(str(e))
 
         # Get PSF fraction correction in separate file, will get renamed at end
-
+        
         #
         # arfcorr calls 'dmcoords' which makes it non-thread safe so we
         # need to use a unique local pfiles for each thread.
@@ -1600,29 +1600,29 @@ def get_nh_from_colden( myparams, token, at_energy, ii ):
     Get NH value by running colden
     """
     from ciao_contrib.proptools import colden
-    myroot = get_root( myparams, at_energy )
+    myroot = get_root( myparams, at_energy )    
     ra = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "rapos")
     dec = get_single_keyword(myroot+"{}[#row={}]".format(__osuf__,ii), "decpos")
-
+    
     if token.startswith("%NRAO") or token.startswith("%GAL"):
         nh = colden(ra,dec,dataset="nrao")
     elif token.startswith("%BELL"):
         nh = colden(ra,dec,dataset="bell")
     else:
         raise RuntimeError("Error getting colden values")
-
+    
     if nh is None:
         raise RuntimeError("Cannot retrieve the {} value from colden".format(token))
-
+    
     nh *= 0.01 # Convert to 10^-22 for sherpa/xspec
     return nh
-
+    
 
 def replace_nh_tokens( myparams, at_energy, ii, in_pi=None ):
     """
-    Look for and replace any special %*_NH% tokens in the
+    Look for and replace any special %*_NH% tokens in the 
     model parameter strings.
-
+    
     First try to get the value from the spectrum (if
     available and had it) otherwise will try to run
     colden.
@@ -1633,7 +1633,7 @@ def replace_nh_tokens( myparams, at_energy, ii, in_pi=None ):
         token = '%{}%'.format(key)
         if token not in modelparam:
             return modelparam
-
+            
         if in_pi is None:
             pi = myparams.outroot+"{:04d}.pi".format(ii)
         else:
@@ -1659,7 +1659,7 @@ def replace_nh_tokens( myparams, at_energy, ii, in_pi=None ):
     for key in ["GAL", "NRAO_NH", "BELL_NH"]:
         mparams = lookup_value( key, mparams )
         absparams = lookup_value( key, absparams )
-
+        
     return mparams, absparams
 
 
@@ -1749,7 +1749,7 @@ def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf,
 
 def cleanup_tempfiles( myparams, src, bkg ):
     """
-
+    
     """
     nn = len(stk.build( src ))
     gorm(src[2:]) # skip '@-'
@@ -1772,7 +1772,7 @@ def cleanup_tempfiles( myparams, src, bkg ):
             corr = orig +".corr"
             os.rename( orig, orig.replace(".arf", "_nopsf.arf" ))
             os.rename( corr, orig )
-
+    
     # Cleanup specextract output
     for ii in range(1,nn+1):
         myroot = myparams.outroot+"{:04d}".format(ii)
@@ -1785,13 +1785,13 @@ def cleanup_tempfiles( myparams, src, bkg ):
             gorm(tt)
         for tt in glob.glob( myroot+"_bkg_asphist*.fits"):
             gorm(tt)
-
+    
 
 
 def get_input_arf_rmf( arffiles, rmffiles, src_stk ):
     """
     """
-
+    
     if is_none(arffiles) or is_none(rmffiles):
         aa = [None]*len(src_stk)
         rr = [None]*len(src_stk)
@@ -1803,7 +1803,7 @@ def get_input_arf_rmf( arffiles, rmffiles, src_stk ):
     rr = stk.build(rmffiles)
     if len(rr) != len(src_stk):
         raise IOError("ERROR: rmffile must have as many values as sources")
-
+    
     return aa,rr
 
 
@@ -1825,21 +1825,21 @@ def get_model_flux( taskrunner, myparams, at_energy, src, bkg, make_resp ):
     infiles = []
     for ii in range(len(src_stk)):
         outroot = myroot+"_{:04d}.dat".format(ii+1)
-        taskrunner.add_task( outroot, "", run_modelflux, myparams,
+        taskrunner.add_task( outroot, "", run_modelflux, myparams, 
             at_energy, outroot, src_stk[ii], bkg_stk[ii], ii+1, make_resp,
             arfs[ii], rmfs[ii], None )
         infiles.append( delme(outroot) )
 
     return infiles
-
+    
 
 def add_modelflux_to_output( myparams, at_energy, infiles ):
     """
     attach model flux values to output file
-
+    
     """
     verb1("Adding model fluxes to output")
-
+    
     myroot = get_root( myparams, at_energy )
 
     dmmerge = make_tool("dmmerge")
@@ -1868,8 +1868,8 @@ def add_modelflux_to_output( myparams, at_energy, infiles ):
 
 def scale_modelflux_fluxes( myparams, at_energy ):
     """
-    scale model flux output to the input rates
-    """
+    scale model flux output to the input rates    
+    """    
 
     verb1("Scaling model flux confidence limits")
 
@@ -1895,7 +1895,7 @@ def scale_modelflux_fluxes( myparams, at_energy ):
     add_array_to_crate( intab, "NET_MFLUX_APER", mflux, "Model scaled flux","ergs/cm**2/s")
     add_array_to_crate( intab, "NET_MFLUX_APER_LO", mflux_lo , "Model scaled flux lower limit","ergs/cm**2/s")
     add_array_to_crate( intab, "NET_MFLUX_APER_HI", mflux_hi, "Model scaled flux upper limit","ergs/cm**2/s")
-    add_array_to_crate( intab, "NET_UMFLUX_APER", umflux, "Unabs. model scaled flux","ergs/cm**2/s")
+    add_array_to_crate( intab, "NET_UMFLUX_APER", umflux, "Unabs. model scaled flux","ergs/cm**2/s") 
     add_array_to_crate( intab, "NET_UMFLUX_APER_LO", umflux_lo, "Unabs. model scaled flux lower limit","ergs/cm**2/s")
     add_array_to_crate( intab, "NET_UMFLUX_APER_HI", umflux_hi, "Unabs. model scaled flux upper limit", "ergs/cm**2/s")
 
@@ -1936,7 +1936,7 @@ def merge_modelflux( stk_params, myparams ):
     for snum in range( nsrcs ):
         verb2("Combining spectra for source {}".format(snum+1))
 
-        combine_spectra = make_tool("combine_spectra")
+        combine_spectra = make_tool("combine_spectra")        
 
         pi_files = [ p.outroot+"{:04d}.pi".format(snum+1) for p in stk_params ]
         arf_files = [ p.outroot+"{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
@@ -1954,7 +1954,7 @@ def merge_modelflux( stk_params, myparams ):
             a_good.append(p_a_r[1])
             r_good.append(p_a_r[2])
 
-
+        
         if p_good is None or 0 == len(p_good):
             for at_energy in bands:
                 outfiles[at_energy]["mflux_cnv"].append(np.nan)
@@ -1984,10 +1984,10 @@ def merge_modelflux( stk_params, myparams ):
             delme(outroot)
 
     return outfiles
-
+    
 
 def counts_helper( ):
-
+    
     retval = { 'counts' : [],
                'area' : [],
                'exposure' : [],
@@ -2025,7 +2025,17 @@ def merge_get_counts( infiles ):
         else: # ACIS
             cc = int(tab.get_column("chip_id").values[0])
             assert cc in range(10)
-            retval['exptime'].append( tab.get_key_value("LIVTIME{}".format(cc)))
+            etime = tab.get_key_value("LIVTIME{}".format(cc))
+            if etime is None:
+                # For sources right on the edge of the chip, they 
+                # can be inside the FOV (includes dither), but the 
+                # chip_id value itself is computed
+                # at the mean pointing, so it may be on another 
+                # chip, which is no turned on. If this happens, just
+                # set exposure time to LIVETIME (to be consistent w/ 
+                # individual obi)
+                etime = tab.get_key_value("LIVETIME")
+            retval['exptime'].append(etime)
 
     return retval
 
@@ -2033,15 +2043,14 @@ def merge_get_counts( infiles ):
 def merge_aprates( cts, conf, rate=False ):
     """
     TODO:  CSC1 approach.  Take instead from xaprate/naprates/etc
-
+    
     """
     #~ import aper as aper
     aprates = make_tool("aprates")
     outfile = NamedTemporaryFile(suffix=".par", delete=False)
 
     good = ( np.array( cts["inside_fov"] ) == True )
-
-
+    
     c      = np.array( cts["counts"] )[good]
     b      = np.array( cts["bg_counts"] )[good]
     alpha  = np.array(cts["psffrac"])[good]
@@ -2077,22 +2086,22 @@ def merge_aprates( cts, conf, rate=False ):
     if M == 0:
         R = np.nan
     else:
-        R = Q / M
+        R = Q / M 
 
     chk = np.sum(exp_s)
     if chk != 0:
         Alpha = np.sum(alpha*exp_s)/chk
     else:
         Alpha = np.nan
-
+        
     chk = np.sum(exp_b)
     if chk != 0:
         Beta = np.sum(beta*exp_b)/chk
     else:
         Beta = np.nan
 
-    E_S = np.sum(exp_s)
-    E_B = np.sum(exp_b)
+    E_S = np.sum(exp_s) 
+    E_B = np.sum(exp_b) 
     A_S = 1.0
 
     if E_B != 0:
@@ -2125,7 +2134,7 @@ def merge_aprates( cts, conf, rate=False ):
     if not any(good):
         delme(outfile.name)
         return badval
-
+    
     if not wtaf:
         delme(outfile.name)
         return badval
@@ -2166,7 +2175,7 @@ def merge_aprates( cts, conf, rate=False ):
                'conf' : float(conf),
                'numobi': len(c) ,
                }
-
+               
     return retval
 
 
@@ -2176,10 +2185,10 @@ def merge_photfluxes(cts):
     if not any(good):
         return { 'value' : np.nan }
 
-    exptime = np.array(cts["exptime"])[good]
+    exptime = np.array(cts["exptime"])[good]    
     photflux    = np.array(cts["net_photflux_aper"])[good]
     photflux_hi = np.array(cts["net_photflux_aper_hi"])[good]
-
+    
     for ii in range(len(photflux)):
         if photflux[ii] == 0:
             photflux[ii] = photflux_hi[ii] # Use the upper limit
@@ -2188,7 +2197,7 @@ def merge_photfluxes(cts):
     retval = { 'value' : P }
     return retval
 
-
+    
 
 def merge_eff2evt( cts ):
     """
@@ -2207,14 +2216,14 @@ def merge_eff2evt( cts ):
     bgflux = np.sum(b*exp) / np.sum(exp)
 
     return { 'src' : flux, 'bkg' : bgflux}
-
-
+    
+    
 
 def merge_counts( stk_params, myparams):
     """
     Combine the counts/rates in the .flux files
-
-    TODO: UPPER LIMITS!
+    
+    TODO: UPPER LIMITS!    
     """
     bands = stk.build( myparams.bands)
     retvals = {}
@@ -2229,7 +2238,7 @@ def merge_counts( stk_params, myparams):
     nsrcs = get_num_srcs( stk_params[0])
     for snum in range( nsrcs ):
         verb2("Combining rates source {}".format(snum+1))
-
+    
         for at_energy in bands:
             srcfiles = [ "{}{}[#row={}]".format(get_root(src,at_energy), __osuf__, snum+1) for src in stk_params  ]
             cts = merge_get_counts( srcfiles )
@@ -2248,12 +2257,12 @@ def merge_counts( stk_params, myparams):
 
 def merge_write_output( stk_params, myparams, modelflux_vals, merge_fluxes ):
     """
-
+    
     """
     dmmerge = make_tool("dmmerge")
-
+    
     for at_energy in stk.build( myparams.bands ):
-
+        
         mstk = [ get_root(s,at_energy)+__osuf__ for s in stk_params ]
         #mstk = [ m+"[cols rapos,decpos,component][subspace -time,-expno,-ccd_id,-sky,-node_id,-chipx,-chipy,-tdetx,-tdety,-detx,-dety,-phas,-pha,-pha_ro,-pi,-fltgrade]" for m in mstk]
         mstk = [ m+"[cols rapos,decpos,component][subspace -time,-expno,-sky,-ccd_id]" for m in mstk]
@@ -2263,40 +2272,40 @@ def merge_write_output( stk_params, myparams, modelflux_vals, merge_fluxes ):
         dmmerge.outfile = get_root(myparams, at_energy)+__osuf__
         vv = dmmerge(clobber=True)
         if vv: verb2(vv)
-
+        
         intab = read_file( dmmerge.outfile, mode="rw" )
 
         def pick_and_write( colname, desc, units, valname, store):
             vals = [ r[valname] for r in merge_fluxes[at_energy][store]]
-            add_array_to_crate( intab, colname,vals, desc, units )
+            add_array_to_crate( intab, colname,vals, desc, units ) 
 
         pick_and_write( "TOTAL_COUNTS", "Summed counts in src regions", "", "src_cts", "rates" )
         pick_and_write( "TOTAL_BG_COUNTS", "Summed counts in bkg regions", "", "bkg_cts", "rates" )
         pick_and_write( "NUM_OBI", "Number of OBIs included", "", "numobi", "rates" )
-
+        
 
         pick_and_write( "MERGED_NET_RATE_APER", "Merged count rate", "counts/s", "value", "rates" )
         pick_and_write( "MERGED_NET_RATE_APER_LO", "Merged count rate lower limit", "counts/s", "lolimit", "rates" )
-        pick_and_write( "MERGED_NET_RATE_APER_HI", "Merged count rate upper limit", "counts/s", "hilimit", "rates" )
+        pick_and_write( "MERGED_NET_RATE_APER_HI", "Merged count rate upper limit", "counts/s", "hilimit", "rates" )        
         pick_and_write( "MERGED_RATE_AREASCAL", "Merged area scale used in rates", "", "backscl", "rates")
         pick_and_write( "PSF_WEIGHTED_TOTAL_EXPOSURE_TIME", "Sum(EXPOSURE) weighted by PSF fraction", "s", "srcwexp", "rates")
 
         pick_and_write( "MERGED_NET_APRATES_PHOTFLUX_APER", "Merged count rate", "photon/cm**2/s", "value", "fluxes" )
         pick_and_write( "MERGED_NET_APRATES_PHOTFLUX_APER_LO", "Merged count rate lower limit", "photon/cm**2/s", "lolimit", "fluxes" )
-        pick_and_write( "MERGED_NET_APRATES_PHOTFLUX_APER_HI", "Merged count rate upper limit", "photon/cm**2/s", "hilimit", "fluxes" )
+        pick_and_write( "MERGED_NET_APRATES_PHOTFLUX_APER_HI", "Merged count rate upper limit", "photon/cm**2/s", "hilimit", "fluxes" )        
         pick_and_write( "MERGED_PHOTFLUX_AREASCAL", "Merged area scale used in rates", "", "backscl", "fluxes")
         pick_and_write( "PSF_WEIGHTED_TOTAL_SRC_EXPOSURE", "Sum(EXPOSURE_MAP) weighted by PSF fraction", "cm**2 s", "srcwexp", "fluxes")
         pick_and_write( "PSF_WEIGHTED_TOTAL_BG_EXPOSURE", "Sum(EXPOSURE_MAP) weighted by PSF fraction", "cm**2 s", "bkgwexp", "fluxes")
 
         total_net_rate = [ float(r['value']) for r in merge_fluxes[at_energy]['rates']]
         total_net_rate_lolim = [ float(r['lolimit']) for r in merge_fluxes[at_energy]['rates']]
-        total_net_rate_hilim = [ float(r['hilimit']) for r in merge_fluxes[at_energy]['rates']]
+        total_net_rate_hilim = [ float(r['hilimit']) for r in merge_fluxes[at_energy]['rates']]        
 
         total_photflux = [r['value'] for r in merge_fluxes[at_energy]['photfluxes']]
-        total_photflux_cnv = np.array(total_photflux) / np.array(total_net_rate)
+        total_photflux_cnv = np.array(total_photflux) / np.array(total_net_rate)  
         total_photflux_lolim = np.array(total_net_rate_lolim)*total_photflux_cnv
         total_photflux_hilim = np.array(total_net_rate_hilim)*total_photflux_cnv
-
+        
         add_array_to_crate( intab, "MERGED_NET_PHOTFLUX_APER", total_photflux, "Merged model scaled photflux", "photon/cm**2/s")
         add_array_to_crate( intab, "MERGED_NET_PHOTFLUX_APER_LO", total_photflux_lolim, "Merged model scaled photflux lower limit", "photon/cm**2/s")
         add_array_to_crate( intab, "MERGED_NET_PHOTFLUX_APER_HI", total_photflux_hilim, "Merged model scaled photflux upper limit", "photon/cm**2/s")
@@ -2313,7 +2322,7 @@ def merge_write_output( stk_params, myparams, modelflux_vals, merge_fluxes ):
 
         add_array_to_crate( intab, "MFLUX_CNV", total_mflux_cnv, "model flux rate conversion", "" )
         add_array_to_crate( intab, "UMFLUX_CNV", total_mflux_cnv, "unabsorbed model flux rate conversion", "" )
-
+        
         add_array_to_crate( intab, "MERGED_NET_MFLUX_APER", total_mflux, "Merged model scaled flux", "ergs/cm**2/s")
         add_array_to_crate( intab, "MERGED_NET_MFLUX_APER_LO", total_mflux_lo, "Merged model scaled flux lower limit", "ergs/cm**2/s")
         add_array_to_crate( intab, "MERGED_NET_MFLUX_APER_HI", total_mflux_hi, "Merged model scaled flux upper limit", "ergs/cm**2/s")
@@ -2323,7 +2332,7 @@ def merge_write_output( stk_params, myparams, modelflux_vals, merge_fluxes ):
 
         pick_and_write( "TOTAL_FLUX_APER", "Total model independent flux in src regions", "ergs/cm**2/s", "src", "eff2evt")
         pick_and_write( "TOTAL_BG_FLUX_APER", "Total model independent flux in bkg regions", "ergs/cm**2/s", "bkg", "eff2evt")
-
+        
 
         intab.write()
 
@@ -2353,12 +2362,12 @@ def cleanup_outfile( myparams, pars, at_energy):
     fix_it( "BG_FLUX_APER", "ergs/cm**2/s", "Sum eff2evt flux in bkg region")
     fix_it( "MFLUX_CNV", None, "model flux rate conversion")
     fix_it( "UMFLUX_CNV", None, "unabsorbed model flux rate conversion")
-
+    
     fix_it( "SRC_PHOTFLUX", "photon/cm**2/s", "Sum of flux image in src region")
     fix_it( "BG_PHOTFLUX", "photon/cm**2/s", "Sum of the flux image in background region")
 
     intab.write()
-
+    
     add_tool_history( myroot+__osuf__, toolname, pars, toolversion=__revision__)
 
 
@@ -2384,19 +2393,19 @@ def get_psf_fractions( myparams, at_energy, src, bkg ):
 
 def summarize_results( myparams, obi=None, single=False ):
     """
-    Position                               1 - 2 keV                               1 - 2 keV                               1 - 2 keV
-                                           Value        90% Conf Interval          Value        90% Conf Interval          Value        90% Conf Interval
-    10 4 34.91 +41 12 43.0  Rate           0.00907 c/s (0.00848,0.00967)           0.00537 c/s (0.00491,0.00583)           0.00389 c/s (0.00349,0.00431)
-                            Flux           3.57E-14 erg/cm2/s (3.33E-14,3.8E-14)   2.3E-14 erg/cm2/s (2.1E-14,2.5E-14)     6.71E-14 erg/cm2/s (6.01E-14,7.42E-14)
-                            Mod.Flux       3.24E-14 erg/cm2/s (3.03E-14,3.45E-14)  2.08E-14 erg/cm2/s (1.9E-14,2.26E-14)   6.44E-14 erg/cm2/s (5.76E-14,7.12E-14)
-                            Unabs Mod.Flux 3.24E-14 erg/cm2/s (3.03E-14,3.45E-14)  2.08E-14 erg/cm2/s (1.9E-14,2.26E-14)   6.44E-14 erg/cm2/s (5.76E-14,7.12E-14)
+    Position                               1 - 2 keV                               1 - 2 keV                               1 - 2 keV                               
+                                           Value        90% Conf Interval          Value        90% Conf Interval          Value        90% Conf Interval          
+    10 4 34.91 +41 12 43.0  Rate           0.00907 c/s (0.00848,0.00967)           0.00537 c/s (0.00491,0.00583)           0.00389 c/s (0.00349,0.00431)           
+                            Flux           3.57E-14 erg/cm2/s (3.33E-14,3.8E-14)   2.3E-14 erg/cm2/s (2.1E-14,2.5E-14)     6.71E-14 erg/cm2/s (6.01E-14,7.42E-14)  
+                            Mod.Flux       3.24E-14 erg/cm2/s (3.03E-14,3.45E-14)  2.08E-14 erg/cm2/s (1.9E-14,2.26E-14)   6.44E-14 erg/cm2/s (5.76E-14,7.12E-14)  
+                            Unabs Mod.Flux 3.24E-14 erg/cm2/s (3.03E-14,3.45E-14)  2.08E-14 erg/cm2/s (1.9E-14,2.26E-14)   6.44E-14 erg/cm2/s (5.76E-14,7.12E-14)      
     """
 
     bands = stk.build( myparams.bands )
     conf = float(myparams.conf)
 
     from coords.format import deg2ra, deg2dec
-
+    
     _lead = 30
     _lead_fmt = "{:"+str(_lead)+"s}"
     vals={}
@@ -2408,12 +2417,12 @@ def summarize_results( myparams, obi=None, single=False ):
 
 
     hdr = [None, None, None, None]
-
+    
     hdr[0] = _lead_fmt.format("      Position")
     hdr[1] = " "*_lead
-
+    
     hdr[0] += " "*15  # space for Rate, Flux
-    hdr[1] += " "*15
+    hdr[1] += " "*15  
 
 
     for b in bands:
@@ -2430,8 +2439,8 @@ def summarize_results( myparams, obi=None, single=False ):
             ehi = 10.0
 
         hdr[0] += "{:40s}".format( "{} - {} keV".format( elo, ehi ))
-        hdr[1] += "{:40s}".format( "Value     {:5g}% Conf Interval".format( conf *100))
-
+        hdr[1] += "{:40s}".format( "Value       {:3d}% Conf Interval".format( int( conf *100)))
+    
 
     if True == single:
         verbstr = "\n\nSummary of source fluxes\n"
@@ -2444,11 +2453,11 @@ def summarize_results( myparams, obi=None, single=False ):
     logverb(verbstr)
     logverb(hdr[0])
     logverb(hdr[1])
-
+    
     nsrcs = len( vals[bands[0]].get_column("RAPOS").values )
-    for ii in range(nsrcs):
+    for ii in range(nsrcs):        
         ra = vals[bands[0]].get_column("RAPOS").values[ii]
-
+        
         ras = deg2ra( ra ," ")
         dot = ras.find(".")
         if dot == -1: # not found
@@ -2485,17 +2494,17 @@ def summarize_results( myparams, obi=None, single=False ):
             hdr[0] = _lead_fmt.format("#{:04d}|{} {}".format( srcno, ras, decs ))
             hdr[1] = " "*_lead if inside else _lead_fmt.format(" Outside FOV")
             hdr[2] = " "*_lead
-
+            
             if is_none( myparams.absmodel ):
                 cols.remove( "NET_UMFLUX_APER" )
                 hdr=hdr[0:3]
             else:
                 hdr[3] = " "*_lead
-
-
+            
+            
             unit = ["erg/cm2/s"]*len(cols)
             unit[0] = "c/s"
-        else:
+        else: 
             hdr=hdr[0:3] # only 4 rows of output
             srcno = vals[bands[0]].get_column("COMPONENT").values[ii]
 
@@ -2504,31 +2513,31 @@ def summarize_results( myparams, obi=None, single=False ):
 
             hdr[0] = _lead_fmt.format("#{:04d}|{} {}".format( srcno, ras, decs ))
             hdr[1] = _lead_fmt.format("  NumObi={:d}".format( vals[bands[0]].get_column("NUM_OBI").values[ii]))
-
+            
             if is_none( myparams.absmodel ):
                 cols.remove( "MERGED_NET_UMFLUX_APER" )
                 hdr=hdr[0:2]
             else:
                 hdr[2] = " "*_lead
-
-
+            
+            
             unit = ["erg/cm2/s"]*len(cols)
             unit[0] = "c/s"
 
-
-
-        for k in range(len(cols )):
-            hdr[k] += "{:15s}".format(disp[k])
+        
+            
+        for k in range(len(cols )):                
+            hdr[k] += "{:15s}".format(disp[k])                
             for b in bands:
                 val = vals[b].get_column(cols[k]).values[ii]
                 val_lo= vals[b].get_column(cols[k]+"_LO").values[ii]
-                val_hi= vals[b].get_column(cols[k]+"_HI").values[ii]
+                val_hi= vals[b].get_column(cols[k]+"_HI").values[ii]                
                 hdr[k] += "{:40s}".format("{:.3G} {:s} ({:.3G},{:.3G})".format( val, unit[k], val_lo, val_hi))
-
+    
         logverb("\n".join(hdr))
         logverb("")
     text_summary.close()
-
+    
 
 def set_nproc( pars ):
     if "no" == pars["parallel"]:
@@ -2541,7 +2550,7 @@ def set_nproc( pars ):
 
 
 def set_bands( pars ):
-
+        
     pars["bands"] = pars["bands"].lower().replace("csc", "soft,medium,hard")
 
     if pars["bands"] == "default":
@@ -2550,29 +2559,29 @@ def set_bands( pars ):
             pars["bands"] = "broad"
         else:
             pars["bands"] = "wide"
-
+    
 
 def check_infile( infile ):
     """
-
-
+    
+    
     """
-
+    
     inst = get_single_keyword( infile, "instrume" )
-
+    
     #if "HRC" == inst:
     #    raise NotImplementedError("HRC is not supported in this version")
-
+    
     if "chandra" != get_single_keyword( infile, "telescop").lower():
         raise NotImplementedError("Script only works with CHANDRA datasets")
-
+    
     if "ACIS" == inst.upper():
         if "CONTINUOUS" == get_single_keyword(infile, "readmode").upper():
             raise NotImplementedError("This script does not work with Continious Clocking mode data")
-
+    
 
 def check_pos_inside_fov( myparam ):
-
+    
     from region import regParse, regInsideRegion
     fov = locate_fovfile( myparam )
 
@@ -2580,9 +2589,9 @@ def check_pos_inside_fov( myparam ):
     tab = read_file( myparam.outroot+"srcs.fits", mode="rw")
     xx = tab.get_column("x").values.copy()
     yy = tab.get_column("y").values.copy()
-
+    
     isin = [ 1==regInsideRegion( fov, *xy) for xy in zip( xx,yy)]
-
+    
     add_array_to_crate( tab, "INSIDE_FOV", isin, "Is XPOS,YPOS inside the FOV?", "")
     tab.write()
 
@@ -2602,25 +2611,25 @@ def check_outroot( outroot ):
 def check_parameters( myparams ):
     """
     Simple sanity checks
-    """
+    """    
 
     check_infile( myparams.infile )
-
-    check_outroot( myparams.outroot)
-
+        
+    check_outroot( myparams.outroot) 
+    
     for nm in [ 'pos', 'model', 'paramvals',  'ecffile', 'tmpdir' ]:
         if is_none(getattr(myparams, nm)) :
             raise ValueError("The '{}' parameter cannot be left blank or set to none".format( nm ))
-
+    
     if is_none( myparams.absmodel ) and not is_none( myparams.absparams ):
         raise ValueError("Both 'absmodel' and 'absparams' must be specified")
-
+    
     if is_none( myparams.absparams ) and not is_none( myparams.absmodel ):
         raise ValueError("Both 'absmodel' and 'absparams' must be specified")
 
     import ciao_contrib._tools.obsinfo as o
     obs = o.ObsInfo( myparams.infile )
-
+        
     if is_none( myparams.asolfile ):
         try:
             ff = obs.get_asol()
@@ -2628,7 +2637,7 @@ def check_parameters( myparams ):
                 raise ValueError("")
         except:
             raise ValueError("Cannot locate aspect solution files.  Please specify 'asolfile' parameter")
-
+    
     if 0 == len( myparams.mskfile ):
         try:
             ff = obs.get_ancillary("mask")
@@ -2638,8 +2647,8 @@ def check_parameters( myparams ):
             raise ValueError("Cannot locate mask file.  Please specify 'mskfile' parameter.")
     elif "none" == myparams.mskfile.lower():
         verb0("\nWARNING: mask file parmater set to 'none'; mask information will not be use.  This may lead to inaccuracies in the results\n")
-
-
+        
+    
     if 0 == len( myparams.bpixfile ):
         try:
             ff = obs.get_ancillary("bpix")
@@ -2649,10 +2658,10 @@ def check_parameters( myparams ):
             raise ValueError("Cannot locate bad pixel file.  Please specify 'bpixfile' parameter.")
     elif "none" == myparams.bpixfile.lower():
         verb0("\nWARNING: badpixel file parmater set to 'none'; badpixel information will not be use.  This may lead to inaccuracies in the results\n")
-
+        
     inst = get_single_keyword(myparams.infile, "instrume" )
     if "HRC" == inst:
-
+    
         if 0 == len( myparams.dtffile ):
             try:
                 ff = obs.get_ancillary("dtf")
@@ -2662,8 +2671,8 @@ def check_parameters( myparams ):
                 raise ValueError("Cannot locate HRC dead time factors file.  Please specify 'dtffile' parameter.")
         elif "none" == myparams.dtffile.lower():
             verb0("\nWARNING: dead time factors file parmater set to 'none'; DTF information will not be use.  This may lead to inaccuracies in the results\n")
-
-
+            
+    
 
 
 #-----------------------------------------
@@ -2694,7 +2703,7 @@ def build_infile_stacks( pars ):
     msk_files = build( pars["mskfile"], len(evt_files) )
     bad_files = build( pars["bpixfile"], len(evt_files) )
     dtf_files = build( pars["dtffile"], len(evt_files) )
-
+    
     infiles = list(zip( evt_files, fov_files, asp_files, msk_files, bad_files, dtf_files ))
     return infiles
 
@@ -2709,18 +2718,18 @@ def process_single_obi( myparams, pars ):
 
     with_bands = stk.build(myparams.bands)
     for at_energy in with_bands:
-
-        get_counts( myparams, at_energy, src, bkg )
+    
+        get_counts( myparams, at_energy, src, bkg )        
         get_psf_fractions( myparams, at_energy, src, bkg )
-
+        
         taskrunner = TaskRunner()
         outfiles = get_net_rate_aper( taskrunner, myparams, at_energy, src, bkg )
         srcfiles,bkgfiles = get_model_independent_flux(taskrunner, myparams, at_energy, src, bkg )
-        mfluxfiles = get_model_flux( taskrunner, myparams, at_energy, src, bkg, (at_energy == with_bands[0]) )
+        mfluxfiles = get_model_flux( taskrunner, myparams, at_energy, src, bkg, (at_energy == with_bands[0]) )        
         photfluxfiles = get_fluximage_flux( taskrunner, myparams, at_energy, src, bkg )
 
         taskrunner.run_tasks( processes=myparams.nproc )
-
+      
         add_aprates_to_output( myparams, at_energy, outfiles )
         add_effevt_to_outfile( myparams, at_energy, srcfiles, bkgfiles )
         add_photflux_to_outfile( myparams, at_energy, photfluxfiles)
@@ -2760,7 +2769,7 @@ def obi_main(pars):
         if not is_single_obi:
             obipars["outroot"] = "{}obi{:03d}_".format( pars["outroot"], ii+1)
 
-        set_bands(obipars)
+        set_bands(obipars)        
 
         myparams = Params()
         for k in obipars.keys():
@@ -2774,7 +2783,7 @@ def obi_main(pars):
         # save info
         stk_pars.append( myparams )
 
-
+    
     return stk_pars
 
 
@@ -2783,7 +2792,7 @@ def main():
 
     # Load parameters
     from ciao_contrib.param_soaker import get_params
-    pars = get_params(toolname, "rw", sys.argv,
+    pars = get_params(toolname, "rw", sys.argv, 
         verbose={"set":lw.set_verbosity, "cmd":verb1} )
     set_nproc(pars)
 
@@ -2795,8 +2804,8 @@ def main():
         pass
 
 
-
-    stk_pars = obi_main(pars)
+    
+    stk_pars = obi_main(pars)   
 
     # Do this after above so bands is set correctly
     pars["bands"] = stk_pars[0].bands
@@ -2809,15 +2818,15 @@ def main():
         summarize_results( myparams, obi=None, single=True )
         return
 
-    merged_fluxes = merge_counts( stk_pars, myparams)
+    merged_fluxes = merge_counts( stk_pars, myparams) 
     modelflux_vals = merge_modelflux( stk_pars, myparams )
     merge_write_output( stk_pars, myparams, modelflux_vals, merged_fluxes)
 
     for ii,ss in enumerate(stk_pars):
         summarize_results( ss, obi=ii, single=False )
     summarize_results( myparams, obi=None, single=False )
-
-
+    
+    
 
 if __name__ == "__main__":
     try:
@@ -2826,3 +2835,5 @@ if __name__ == "__main__":
         print ("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
+  
+
