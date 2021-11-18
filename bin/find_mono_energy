@@ -152,6 +152,16 @@ def setup_band(band):
             raise ValueError(f"Band ranges must be numbers: sent '{band}'") from None
 
     verb2(f"Selecting energy range {elo} - {ehi} keV")
+
+    # This will error out if elo > ehi but the error message is a
+    # bit unclear here.
+    #
+    if elo > ehi:
+        raise ValueError(f"Invalid band '{band}': low must be <= high")
+
+    if elo < 0:
+        raise ValueError(f"Invalid band '{band}': low must be >= 0")
+
     ui.notice_id(DATASET_ID, elo, ehi)
 
 
