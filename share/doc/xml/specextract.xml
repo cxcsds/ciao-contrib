@@ -1013,6 +1013,48 @@ unix% cat output.lis
 	</DESC>
       </PARAM>
 
+           <PARAM name="parallel" type="boolean" def="yes">
+        <SYNOPSIS>
+          Run processes in parallel?
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+            When run on a multi-processor system, many of the
+            tasks can be run in parallel to reduce the
+            execution time of the script.
+            Since the tasks are likely to be memory or I/O-bound,
+            the reduction in run time will be less than the
+            number of cores on a machine.
+            When parallel=yes, the default behaviour is to use all
+            the CPU processors, but this can be changed with
+            the nproc parameter.
+          </PARA>
+          <PARA>
+            This option can be ignored when run on a single-processor
+            system.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="nproc" type="integer" def="INDEF">
+        <SYNOPSIS>
+          Number of processors to use
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+            This parameter is only used when parallel=yes. It determines
+            the number of processors to use. If maxproc is the actual
+            number of processors on your machine, then
+            a value of INDEF - the default value - means that all
+            maxproc processors will be used.  A positive value
+            means to use that number of processors (any value
+            larger than maxproc will be set to maxproc).
+            A negative value is added to maxproc (and any value less
+            than one is set to one).
+          </PARA>
+	</DESC>
+      </PARAM>
+
       <PARAM name="tmpdir" type="string" def="${ASCDS_WORK_PATH}">
 	<SYNOPSIS>
 	  Directory for temporary files. 
@@ -1697,7 +1739,12 @@ unix% cat output.lis
 	The frame-store shadow is now included when calculating the
 	ARF for ACIS observations.  This means that a small number of
 	rows of the CCDs are now excluded. Fixed bug handling blanksky
-	background files.
+	background files.  For background spectra extacted from
+	blanksky files, the AREASCAL keyword is set to the BKGSCALn
+	scaling factor calculated by the 'blanksky' script to
+	appropriately scale the background during analysis; if the
+	spectra is being used for background subtraction, set AREASCAL
+	to 1.
       </PARA>
     </ADESC>
 
@@ -1707,6 +1754,18 @@ unix% cat output.lis
 	generated when handling blanksky background files and fixed
 	bug causing 'combine=yes' to exit and throw an error before
 	'combine_spectra' is run.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the November 2021 Release">
+      <PARA>
+	specextract has been re-written, but usage and file outputs
+	are unchanged. Parallelization has been applied where possible,
+	introducing the "parallel" and "nproc" parameters controlling
+	whether parallelization and the number or processers available
+	for use, respectively; performance improvement is most noticeable when
+	both source and background [weighted] responses are generated.
+	Enhanced error checking and more informative error messages are provided.   
       </PARA>
     </ADESC>
     
@@ -1755,7 +1814,7 @@ unix% cat output.lis
       </PARA>
     </BUGS>
     
-    <LASTMODIFIED>May 2021</LASTMODIFIED>
+    <LASTMODIFIED>November 2021</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>
