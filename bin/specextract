@@ -34,7 +34,7 @@ Script:
 __version__ = "CIAO 4.14"
 
 toolname = "specextract"
-__revision__ = "11 November 2021"
+__revision__ = "18 November 2021"
 
 
 ##########################################################################
@@ -910,17 +910,17 @@ def build_acis_arf(args):
         try:
             bpix = args["bpix"]
         except KeyError:
-            bpix = None #pass
+            bpix = None 
 
     try:
         da = args["da"]
     except KeyError:
-        da = None #pass
+        da = None 
 
     try:
         msk = args["msk"]
     except KeyError:
-        msk = None #pass
+        msk = None 
        
     if all([weight == "no", correct == "yes", srcbkg == "src"]):
         outreg = tempfile.NamedTemporaryFile(suffix=f"_phys_coords_{key_id}.reg",dir=tmpdir)
@@ -1020,7 +1020,7 @@ def build_acis_rmf(args):
     try:
         bpix = args["bpix"]
     except KeyError:
-        bpix = None #pass
+        bpix = None 
 
     tdetwmap = args["tdetwmap"]
     feffile = args["feffile"]
@@ -1296,6 +1296,8 @@ def resps(args):
     verbose = args["verbose"]
     iteminfostr = args["iteminfostr"]
     pars = args["pars_specextract"]
+
+    nproc = args["nproc"]
     
     try:
         asol = args["asol"]
@@ -1313,17 +1315,17 @@ def resps(args):
     try:
         dtf = args["dtf"]
     except KeyError:
-        dtf = None #pass
+        dtf = None 
 
     try:
         da = args["da"]
     except KeyError:
-        da = None #pass
+        da = None 
 
     try:
         msk = args["msk"]
     except KeyError:
-        msk = None #pass
+        msk = None 
                 
     if instrument == "ACIS":
         null_rmffile = args["null_rmffile"]
@@ -1415,10 +1417,12 @@ def resps(args):
                 resp_args = [{**args, "mkresp" : "ARF", "asphist" : asphist, "tdetwmap" : tdw, "feffile" : fef_file},
                              {**args, "mkresp" : "RMF", "rmftool" : rmftool, "tdetwmap" : tdw, "feffile" : fef_file}]
 
-                if args["key_id_total"] > cpu_count()/2:
-                    resps = parallel_pool(_build_resp,resp_args)
+                if nproc == 1:
+                    resps = parallel_map(_build_resp,resp_args,numcores=nproc)
+                elif args["key_id_total"] > nproc/2:
+                    resps = parallel_pool(_build_resp,resp_args,ncores=nproc)
                 else:
-                    resps = parallel_map(_build_resp,resp_args)
+                    resps = parallel_map(_build_resp,resp_args,numcores=nproc)
 
                 resps = {k:v for resp in resps for k,v in resp.items()}
                 ancrfile = resps["ARF"]
@@ -1503,28 +1507,28 @@ def groupspec(args):
     try:
         gtype = args["gtype"]
     except KeyError:
-        gtype = None #pass
+        gtype = None 
     try:
         gval = args["gval"]
     except KeyError:
-        gval = None #pass
+        gval = None 
     try:
         binspec = args["binspec"]
     except KeyError:
-        binspec = None #pass
+        binspec = None 
 
     try:
         bggtype = args["bggtype"]
     except KeyError:
-        bggtype = None #pass
+        bggtype = None 
     try:
         bggval = args["bggval"]
     except KeyError:
-        bggval = None #pass
+        bggval = None 
     try:
         bgbinspec = args["bgbinspec"]
     except KeyError:
-        bgbinspec = None #pass
+        bgbinspec = None 
 
     if all([srcbkg == "src", dogroup]):
         v1(f"Grouping {srcbkg} spectrum {iteminfostr}")
@@ -1577,17 +1581,17 @@ def add_header_keys(args):
     try:
         ancrfile = args["ARF"]
     except KeyError:
-        ancrfile = None #pass
+        ancrfile = None 
 
     try:
         respfile = args["RMF"]
     except KeyError:
-        respfile = None #pass
+        respfile = None 
     
     try:
         grpfile = args["grpfile"]
     except KeyError:
-        grpfile = None #pass
+        grpfile = None 
 
     ####################################
     #
@@ -1786,6 +1790,9 @@ def get_par(args):
     #pars["wmap_clip"] = params["wmap_clip"] = paramio.pgetstr(pfile,"wmap_clip")
     #pars["wmap_threshold"] = params["wmap_threshold"] = paramio.pgetstr(pfile,"wmap_threshold")
 
+    pars["parallel"] = params["parallel"] = paramio.pgetstr(pfile, "parallel")
+    pars["nproc"] = params["nproc"] = paramio.pgetstr(pfile, "nproc")
+
 
     # verify the existence of the output directory, create if non-existent
     if params["outroot"].startswith("@"): 
@@ -1812,6 +1819,9 @@ def get_par(args):
     #     params["wmap_clip"] = False
     params["wmap_clip"] = False # remove when clipping implemented
     params["wmap_threshold"] = None # remove when clipping implemented
+
+    if params["parallel"].lower() == "no":
+        params["nproc"] = "1"
         
     paramio.paramclose(pfile)
 
@@ -1896,6 +1906,14 @@ def run_specextract(args):
     verbose = params["verbose"]
     mode = params["mode"]
 
+    parallel = params["parallel"]
+    nproc = params["nproc"]
+
+    if not nproc.isnumeric():
+        nproc = cpu_count()
+    else:
+        nproc = int(nproc)
+        
     wmap_clip = params["wmap_clip"]
     wmap_threshold = params["wmap_threshold"]
 
@@ -1908,11 +1926,11 @@ def run_specextract(args):
 
     specextract_args = [{"key_id" : key, "key_id_total" : len(specdicts), **specdicts[key], "pars_specextract" : pars} for key in specdicts.keys()]
 
-    if len(specextract_args) > cpu_count():
-        def parallelize(func,args,numcores=None):    
+    if len(specextract_args) > nproc:
+        def parallelize(func,args,numcores=nproc):    
             return parallel_pool(func,args,ncores=numcores)
     else:
-        def parallelize(func,args,numcores=None):
+        def parallelize(func,args,numcores=nproc):
             status = parallel_map(func,args,numcores=numcores)
 
             # interrupt multiprocessing if a thread raises an exception
@@ -1942,7 +1960,7 @@ def run_specextract(args):
     #
     ###########################
 
-    pardict_update_resps = parallelize(resps,[{**d, "key_id_total" : len(specextract_args)} for d in specextract_args])
+    pardict_update_resps = parallelize(resps,[{**d, "key_id_total" : len(specextract_args), "nproc" : nproc} for d in specextract_args])
     specextract_args = update_param_args_and_dict(pardict_update_resps,specdicts,specextract_args,pars)
 
     ###########################
@@ -2010,9 +2028,9 @@ def run_specextract(args):
             
 if __name__  == "__main__":
     run_specextract(sys.argv)
-    #import timeit
-    #runtime = timeit.timeit(lambda:run_specextract(sys.argv), number=1)
-    #print(f"test runtime [s]: {runtime}")
+    # import timeit
+    # runtime = timeit.timeit(lambda:run_specextract(sys.argv), number=1)
+    # print(f"test runtime [s]: {runtime}")
 
     sys.exit(0)
 

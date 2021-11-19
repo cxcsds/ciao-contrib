@@ -1,7 +1,7 @@
-import paramio, os, numpy, cxcdm, stk, tempfile
+import paramio, os, numpy, cxcdm, stk, tempfile, region
 import pycrates as pcr
 
-from ciao_contrib.runtool import dmstat, dmcoords, dmlist, acis_fef_lookup, new_pfiles_environment
+from ciao_contrib.runtool import dmstat, dmcoords, dmlist, acis_fef_lookup, get_sky_limits, new_pfiles_environment
 
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level
 from ciao_contrib.cxcdm_wrapper import get_block_info_from_file
@@ -13,6 +13,7 @@ from ciao_contrib.proptools import colden
 
 from sherpa.utils import parallel_map
 from ciao_contrib.parallel_wrapper import parallel_pool
+from multiprocessing import cpu_count
 
 
 toolname = "_tools.specextract"
@@ -108,6 +109,14 @@ class ParDicts(object):
 
         self.wmap_clip = params["wmap_clip"]
         self.wmap_threshold = params["wmap_threshold"]
+
+        if params["parallel"].lower() == "no":
+            self.nproc = "1"
+
+        if not params["nproc"].isnumeric():
+            self.nproc = cpu_count()
+        else:
+            self.nproc = int(params["nproc"])
 
         
     def _asol_asphist(self,asp_stk,asp_cnt,src_stk):
@@ -376,7 +385,7 @@ class ParDicts(object):
         return True
 
     
-    def _event_stats(self,file,colname):
+    def _event_stats(self,file,colname,args=None):
         """
         Use dmstat to determine the event statistics: source chipx,
         chipy, sky x, sky y, and ccd_id values to use for input
@@ -387,12 +396,25 @@ class ParDicts(object):
         """
         
         if colname in ["x","y","chipx","chipy"]:
-            
             if colname in ["x","y"]:
-                bin_setting="[bin sky=2]"
+                bin_setting = "[bin sky=2]"
 
             if colname in ["chipx","chipy"]:
-                bin_setting="[bin chipx=2,chipy=2]"
+                bin_setting = "[bin chipx=2,chipy=2]"
+                    
+            if args is not None:
+                if args["weight"] == "no" and args["correct"] == "yes":
+                    binarfcorr = args["binarfcorr"]
+                    
+                    if colname in ["x","y"]:
+                        bin_setting = f"[bin sky={binarfcorr}]"
+
+                    if colname in ["chipx","chipy"]:
+                        if binarfcorr < 1:
+                            binarfcorr = 1
+                            
+                        bin_setting = f"[bin chipx={binarfcorr},chipy={binarfcorr}]"
+                    
 
             with new_pfiles_environemt(ardlib=False,copyuser=False):
                 dmstat.punlearn()
@@ -644,17 +666,12 @@ class ParDicts(object):
                 dmcoords.ra = ra
                 dmcoords.dec = dec
 
-                dmcoords()
-
-                skyx = str(dmcoords.x)
-                skyy = str(dmcoords.y)
-
             else:
-                ## parse infile region
+                ## parse infile region ##
                 if self._get_region(infile) == infile:
                     raise IOError("No region filter with the event file, nor a refcoord value, provided to produce response files.")
 
-                else:
+                else:                    
                     # follow general procedures used in _event_stats()
                     dmstat.punlearn()
                     dmstat.infile = f"{infile}[bin sky={binimg}]"
@@ -664,15 +681,75 @@ class ParDicts(object):
 
                     # get sky position
                     skyx,skyy = dmstat.out_max_loc.split(",")
-                    #skyx,skyy = dmstat.out_cntrd_phys.split(",") # having issues if centroid falls in a zero-count location
+                    # skyx,skyy = dmstat.out_cntrd_phys.split(",") # having issues if centroid falls
+                    #                                              # in a zero-count location
+                    # if 'nan' in [skyx,skyy]:
+                    #     skyx,skyy = dmstat.out_max_loc.split(",")
 
                     # convert to chip coordinates
                     dmcoords.opt = "sky"
                     dmcoords.x = skyx
                     dmcoords.y = skyy
 
-                    dmcoords()
+                    # # regext = region.CXCRegion(get_region_filter(infile)[1]).extent()
+                    # # regstr = region.regRegionString(region.regParse(get_region_filter(infile)[1])).rstrip("\)")
 
+                    # # regstr[regstr.index("(")+1:-1]
+
+                    # # if any([regext["y0"] <= 90, regext["y1"] <= 90]) and any([regext["x0"] <= 360, regext["x1"] <= 360]):
+                    # # #if any([":" in regstr, "\'" in regstr, "\"" in regstr, "d" in regstr]):
+                    # #     dec0, dec1 = regext["y0"],regext["y1"]
+                    # #     ra0, ra1 = regext["x0"], regext["x1"]
+                        
+                    # #     dec = 0.5*(dec0+dec1)
+
+                    # #     cosdec0 = numpy.cos(dec0*numpy.pi/180)
+                    # #     cosdec = numpy.cos(dec*numpy.pi/180)
+                        
+                    # #     ra = ((ra0*cosdec0) + (ra1*cosdec)) / (cosdec0 + cosdec)
+
+                    # #     # convert to sky and chip coordinates
+                    # #     dmcoords.opt = "cel"
+                    # #     dmcoords.ra = ra
+                    # #     dmcoords.dec = dec
+                                                
+                    # # else:                    
+                    # #     skyx = str(0.5*(regext["x0"]+regext["x1"]))
+                    # #     skyy = str(0.5*(regext["y0"]+regext["y1"]))
+
+                    # #     # convert to chip coordinates
+                    # #     dmcoords.opt = "sky"
+                    # #     dmcoords.x = skyx
+                    # #     dmcoords.y = skyy
+
+                    
+                    # ## use get_sky_limits instead of region module since it's
+                    # ## agnostic on coordinates used for extraction region
+
+                    # get_sky_limits.punlearn()
+
+                    # get_sky_limits.image = f"{infile}[bin sky={binimg}]"
+                    # get_sky_limits.precision = numpy.abs(numpy.floor(numpy.log10(binimg))) + 2
+                    # get_sky_limits.verbose = 0
+                    # get_sky_limits()
+
+                    # x,y = get_sky_limits.xygrid.split(",")
+                    # x = [float(n) for n in x.split(":")[:-1]]
+                    # y = [float(n) for n in y.split(":")[:-1]]
+
+                    # skyx = 0.5*(x[0]+x[1])
+                    # skyy = 0.5*(y[0]+y[1])
+                    
+                    # # convert to chip coordinates
+                    # dmcoords.opt = "sky"
+                    # dmcoords.x = skyx
+                    # dmcoords.y = skyy
+                    
+            dmcoords()
+
+            skyx = str(dmcoords.x)
+            skyy = str(dmcoords.y)
+            
             chipx = str(int(dmcoords.chipx))
             chipy = str(int(dmcoords.chipy))
 
@@ -801,22 +878,22 @@ class ParDicts(object):
                     raise IOError("Cannot use M.M. ACIS blanksky background files as infile, since responses cannot be produced.\n")
 
 
-    def paralleltests(self,parallelfunc,args,method="map"):
+    def paralleltests(self,parallelfunc,args,method="map",numcores=None):
         """
         run various parameter test functions in parallel
         """
 
         if method == "map":
-            status = parallel_map(parallelfunc,args)
+            status = parallel_map(parallelfunc,args,numcores=numcores)
         else:
-            status = parallel_pool(parallelfunc,args)
+            status = parallel_pool(parallelfunc,args,ncores=numcores)
             
         for stat in status:
             if isinstance(stat,Exception):
                 raise stat
         
         
-    def check_input_stacks(self,infile,bkgfile,outroot,weight,bkgresp,ebin):
+    def check_input_stacks(self,infile,bkgfile,outroot,weight,bkgresp,ebin,nproc):
         """
         Build stacks for the file input parameters; make sure they are
         readable and not empty. 
@@ -872,7 +949,7 @@ class ParDicts(object):
             except Exception as E:
                 return E
 
-        self.paralleltests(parallel_region_check,fn_stk,method="map")
+        self.paralleltests(parallel_region_check,fn_stk,method="map",numcores=nproc)
         
         # for fn in set(src_stk).union(bkg_stk):
         #     self._valid_regstr(fn)
@@ -933,7 +1010,7 @@ class ParDicts(object):
                     except Exception as E:
                         return E
 
-            self.paralleltests(parallel_fptemp,fp_temp_check,method="pool")
+            self.paralleltests(parallel_fptemp,fp_temp_check,method="pool",numcores=nproc)
 
             
         ### check background files are valid ###
@@ -1103,7 +1180,8 @@ class ParDicts(object):
 
     def combine_stacks(self,src_stk,bkg_stk,
                        asp,bpixfile,mask,dtffile,dafile,
-                       weight,dobkgresp,refcoord,ewmap):
+                       weight,dobkgresp,refcoord,ewmap,
+                       nproc):
 
         ## check counts in input files, and exit if necessary, or produce responses for upper-limits
         src_dict = [{"file" : fn, "refcoord_check" : refcoord, "weights_check" : False, "ewmap_range_check" : None} for fn in src_stk]
@@ -1137,7 +1215,7 @@ class ParDicts(object):
             except Exception as E:
                 return E
 
-        self.paralleltests(parallel_event_stats,[*src_dict,*ewmap_srcbg_dict],method="map")
+        self.paralleltests(parallel_event_stats,[*src_dict,*ewmap_srcbg_dict],method="map",numcores=nproc)
 
         ## find ancillary files, if exists, add to stack
         ancil = {"asol" : {"var" : asp,
@@ -1452,7 +1530,11 @@ class ParDicts(object):
                 #
                 #########################################################
 
-                ra,dec,skyx,skyy,chipx,chipy,chip_id = self.resp_pos(fullfile,asol_arg,refcoord,binimg=2) #binimg=binarfcorr)
+                #ra,dec,skyx,skyy,chipx,chipy,chip_id = self.resp_pos(fullfile,asol_arg,refcoord,binimg=2)
+                if weight == "no" and common_args["correct"] == "yes":
+                    ra,dec,skyx,skyy,chipx,chipy,chip_id = self.resp_pos(fullfile,asol_arg,refcoord,binimg=binarfcorr)
+                else:
+                    ra,dec,skyx,skyy,chipx,chipy,chip_id = self.resp_pos(fullfile,asol_arg,refcoord,binimg=2)
 
                 arg_dict["skyx"] = skyx
                 arg_dict["skyy"] = skyy
@@ -1553,7 +1635,8 @@ class ParDicts(object):
                                                                                 self.outroot,
                                                                                 common_dict["weight"],
                                                                                 common_dict["bkgresp"],
-                                                                                common_dict["ebin"])
+                                                                                common_dict["ebin"],
+                                                                                self.nproc)
         
         common_dict = {**common_dict,**common_dict_append}
 
@@ -1563,7 +1646,8 @@ class ParDicts(object):
                                                                                common_dict["weight"],
                                                                                common_dict["dobkgresp"],
                                                                                common_dict["refcoord"],
-                                                                               common_dict["ewmap"])
+                                                                               common_dict["ewmap"],
+                                                                               self.nproc)
 
         obs_dict = self.obs_args(src_stk,out_stk,bkg_stk,stk_dict["asol"],
                                  stk_dict["badpix"],self.rmffile,stk_dict["dead time factor"],
