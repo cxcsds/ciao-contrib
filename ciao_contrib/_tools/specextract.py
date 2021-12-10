@@ -18,6 +18,7 @@ from multiprocessing import cpu_count
 
 toolname = "_tools.specextract"
 __toolname__ = "specextract"
+__revision__ = "15 December 2021"
 
 # Set up the logging/verbose code
 initialize_logger(toolname)
@@ -492,26 +493,27 @@ class ParDicts(object):
 
         regfilter = fileio.get_filter(inf)
         
-        if "=region(" in regfilter:
-            regfile = self._get_region(inf)
+        if "=region(" in regfilter:        
+            regfiles = [s[:s.index(")")].replace("region(","") for s in regfilter.split("=") if s.startswith("region(")]
 
-            # check if region is FITS or text format
-            try:
-                with open(regfile, mode="rt") as binarycheckfile:
-                    binarycheckfile.read() # a FITS/binary file will throw a UnicodeDecodeError
-                                           # when opened in 'read-text' mode then read()
-                                                   
-                with open(regfile, mode="rb") as r:
-                    if b"\r\n" in r.read():
-                        ## n.b.: modify region file by doing
-                        ## `cat regfile | tr -d '\015' > regfile.lf-only`
-                        raise IOError(f"EOL: the line ends in the ASCII region file, '{regfile}', use Windows/DOS-style carriage return & line feed (CRLF) rather than Unix-compatible line feed only.")
-                    
-            except FileNotFoundError:
-                raise IOError(f"region file '{regfile}' not found")
+            for regfile in regfiles:
+                ## check if region is FITS or text format ##
+                try:
+                    with open(regfile, mode="rt") as binarycheckfile:
+                        binarycheckfile.read() # a FITS/binary file will throw a UnicodeDecodeError
+                                               # when opened in 'read-text' mode then read()
 
-            except UnicodeDecodeError:
-                pass
+                    with open(regfile, mode="rb") as r:
+                        if b"\r\n" in r.read():
+                            ## n.b.: modify region file by doing
+                            ## `cat regfile | tr -d '\015' > regfile.lf-only`
+                            raise IOError(f"EOL: the line ends in the ASCII region file, '{regfile}', use Windows/DOS-style carriage return & line feed (CRLF) rather than Unix-compatible line feed only.")
+
+                except FileNotFoundError:
+                    raise IOError(f"region file '{regfile}' not found")
+
+                except UnicodeDecodeError:
+                    pass
 
                     
     def _get_region(self,full_filename):
@@ -532,7 +534,8 @@ class ParDicts(object):
         #
 
         if "region" in get_region_filter(full_filename)[1]:
-            region = get_region_filter(full_filename)[1].split("(")[1].strip(")")
+            region = get_region_filter(full_filename)[1].split("(")[1]
+            region = region[:region.find(")")]
         else:
             region = get_region_filter(full_filename)[1]
 
