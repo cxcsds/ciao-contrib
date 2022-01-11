@@ -34,7 +34,7 @@ Script:
 __version__ = "CIAO 4.14"
 
 toolname = "specextract"
-__revision__ = "17 December 2021"
+__revision__ = "11 January 2022"
 
 
 ##########################################################################
@@ -1236,9 +1236,9 @@ def spectra(args):
                 bskysamp_status = None
                 
             if all([bsky_status is not None, bskysamp_status is None]):
-                src_cr = pcr.read_file(f"{filename}[#row=0]")
-                ccdid = src_cr.get_column("CCD_ID").values[0]
-                del(src_cr)
+                ccdid = pcr.read_file(f"{fullfile}[cols ccd_id]").get_column("CCD_ID").values
+                ccds,ccd_counts = numpy.unique(ccdid,return_counts=True)
+                ccdid = ccds[ccd_counts.tolist().index(max(ccd_counts))]
 
                 bkgscale = fileio.get_keys_from_file(fullfile)[f"BKGSCAL{ccdid}"]
 
@@ -1360,6 +1360,8 @@ def resps(args):
                 except OSError as exc:
                     if dobkgresp:
                         raise IOError(f"Failed to create aspect histogram file for {fullfile}") from exc
+                    else:
+                        asphist = None
 
         if instrument == "ACIS":
             rmftool = determine_rmf_tool(phafile,rmffile_ccd)
