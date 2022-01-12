@@ -24,7 +24,7 @@ Routines that wrap up access to the Simple Image Access (SIA)
 endpoint at the Chandra Footprint Server. As of mid 2018
 the URL is
 
-    https://cxcfps.harvard.edu/cda/footprint/cdaview.html
+    https://cxcfps.cfa.harvard.edu/cda/footprint/cdaview.html
 
 but prior to that it was
 
