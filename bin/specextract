@@ -34,7 +34,7 @@ Script:
 __version__ = "CIAO 4.14"
 
 toolname = "specextract"
-__revision__ = "18 November 2021"
+__revision__ = "11 January 2022"
 
 
 ##########################################################################
@@ -461,15 +461,15 @@ def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,
         rmf = rmf[0]
         rmf = rmf[:rmf.find("[")]
 
-        # copy RMF
-        rmffile = f"{full_outroot}.rmf"
-        shutil.copyfile(rmf,rmffile)
-
     else:
         # enable RMFFILE parameter for HRC data to support HRC Cal group
         v1("Warning: 'rmffile' parameter for HRC observations is meant for Calibration Group and expert usage!")
 
-        rmffile = rmf_file
+        rmf = rmf_file
+
+    # copy RMF
+    rmffile = f"{full_outroot}.rmf"
+    shutil.copyfile(rmf,rmffile)
 
     # establish detsubsys       
     if instrument == "HRC":
@@ -1236,9 +1236,9 @@ def spectra(args):
                 bskysamp_status = None
                 
             if all([bsky_status is not None, bskysamp_status is None]):
-                src_cr = pcr.read_file(f"{filename}[#row=0]")
-                ccdid = src_cr.get_column("CCD_ID").values[0]
-                del(src_cr)
+                ccdid = pcr.read_file(f"{fullfile}[cols ccd_id]").get_column("CCD_ID").values
+                ccds,ccd_counts = numpy.unique(ccdid,return_counts=True)
+                ccdid = ccds[ccd_counts.tolist().index(max(ccd_counts))]
 
                 bkgscale = fileio.get_keys_from_file(fullfile)[f"BKGSCAL{ccdid}"]
 
@@ -1360,6 +1360,8 @@ def resps(args):
                 except OSError as exc:
                     if dobkgresp:
                         raise IOError(f"Failed to create aspect histogram file for {fullfile}") from exc
+
+                    asphist = None
 
         if instrument == "ACIS":
             rmftool = determine_rmf_tool(phafile,rmffile_ccd)
