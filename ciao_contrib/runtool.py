@@ -2656,7 +2656,7 @@ parinfo['blanksky'] = {
 parinfo['blanksky_image'] = {
     'istool': True,
     'req': [ParValue("bkgfile","f","blanksky background event file",None),ParValue("outroot","f","root of output files",None),ParValue("imgfile","f","reference image file",None)],
-    'opt': [ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","OK to overwrite existing output file?",True),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
+    'opt': [ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
     }
 
 
@@ -3356,7 +3356,7 @@ parinfo['mkrmf'] = {
 parinfo['mktgresp'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input type-II PHA file",None),ParValue("evtfile","f","Input event file",None),ParValue("outroot","f","Output root name for RMF and ARF files",None)],
-    'opt': [ParValue("orders","s","Input list of grating orders (None uses values in infile",'INDEF'),ParValue("wvgrid_arf","s","Enter ARF side wavelength grid [angstroms]",'compute'),ParValue("wvgrid_chan","s","Enter channel-side wavelength grid [angstroms]",'compute'),ParValue("asolfile","f","Input aspect solution file(s)",None),ParValue("bpixfile","f","Input bad pixel list",None),ParValue("mskfile","f","Input detector mask file",None),ParValue("dtffile","f","Input dead time factors file (HRC only)",None),ParValue("dafile","f","Input dead area calibration file",'CALDB'),ParValue("osipfile","f","Input order sorting calibration file",'CALDB'),ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use (None:use all available)",None),ParRange("verbose","i","Tool chatter",0,0,5),ParValue("clobber","b","Clobber existing files?",False)],
+    'opt': [ParValue("orders","s","Input list of grating orders (None uses values in infile",'INDEF'),ParValue("wvgrid_arf","s","Enter ARF side wavelength grid [angstroms]",'compute'),ParValue("wvgrid_chan","s","Enter channel-side wavelength grid [angstroms]",'compute'),ParValue("asolfile","f","Input aspect solution file(s)",None),ParValue("bpixfile","f","Input bad pixel list",None),ParValue("mskfile","f","Input detector mask file",None),ParValue("dtffile","f","Input dead time factors file (HRC only)",None),ParValue("dafile","f","Input dead area calibration file",'CALDB'),ParValue("osipfile","f","Input order sorting calibration file",'CALDB'),ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use (None:use all available)",None),ParRange("verbose","i","Tool chatter",1,0,5),ParValue("clobber","b","Clobber existing files?",False)],
     }
 
 
