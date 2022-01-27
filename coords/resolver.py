@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2011, 2013, 2015, 2016, 2018, 2019, 2020
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2011, 2013, 2015, 2016, 2018, 2019, 2020, 2022
+#  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -35,12 +35,14 @@ following services
 This module provides a simple interface - the identify_name routine -
 to a name resolver, which is currently
 the one provided by the CADC at
-http://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/cadc-target-resolver/
+https://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/cadc-target-resolver/
 
 For cases when the CADC resolver is not available it falls back to
 using the Sesame interface from CDS: http://vizier.u-strasbg.fr/vizier/doc/sesame.htx
 
 """
+
+import ssl
 
 from urllib.parse import quote_plus
 from urllib.request import urlopen
@@ -86,6 +88,67 @@ def strtofloat(val):
         raise ValueError("Unable to convert '{0}' to a float.".format(val))
 
 
+def query_url(name, url, method):
+    """Wrap up handling of errors for a URL call.
+
+    Parameters
+    ----------
+    name : str
+    url : str
+    method : {"CADC", "Sesame"}
+
+    """
+
+    # We get a 425 response code when there's no match, so catch this to make
+    # it somewhat readable, at least for CADC. For Sesame it appears to be
+    # different.
+    #
+    try:
+        v5(f"{method} name query: {url}")
+        return urlopen(url)
+
+    except HTTPError as he:
+        # HTTPError is a subclass of URLError so process first
+        code = he.getcode()
+        v5(f"Error from {method} name resolver - status = {code}")
+
+        if method == "CADC" and code == 425:
+            raise ValueError(f"No position found matching the name '{name}'.")
+
+        v5(str(he))
+        raise he
+
+    except URLError as ue:
+        # Is this a sufficient check?
+        v5(f"Error opening URL: {ue}")
+        v5(f"error.reason = {ue.reason}")
+        v5(f"error.reason.errno = {ue.reason.errno}")
+
+        # We can get SSL certificate errors reported here, so check
+        # for them. This is not a "nice" way to be doing this. Is
+        # there a better one?
+        #
+        reason = str(ue.reason)
+        if reason.find("CERTIFICATE_VERIFY_FAILED") != -1:
+            # Try with no context
+            #
+            v5("Skipping to an unverified SSL context")
+            context = ssl._create_unverified_context()
+            try:
+                return urlopen(url, context=context)
+            except URLError as ue2:
+                v5("Unable to query with no context!")
+                v5(f"Error opening URL: {ue2}")
+                v5(f"error.reason = {ue2.reason}")
+                v5(f"error.reason.errno = {ue2.reason.errno}")
+                raise ue2
+
+        if ue.reason.errno == 8:
+            raise IOError(f"Unable to connect to the {method} Name Resolver")
+
+        raise
+
+
 def identify_name_cadc(name):
     """Find the coordinates of an Astronomical object from the CADC.
 
@@ -117,35 +180,9 @@ def identify_name_cadc(name):
     """
 
     tname = quote_plus(name)
-    url = "http://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/cadc-target-resolver/find?format=ascii&service=all&cached=true&target=" + tname
+    url = "https://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/cadc-target-resolver/find?format=ascii&service=all&cached=true&target=" + tname
 
-    # We get a 425 response code when there's no match, so catch this to make
-    # it somewhat readable.
-    #
-    try:
-        v5("CADC name query: {0}".format(url))
-        rsp = urlopen(url)
-
-    except HTTPError as he:
-        # HTTPError is a subclass of URLError (in Pythohn 2.7 and 3.5)
-        # so process first
-        code = he.getcode()
-        v5("Error from CADC name resolver - status = {0}".format(code))
-        if code == 425:
-            raise ValueError("No position found matching the name '{0}'.".format(name))
-
-        v5("HTTPError code={0}".format(code))
-        v5(str(he))
-        raise he
-
-    except URLError as ue:
-        # Is this a sufficient check?
-        v5("Error opening URL: {0}".format(ue))
-        v5("error.reason = {0}".format(ue.reason))
-        if ue.reason.errno == 8:
-            raise IOError("Unable to connect to the CADC Name Resolver")
-
-        raise
+    rsp = query_url(name, url, "CADC")
 
     v5("Response from query:")
     out = [None, None, None]
@@ -217,28 +254,7 @@ def identify_name_sesame(name):
     tname = quote_plus(name)
     url = 'https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-ox/~NSV?' + tname
 
-    # When there's no match the response document is different, rather than
-    # being reported by a HTTP error-response code.
-    #
-    try:
-        v5("Sesame name query: {0}".format(url))
-        rsp = urlopen(url)
-
-    except HTTPError as he:
-        code = he.getcode()
-        v5("Error from Sesame name resolver - status = {0}".format(code))
-        v5("HTTPError code={0}".format(code))
-        v5(str(he))
-        raise he
-
-    except URLError as ue:
-        # Is this a sufficient check?
-        v5("Error opening URL: {0}".format(ue))
-        v5("error.reason = {0}".format(ue.reason))
-        if ue.reason.errno == 8:
-            raise IOError("Unable to connect to the Sesame Name Resolver")
-
-        raise
+    rsp = query_url(name, url, "Sesame")
 
     v5("Response from query:")
     data = rsp.read().decode('utf8')
