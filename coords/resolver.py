@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2011, 2013, 2015, 2016, 2018, 2019, 2020
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2011, 2013, 2015, 2016, 2018, 2019, 2020, 2022
+#  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -35,12 +35,14 @@ following services
 This module provides a simple interface - the identify_name routine -
 to a name resolver, which is currently
 the one provided by the CADC at
-http://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/cadc-target-resolver/
+https://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/cadc-target-resolver/
 
 For cases when the CADC resolver is not available it falls back to
 using the Sesame interface from CDS: http://vizier.u-strasbg.fr/vizier/doc/sesame.htx
 
 """
+
+import ssl
 
 from urllib.parse import quote_plus
 from urllib.request import urlopen
@@ -117,7 +119,7 @@ def identify_name_cadc(name):
     """
 
     tname = quote_plus(name)
-    url = "http://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/cadc-target-resolver/find?format=ascii&service=all&cached=true&target=" + tname
+    url = "https://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/cadc-target-resolver/find?format=ascii&service=all&cached=true&target=" + tname
 
     # We get a 425 response code when there's no match, so catch this to make
     # it somewhat readable.
@@ -125,6 +127,17 @@ def identify_name_cadc(name):
     try:
         v5("CADC name query: {0}".format(url))
         rsp = urlopen(url)
+
+    except ssl.SSLCertVerificationError as se:
+        # Fall back to an unverified certificate check.
+        # If this errors out we don't try to catch a "nice" error
+        # as that is a bit complex here (it might be nice to at least
+        # catch the 425 case).
+        #
+        v5(f"Found SSL certificate error: {se}")
+        v5("Skipping to an unverified SSL context")
+        context = ssl._create_unverified_context()
+        rsp = urlopen(url, context=context)
 
     except HTTPError as he:
         # HTTPError is a subclass of URLError (in Pythohn 2.7 and 3.5)
