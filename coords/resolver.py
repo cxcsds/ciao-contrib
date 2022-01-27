@@ -100,7 +100,8 @@ def query_url(name, url, method):
     """
 
     # We get a 425 response code when there's no match, so catch this to make
-    # it somewhat readable.
+    # it somewhat readable, at least for CADC. For Sesame it appears to be
+    # different.
     #
     try:
         v5(f"{method} name query: {url}")
@@ -111,7 +112,6 @@ def query_url(name, url, method):
         code = he.getcode()
         v5(f"Error from {method} name resolver - status = {code}")
 
-        # Not sure if Sesame returns a 425
         if method == "CADC" and code == 425:
             raise ValueError(f"No position found matching the name '{name}'.")
 
@@ -135,7 +135,7 @@ def query_url(name, url, method):
             v5("Skipping to an unverified SSL context")
             context = ssl._create_unverified_context()
             try:
-                rsp = urlopen(url, context=context)
+                return urlopen(url, context=context)
             except URLError as ue2:
                 v5("Unable to query with no context!")
                 v5(f"Error opening URL: {ue2}")
