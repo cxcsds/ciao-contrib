@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2009, 2010, 2015, 2016, 2019
+#  Copyright (C) 2009, 2010, 2015, 2016, 2019, 2022
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -39,7 +39,8 @@ Examples
 
 import sherpa.astro.ui as s
 
-from sherpa.plot import HistogramPlot, backend
+from sherpa.plot import HistogramPlot
+from sherpa import plot
 from sherpa.utils.err import IdentifierErr, ArgumentErr
 
 import numpy as np
@@ -300,9 +301,9 @@ def plot_chart_spectrum(id=None, elow=None, ehigh=None, ewidth=None,
     hplot.title = 'ChaRT Spectrum: {}'.format(vals['model'])
 
     # LaTeX support depends on the backend
-    if backend.name == 'pylab':
+    if plot.backend.name == 'pylab':
         hplot.ylabel = 'Flux (photon cm$^{-2}$ s$^{-1}$)'
-    elif backend.name == 'chips':
+    elif plot.backend.name == 'chips':
         hplot.ylabel = 'Flux (photon cm^{-2} s^{-1})'
     else:
         hplot.ylabel = 'Flux (photon cm^-2 s^-1)'
