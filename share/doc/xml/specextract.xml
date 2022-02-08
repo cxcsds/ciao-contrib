@@ -678,6 +678,44 @@ unix% cat output.lis
 	  </PARA>
 	</DESC>
       </PARAM>
+      <PARAM name="readout_streakspec" type="boolean" def="no">
+	<SYNOPSIS>
+	  If the source extraction region is for a readout streak,
+	  determine effective exposure time of the streak spectrum.
+	</SYNOPSIS>
+	
+	<DESC>
+	  <PARA>
+	    If the source extraction region is for the ACIS readout
+	    streak, if 'readout_streakspec=yes', the number of ACIS
+	    rows encompassed by the region will be estimated to
+	    determine the effective exposure time of the streak
+	    spectrum.  This parameter requires specifying the
+	    corresponding point source location with the 'refcoord'
+	    parameter and 'weight=no' in order to generate the
+	    appropriate unweighted responses. 
+	  </PARA>
+
+	  <PARA>
+	    The effective exposure time for the readout streak is
+	    considerably shorter than the exposure time for data
+	    obtained when the detectors are not being read
+	    out. Therefore, the exposure time needs to be
+	    corrected. If the extraction region for the readout streak
+	    includes N_rows rows, then the effective exposure time is
+	    given by: Streak_Exposure = N_frames * N_rows * xfer_time,
+	    where N_frames = EXPOSURE / EXPTIME of the observation and
+	    the xfer_time is the ACIS frame transfer time of 40
+	    [usec/row/frame].
+	  </PARA>
+
+	  <PARA>
+	    For users with complicated composite polygonal regions, it
+	    may be worth verifying the determined number of rows and
+	    effective exposure time are reasonable. 
+	  </PARA>
+	</DESC>
+      </PARAM>
       
       <PARAM name="grouptype" type="string" def="NUM_CTS">
 	<SYNOPSIS>
@@ -1768,6 +1806,14 @@ unix% cat output.lis
 	Enhanced error checking and more informative error messages are provided.   
       </PARA>
     </ADESC>
+
+    <ADESC title="Changes in the March 2022 Release">
+      <PARA>
+	The "readout_streakspec" parameter has been added to support
+	spectral extraction from the ACIS readout streak and determine the
+	effective exposure time for the streak spectrum.
+      </PARA>
+    </ADESC>
     
     <BUGS>
       <PARA title="Caveat: Exposure Variations">
@@ -1814,7 +1860,7 @@ unix% cat output.lis
       </PARA>
     </BUGS>
     
-    <LASTMODIFIED>December 2021</LASTMODIFIED>
+    <LASTMODIFIED>February 2022</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>

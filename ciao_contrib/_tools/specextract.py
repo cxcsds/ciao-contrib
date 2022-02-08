@@ -1,4 +1,31 @@
-import paramio, os, numpy, cxcdm, stk, tempfile, region
+#
+# Copyright (C) 2021, 2022
+#        Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+
+"""
+Routines to support the specextract tool.
+
+"""
+
+import os, numpy, cxcdm, stk, tempfile, region
 import pycrates as pcr
 
 from ciao_contrib.runtool import dmstat, dmcoords, dmlist, acis_fef_lookup, get_sky_limits, new_pfiles_environment
@@ -18,7 +45,7 @@ from multiprocessing import cpu_count
 
 toolname = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "15 December 2021"
+__revision__ = "04 February 2022"
 
 # Set up the logging/verbose code
 initialize_logger(toolname)
@@ -88,6 +115,7 @@ class ParDicts(object):
         self.asp = params["asp"]
         self.refcoord = params["refcoord"]
         self.rmffile = params["rmffile"]
+        self.streakspec = params["streakspec"]
         self.ptype = "PI" #params["ptype"]
         self.gtype = params["gtype"]
         self.gspec = params["gspec"]
@@ -493,7 +521,7 @@ class ParDicts(object):
 
         regfilter = fileio.get_filter(inf)
         
-        if "=region(" in regfilter:        
+        if "=region(" in regfilter:
             regfiles = [s[:s.index(")")].replace("region(","") for s in regfilter.split("=") if s.startswith("region(")]
 
             for regfile in regfiles:
@@ -674,7 +702,9 @@ class ParDicts(object):
                 if self._get_region(infile) == infile:
                     raise IOError("No region filter with the event file, nor a refcoord value, provided to produce response files.")
 
-                else:                    
+                else:
+                    ############ Current but OUTDATED approach ############
+                    #
                     # follow general procedures used in _event_stats()
                     dmstat.punlearn()
                     dmstat.infile = f"{infile}[bin sky={binimg}]"
@@ -693,38 +723,21 @@ class ParDicts(object):
                     dmcoords.opt = "sky"
                     dmcoords.x = skyx
                     dmcoords.y = skyy
+                    
+                    #######################################################
+                    
+                    # ## determine response location using center of region extent ##
+                    # #
+                    # # regext = region.CXCRegion(pcr.read_file(f"{infile}[#row=0]").get_subspace_data(1,"sky").region).extent()
 
-                    # # regext = region.CXCRegion(get_region_filter(infile)[1]).extent()
-                    # # regstr = region.regRegionString(region.regParse(get_region_filter(infile)[1])).rstrip("\)")
+                    # # skyx = str(0.5*(regext["x0"] + regext["x1"]))
+                    # # skyy = str(0.5*(regext["y0"] + regext["y1"]))
 
-                    # # regstr[regstr.index("(")+1:-1]
-
-                    # # if any([regext["y0"] <= 90, regext["y1"] <= 90]) and any([regext["x0"] <= 360, regext["x1"] <= 360]):
-                    # # #if any([":" in regstr, "\'" in regstr, "\"" in regstr, "d" in regstr]):
-                    # #     dec0, dec1 = regext["y0"],regext["y1"]
-                    # #     ra0, ra1 = regext["x0"], regext["x1"]
-                        
-                    # #     dec = 0.5*(dec0+dec1)
-
-                    # #     cosdec0 = numpy.cos(dec0*numpy.pi/180)
-                    # #     cosdec = numpy.cos(dec*numpy.pi/180)
-                        
-                    # #     ra = ((ra0*cosdec0) + (ra1*cosdec)) / (cosdec0 + cosdec)
-
-                    # #     # convert to sky and chip coordinates
-                    # #     dmcoords.opt = "cel"
-                    # #     dmcoords.ra = ra
-                    # #     dmcoords.dec = dec
-                                                
-                    # # else:                    
-                    # #     skyx = str(0.5*(regext["x0"]+regext["x1"]))
-                    # #     skyy = str(0.5*(regext["y0"]+regext["y1"]))
-
-                    # #     # convert to chip coordinates
-                    # #     dmcoords.opt = "sky"
-                    # #     dmcoords.x = skyx
-                    # #     dmcoords.y = skyy
-
+                    # # # convert to chip coordinates
+                    # # dmcoords.opt = "sky"
+                    # # dmcoords.x = skyx
+                    # # dmcoords.y = skyy
+                    
                     
                     # ## use get_sky_limits instead of region module since it's
                     # ## agnostic on coordinates used for extraction region
@@ -881,6 +894,17 @@ class ParDicts(object):
                     raise IOError("Cannot use M.M. ACIS blanksky background files as infile, since responses cannot be produced.\n")
 
 
+    def _check_streakspec(self,weight,refcoord,instrument):
+        if instrument.upper() != "ACIS":
+            raise IOError("Readout streak spectrum extraction can only be done with ACIS TE-mode observations.")
+        
+        if weight == "yes":
+            raise IOError("Readout streak spectrum requires unweighted responses, set 'weight=no'.")
+
+        if refcoord == "":
+            raise IOError("Readout streak spectrum requires source postion to generate response using the 'refcoord' parameter.")
+
+        
     def paralleltests(self,parallelfunc,args,method="map",numcores=None):
         """
         run various parameter test functions in parallel
@@ -896,7 +920,7 @@ class ParDicts(object):
                 raise stat
         
         
-    def check_input_stacks(self,infile,bkgfile,outroot,weight,bkgresp,ebin,nproc):
+    def check_input_stacks(self,infile,bkgfile,outroot,weight,bkgresp,refcoord,streakspec,ebin,nproc):
         """
         Build stacks for the file input parameters; make sure they are
         readable and not empty. 
@@ -992,6 +1016,10 @@ class ParDicts(object):
                     ## warning (or error out)
                     self._check_merged_input(headerkeys,__toolname__)
 
+                    ## verify parameters are valid if trying to extract readout streak spectrum
+                    if streakspec == "yes":
+                        self._check_streakspec(weight,refcoord,instrument=headerkeys["INSTRUME"])
+                    
                 ## check blanksky
                 self._check_blanksky(headerkeys,srcbkg_kw,bkgresp)
 
@@ -1084,8 +1112,8 @@ class ParDicts(object):
 
     
     def common_args(self,correct,weight,weight_rmf,bkgresp,refcoord,
-                    ptype,gtype,gspec,bggtype,bggspec,ebin,channel,
-                    ewmap,binwmap,bintwmap,binarfcorr,wmap_clip,
+                    streakspec,ptype,gtype,gspec,bggtype,bggspec,
+                    ebin,channel,ewmap,binwmap,bintwmap,binarfcorr,wmap_clip,
                     wmap_threshold,tmpdir,clobber,verbose):
         
         common_dict = {"correct" : correct,
@@ -1093,6 +1121,7 @@ class ParDicts(object):
                        "weight_rmf" : weight_rmf,
                        "bkgresp" : bkgresp,
                        "refcoord" : refcoord,
+                       "streakspec" : streakspec,
                        "ptype" : ptype,
                        "ebin" : ebin,
                        "channel" : channel,
@@ -1533,7 +1562,6 @@ class ParDicts(object):
                 #
                 #########################################################
 
-                #ra,dec,skyx,skyy,chipx,chipy,chip_id = self.resp_pos(fullfile,asol_arg,refcoord,binimg=2)
                 if weight == "no" and common_args["correct"] == "yes":
                     ra,dec,skyx,skyy,chipx,chipy,chip_id = self.resp_pos(fullfile,asol_arg,refcoord,binimg=binarfcorr)
                 else:
@@ -1604,7 +1632,7 @@ class ParDicts(object):
 
                 else:
                     arg_dict["rmffile"] = rmffile
-
+                    
                 # set src/bkg item dictionary
                 specextract_dict[f"{srcbkg}{i+1}"] = {**arg_dict, **common_args}
 
@@ -1628,7 +1656,7 @@ class ParDicts(object):
         ###############################################################
 
         common_dict = self.common_args(self.correct,self.weight,self.weight_rmf,self.bkgresp,
-                                       self.refcoord,self.ptype,self.gtype,self.gspec,self.bggtype,
+                                       self.refcoord,self.streakspec,self.ptype,self.gtype,self.gspec,self.bggtype,
                                        self.bggspec,self.ebin,self.channel,self.ewmap,self.binwmap,
                                        self.bintwmap,self.binarfcorr,self.wmap_clip,self.wmap_threshold,
                                        self.tmpdir,self.clobber,self.verbose)
@@ -1638,6 +1666,8 @@ class ParDicts(object):
                                                                                 self.outroot,
                                                                                 common_dict["weight"],
                                                                                 common_dict["bkgresp"],
+                                                                                common_dict["refcoord"],
+                                                                                common_dict["streakspec"],
                                                                                 common_dict["ebin"],
                                                                                 self.nproc)
         

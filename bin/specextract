@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2011, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021
+# Copyright (C) 2011-2022
 #        Smithsonian Astrophysical Observatory
 #
 #
@@ -34,7 +34,7 @@ Script:
 __version__ = "CIAO 4.14"
 
 toolname = "specextract"
-__revision__ = "11 January 2022"
+__revision__ = "10 February 2022"
 
 
 ##########################################################################
@@ -47,7 +47,7 @@ __revision__ = "11 January 2022"
 
 # Load the necessary libraries.
 
-import paramio, os, sys, shutil, numpy, stk, tempfile, caldb4
+import paramio, os, sys, shutil, numpy, stk, tempfile, caldb4, region
 import pycrates as pcr
 
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors, get_verbosity
@@ -116,6 +116,143 @@ def extract_spectra(full_outroot, infile, ptype, channel,
 
 
 
+def readout_streak_spec(specfile,infile,src_x,src_y):
+    """
+    Determine effective exposure time for the extracted readout streak spectrum
+    """
+    
+    xfer_time = 4e-5 # ACIS frame transfer time ~40 usec/row[/frame]
+        
+    reg = region.CXCRegion(pcr.read_file(f"{specfile}[#row=0]").get_subspace_data(1,"sky").region) # use subspace since the region is always transformed into physical coordinates
+
+    nrows = []
+
+    extent = reg.extent()
+    
+    for r,R in list(zip(*[reg.shapes,reg])):
+        shapename = r.name
+
+        if bool(r.include.val):
+            include_reg = 1
+        else:
+            include_reg = -1
+
+        if shapename != "polygon":
+            try:
+                if "box" in shapename:
+                    D = r.radii.max()
+                    
+                elif shapename == "annulus":
+                    D = 2.0 * (r.radii.max() - r.radii.min())
+                    
+                else:
+                    D = 2.0 * r.radii.max()
+
+            except (AttributeError,TypeError):
+                raise IOError("There is an unexpected issue with the readout streak extrction region type.")
+
+            nrows.append(numpy.ceil(D) * include_reg)
+            
+        else:
+            v3("Approximating streak exposure time from polygonal region extent...")
+                        
+            x = r.xpoints.tolist()
+            y = r.ypoints.tolist()
+
+            x_min = min(x)
+            x_max = max(x)
+            y_min = min(y)
+            y_max = max(y)
+
+            ext = R.extent()
+            reg_area = R.area()
+            ext_area = (ext["x1"] - ext["x0"]) * (ext["y1"] - ext["y0"])
+            
+            if numpy.isclose(ext_area,reg_area,rtol=1e-6,atol=0.5): #ext_area == reg_area: ## if readout streak is directly along either sky x or y axes. ##
+                if (extent["x1"] - extent["x0"]) < (extent["y1"] - extent["y0"]):
+                    dr = ext["y1"] - ext["y0"]
+                else:
+                    dr = ext["x1"] - ext["x0"]
+
+            else:
+                if all([x_min < src_x, y_min < src_y, x_max < src_x, y_max < src_y]) or all([x_max > src_x, y_max > src_y, x_min > src_x, y_min > src_y]) or all([x[y.index(y_min)] < src_x, y[x.index(x_min)] < src_y, x[y.index(y_max)] > src_x, y[x.index(x_max)] > src_y]): # (/)
+
+                    indmin1 = x.index(x_min)
+                    indmax1 = y.index(y_max)
+
+                    indmin2 = y.index(y_min)
+                    indmax2 = x.index(x_max)
+
+                elif all([x_min < src_x, y_max > src_y, x_max < src_x, y_min > src_y]) or all([x_max > src_x, y_min < src_y, x_min > src_x, y_max < src_y]) or all([x[y.index(y_max)] < src_x, y[x.index(x_min)] > src_y, x[y.index(y_min)] > src_x, y[x.index(x_max)] < src_y]): # (\)
+
+                    indmin1 = x.index(x_min)
+                    indmax1 = y.index(y_min)
+
+                    indmin2 = y.index(y_max)
+                    indmax2 = x.index(x_max)
+
+                else: # if polygonal region intersect >1 quadrant in sky-space
+                    if (extent["x1"] - extent["x0"]) < (extent["y1"] - extent["y0"]):
+                        X = sorted(numpy.unique(x))
+
+                        indmin1 = x.index(x_min)
+                        indmax1 = x.index(X[1])
+
+                        indmin2 = x.index(x_max)
+                        indmax2 = x.index(X[-2])
+
+                    else:
+                        Y = sorted(numpy.unique(y))
+
+                        indmin1 = y.index(y_min)
+                        indmax1 = y.index(Y[1])
+
+                        indmin2 = y.index(y_max)
+                        indmax2 = y.index(Y[-2])
+
+                dx1 = x[indmax1] - x[indmin1]
+                dy1 = y[indmax1] - y[indmin1]
+
+                dx2 = x[indmax2] - x[indmin2]
+                dy2 = y[indmax2] - y[indmin2]
+
+                dr1 = (dx1**2 + dy1**2)**0.5
+                dr2 = (dx2**2 + dy2**2)**0.5
+
+                dr = (dr1+dr2)/2
+
+            nrows.append(numpy.ceil(dr) * include_reg)
+
+    nrows = sum(nrows)
+
+    cr_ccd = pcr.read_file(f"{infile}[cols ccd_id]")
+    ccd_id = utils.getUniqueSynset(cr_ccd.get_column("ccd_id").values)
+
+    if len(ccd_id) != 1:
+        raise IOError("Readout streak extraction region should fall on a single CCD.")
+    
+    exptime = cr_ccd.get_key_value("EXPTIME")
+    exposure = cr_ccd.get_key_value(f"EXPOSUR{ccd_id[0]}")
+
+    if exposure is None:
+        exposure = cr_ccd.get_key_value("EXPOSURE")
+
+    nframes = numpy.ceil(exposure/exptime)
+
+    del(cr_ccd)
+    
+    streak_exposure = nframes * nrows * xfer_time
+
+    v1(f"The readout streak extraction region encompasses {nrows} pixel rows of ACIS-{ccd_id[0]} with an effective exposure time of {streak_exposure:.12} [s].")
+    
+    edit_headers(0,specfile,"EXPOSURE",f"{streak_exposure:.12}",unit="s",
+                 comment="effective readout streak exposure time")
+
+    edit_headers(0,specfile,"NROW_STRK",nrows,
+                 comment="number of ACIS rows from readout streak extraction")
+
+
+
 def create_arf_ps(full_outroot, evt_filename, asp_param, ebin,
                   clobber, verbose, dafile, mskfile,
                   ccd_id, skyx, skyy, infostr):
@@ -145,7 +282,7 @@ def create_arf_ps(full_outroot, evt_filename, asp_param, ebin,
 
     mkarf.punlearn()
 
-    mkarf.detsubsys = f"{detname};BPMASK=0x03ffff"
+    mkarf.detsubsys = detname #f"{detname};BPMASK=0x03ffff" # 4.13 framestore shadow badpix bug fix
     mkarf.outfile = arffile
     mkarf.asphistfile = asp_param
     mkarf.sourcepixelx = skyx
@@ -193,7 +330,7 @@ def create_arf_ext(full_outroot, ebin,
         mkwarf.dafile = dafile
         mkwarf.spectrumfile = ""
         mkwarf.egridspec = ebin
-        mkwarf.detsubsysmod = "BPMASK=0x03ffff"
+        #mkwarf.detsubsysmod = "BPMASK=0x03ffff" # 4.13 framestore shadow badpix bug fix
         mkwarf.clobber = "yes"
         mkwarf.verbose = verbose
 
@@ -466,7 +603,7 @@ def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,
         v1("Warning: 'rmffile' parameter for HRC observations is meant for Calibration Group and expert usage!")
 
         rmf = rmf_file
-
+        
     # copy RMF
     rmffile = f"{full_outroot}.rmf"
     shutil.copyfile(rmf,rmffile)
@@ -949,7 +1086,7 @@ def build_acis_arf(args):
                                                       tdetwmap,tmpdir,infostr)
                 weightfile.close()
                 
-                add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
+                add_history_scriptver(ancrfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
             if all([srcbkg == "src", weight == "no"]):
                 try:
@@ -958,7 +1095,7 @@ def build_acis_arf(args):
                                              da,msk,
                                              ccd_id,skyx,skyy,infostr)
 
-                    add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
+                    add_history_scriptver(ancrfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
                     
                 except OSError as exc:
                     raise IOError(f"Failed to create ARF for {fullfile}") from exc
@@ -1056,7 +1193,7 @@ def build_acis_rmf(args):
                                             ebin,rmfbin,clobber,verbose,phafile,feffile,
                                             ccd_id,chipx,chipy,infostr)
 
-                add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+                add_history_scriptver(respfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
         except OSError as exc:
             raise IOError(f"Failed to create RMF for {fullfile}") from exc
@@ -1100,6 +1237,7 @@ def spectra(args):
     binwmap = args["binwmap"]    
     ptype = args["ptype"]
     channel = args["channel"]
+    streakspec = args["streakspec"]
     ewmap = args["ewmap"]
     tmpdir = args["tmpdir"]
     clobber = args["clobber"]
@@ -1188,6 +1326,10 @@ def spectra(args):
             phafile = extract_spectra(full_outroot,fullfile,ptype,channel,
                                       ewmap,binwmap,instrument,clobber,verbose)
 
+            ## update extracted readout streak spectrum effective exposure time ##
+            if streakspec == "yes" and srcbkg == "src":
+                readout_streak_spec(specfile=phafile,infile=fullfile,src_x=float(args["skyx"]),src_y=float(args["skyy"]))
+
             try:
                 pardict[key_id].update({"phafile" : phafile})
             except NameError:
@@ -1238,8 +1380,9 @@ def spectra(args):
             if all([bsky_status is not None, bskysamp_status is None]):
                 ccdid = pcr.read_file(f"{fullfile}[cols ccd_id]").get_column("CCD_ID").values
                 ccds,ccd_counts = numpy.unique(ccdid,return_counts=True)
-                ccdid = ccds[ccd_counts.tolist().index(max(ccd_counts))]
 
+                ccdid = ccds[ccd_counts.tolist().index(max(ccd_counts))]
+                
                 bkgscale = fileio.get_keys_from_file(fullfile)[f"BKGSCAL{ccdid}"]
 
                 edit_headers(verbose, phafile, "AREASCAL", bkgscale, comment=f"blanksky BKGSCAL{ccdid} scaling factor from the 'blanksky' script, set to 1.0 if subtracting background")
@@ -1355,7 +1498,7 @@ def resps(args):
                                                        dtf,instrument,chip_id,
                                                        verbose,clobber,tmpdir)
 
-                    add_tool_history(asphist,toolname,pars,toolversion=__revision__)
+                    add_history_scriptver(asphist,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
                 except OSError as exc:
                     if dobkgresp:
@@ -1382,7 +1525,7 @@ def resps(args):
                                                           da,msk,
                                                           tdetwmap,tmpdir,infostr)
                     
-                    add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
+                    add_history_scriptver(ancrfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
                 except OSError as exc:
                     raise IOError(f"Failed to create ARF for {fullfile}") from exc
@@ -1400,7 +1543,7 @@ def resps(args):
                     
                     weightfile.close()
 
-                    add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+                    add_history_scriptver(respfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
                         
                 except OSError as exc:
                     raise IOError(f"Failed to create RMF for {fullfile}") from exc
@@ -1444,9 +1587,9 @@ def resps(args):
                                                      asphist,clobber,verbose,msk,
                                                      skyx,skyy,instrument,chip_id,infostr)
 
-                add_tool_history(ancrfile,toolname,pars,toolversion=__revision__)
+                add_history_scriptver(ancrfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
-                add_tool_history(respfile,toolname,pars,toolversion=__revision__)
+                add_history_scriptver(respfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
                 if all([srcbkg == "src",correct == "yes"]):
                     try:
@@ -1558,6 +1701,13 @@ def groupspec(args):
             raise IOError(f"Failed to group spectrum for {fullfile}")
 
 
+
+def add_history_scriptver(fn,toolname,params,toolversion,modname,modversion):
+    add_tool_history(fn, toolname, params, toolversion=toolversion)
+    edit_headers(0, fn, "SCRIPTVER", f"{toolname} - {toolversion}")
+    edit_headers(0, fn, "SCRIPTMOD", f"{modname} - {modversion}")
+    
+    
         
 def add_header_keys(args):
     key_id = args["key_id"]
@@ -1673,10 +1823,10 @@ def add_header_keys(args):
             v1(f"Failed to update the BACKFILE keyword in {fn}.\n")
 
 
-        add_tool_history(phafile,toolname,pars,toolversion=__revision__)
+        add_history_scriptver(phafile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
         if grpfile is not None:
-            add_tool_history(grpfile,toolname,pars,toolversion=__revision__)
+            add_history_scriptver(grpfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
             
     
@@ -1778,7 +1928,7 @@ def get_par(args):
     pars["energy_wmap"] = params["ewmap"] = paramio.pgetstr(pfile, "energy_wmap")
     pars["binarfwmap"] = params["binarfwmap"] = paramio.pgetstr(pfile, "binarfwmap")
     pars["binwmap"] = params["binwmap"] = paramio.pgetstr(pfile, "binwmap")
-    pars["binarfcorr"] = params["binarfcorr"] = paramio.pgetstr(pfile, "binarfcorr")
+    pars["binarfcorr"] = params["binarfcorr"] = paramio.pgetd(pfile, "binarfcorr")
     #pars["pbkfile"] = params["pbkfile"] = paramio.pgetstr(pfile, "pbkfile")
     pars["dtffile"] = params["dtffile"] = paramio.pgetstr(pfile, "dtffile")
     pars["mskfile"] = params["mskfile"] = paramio.pgetstr(pfile, "mskfile")
@@ -1792,6 +1942,8 @@ def get_par(args):
     #pars["wmap_clip"] = params["wmap_clip"] = paramio.pgetstr(pfile,"wmap_clip")
     #pars["wmap_threshold"] = params["wmap_threshold"] = paramio.pgetstr(pfile,"wmap_threshold")
 
+    pars["readout_streakspec"] = params["streakspec"] = paramio.pgetstr(pfile, "readout_streakspec")
+    
     pars["parallel"] = params["parallel"] = paramio.pgetstr(pfile, "parallel")
     pars["nproc"] = params["nproc"] = paramio.pgetstr(pfile, "nproc")
 
@@ -1908,6 +2060,8 @@ def run_specextract(args):
     verbose = params["verbose"]
     mode = params["mode"]
 
+    streakspec = params["streakspec"]
+    
     parallel = params["parallel"]
     nproc = params["nproc"]
 
