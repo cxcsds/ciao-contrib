@@ -73,6 +73,8 @@ class ImageProcTask():
         suffix = "_{}.fits".format(self.toolname)
         self.outfile = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"],
                                           suffix=suffix, delete=False)
+        self.region_file = None
+
         self.tool = make_tool(self.toolname)
 
         if hasattr(self.tool, "infile"):
@@ -84,6 +86,11 @@ class ImageProcTask():
             self.img2display = None
 
         self.set_args(args)
+
+    def __del__(self):
+        '''Delete temp region file'''
+        if self.region_file and os.path.exists(self.region_file.name):
+            os.unlink(self.region_file.name)
 
     def apply_region_to_infile(self, regions):
         '''Tools like dmellipse and dmimghull only operate on filtered
@@ -97,6 +104,18 @@ class ImageProcTask():
             regions = "+".join(stk.build(regions.replace("@", "@-")))
         else:
             regions = regions.replace(";", "+").replace("+-", "-").rstrip("+")
+
+        if len(regions) > 768:
+            # If a really long region then write to a FITS region
+            # file and use that instead.
+            self.region_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"],
+                                          suffix=".reg", delete=False)
+            self.region_file.close()
+            from region import CXCRegion
+            reg_obj = CXCRegion(regions)
+            reg_obj.write(self.region_file.name, fits=True, clobber=True)
+            regions = "region({})".format(self.region_file.name)
+
         ffilt = "[(x,y)={}]".format(regions)
 
         print("Using filter '{}'\n".format(ffilt))
