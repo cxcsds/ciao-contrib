@@ -679,6 +679,27 @@ def is_par_set(value):
     return value == 'yes'
 
 
+class CaldbIOError(IOError):
+    pass
+
+
+def validate_infile(infile):
+    'Some basic checks on infile'
+    from pycrates import read_file
+    
+    try:
+        block = read_file(infile)
+    except:
+        raise CaldbIOError("WARNING: Cannot open file '{}'. Skipping it.".format(infile))
+    
+    telescope = block.get_key_value("TELESCOP")
+    if telescope is None:
+        raise CaldbIOError("WARNING: Cannot find TELESCOP keyword in file '{}'.  Skipping it.".format(infile))
+    
+    if telescope != "CHANDRA":
+        raise CaldbIOError("WARNING: '{}' does not appear to be a Chandra dataset. Skipping it.".format(infile))
+        
+
 #
 # Main Routine
 #
@@ -718,10 +739,9 @@ def main():
             continue
             
         try:
-            from pycrates import read_file
-            read_file(infile)
-        except:
-            verb0("WARNING: Unable to open '{}'.  Skipping it.".format(infile))
+            validate_infile(infile)
+        except CaldbIOError as failed:
+            print(failed)
             continue
 
         get_caldb_files(baseurl, rootdir, infile, outdir, clobber, background_files, missing)
