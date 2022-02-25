@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2013-2021 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2022 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "download_obsid_caldb"
-__revision__ = "09 November 2021"
+__revision__ = "25 February 2022"
 
 lw.initialize_logger(toolname)
 
@@ -707,6 +707,7 @@ def main():
         rootdir=""
         oldcaldb = create_config_files(baseurl, rootdir, outdir)
 
+    any_success = False
     import stk as stk
     for infile in stk.build(infiles):
         try:
@@ -715,11 +716,21 @@ def main():
         except Exception:
             verb0("WARNING: Unable to locate evt2 file in '{}'.  Skipping it.".format(infile))
             continue
+            
+        try:
+            from pycrates import read_file
+            read_file(infile)
+        except:
+            verb0("WARNING: Unable to open '{}'.  Skipping it.".format(infile))
+            continue
 
         get_caldb_files(baseurl, rootdir, infile, outdir, clobber, background_files, missing)
+        any_success = True
 
-    print_new_setup(oldcaldb,outdir)
-
+    if any_success:
+        print_new_setup(oldcaldb,outdir)
+    else:
+        raise RuntimeError("Could not find any valid input files")
 
 if __name__ == "__main__":
     try:
