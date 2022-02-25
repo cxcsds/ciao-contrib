@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # 
-# Copyright (C) 2013,2014,2016,2018,2019 
+# Copyright (C) 2013,2014,2016,2018,2019, 2022 
 # Smithsonian Astrophysical Observatory
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 # 
 # This program is distributed in the hope that it will be useful,
@@ -21,7 +21,7 @@
 from __future__ import print_function
 
 toolname = "combine_grating_spectra"
-__revision__ = "18 November 2019"
+__revision__ = "25 February 2022"
 
 from pycrates import read_file, write_file
 import numpy as np
@@ -365,28 +365,8 @@ def combine( tocombo, pars, add_pm, method=None, sign=None):
     the method="sum"
 
     """
-    #from ciao_contrib.runtool import combine_spectra
-    import ciao_contrib.runtool as rt
-    newtool = {
-        'istool' : True,
-        'req' : [
-                rt.ParValue("src_spectra", "f", "Input TYPE:I pha file", None),
-                rt.ParValue("outroot", "f", "Output root file name", None),
-                ],
-        'opt' : [                
-                rt.ParValue("src_arfs","f", "Input ARF files", None),
-                rt.ParValue("src_rmfs","f", "Input RMF files", None),
-                rt.ParValue("bkg_spectra","f", "Input RMF files", None),
-                rt.ParValue("bkg_arfs","f", "Input RMF files", None),
-                rt.ParValue("bkg_rmfs","f", "Input ARF files", None),
-                rt.ParValue("method", "s", "sum or average", "sum"),
-                rt.ParValue("bscale_method", "s", "how to combute bscale", "asca"),
-                rt.ParValue("exp_origin", "s", "pha or arf", "pha"),
-                rt.ParValue("clobber","b","Overwrite if file exists",False),
-                rt.ParRange("verbose","i","Debug level",0,0,5)
-                ]}
-
-    combine_spectra = rt.CIAOToolParFile( "combine_spectra", newtool["req"], newtool["opt"])
+    from ciao_contrib.runtool import make_tool
+    combine_spectra = make_tool("combine_spectra")
 
     outstk = []
     tt = filter_spectra( tocombo, pars["garm"], pars["order"], add_pm )
@@ -408,7 +388,7 @@ def combine( tocombo, pars, add_pm, method=None, sign=None):
             sgn = sign
         
         arm = tgpart[key.tg_part].lower()
-        combine_spectra.outroot = "{}{}_{}{}".format( pars["outroot"], arm, sgn, abs(key.tg_m))
+        combine_spectra.outroot = "{}combo_{}_{}{}".format( pars["outroot"], arm, sgn, abs(key.tg_m))
 
         vv = combine_spectra()
         if vv: verb0( vv )
