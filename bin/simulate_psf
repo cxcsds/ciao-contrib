@@ -279,6 +279,17 @@ def resolve_parameter_dependencies( pars ):
     if int(pars["random_seed"]) <= 0:
         import random as random
         pars["random_seed"] = str( random.getrandbits(29) )
+        
+    if pars["numiter"] == "INDEF":
+        if pars["numrays"] == "INDEF":
+            raise RuntimeError("Please specify the number of iterations or number of rays")
+        pars["numiter"] = "1"   # start w/ 1 will increase as needed
+    else:
+        if pars["numrays"] != "INDEF":
+            verb0("WARNING: Cannot specify both number of iterations "+
+                  "and number of rays. Using number of iterations")
+        pars["numrays"] = "INDEF"  # numiter wins
+            
 
 
 def check_rayfiles( raystk ):
@@ -1272,6 +1283,23 @@ def cleanup_iterations( pars ):
         gorm( pars["__spectrum"] )
 
 
+def check_numrays(numiter, numrays, pars, rayfile, fudge_factor=1.0):
+    "Compute number of rays"
+
+    numiter = numiter + 1    
+    if pars["numrays"] == "INDEF":
+        return numiter, numrays
+        
+    from pycrates import read_file
+    tab = read_file(rayfile)
+    nrays = tab.get_nrows()
+    numrays = numrays + nrays
+
+    if (numrays/fudge_factor) < int(pars["numrays"]):
+        nextiter = int(pars["numiter"])+1
+        pars["numiter"] = str(nextiter)
+    
+    return numiter, numrays
 
 
 def iteration_loop( pars, obi_info, src_info ):
@@ -1280,7 +1308,10 @@ def iteration_loop( pars, obi_info, src_info ):
         file name is stored in a psf.lis file that will get cleaned up
         at the end.
     """
-    for nn in range( int( pars["numiter"] )):
+
+    nn = 0
+    numrays = 0
+    while nn < int(pars["numiter"]) and nn < 10000:
 
         pars["_outroot_"] = pars["outroot"]+"i{0:04d}".format(nn)
         pars["random_seed"] = int( pars["random_seed"] )+nn
@@ -1294,7 +1325,9 @@ def iteration_loop( pars, obi_info, src_info ):
             pars["_rayfile_"] = pars["_outroot_"]+"_rays.fits"
             run_saotrace( pars, obi_info, src_info )
             if pars["projector"] == "none":
+                nn, numrays = check_numrays(nn, numrays, pars, pars["_rayfile_"], fudge_factor=0.7)
                 continue
+                                
         elif "file" == pars["simulator"]:
             pars["_rayfile_"] = stk.build(pars["rayfile"])[nn]
 
@@ -1305,7 +1338,8 @@ def iteration_loop( pars, obi_info, src_info ):
             # run psf_project_ray
             run_psf_project( pars, obi_info, src_info )
         create_psf_image(pars, src_info)
-
+        nn, numrays = check_numrays(nn, numrays, pars, pars["_outroot_"]+"_projrays.fits")
+ 
 #
 # Main Routine
 #
