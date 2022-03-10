@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+<ENTRY 
+        context="tools" 
+        key="statmap" 
+        refkeywords="" 
+        seealsogroups="dmimgtools"
+    >
+    <SYNOPSIS>
+    Compute simple statistics for events in each map region.
+    </SYNOPSIS>
+
+<DESC>
+<PARA>
+`statmap' is used to compute simple statistics (mean, median, sum,
+min, max, or count) of a column in an input event files based on how 
+they have been spatially grouped via the input map file.
+For example, users can use this script to compute the mean energy
+of the events that have been adaptively binned with 
+dmnautilus, dmradar, or another adaptive binning tool.
+</PARA>
+
+    <PARA title="Caution: Interpreting Results">
+        The output from statmap should not be interpreted directly as a
+        "temperature map".  While some authors (David et al. 2009, ApJ, 705, 624)
+        have developed techniques to "calibrate" the kind of mean energy maps 
+        this tool can produce, the intent of this tool is to provide a 
+        quick analysis to help guide users to preform more detailed
+        analysis (ie spectral fitting).  Users can use this tool
+        to identify regions where the energy changes (eg "cool cores")
+        but the actual temperatures should be derived more robustly.
+    </PARA>
+
+</DESC>
+
+<QEXAMPLELIST>
+  <QEXAMPLE>
+  <SYNTAX>
+    <LINE>unix% statmap acis_evt.fits adaptive_bin.map median_energy.map</LINE>
+  </SYNTAX>
+  <DESC>
+    <PARA>
+    With the defaults, the tool will compute the median energy
+    of the events from the input event file, acis_evt.fits, for each
+    region in the input mapfile, adaptive_bin.map.  The output
+    image, median_energy.map, will be an image whose pixels
+    values are the median energy.
+    </PARA>
+  </DESC>
+  </QEXAMPLE>
+  <QEXAMPLE>
+  <SYNTAX>
+    <LINE>unix% dmnautilus "acis_evt.fits[ccd_id=7,energy=500:7000][bin sky=4]" abin.img snr=10 method=4 outmaskfile=abin.map</LINE>
+    <LINE>unix% statmap "acis_evt.fits[ccd_id=7,energy=500:7000]" abin.map median_energy.map stat=median column=energy</LINE>
+  </SYNTAX>
+  <DESC>
+    <PARA>
+  The first command in this example uses the dmnautilus tool to compute
+  an adaptively binned image where each bin contains at least 100 counts
+  (implied by snr=10). The 2nd command then runs statmap to compute
+  the mean energy in each bin by using abin.map file produced by dmnautilus.
+    </PARA>
+  </DESC>
+  </QEXAMPLE>
+
+  <QEXAMPLE>
+  <SYNTAX>
+    <LINE>unix% dmnautilus "acis_evt.fits[ccd_id=7,energy=500:7000][bin sky=4]" abin.img snr=10 method=4 outmaskfile=abin.map</LINE>
+    <LINE>unix% statmap "acis_evt.fits[ccd_id=7,energy=500:7000]" abin.map number_events.map stat=count column=energy</LINE>
+  </SYNTAX>
+  <DESC>
+    <PARA>
+    The same as the previous example, but now using statistic=count.  The
+    output image will now show the number of events (count) in each
+    of the bins.
+    </PARA>
+  </DESC>
+  </QEXAMPLE>
+</QEXAMPLELIST>
+
+<PARAMLIST>
+  <PARAM name="infile" type="file" filetype="input" reqd="yes">
+    <SYNOPSIS>The input event file.</SYNOPSIS>
+    <DESC>
+      <PARA>
+        The input event file (table) must have columns: X, Y, and
+        the "column" parameter.
+      </PARA>
+    </DESC>
+  </PARAM>
+
+  <PARAM name="mapfile" type="file" filetype="input" reqd="yes">
+    <SYNOPSIS>The input map file.</SYNOPSIS>
+    <DESC>
+      <PARA>
+      The input map file must be a 2D image whose integer pixel values
+      are used to identify which pixels are to be grouped together 
+      when computing the requested statistic.
+      </PARA>
+      <PARA>
+      This could for example be the "outmaskfile" created by 
+      dmnautilus or dmradar.
+      </PARA>
+      <PARA>
+      Only pixel values greater than 0 (&gt;0) are considered to be 
+      grouped.  Pixels less than or equal to zero (&lt;=0) are
+      not considered to be grouped and will be ignored.
+      </PARA>    
+    </DESC>
+  </PARAM>
+
+  <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+    <SYNOPSIS>The output statistics map image file.</SYNOPSIS>
+    <DESC>
+        <PARA>
+        The output image will be the same size as the input
+        "mapfile".  The pixels values will be the "statistic"
+        computed for the specified "column" from the pixels in
+        the "infile".  The same statistic value is used for all 
+        the pixels with the same ID (ie mapfile value).  So for
+        example with the defaults, the output file will have
+        the median energy of the events in each region, producing 
+        a pseudo temperature map.
+        </PARA>    
+    </DESC>
+  </PARAM>
+
+  <PARAM name="column" type="string" def="energy">
+    <SYNOPSIS>Which column to compute statistics about</SYNOPSIS>
+    <DESC>
+        <PARA>The name of the column in the "infile" event table about
+        which to compute the requested statistic.</PARA>
+    </DESC>
+  </PARAM>
+
+  <PARAM name="statistic" type="string" def="median">
+    <SYNOPSIS>The choice of statistic to compute</SYNOPSIS>
+    <DESC>
+    <PARA>
+    The choice of statistic options is:    
+    </PARA>
+    <LIST>
+      <ITEM>median : The median value (ie 50% quantile).</ITEM>
+      <ITEM>mean : The mean or average value (sum(column)/N).</ITEM>
+      <ITEM>min : The minimum value in the column.</ITEM>
+      <ITEM>max : The maximum value in the column.</ITEM>
+      <ITEM>sum : The sum of the values in the column.</ITEM>
+      <ITEM>counts : The number of value in the column.</ITEM>
+    </LIST>
+    </DESC>
+  </PARAM>
+
+       <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+            <SYNOPSIS>
+            Amount of chatter from the tool.
+            </SYNOPSIS>
+        </PARAM>
+        
+        <PARAM name="clobber" type="boolean" def="no">
+            <SYNOPSIS>
+            Delete outfile if it already exists?
+            </SYNOPSIS>
+        </PARAM>
+
+</PARAMLIST>
+
+
+
+
+   <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+
+   <BUGS>
+        <PARA>
+            See the
+            <HREF link="http://cxc.harvard.edu/ciao/bugs/index.html">CIAO
+            website</HREF> for an up-to-date listing of known bugs.
+        </PARA>
+    </BUGS>
+    <LASTMODIFIED>March 2022</LASTMODIFIED>
+</ENTRY>
+</cxchelptopics>
