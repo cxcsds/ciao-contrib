@@ -1,0 +1,448 @@
+#!/usr/bin/env python
+#
+# Copyright (C) 2016-2017, 2020-2022
+# Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+'Query the chandra observation catalog'
+
+import sys
+import os
+import ciao_contrib.logger_wrapper as lw
+
+toolname = "qocat"
+version = "25 Feb 2022"
+
+lw.initialize_logger(toolname, verbose=1)
+v1 = lw.make_verbose_level(toolname, 1)
+
+
+def colorize():
+    'Apply colors to text output or not'
+
+    if "NO_COLOR" not in os.environ and sys.stdout.isatty():
+        return True
+    return False
+
+
+def fmt_keyvalue_pair(key, keyvals, name, post="", eqls=":"):
+    'Format each key=value line'
+    if key not in keyvals or keyvals[key] is None:
+        return ""
+
+    if colorize():
+        fmt_line = "  \033[36m{0:>22s}\033[0m {1} \033[33m{2} {3}\033[0m\n"
+    else:
+        fmt_line = "  {0:>22s} {1} {2} {3}\n"
+
+    return fmt_line.format(name, eqls, keyvals[key], post)
+
+
+def get_summary(retvals):
+    """
+    Construct a string summarizing the configuration
+    """
+    retstr = ""
+    retstr += fmt_keyvalue_pair("telescop", retvals, "Telescope")
+    retstr += fmt_keyvalue_pair("instrume", retvals, "Instrument")
+    retstr += fmt_keyvalue_pair("detnam", retvals, "Detector Name")
+    retstr += fmt_keyvalue_pair("grating", retvals, "Grating")
+    retstr += fmt_keyvalue_pair("aimpoint", retvals, "Aimpoint Location")
+    retstr += fmt_keyvalue_pair("obs_id", retvals, "Observation ID")
+    retstr += fmt_keyvalue_pair("obi_num", retvals, "Observation Number")
+    retstr += fmt_keyvalue_pair("cycle", retvals, "Interleaved Exposure")
+    retstr += fmt_keyvalue_pair("object", retvals, "Object Name")
+    retstr += fmt_keyvalue_pair("pi_name", retvals, "Principal Investigator")
+    retstr += fmt_keyvalue_pair("observer", retvals, "Observer Name")
+    retstr += fmt_keyvalue_pair("title", retvals, "Proposal Title")
+    retstr += fmt_keyvalue_pair("pr_num", retvals, "Proposal Number")
+    retstr += fmt_keyvalue_pair("seq_num", retvals, "Observation Sequence")
+    retstr += fmt_keyvalue_pair("type", retvals, "Observation Type")
+    retstr += fmt_keyvalue_pair("obs_cycle", retvals, "Observation Cycle")
+    retstr += fmt_keyvalue_pair("category", retvals, "Observation Category")
+    retstr += fmt_keyvalue_pair("date-obs", retvals, "Observation Date")
+    retstr += fmt_keyvalue_pair("livetime", retvals, "Exposure Time", post="[ksec]")
+    retstr += fmt_keyvalue_pair("dtcor", retvals, "Dead Time Factor")
+    retstr += fmt_keyvalue_pair("datamode", retvals, "Data Mode")
+    retstr += fmt_keyvalue_pair("readmode", retvals, "Readout Mode")
+    retstr += fmt_keyvalue_pair("nrows", retvals, "Full Frame/Subarray")
+    retstr += fmt_keyvalue_pair("ascdsver", retvals, "Software Version")
+    retstr += fmt_keyvalue_pair("caldbver", retvals, "CALDB Version")
+    retstr += fmt_keyvalue_pair("revision", retvals, "Processing Revision")
+    retstr += fmt_keyvalue_pair("creator", retvals, "Created by tool")
+    retstr += fmt_keyvalue_pair("nom", retvals, "Nominal Pointing", post="[deg]")
+    retstr += fmt_keyvalue_pair("pnt", retvals, "Mean Optical Axis", post="[deg]")
+    retstr += fmt_keyvalue_pair("targ", retvals, "Target Location", post="[deg]")
+    retstr += fmt_keyvalue_pair("sim", retvals, "SIM Location", post="[mm]")
+    retstr += fmt_keyvalue_pair("soff", retvals, "Mean SIM offsets", post="[mm, mm, deg]")
+    retstr += fmt_keyvalue_pair("status", retvals, "Archive Status")
+    retstr += fmt_keyvalue_pair("public_avail", retvals, "Publicly Available")
+    retstr += fmt_keyvalue_pair("url", retvals, "URL")
+    retstr += fmt_keyvalue_pair("proposal_text", retvals, "Proposal Abstract")
+
+    return retstr
+
+
+def get_keys_from_file(infile, getlist):
+    """
+    Get all the keywords. Probably should use crates
+    """
+    from cxcdm import dmKeyRead, dmBlockOpen, dmGetName, dmBlockGetKeyList, dmBlockClose
+
+    def get_keyword_if_exists(block, keylist, key):
+        """
+        Get keyword value if it exists, returns None if not found.
+        """
+        if key not in keylist:
+            return None
+        d, v = dmKeyRead(block, key)
+        if isinstance(v, bytes):
+            v = v.decode("ascii", errors="replace")
+        return v
+
+    _block = dmBlockOpen(infile)
+    _keylist = [dmGetName(x).lower() for x in dmBlockGetKeyList(_block)]
+    _getvals = [get_keyword_if_exists(_block, _keylist, k) for k in getlist]
+    dmBlockClose(_block)
+
+    retvals = dict(zip(getlist, _getvals))
+
+    return retvals
+
+
+def make_url_request(resource, vals):
+    """
+    Query and retrieve results from resourse using dictionary of
+    vals values.
+
+    The ciao-install version of python doesn't setup the ssl certificates
+    correctly so we have to access the cxc site w/o verification.
+    """
+    import urllib.request as request
+    import urllib.parse as urlp
+    import ssl as ssl
+    no_context = ssl._create_unverified_context()
+    params = urlp.urlencode(vals)  # Encode into URL string, escape stuff/etc.
+    rr = request.Request(resource, params.encode("ascii"))
+    response = request.urlopen(rr, context=no_context)
+    page = response.read()
+
+    if len(page) == 0:
+        raise Exception("Problem accessing resource {0}".format(resource))
+
+    if response.getcode() != 200:
+        raise Exception(page)
+    return page.decode("ascii", errors="replace")
+
+
+def get_keys_from_ocat(obsid, getlist):
+    """
+    Get values from the ocatDetails page.
+    """
+    server = "cda.harvard.edu"
+    service = "srservices/ocatDetails.do"
+    resource = "https://{0}/{1}".format(server, service)
+
+    prop_service = "srservices/propAbstract.do"
+    prop_resource = "https://{0}/{1}".format(server, prop_service)
+
+    def parse_page(page):
+        page_lines = page.split("\n")
+
+        page_lines_nohdr = [x for x in page_lines if not x.startswith("#")]
+        hdr = [x.lower() for x in page_lines_nohdr[0].split("\t")]
+        ln = page_lines_nohdr[2]   # should only be 1 row, but leave door open
+        tlin = ln.replace("\t\t", "\tNone\t")
+        flds = tlin.split("\t")
+        tab = dict(zip(hdr, flds))
+        return tab
+
+    def parse_prop_page(page):
+        """
+        Ugh, I hate parsing unstructured HTML :(
+        """
+        from textwrap import fill
+
+        pp = page.strip().split("\n")
+
+        begin = [x for x in pp if 'colspan="2"' in x]
+        assert len(begin) == 1
+
+        begin_idx = pp.index(begin[0])
+        prop = pp[begin_idx+2]
+        prop = fill(prop.strip(), 80, subsequent_indent=" "*27,
+                    initial_indent=" "*27).lstrip()
+
+        return prop
+
+    def translate_ocat_values(tab):
+        'Convert ocat to FITS keywords'
+        xtab = {"detnam": "readout_detector",
+                "obs_id": "obsid",
+                "instrume": "instr",
+                "grating": "grat",
+                "date-obs": "start_date",
+                "title": "prop_title",
+                "ra_targ": "ra",
+                "dec_targ": "dec",
+                "object": "target_name",
+                "livetime": "exp_time",
+                "readmode": "mode",
+                "firstrow": "strt_row",
+                "nrows": "row_cnt",
+                "cycle": "d_cyc"}
+
+        for x in xtab:
+            if xtab[x] in tab:
+                tab[x] = tab[xtab[x]]
+
+        tab["ra_targ"] = float(tab["ra_targ"])
+        tab["dec_targ"] = float(tab["dec_targ"])
+        tab["telescop"] = "CHANDRA"
+        if tab["instrume"].startswith("ACIS"):
+            tab["instrume"] = "ACIS"
+            if "NONE" == tab["subary"]:
+                tab["nrows"] = "1024"
+
+        if "None" == tab["livetime"]:
+            tab["livetime"] = "0"
+        else:
+            tab["livetime"] = str(float(tab["livetime"])*1000)
+
+        if "title" in tab:
+            from textwrap import fill
+            tab["title"] = fill(tab["title"].strip().title(), 80,
+                                subsequent_indent=" "*27,
+                                initial_indent=" "*27).lstrip()
+
+        if "status" in tab and tab["status"] == "archived":
+            if colorize():
+                # underline URL
+                fmt_line = "\033[4mhttps://cxc.cfa.harvard.edu/cdaftp/byobsid/{}/{}/\033[0m"
+            else:
+                fmt_line = "https://cxc.cfa.harvard.edu/cdaftp/byobsid/{}/{}/"
+            tab["url"] = fmt_line.format(tab["obs_id"][-1], tab["obs_id"])
+
+        if "type" in tab:
+            human = {'ER': 'ER - Engineering Request',
+                     'GO': 'GO - Guest Observer',
+                     'GTO': 'GTO - Guaranteed Time Observer',
+                     'TOO': 'TOO - Target of Opportunity',
+                     'CCT': 'CCT - Chandra Cold Target',
+                     'DDT': "DDT - Director's Discretionary Time",
+                     'CAL': 'CAL - Calibration'}
+            if tab["type"] in human:
+                tab["type"] = human[tab["type"]]
+
+    # TODO: figure out if special dither pattern requested
+    # TODO: pointing offsets
+    # TODO: HRC blank enabled
+    # TODO: acis PHA filters
+    # TODO: acis windows
+    # TODO: issues table?
+    # TODO: vv comments?
+
+    page = make_url_request(resource, {"obsid": obsid, "format": "text",
+                                       "outputCoordUnits": "decimal"})
+    tab = parse_page(page)
+    for g in getlist:
+        if g not in tab:
+            tab[g] = None
+
+    translate_ocat_values(tab)
+
+    prop_page = make_url_request(prop_resource, {"obsid": obsid})
+    prop = parse_prop_page(prop_page)
+    tab["proposal_text"] = prop
+
+    return tab
+
+
+def get_chandra_config(infile):
+    """
+    Get interesting keywords from input file and/or ocat
+    """
+
+    getlist = ["telescop", "instrume", "detnam", "date-obs", "livetime",
+               "grating", "datamode", "readmode", "object",
+               "observer", "obs_id", "obi_num", "cycle", "nrows",
+               "title", "dtcor", "dtycycle",
+               "ascdsver", "caldbver", "revision", "creator",
+               "seq_num",
+               "ra_nom", "dec_nom", "roll_nom",
+               "ra_pnt", "dec_pnt", "roll_pnt",
+               "ra_targ", "dec_targ",
+               "sim_x", "sim_y", "sim_z", "dy_avg", "dz_avg", "dth_avg"]
+
+    try:
+        retvals = get_keys_from_file(infile, getlist)
+        if "obs_id" in retvals and retvals["obs_id"].isdigit():
+            retvals_ocat = get_keys_from_ocat(retvals["obs_id"], getlist)
+            for kk in retvals_ocat:
+                if kk not in retvals:
+                    retvals[kk] = retvals_ocat[kk]
+    except:
+        if infile.isdigit():
+            oo = int(infile)
+            if (oo > 0) and (oo < 65536):
+                retvals = get_keys_from_ocat(infile, getlist)
+            else:
+                raise ValueError("Illegal obsid value")
+        else:
+            raise RuntimeError("Problem with infile")
+
+    return retvals
+
+
+def make_pretty(retvals):
+    "Translate values to human readable (ie non-CXC Xpert)"
+
+    if retvals["detnam"] and retvals["detnam"].startswith("ACIS"):
+        retvals["detector"] = retvals["detnam"].split("-")[0]
+    else:
+        retvals["detector"] = retvals["detnam"]
+
+    if retvals["livetime"]:
+        rlt = float(retvals["livetime"]) / 1000.0   # ksec
+        rlt = int(rlt * 10 + 0.5) / 10.0     # round to 1 decimal place
+        retvals["livetime"] = rlt
+
+    if retvals["nrows"]:
+        if int(retvals["nrows"]) < 1022:
+            retvals["nrows"] = "{} row SUBARRAY starting at row {}".format(retvals["nrows"], retvals["firstrow"])
+        else:
+            retvals["nrows"] = "FULLFRAME"
+
+    if retvals["date-obs"]:
+        retvals["date-obs"] = retvals["date-obs"].split("T")[0]
+
+    if retvals["cycle"]:
+        if retvals["cycle"] == 'P':
+            retvals["cycle"] = "PRIMARY"
+        elif retvals["cycle"] == 'S':
+            retvals["cycle"] = "SECONDARY"
+        elif retvals["cycle"] == 'B':
+            retvals["cycle"] = "BOTH"
+        else:
+            # Unknown, pass same value along
+            pass
+
+    if retvals["sim_z"]:
+        # sim_z positive is HRC aimpoints
+        # sim_z < -205 is ACIS-I aimpoint
+        # sim_z > -205 is ACIS-S aimpoint
+        z = float(retvals["sim_z"])
+        if z > 0:
+            aim = retvals["detector"] if retvals["detector"] else None
+        elif z < -205:
+            aim = "ACIS-I"
+        else:
+            aim = "ACIS-S"
+        retvals["aimpoint"] = aim
+
+    if retvals["title"]:
+        from textwrap import fill
+        retvals["title"] = fill(retvals["title"].strip().title(), 80,
+                                subsequent_indent=" "*27,
+                                initial_indent=" "*27).lstrip()
+
+    if retvals["dtcor"]:
+        retvals["dtcor"] = "{:.3g}".format(retvals["dtcor"])
+
+    if retvals["readmode"]:
+        human = {'TE': 'TE - Timed Exposure',
+                 'CC': 'CC - Continuous Clocking'}
+        if retvals["readmode"] in human:
+            retvals["readmode"] = human[retvals["readmode"]]
+
+    if True:
+        from coords.format import deg2ra, deg2dec
+        if retvals["ra_nom"] and retvals["dec_nom"]:
+            retvals["ra_nom"] = deg2ra(retvals["ra_nom"], ":", ndp=1)
+            retvals["dec_nom"] = deg2dec(retvals["dec_nom"], ":", ndp=1)
+            if retvals["roll_nom"]:
+                retvals["roll_nom"] = "{:.2f}".format(retvals["roll_nom"])
+        if retvals["ra_pnt"] and retvals["dec_pnt"]:
+            retvals["ra_pnt"] = deg2ra(retvals["ra_pnt"], ":", ndp=1)
+            retvals["dec_pnt"] = deg2dec(retvals["dec_pnt"], ":", ndp=1)
+            if retvals["roll_pnt"]:
+                retvals["roll_pnt"] = "{:.2f}".format(retvals["roll_pnt"])
+        if retvals["ra_targ"] and retvals["dec_targ"]:
+            retvals["ra_targ"] = deg2ra(retvals["ra_targ"], ":", ndp=1)
+            retvals["dec_targ"] = deg2dec(retvals["dec_targ"], ":", ndp=1)
+
+    def get_list_vals(lvals, names, digits=8):
+        """
+        """
+        simvals = [retvals[x] for x in lvals]
+        chk = [x is not None for x in simvals]
+        if not all(chk):
+            return None
+
+        if isinstance(simvals[0], str):
+            fmt = "{}={}"
+        else:
+            fmt = f"{{}}={{:.{digits}g}}"
+
+        retstr = ""+", ".join([fmt.format(n, v) for n, v in zip(names, simvals)])+""
+
+        return retstr
+
+    retvals["sim"] = get_list_vals(["sim_x", "sim_y", "sim_z"], ["X", "Y", "Z"], digits=5)
+    retvals["soff"] = get_list_vals(["dy_avg", "dz_avg", "dth_avg"], ["dY", "dZ", "dTheta"], digits=3)
+    retvals["nom"] = get_list_vals(["ra_nom", "dec_nom", "roll_nom"], ["RA", "Dec", "Roll"])
+    retvals["pnt"] = get_list_vals(["ra_pnt", "dec_pnt", "roll_pnt"], ["RA", "Dec", "Roll"])
+    retvals["targ"] = get_list_vals(["ra_targ", "dec_targ"], ["RA", "Dec"])
+
+
+def print_obs_summary(infile, obsinfo):
+    """
+    Print the observation summary tool
+    """
+
+    # v1(infile)
+    v1(obsinfo)
+    v1("")
+
+
+@lw.handle_ciao_errors(toolname, version)
+def sumobs():
+    """
+    Main routine to summarize a chandra obsid
+    """
+    import stk as stk
+
+    if len(sys.argv) < 2:
+        raise ValueError("Usage: {} filenames|obs_ids".format(sys.argv[0]))
+
+    infiles = sys.argv[1:]
+
+    if len(infiles) != 1:
+        raise RuntimeError("Must supply only 1 file/obsid or a stack")
+
+    infiles = stk.build(infiles[0])
+
+    for infile in infiles:
+        retvals = get_chandra_config(infile)
+        make_pretty(retvals)
+        obs_info = get_summary(retvals)
+        print_obs_summary(infile, obs_info)
+
+
+if __name__ == "__main__":
+    sumobs()
+    sys.exit(0)
