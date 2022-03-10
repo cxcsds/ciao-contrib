@@ -229,6 +229,24 @@
         <SYNTAX>
           <LINE>
             unix% simulate_psf infile=acisf00635_repro_evt2.fits 
+               ra=246.88628 dec=-24.556762  spectrum=source.dat
+               outroot=abs_powlaw_mean numiter=INDEF numrays=10000 minsize=256</LINE>          
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            This is similar to the previous example, except now instead of 
+            requesting a number of iterations we have requested a minimum
+            number of rays, 10000.  This mode is only available when
+            numiter=INDEF.  If both numiter and numrays are specified, then
+            numiter will be used.
+          </PARA>        
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+            unix% simulate_psf infile=acisf00635_repro_evt2.fits 
                ra=246.88628 dec=-24.556762  spectrum=none mono=2.3 flux=1e-6
                 outroot=mono_mean numiter=10 keepiter=yes minsize=256</LINE>          
         </SYNTAX>
@@ -718,8 +736,37 @@
                 rayfiles and produce the combined PSF.                
                 </PARA>
 
+                <PARA>
+                If numiter="INDEF", then the numrays parameter is used.  If both
+                numiter and numrays are set to integer values, then
+                the numiter value will be used and numrays will be ignored.
+                </PARA>
             </DESC>
           </PARAM>
+
+          <PARAM name="numrays" type="integer" def="INDEF" min="1">
+              <SYNOPSIS>Number of rays to simulates</SYNOPSIS>
+              <DESC>
+                <PARA>
+                  Rather than specifying a fixed number of iterations 
+                  users can specify the total number of rays (events)
+                  that they wish to simulate.              
+                  In this mode, the tool will perform one iteration 
+                  of the simulation, count the number of events, 
+                  and will repeat the simulate again with a different 
+                  random seed, until the total number rays has been 
+                  met. This will repeat up to 10000 times at which 
+                  point the tool will exit.
+                </PARA>
+                <PARA>
+                If numiter="INDEF", then the numrays parameter is used.  If both
+                numiter and numrays are set to integer values, then
+                the numiter value will be used and numrays will be ignored.
+                </PARA>
+              
+              </DESC>
+          </PARAM>
+
 
           <PARAM name="keepiter" type="boolean" def="no" reqd="no">
             <SYNOPSIS>Keep various files from each PSF simulation</SYNOPSIS>
@@ -949,6 +996,15 @@
         
     </ADESC>
 
+    <ADESC title="Changes in the scripts 4.14.2 (March 2022) release">
+        <PARA>
+            Added the numrays parameters to allow users to request
+            a specified number of rays (events) instead of the number
+            of iterations.
+        </PARA>
+    </ADESC>
+
+
 
     <ADESC title="Changes in the scripts 4.13.2 (June 2021) release">
       <PARA>
@@ -1035,7 +1091,7 @@
       </PARA>
     </BUGS>
 
-   <LASTMODIFIED>June 2021</LASTMODIFIED>
+   <LASTMODIFIED>March 2022</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>
