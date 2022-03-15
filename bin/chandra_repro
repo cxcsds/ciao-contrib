@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2021  Smithsonian Astrophysical Observatory
+# Copyright (C) 2010-2022  Smithsonian Astrophysical Observatory
 #
 #
 #
@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "14 September 2021"
+version = "15 March 2022"
 
 # import standard python modules as required
 #
@@ -220,13 +220,13 @@ def update_aspsol_to_aspsolobi(asol_list,mydir, params):
     v1("Applying boresight update to aspect solution file")
 
     if params["grating"].lower() in ["hetg", "letg"]:
-        if not params["recreate_tg_mask"]:
+        if params["tg_zo_position"] == 'evt2':
             v0("WARNING: The grating 0th order location must be "+
                "recomputed when asol_update=yes.  Changing "+
-               "recreate_tg_mask=yes.")
+               "tg_zo_position=detect.")
 
             # each obsid has separate params so OK to change here.
-            params["recreate_tg_mask"] = True
+            params["tg_zo_position"] = 'detect'
 
     if len(asol_list) == 0:
         error_out(params, "ERROR: No aspect solution files found", 'input error')
@@ -497,7 +497,7 @@ def make_default_pars():
              "vv_file":         None,
              "pha2_file":       "",
              "tgmsk_file":      "",  #Only for grating, only when param set
-             "recreate_tg_mask":  None,
+             "tg_zo_position":  None,
              "cycle":           "",  # Interleaved mode e1 or e2
              "cleanup":         "",
              "cleanup_files":   [],
@@ -648,7 +648,7 @@ def process_command_line(argv):
     check_vf_pha    = pio.pgetb(fp, "check_vf_pha")
     pix_adj_value   = pio.pgetstr(fp, "pix_adj")
     pix_adj_str     = pio.pgetstr(fp, "pix_adj")
-    recreate_tg_mask  = pio.pgetstr( fp, "recreate_tg_mask") == "yes"  # make True / False
+    tg_zo_position    = pio.pgetstr( fp, "tg_zo_position")
     boresight       = pio.pgetstr(fp, "asol_update") == "yes"
     pi_filter       = pio.pgetb(fp, "pi_filter")
     cleanup         = pio.pgetb(fp, "cleanup")
@@ -685,7 +685,7 @@ def process_command_line(argv):
         pp["check_vf_pha"] =    check_vf_pha
         pp["pix_adj_value"] =   pix_adj_value
         pp["pix_adj_str"] =     pix_adj_str
-        pp["recreate_tg_mask"] = recreate_tg_mask
+        pp["tg_zo_position"] =  tg_zo_position
         pp["asol_update"] =     boresight
         pp["pi_filter"] =       pi_filter
         pp["cleanup"] =         cleanup
@@ -1755,6 +1755,49 @@ def process_hrc_events(params):
     return params
 
 
+def run_tg_create_mask_with_user_position(params):
+    """Run tg_create_mask but use user coordinates"""
+    outdir       = params["outdir"]
+    root         = params["root"]
+    evt1         = params["evt1_file"]
+
+    from ciao_contrib.parse_pos import get_radec_from_pos
+    ra, dec = get_radec_from_pos(params["tg_zo_position"])
+
+    from ciao_contrib.runtool import dmcoords, dmcopy
+    dmcoords.punlearn()
+    dmcoords.infile=params["evt1_file"]
+    dmcoords.op="cel"
+    dmcoords.celfmt="deg"
+    dmcoords.ra=ra[0]
+    dmcoords.dec=dec[0]
+    dmcoords()
+    x_pos = dmcoords.x
+    y_pos = dmcoords.y
+
+    v1("Using user supplied 0th order location")
+    from ciao_contrib.runtool import tg_create_mask
+    tg_create_mask.punlearn()
+    tgmask = os.path.join(outdir, root + '_tgmask.fits')
+    params["cleanup_files"].append(tgmask)
+    tg_create_mask.punlearn()
+    tg_create_mask.infile=evt1
+    tg_create_mask.outfile=tgmask
+    tg_create_mask.input_pos_tab=""
+    tg_create_mask.use_user_pars=True
+    tg_create_mask.last_source_toread="A"
+    tg_create_mask.sA_zero_x = x_pos
+    tg_create_mask.sA_zero_y = y_pos
+    tg_create_mask.sA_zero_rad = 0.0   # These must be 0.0 (blank)
+    tg_create_mask.sA_width_heg = 0.0
+    tg_create_mask.sA_width_meg = 0.0
+    tg_create_mask.sA_width_leg = 0.0
+    tg_create_mask.clobber=params["clobber"]
+    out=tg_create_mask()
+    v5("tg_create_mask returned")
+    v5(out)
+
+
 def run_tgdetect2_and_create_mask(params):
     """
     CIAO 4.6, new tgdetect2 will run either tgdetect or tg_findzo
@@ -1925,11 +1968,13 @@ def process_tg_events(params):
     acis_hetg_cc = ('ACIS' == params["instrume"]) and ('HETG' == params["grating"]) and ('CONTINUOUS' == params["readmode"])
 
 
-    if params["recreate_tg_mask"]:
+    if params["tg_zo_position"] == 'detect':
         #run_tgdetect_and_create_mask(params)
         run_tgdetect2_and_create_mask(params)
+    elif params["tg_zo_position"] == 'evt2':
+        copy_tgmask_from_evt2(params)
     else:
-        copy_tgmask_from_evt2( params )
+        run_tg_create_mask_with_user_position(params)
 
     if acis_hetg_cc:
         evt1a = os.path.join(outdir, root + '_ccmode_evt1a.fits')
@@ -2417,7 +2462,7 @@ def add_history(params):
     from ciao_contrib.runtool import add_tool_history
     phist = { x : params[x] for x in [ 'indir', 'outdir', 'root', 'verbose' ] }
 
-    for x in ['badpixel', 'process_events', 'set_ardlib', 'check_vf_pha', 'recreate_tg_mask', 'cleanup', 'clobber' ]:
+    for x in ['badpixel', 'process_events', 'set_ardlib', 'check_vf_pha', 'cleanup', 'clobber' ]:
         phist[x] = "yes" if params[x] else "no"
 
     phist["destreak"] = "yes" if params["run_destreak"] else "no"
