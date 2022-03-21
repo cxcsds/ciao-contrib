@@ -65,12 +65,10 @@
 
     <QEXAMPLELIST>
       <QEXAMPLE>
-	<DESC>
-	  <PARA>
 	    <SYNTAX>
 	      <LINE>&pr; chandra_repro</LINE>
 	    </SYNTAX>
-	  </PARA>
+	<DESC>
 
 	  <PARA>
 	    Reprocess the dataset in the current working directory
@@ -96,12 +94,10 @@ primary/  secondary/
       </QEXAMPLE>
 
       <QEXAMPLE>
-	<DESC>
-	  <PARA>
 	    <SYNTAX>
 	      <LINE>&pr; chandra_repro verbose=0</LINE>
 	    </SYNTAX>
-	  </PARA>
+	<DESC>
 
 	  <PARA>
 	    Reprocess the dataset in the current working directory
@@ -112,13 +108,11 @@ primary/  secondary/
       </QEXAMPLE>
 
       <QEXAMPLE>
-	<DESC>
-	  <PARA>
 	    <SYNTAX>
 	      <LINE>&pr; chandra_repro indir=/data/1838 outdir=/data/1838/new cleanup=no</LINE>
 	    </SYNTAX>
-	  </PARA>
 
+	<DESC>
 	  <PARA>
 	    Reprocess the dataset in directory /data/1838, writing the
 	    new files to /data/1838/new .  Save all of the
@@ -128,13 +122,11 @@ primary/  secondary/
       </QEXAMPLE>
 
       <QEXAMPLE>
-	<DESC>
-	  <PARA>
 	    <SYNTAX>
 	      <LINE>&pr; chandra_repro set_ardlib=no</LINE>
 	    </SYNTAX>
-	  </PARA>
 
+	<DESC>
 	  <PARA>
 	    The data will be reprocessed, but the bad pixel filename
 	    will not be set in ardlib.par.  
@@ -181,12 +173,10 @@ Start your analysis with the new products in
 
 
       <QEXAMPLE>
-        <DESC>
-          <PARA>
             <SYNTAX>
              <LINE>&pr; chandra_repro indir=1838,1839 outdir="" </LINE>
 	    </SYNTAX>
-	  </PARA>
+        <DESC>
 	  <PARA>
 	    Will reprocess the data in directories 1838/ and 1839/.  The outputs will be
 	     placed in 1838/repro and 1839/repro.  A warning will be issued since multiple 
@@ -202,12 +192,10 @@ Start your analysis with the new products in
 
 
       <QEXAMPLE>
-        <DESC>
-          <PARA>
             <SYNTAX>
              <LINE>&pr; chandra_repro "*" outdir="" </LINE>
 	    </SYNTAX>
-	  </PARA>
+        <DESC>
 	  <PARA>
         chandra_repro will try to process all the obsids in the
         current directory.  The "*" must be in quotes (single or double)
@@ -264,6 +252,30 @@ acisf084244478N003_2_bias0.fits.gz
 
 	</DESC>
       </QEXAMPLE>
+
+    <QEXAMPLE>
+        <SYNTAX>
+         <LINE>&pr; chandra_repro 23206 outdir="" tg_zo_position="83.8156671,-5.3861617"</LINE>
+	    </SYNTAX>
+        <DESC>
+            <PARA>
+            By default chandra_repro will use the 0th order location taken
+            from the standard Level2 event file, primary/*evt2.fits file.
+            This will be for the brightest source.  However, users can
+            optionally supply the celestial coordinates for the 
+            source to use for the 0th order location.  In this example
+            we run chandra_repro with the RA and Dec coordinates for
+            the source specified in decimal degrees.  Users can also
+            supply the coordinates in sexagesimal notation, eg
+<SYNTAX>
+<LINE>
+tg_zo_position=5:35:15.7594,-5:23:10.191
+</LINE>
+</SYNTAX>
+            </PARA>
+
+        </DESC>
+    </QEXAMPLE>
 
 
     </QEXAMPLELIST>
@@ -663,49 +675,67 @@ acisf084244478N003_2_bias0.fits.gz
         </DESC>
       </PARAM>
 
-      <PARAM name="recreate_tg_mask" def="no" type="boolean" reqd="no">
+
+      <PARAM name="tg_zo_position" def="evt2" type="string" reqd="no">
         <SYNOPSIS>
-      Re-run tgdetect2 and tg_create_mask rather than use the 
-      Level 2 region extension?
+            How to determine the gratings 0th order location.
         </SYNOPSIS>
         <DESC>
-            <PARA>
-            In some situations the correct zero-order location cannot be
-            correctly identified by tgdetect2. This happens when the
-            source is heavily piled up, or if it has been masked out.
-            Additionally, due to the incomplete calibration of the
-            continuous-clocking mode
-            gain, the default order sorting parameters may be in appropriate.
-            
-            </PARA>
-            <PARA>
-            These situations are usually identified as part of the Verification and
-            Validation step in standard data processing.  It results in the
-            data being reprocessed with a custom mask created by one
-            of the grating scientists.       
-            </PARA>
+          <PARA>
+          The tg_zo_position parameter allows the user to choose how
+          the gratings 0th order location is selected.  The options are:
+          </PARA>
+          <LIST>
+            <ITEM>"evt2" : If tg_zo_positoin="evt2", the default, then
+            chandra_repo will use the 0th order location 
+            from the REGION block in the archived Level2 event file (located in the 
+            primary/ directory).   This may be the best choice
+            especially if the 0th order location was manually 
+            adjusted by the Verification and Validation (V&amp;V) scientist.
+            The region is defined in physical coordinates.   If data has been
+            reprojected or if a fine astrometric shift has been added to 
+            the aspect solution, this may invalidate the region coordinates.
+            </ITEM>
+            <ITEM>"detect" : If tg_zo_position="detect", then
+            chandra_repro will run the tgdetect2 tool to detect
+            the 0th order location.  This will use either tgdetect
+            or tg_findzo to determine the source location.</ITEM>
+            <ITEM>RA and Dec. coordinates : Lastly, users can 
+            supply their own coordinates for the 0th order location. This
+            may be needed if the source of interest is not the brightest
+            source in the field.  The source position can specified in either 
+            decimal degrees or in sexagesimal notation.
+            </ITEM>
+          </LIST>
+    <PARA>
+        See <HREF link="https://cxc.cfa.harvard.edu/ciao/ahelp/coords_format.html">
+        ahelp coords_format</HREF> for example of the supported
+        syntax.
+    </PARA>
 
         <PARA>
-        By default, chandra_repro re-runs tgdetect2 and thus would 
-        create an insufficient grating mask leading to incorrect
-        grating spectra.  With the recreate_tg_mask parameter set to "no",
-        the region used in standard processing is used.
+        The 0th order location is used to create the gratings mask to
+        determine which events are assigned gratings coordinates, and
+        for the case of HETG, to assign events to the HEG or MEG arm.
+        
+        </PARA>
+
+        <PARA title="Related webpages:">
+            <HREF link="https://cxc.harvard.edu/ciao/threads/tg_piled_zero/">
+            Source Position for Grating Data with a Piled or Blocked Zero Order 
+            </HREF>
         </PARA>
         <PARA>
-        The region is defined in physical coordinates.  If data has been
-        reprojected or if a fine astrometric shift has been added to 
-        the aspect solution, this may invalidate the region coordinates.
+            <HREF link="https://cxc.cfa.harvard.edu/ciao/threads/tgdetect/">
+            Correcting a Misplaced Zero-order Source Position.
+            </HREF>
         </PARA>
-         
-            <PARA title="Related webpages:">
-                <HREF link="https://cxc.harvard.edu/ciao/threads/tg_piled_zero/">
-                Source Position for Grating Data with a Piled or Blocked Zero Order 
-                </HREF>
-            </PARA>
-         
+        <PARA title="Multiple datasets">
+            If the user runs chandra_repro with multiple datasets, then 
+            the same position parameter option, including coordinates, 
+            are used for each gratings dataset.        
+        </PARA>
         </DESC>
-
-      
       </PARAM>
 
       <PARAM name="asol_update" def="yes" type="boolean" reqd="no">
@@ -797,6 +827,15 @@ acisf084244478N003_2_bias0.fits.gz
     this, even if you decide not to run chandra_repro, as it is where
     possible issues in the observation are reported.
   </PARA>
+  <PARA title="Specifying the zeroth-order location for grating observations">
+    The parameter "recreate_tg_mask" has been replaced with the 
+    "tg_zo_position" parameter.  For gratings datasets, users can now
+    choose whether to use the 0th order location from the existing Level2 
+    events file from the archive (tg_zo_position="evt2"), detect the
+    zeroth order postion using tgdetect2 (tg_zo_position="detect"), or
+    to supply the RA and Dec coordinates of the source location
+    in either decimal degrees or sexagesimal notation.  
+  </PARA>
   <PARA title="Solar System Object Observations">
     chandra_repro will now run sso_freeze on the event file and
     aspect solution file if it finds a solar system ephemeris file
@@ -807,7 +846,6 @@ acisf084244478N003_2_bias0.fits.gz
     coordinate columns to the event file and aspect solution files.
   </PARA>
 </ADESC>
-
 
 
 <ADESC title="Changes in the scripts 4.14.0 (December 2021) release">
