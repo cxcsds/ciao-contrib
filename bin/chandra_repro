@@ -1984,12 +1984,11 @@ def process_tg_events(params):
         if out:
             v0(out)
 
-
-
+    params["evt1a_file"] = evt1a
+    process_sso(params, is_gratings=True)
 
     #!### Success ###
-    v1("The new evt1a file is: "+evt1a)
-    params["evt1a_file"] = evt1a
+    v1("The new evt1a file is: "+params["evt1a_file"])
 
     return params
 
@@ -2547,7 +2546,7 @@ def remake_fov1_file( pars ):
     v5("skyfov returned")
     v5(out)
 
-def process_sso(pars):
+def process_sso(pars, is_gratings=False):
     """
     Run sso_freeze to add solar system object coordinates to the 
     event file and the aspect solution file.    
@@ -2558,7 +2557,14 @@ def process_sso(pars):
     if sso_eph is None:
         return
 
-    evt1=pars["evt1_file"]
+    if is_gratings:
+        evt="evt1a_file"
+        out_evt1 = os.path.join(pars["outdir"], pars["root"] + '_repro_sso_evt1a.fits')
+    else:
+        evt="evt1_file"
+        out_evt1 = os.path.join(pars["outdir"], pars["root"] + '_repro_sso_evt1.fits')
+
+    evt1=pars[evt]
     eph1=pars["eph1_file"]
     asol1="@"+pars["asol1_file"]
         
@@ -2569,7 +2575,6 @@ def process_sso(pars):
     obj = tab.get_key_value("OBJECT")        
     v1("\nRunning sso_freeze to add solar system coordinates for object: "+obj)
     
-    out_evt1 = os.path.join(pars["outdir"], pars["root"] + '_repro_sso_evt1.fits')
     out_asol1 = os.path.join(pars["outdir"], pars["root"] + '_repro_sso_asol1.fits')
 
     sso_freeze.infile = evt1
@@ -2589,8 +2594,10 @@ def process_sso(pars):
     # ~ tab.get_key("ASOLFILE").value = os.path.basename(out_asol1)
     # ~ tab.write()
     
+    if is_gratings:
+        dmappend(pars[evt]+"[REGION]", out_evt1)
 
-    pars["evt1_file"] = out_evt1
+    pars[evt] = out_evt1
     pars["cleanup_files"].append(out_evt1)
     
 
@@ -2633,8 +2640,8 @@ def main_body( pars):
     if pars["process_events"]:
         if pars["instrume"] == 'ACIS':
             pars = process_acis_events(pars)
-            process_sso(pars)
             if pars["grating"] == 'NONE':
+                process_sso(pars)
                 pars = l2_acis_events(pars)
             else:
                 pars = process_tg_events(pars)
@@ -2642,8 +2649,8 @@ def main_body( pars):
                 pars = l2_tg_pha(pars)
         if pars["instrume"] == 'HRC':
             pars = process_hrc_events(pars)
-            process_sso(pars)
             if pars["grating"] == 'NONE':
+                process_sso(pars)
                 pars = l2_hrc_events(pars)
             else:
                 pars = process_tg_events(pars)
