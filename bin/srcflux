@@ -1399,6 +1399,32 @@ def add_effevt_to_outfile( myparams, at_energy, srcfiles, bkgfiles ):
     gorm( bdat)
 
 
+def add_variability_to_output(myparams, at_energy, lcfiles ):
+    """
+    Add the ODDS, PROB, and VARINDEX from each glvary .lc file
+    into the output .flux file.
+    """
+    verb1("Appending variability results onto output")
+    myroot = get_root( myparams, at_energy )
+
+    odds = []
+    prob = []
+    varindex = []
+    
+    for ff in lcfiles:
+        tab = read_file(ff)
+        odds.append(tab.get_key_value("ODDS"))
+        prob.append(tab.get_key_value("PROB"))
+        varindex.append(tab.get_key_value("VARINDEX"))
+    
+    from crates_contrib.utils import add_colvals
+    tab = read_file(myroot+__osuf__, mode="rw")
+    add_colvals(tab, "SRC_VAR_ODDS", odds, desc="Odds for variable signal 10Log")
+    add_colvals(tab, "SRC_VAR_PROB", prob, desc="Probability of variable signal")
+    add_colvals(tab, "SRC_VAR_INDEX", varindex, desc="Variability index")    
+    tab.write()
+
+
 def scale_eff2evt_fluxes( myparams, at_energy):
     """
     """
@@ -1905,6 +1931,150 @@ def scale_modelflux_fluxes( myparams, at_energy ):
     write_key( intab, "absparam", myparams.absparams, 'Absorption model parameters' )
 
     intab.write()
+
+
+def run_dither_region(myparams,outroot, src):
+    from paramio import pset, punlearn
+    import ciao_contrib._tools.obsinfo as o
+    obs = o.ObsInfo( myparams.infile )
+    asol_files = obs.get_asol() if 0 == len(myparams.asolfile) else myparams.asolfile
+    msk = obs.get_ancillary("mask") if 0 == len(myparams.mskfile) else myparams.mskfile
+    bpix = obs.get_ancillary("bpix") if 0 == len(myparams.bpixfile) else myparams.bpixfile
+    
+    punlearn("ardlib")
+    detnam = obs.get_keyword("DETNAM")
+    if detnam.startswith("ACIS"):
+        asa = make_tool("acis_set_ardlib")
+        asa(bpix)
+        dtf = ""
+        dtf_val = obs.get_keyword("DTCOR")
+    elif detnam == "HRC-I":
+        pset("ardlib", "AXAF_HRC-I_BADPIX_FILE", bpix)
+        dtf = obs.get_ancillary("dtf") if 0 == len(myparams.dtffile) else myparams.dtffile
+        dtf_val = "DTF"
+    elif detnam == "HRC-S":
+        pset("ardlib", "AXAF_HRC-S_BADPIX_FILE", bpix)            
+        dtf = obs.get_ancillary("dtf") if 0 == len(myparams.dtffile) else myparams.dtffile
+        dtf_val = "DTF"
+    else:
+        raise ValueError("Unknown detector name")  # shouldn't get here!
+
+    dither_region = make_tool("dither_region")
+    dither_region.infile = asol_files
+    dither_region.region = src
+    dither_region.outfile = outroot+".dither_region"
+    dither_region.wcsfile = myparams.infile
+    dither_region.maskfile = msk
+    dither_region.dtffile = dtf
+    dither_region.verbose = myparams.verbose
+    dither_region.clobber = myparams.clobber
+    verb2(dither_region())
+
+    dmtcalc = make_tool("dmtcalc")
+    dmtcalc.infile=dither_region.outfile
+    dmtcalc.outfile = outroot+".dtf"
+    dmtcalc.expression = "DTF=FRACAREA*{}".format(dtf_val)
+    dmtcalc.clobber = myparams.clobber
+    dmtcalc.verbose = myparams.verbose
+    verb2(dmtcalc())
+
+    gorm(dither_region.outfile)
+
+    return dmtcalc.outfile
+
+
+def run_glvary(at_energy, ii, src, bkg, myparams):
+    """
+    We run glvary, but only on the source region    
+    """
+
+    verb2("Making Lightcurve for source "+str(ii))
+
+    def get_gti(infile,region):
+        tab = read_file("{}[sky={}]".format(infile,region))
+        if tab.get_key_value("INSTRUME") == "HRC":
+            return ""
+        
+        if tab.get_nrows() == 0:
+            return ""  #   Doesn't matter which GTI if there are no counts
+        
+        #
+        # I want to get a list of the ccd_id values, but
+        # if there is more than 1 chip, I want to _try_
+        # to use the GTI of the chip with the most
+        # events.
+        #
+        ccd_val = tab.get_column("CCD_ID").values        
+        ccds = list(np.unique(ccd_val))
+        most_common = np.bincount(ccd_val).argmax()
+        ccds.remove(most_common)
+        ccds.insert(0,most_common)
+        ccd_str = ",".join([str(x) for x in ccds])
+        return "[ccd_id={}]".format(ccd_str)
+
+
+    myroot = get_root( myparams, at_energy )
+    suffix = myroot.replace( myparams.outroot, "")
+    outroot = "{}{:04d}_{}".format( myparams.outroot, ii, suffix)
+
+    efilt = map_energy_to_filter( at_energy)
+    if efilt:
+        inroot = "{}[{}]".format(myparams.infile, efilt)
+    else:
+        inroot = myparams.infile
+
+    ccd_id_filter = get_gti(myparams.infile, src)
+
+    from ciao_contrib.runtool import new_pfiles_environment as newpf
+    with newpf(tmpdir=myparams.tmpdir, copyuser=False, ardlib=False) as foo:
+        eff_file = run_dither_region(myparams, outroot, src)
+        
+    glvary = make_tool("glvary")
+    glvary.infile = inroot+"[sky={}]{}".format(src,ccd_id_filter)
+    glvary.outfile = outroot+".prob"
+    glvary.lcfile = outroot+".gllc"
+    glvary.clobber= myparams.clobber
+    glvary.effile = eff_file
+    verb2(glvary())
+    gorm(glvary.outfile)
+
+    bkg_ccdid_filter = get_gti(myparams.infile, bkg)
+
+    dmextract = make_tool("dmextract")
+    dmextract.infile = glvary.infile+"[bin time=::100]"
+    dmextract.outfile = outroot+".lc"
+    dmextract.bkg = inroot+"[sky={}]{}".format(bkg,bkg_ccdid_filter)
+    dmextract.exp = eff_file
+    dmextract.opt = "ltc1"
+    dmextract.clobber = myparams.clobber
+    dmextract.verbose = myparams.verbose
+    verb2(dmextract())
+    
+    gorm(eff_file)
+    
+
+def get_variability( taskrunner, myparams, at_energy, src, bkg ):
+
+    """
+    Wrapper script to run dither_region and glvary and compute
+    the flux and scaled limits.
+    """
+    verb1("Getting variability")
+
+    src_stk = stk.build( src )
+    bkg_stk = stk.build( bkg )
+
+    myroot = get_root( myparams, at_energy )
+    suffix = myroot.replace( myparams.outroot, "")
+
+    infiles = []
+    for ii in range(len(src_stk)):
+        outroot = "{}{:04d}_{}.gllc".format( myparams.outroot, ii+1, suffix)
+        taskrunner.add_task( outroot, "", run_glvary, at_energy, ii+1, src_stk[ii], bkg_stk[ii], myparams)
+        infiles.append(outroot) 
+
+    return infiles
+
 
 # -------------------------------------------------------------
 ### Merged Routines
@@ -2728,6 +2898,7 @@ def process_single_obi( myparams, pars ):
         srcfiles,bkgfiles = get_model_independent_flux(taskrunner, myparams, at_energy, src, bkg )
         mfluxfiles = get_model_flux( taskrunner, myparams, at_energy, src, bkg, (at_energy == with_bands[0]) )
         photfluxfiles = get_fluximage_flux( taskrunner, myparams, at_energy, src, bkg )
+        lcfiles = get_variability(taskrunner, myparams, at_energy, src, bkg)
 
         taskrunner.run_tasks( processes=myparams.nproc )
 
@@ -2737,7 +2908,7 @@ def process_single_obi( myparams, pars ):
         scale_eff2evt_fluxes( myparams, at_energy)
         add_modelflux_to_output( myparams, at_energy, mfluxfiles )
         scale_modelflux_fluxes( myparams, at_energy )
-
+        add_variability_to_output( myparams, at_energy, lcfiles)
         cleanup_outfile( myparams, pars, at_energy )
 
 
