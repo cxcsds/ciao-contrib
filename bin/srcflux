@@ -1933,7 +1933,7 @@ def scale_modelflux_fluxes( myparams, at_energy ):
     intab.write()
 
 
-def run_dither_region(myparams,outroot, src):
+def run_dither_region(myparams,outroot, src, suffix):
     from paramio import pset, punlearn
     import ciao_contrib._tools.obsinfo as o
     obs = o.ObsInfo( myparams.infile )
@@ -1972,7 +1972,7 @@ def run_dither_region(myparams,outroot, src):
 
     dmtcalc = make_tool("dmtcalc")
     dmtcalc.infile=dither_region.outfile
-    dmtcalc.outfile = outroot+".dtf"
+    dmtcalc.outfile = outroot+"_{}.dtf".format(suffix)
     dmtcalc.expression = "DTF=FRACAREA*{}".format(dtf_val)
     dmtcalc.clobber = myparams.clobber
     dmtcalc.verbose = myparams.verbose
@@ -2027,14 +2027,15 @@ def run_glvary(at_energy, ii, src, bkg, myparams):
 
     from ciao_contrib.runtool import new_pfiles_environment as newpf
     with newpf(tmpdir=myparams.tmpdir, copyuser=False, ardlib=False) as foo:
-        eff_file = run_dither_region(myparams, outroot, src)
+        src_eff_file = run_dither_region(myparams, outroot, src, "src")
+        bkg_eff_file = run_dither_region(myparams, outroot, bkg, "bkg")
         
     glvary = make_tool("glvary")
     glvary.infile = inroot+"[sky={}]{}".format(src,ccd_id_filter)
     glvary.outfile = outroot+".prob"
     glvary.lcfile = outroot+".gllc"
     glvary.clobber= myparams.clobber
-    glvary.effile = eff_file
+    glvary.effile = src_eff_file
     verb2(glvary())
     gorm(glvary.outfile)
 
@@ -2044,14 +2045,15 @@ def run_glvary(at_energy, ii, src, bkg, myparams):
     dmextract.infile = glvary.infile+"[bin time=::100]"
     dmextract.outfile = outroot+".lc"
     dmextract.bkg = inroot+"[sky={}]{}".format(bkg,bkg_ccdid_filter)
-    dmextract.exp = eff_file
+    dmextract.exp = src_eff_file
+    dmextract.bkgexp = bkg_eff_file
     dmextract.opt = "ltc1"
     dmextract.clobber = myparams.clobber
     dmextract.verbose = myparams.verbose
     verb2(dmextract())
     
-    gorm(eff_file)
-    
+    gorm(src_eff_file)
+    gorm(bkg_eff_file)
 
 def get_variability( taskrunner, myparams, at_energy, src, bkg ):
 
