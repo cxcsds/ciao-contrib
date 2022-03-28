@@ -1968,12 +1968,20 @@ def run_dither_region(myparams,outroot, src, suffix):
     dither_region.dtffile = dtf
     dither_region.verbose = myparams.verbose
     dither_region.clobber = myparams.clobber
-    verb2(dither_region())
 
     dmtcalc = make_tool("dmtcalc")
     dmtcalc.infile=dither_region.outfile
-    dmtcalc.outfile = outroot+"_{}.dtf".format(suffix)
     dmtcalc.expression = "DTF=FRACAREA*{}".format(dtf_val)
+
+    try:
+        msg = dither_region()
+        if (msg):
+            verb2(msg)
+    except:
+        dmtcalc.infile = asol_files
+        dmtcalc.expression = "DTF=0.0"
+
+    dmtcalc.outfile = outroot+"_{}.dtf".format(suffix)
     dmtcalc.clobber = myparams.clobber
     dmtcalc.verbose = myparams.verbose
     verb2(dmtcalc())
