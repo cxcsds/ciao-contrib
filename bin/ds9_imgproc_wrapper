@@ -589,7 +589,7 @@ class Apowerspectrum(ImageProcTaskImgOut):
         self.tool.infileimag = "none"
 
 
-class Acrosscorr(ImageProcTaskImgOut):
+class Autocorrelate(ImageProcTaskImgOut):
     'CIAO acrosscorr tool'
 
     toolname = 'acrosscorr'
@@ -598,6 +598,19 @@ class Acrosscorr(ImageProcTaskImgOut):
         'Args: (none)'
         self.tool.infile1 = self.infile
         self.tool.infile2 = "none"
+
+
+class Crosscorrelate(ImageProcTaskImgOut):
+    'CIAO acrosscorr tool'
+
+    toolname = 'acrosscorr'
+
+    def set_args(self, args):
+        self.xpaset_p(['frame', 'prev'])
+        infile2 = self.save_ds9_image()
+        self.xpaset_p(['frame', 'next'])
+        self.tool.infile1 = self.infile
+        self.tool.infile2 = infile2
 
 
 class Aconvolve(ImageProcTaskImgOut):
@@ -1550,7 +1563,8 @@ def map_tool_to_object(toolname, xpa, args):
                'csmooth': Csmooth, 'dmimgfilt': Dmimgfilt,
                'dmimgthresh': Dmimgthresh, 'dmnautilus': Dmnautilus,
                'dmimgdist': Dmimgdist, 'apowerspectrum': Apowerspectrum,
-               'acrosscorr': Acrosscorr, 'aconvolve': Aconvolve,
+               'acrosscorr_auto': Autocorrelate, 'acrosscorr_x': Crosscorrelate,
+               'aconvolve': Aconvolve,
                'dmregrid2': Dmregrid2, 'dmimgcalc': Dmimgcalc,
                'wavdetect': Wavdetect, 'vtpdetect': Vtpdetect,
                'celldetect': Celldetect, 'get_src_region': Getsrcregion,
