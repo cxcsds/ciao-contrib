@@ -820,9 +820,16 @@ Summary of merged source fluxes
         </ROW>
         <ROW>
             <DATA>_model.psf</DATA>
-            <DATA>The model psf used if method=arfcorr (new in 4.7.2)</DATA>
+            <DATA>The model psf used if method=arfcorr or method=marx (new in 4.7.2)</DATA>
         </ROW>
-
+        <ROW>
+            <DATA>.lc</DATA>
+            <DATA>The standard light curve with 100s bins</DATA>
+        </ROW>
+        <ROW>
+            <DATA>.gllc</DATA>
+            <DATA>The Gregory-Loredo Baysain blocks light curve</DATA>
+        </ROW>
       </TABLE>
 
 
@@ -1764,6 +1771,18 @@ bounds(region(my.reg))
 	  &nodmx;
 	  <DATA>Upper bound of the credible interval for the unabsorbed model flux</DATA>
 	</ROW>
+    <ROW>
+        <DATA>SRC_VAR_ODDS</DATA>
+        <DATA>Odds for variable signal 10Log in the source region</DATA>
+    </ROW>
+    <ROW>
+        <DATA>SRC_VAR_PROB</DATA>
+        <DATA>Probability of variability in the source region</DATA>
+    </ROW>
+    <ROW>
+        <DATA>SRC_VAR_INDEX</DATA>
+        <DATA>The Gregory-Loredo variability index for the events in the source region.</DATA>
+    </ROW>
       </TABLE>
 
       <PARA>
@@ -1968,9 +1987,6 @@ the source region.</DATA>
 <DATA>Same as above for the background region.
 </DATA>
 </ROW>
-
-
-
     </TABLE>
 
 
@@ -2029,9 +2045,20 @@ the source region.</DATA>
     If a separate absorption model was supplied, then the "Unabs Mod.Flux"
     screen output will be displayed with those flux values; those values
     are also stored in the "NET_UMFLUX_APER" column in the .flux output file.
-
-
       </PARA>
+    <PARA>
+    To check for variability in the source region, the dither_region tool
+    is used to determine the fraction of the geometric area of the 
+    region is exposed vs time (ie not being affected by bad pixels
+    or chip edges).  This information is then used with the glvary
+    tool to look for variability.  The glvary output provides the 
+    SRC_VAR_ODDS, SRC_VAR_PROB, and SRC_VAR_INDEX values.  As an 
+    additional convenience the traditional standard lightcurve is
+    created by running dmextract with a fixed 100s bin width.
+    Both the glvary probability weighted lightcurve and the 
+    dmextract lightcurve are saved for each source.
+    </PARA>
+
       <PARA>
         The results are stored in an output file, one row per source, and one
         file for each energy band.  With verbose&gt;0, the results are also
@@ -2107,6 +2134,19 @@ the source region.</DATA>
 
       </PARA>
 
+    </ADESC>
+
+
+    <ADESC title="Changes in the scripts 4.14.2 (April 2022) release">
+      <PARA title="Intra-obsid variability added">
+        srcflux now runs the glvary tool to check for source variability 
+        during an observation.  Given the generally low counts in the individual 
+        background regions, we do not check for per-source background variability.
+        The G-L probability weighted "optimally" binned lightcurve file
+        and the standard dmextract lightcurve file using 100s bins are
+        created; both are corrected for exposure variations due to dither.      
+      </PARA>
+    
     </ADESC>
 
 
@@ -2315,6 +2355,6 @@ the source region.</DATA>
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>December 2021</LASTMODIFIED>
+    <LASTMODIFIED>March 2022</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
