@@ -217,7 +217,7 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
 
     """
     from cxcdm import dmTableOpen, dmTableClose, dmTableGetNoRows
-    from region import regParse, regRegionString
+    from region import CXCRegion
 
     tab = dmTableOpen(myroot+"srcs.fits")
     nrows= dmTableGetNoRows( tab)
@@ -247,21 +247,29 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
         dmmakereg.verbose=0
         dmmakereg()
 
-        rr=regParse( "region({})".format(dmmakereg.outfile ))
+        rr=CXCRegion(dmmakereg.outfile)
         gorm( tfile )
-        return regRegionString( rr )
+        return str(rr)
 
 
     def validate_region( reg ):
+        "See if it is a file, need to open w/ DM to check filters/etc"
         try:
-            rr = regParse( reg )
-        except:
-            reg2 = "region({})".format(reg)
+            read_file(reg)
+            reg = f"region({reg})"
             try:
-                rr = regParse( reg2 )
-                reg=reg2
+                check = CXCRegion(reg)
             except:
-                raise ValueError("Could not parse '{}' as either a region string or a region file".format(reg))
+                raise ValueError(f"ERROR: '{reg}' is not a valid region file")
+
+        except IOError:   # raised by read_file, so not a file name
+            try:
+                check = CXCRegion(reg)
+            except:
+                raise ValueError(f"ERROR: Cannot parse region string '{reg}'")
+
+        if check is None or len(check) == 0:
+            raise ValueError(f"ERROR: '{reg}' does not contain any valid regions")
 
         return region_to_phys(reg)
 
@@ -332,7 +340,7 @@ def check_pos_in_srcreg( infile, srcs ):
         a DM bug that stops parsing region files after
         reading a .gz file that causes this routine to fail.
     """
-    from region import regParse, regInsideRegion
+    from region import CXCRegion
     from cxcdm import dmTableOpen, dmGetData, dmTableOpenColumn, dmTableClose, dmTableGetNoRows
 
     #tab = dmTableOpen(infile)
@@ -346,8 +354,8 @@ def check_pos_in_srcreg( infile, srcs ):
 
     for ii,ss in enumerate( stk.build(srcs) ):
 
-        rr = regParse( ss )
-        if not regInsideRegion( rr, xpos[ii], ypos[ii] ):
+        rr = CXCRegion(ss)
+        if not rr.is_inside(xpos[ii], ypos[ii]):
             verb0("Warning position {} at x={}, y={} is not inside source region".format( ii+1, xpos[ii], ypos[ii] ))
 
 
@@ -1572,6 +1580,7 @@ def run_specextract( myparams, outroot, srcreg, bkgreg, ii, at_energy ):
         specextract2.badpixfile = myparams.bpixfile
         specextract2.dtffile = myparams.dtffile
         specextract2.energy_wmap = "300:7000"   # For point srcs, bkg not major effect
+        specextract2.parallel = False   # We are already running in parallel
 
         if dec < 0:
             specextract2.refcoord = "{:.12} {:.12}".format(ra,dec)
@@ -2763,15 +2772,15 @@ def check_infile( infile ):
 
 def check_pos_inside_fov( myparam ):
 
-    from region import regParse, regInsideRegion
+    from region import CXCRegion
     fov = locate_fovfile( myparam )
 
-    fov = regParse( "region({})".format(fov))
+    fov = CXCRegion(fov)
     tab = read_file( myparam.outroot+"srcs.fits", mode="rw")
     xx = tab.get_column("x").values.copy()
     yy = tab.get_column("y").values.copy()
 
-    isin = [ 1==regInsideRegion( fov, *xy) for xy in zip( xx,yy)]
+    isin = [ fov.is_inside(*xy) for xy in zip( xx,yy)]
 
     add_array_to_crate( tab, "INSIDE_FOV", isin, "Is XPOS,YPOS inside the FOV?", "")
     tab.write()
