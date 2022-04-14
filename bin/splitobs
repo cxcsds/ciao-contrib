@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2013-2014,2016 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2014,2016, 2022 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -18,11 +18,8 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from __future__ import print_function
-
-
 toolname = "splitobs"
-__revision__ = "13 Sep 2016"
+__revision__ = "25 February 2022"
 
 import os
 import sys
@@ -30,8 +27,7 @@ import sys
 import glob
 import shutil
 
-
-
+from pycrates import read_file
 import ciao_contrib.logger_wrapper as lw
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
@@ -40,24 +36,6 @@ verb1 = lgr.verbose1
 verb2 = lgr.verbose2
 verb3 = lgr.verbose3
 verb5 = lgr.verbose5
-
-
-from pycrates import read_file
-
-
-TODO = """
-
-Intentionally skipping
-   primary/orbit*
-   secondary/aspect/
-   secondary/ephem/
-   supporting/
-dirs.
-
-"""
-
-
-
 
 class ChandraObs( object ):
     """
@@ -72,12 +50,16 @@ class ChandraObs( object ):
         self.indir = indir
         self.clobber = clobber
 
-    def make_dirs( self, outroot, suffix ):
+    def make_dirs( self, outroot, suffix, tg_altexp ):
         """
         Create the output directories
         """
 
-        for dd in ["primary", "secondary"] :  # skip secondary/aspect and supporting
+        dirs = ["primary", "secondary"]
+        if tg_altexp:
+            dirs.append("primary/responses")
+
+        for dd in dirs:    # skip secondary/aspect and supporting
             outdir = "{}_{}/{}".format( outroot, suffix, dd)
             if not self.clobber and os.path.exists(outdir):
                 raise IOError("Directory {} exists and clobber is set to no".format(outdir))
@@ -127,7 +109,7 @@ class ChandraObs( object ):
 
 
 
-class InterleavedMode( ChandraObs ):
+class InterleavedMode(ChandraObs):
     """
     Interleaved mode obseravation.
 
@@ -137,16 +119,15 @@ class InterleavedMode( ChandraObs ):
     common to both.
     """
 
-    def __init__( self, indir, infiles, clobber ):
-        super( InterleavedMode, self).__init__(indir,infiles, clobber)
-
     def relocate( self, outroot):
-        self.make_dirs( outroot, "e1")
-        self.make_dirs( outroot, "e2")
+        tg_altexp = os.path.isdir(self.indir+"/primary/responses")
+        self.make_dirs( outroot, "e1", tg_altexp)
+        self.make_dirs( outroot, "e2", tg_altexp)
 
         for ee in ["e1", "e2"]:
             # Copy primary and secondary products
             self.copy( self.indir+"/primary/*_"+ee+"_*", outroot+"_"+ee+"/primary")
+            self.copy( self.indir+"/primary/responses/*_"+ee+"_*", outroot+"_"+ee+"/primary/responses")
             self.copy( self.indir+"/secondary/*_"+ee+"_*", outroot+"_"+ee+"/secondary")
             # PCAD files are common between e1 and e2
             self.copy( self.indir+"/primary/pcad*", outroot+"_"+ee+"/primary")
@@ -155,7 +136,6 @@ class InterleavedMode( ChandraObs ):
 
             exposure = self.get_exposure( "{}_{}".format( outroot, ee ))
             verb1( "Created: {}_{}, exposure={}".format( outroot, ee, exposure))
-
 
 
 class MultiObi(ChandraObs):
@@ -172,8 +152,8 @@ class MultiObi(ChandraObs):
         """
         retval = []
         for tab in infiles:
-            bk = [x for x in tab.get_keynames() if x.startswith("BIASFIL") ] #  filter( lambda x: x.startswith("BIASFIL"), tab.get_keynames())
-            bv = [tab.get_key_value(x) for x in bk ] # map( lambda x: tab.get_key_value(x), bk )
+            bk = [x for x in tab.get_keynames() if x.startswith("BIASFIL") ]
+            bv = [tab.get_key_value(x) for x in bk ]
             retval.append( ",".join(bv))
         return retval
 
@@ -184,7 +164,7 @@ class MultiObi(ChandraObs):
         to ID which files go in which obi's subdir.
         """
 
-        obis = [x.get_key_value("OBI_NUM") for x in infiles ] # map( lambda x: x.get_key_value("OBI_NUM"), infiles )
+        obis = [x.get_key_value("OBI_NUM") for x in infiles ]
         obidirs = [ "{:03d}".format(int(x)) for x in obis ]
         self.obinum = dict(zip(obis, obidirs))
 
@@ -257,7 +237,6 @@ class MultiObi(ChandraObs):
         evt2_in = glob.glob( outroot+"/primary/*evt2.fits*")[0]
         evt2_out = outroot+"/primary/"+os.path.basename(evt2_in).strip(".gz").replace("N", "_{}N".format(self.obinum[obi]))
 
-
         dmcopy( evt2_in, evt2_out, clobber=True, option="")
 
         # We know there are only at most 3 region blocks based on data
@@ -283,10 +262,9 @@ def check_val( infiles, keywrd ):
     Check the same keyword in list of files. All must be the same or
     exception is thrown
     """
-    tocheck = [x.get_key_value(keywrd) for x in infiles ] # map( lambda x: x.get_key_value(keywrd), infiles )
+    tocheck = [x.get_key_value(keywrd) for x in infiles ]
     if len(set(tocheck)) != 1:
         raise RuntimeError("Multiple ({0}) {1} values found".format(len(set(tocheck)),keywrd))
-
 
 #
 # The tuple of OBS_ID/OBI_NUM/CYCLE defines a unique Chandra Dataset.
@@ -304,7 +282,6 @@ def check_val( infiles, keywrd ):
 #
 #
 
-
 def is_interleaved(infiles):
     """
     Is this a set of interleaved mode evt1 files?
@@ -313,8 +290,6 @@ def is_interleaved(infiles):
     # interleaved are always 2 evt1 files
     if len(infiles) != 2:
         return False
-
-
 
     try:
         check_val(infiles, "OBS_ID")
@@ -352,15 +327,6 @@ def is_multiobi(infiles):
         raise RuntimeError("OBI_NUM values in the evt1 files are not unique, they should be.")
 
     return True
-
-
-
-def split_tg_regions():
-    """
-    multi obi evt2 files for tg observations have multi region blocks
-    that should be split for each obi
-    """
-    pass
 
 
 def check_indir( indir, clobber ):
@@ -408,7 +374,6 @@ def locate_evt1_files( indir ):
     return(retval)
 
 
-
 #
 # Main Routine
 #
@@ -427,9 +392,4 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as E:
-        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
-        sys.exit(1)
-    sys.exit(0)
+    main()
