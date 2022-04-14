@@ -249,10 +249,11 @@ def identify_name_sesame(name):
 
     """
 
-    # Note: just want first response, search NED first, and select "XML" output.
+    # I used to use ~NSV but that sudenly stopped working, so switched
+    # to ~SNV.
     #
     tname = quote_plus(name)
-    url = 'https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-ox/~NSV?' + tname
+    url = 'https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-ox/~SNV?' + tname
 
     rsp = query_url(name, url, "Sesame")
 
