@@ -257,8 +257,19 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
         try:
             read_file(reg)
             reg = f"region({reg})"
-        except:
-            pass
+            try:
+                check = CXCRegion(reg)
+            except:
+                raise ValueError(f"ERROR: '{reg}' is not a valid region file")
+
+        except IOError:   # raised by read_file, so not a file name
+            try:
+                check = CXCRegion(reg)
+            except:
+                raise ValueError(f"ERROR: Cannot parse region string '{reg}'")
+
+        if check is None or len(check) == 0:
+            raise ValueError(f"ERROR: '{reg}' does not contain any valid regions")
 
         return region_to_phys(reg)
 
