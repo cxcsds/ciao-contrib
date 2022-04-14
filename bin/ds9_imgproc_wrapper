@@ -73,6 +73,8 @@ class ImageProcTask():
         suffix = "_{}.fits".format(self.toolname)
         self.outfile = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"],
                                           suffix=suffix, delete=False)
+        self.region_file = None
+
         self.tool = make_tool(self.toolname)
 
         if hasattr(self.tool, "infile"):
@@ -84,6 +86,11 @@ class ImageProcTask():
             self.img2display = None
 
         self.set_args(args)
+
+    def __del__(self):
+        '''Delete temp region file'''
+        if self.region_file and os.path.exists(self.region_file.name):
+            os.unlink(self.region_file.name)
 
     def apply_region_to_infile(self, regions):
         '''Tools like dmellipse and dmimghull only operate on filtered
@@ -97,6 +104,18 @@ class ImageProcTask():
             regions = "+".join(stk.build(regions.replace("@", "@-")))
         else:
             regions = regions.replace(";", "+").replace("+-", "-").rstrip("+")
+
+        if len(regions) > 768:
+            # If a really long region then write to a FITS region
+            # file and use that instead.
+            self.region_file = NamedTemporaryFile(dir=os.environ["DAX_OUTDIR"],
+                                                  suffix=".reg", delete=False)
+            self.region_file.close()
+            from region import CXCRegion
+            reg_obj = CXCRegion(regions)
+            reg_obj.write(self.region_file.name, fits=True, clobber=True)
+            regions = "region({})".format(self.region_file.name)
+
         ffilt = "[(x,y)={}]".format(regions)
 
         print("Using filter '{}'\n".format(ffilt))
@@ -104,11 +123,9 @@ class ImageProcTask():
         self.infile = self.infile+ffilt
         self.tool.infile = self.infile
 
-
     def run_tool(self):
         'Wrapper to run tool'
         return self.tool()
-
 
     def run(self):
         'Do it'
@@ -405,7 +422,7 @@ class ImageProcTaskImgOut(ImageProcTask):
             fname = self.tool.outfile
             self.tool.outfile = self.tool.outfile + f"[{self.toolname}]"
             verb = self.tool()
-            self.tool.outfile= fname
+            self.tool.outfile = fname
         else:
             verb = self.tool()
 
@@ -439,7 +456,6 @@ class ImageProcTaskRegionOut(ImageProcTask):
         from paramio import pget
         if "yes" == pget("dax", "prism"):
             self.xpaset_p(["prism", self.tool.outfile])
-
 
 
 class ImageProcTaskPlotOut(ImageProcTask):
@@ -646,10 +662,9 @@ class Dmcopy(ImageProcTaskImgOut):
 
     toolname = 'dmcopy'
 
-    def set_args(self,args):
+    def set_args(self, args):
         'Args: none'
         pass
-
 
 
 class Dmregrid2(ImageProcTaskImgOut):
