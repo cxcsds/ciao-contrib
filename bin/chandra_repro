@@ -492,6 +492,7 @@ def make_default_pars():
              "pbk0_file":       "",
              "bias0_file":      "",
              "asol1_file":      "",
+             "vv_file":         None,
              "pha2_file":       "",
              "tgmsk_file":      "",  #Only for grating, only when param set
              "recreate_tg_mask":  None,
@@ -1117,6 +1118,21 @@ def get_inputs(params):
             #!### In both cases above we write current bias file to list ###
             biaslist.write(newbias + '\n')
             biaslist.close()
+
+
+    # Look for the V&V report in the top level indir
+
+    toplevel_products=os.listdir(params["indir"])
+    
+    for ff in toplevel_products:
+        if ff.endswith("vv2.pdf.gz"):
+            gunzip(os.path.join(params["indir"],ff))
+            ff = ff.replace(".gz","")
+
+        if ff.endswith("vv2.pdf"):
+            path=os.path.join(params["outdir"], ff)
+            link_or_copy(os.path.join(params["indir"],ff), path)
+            params["vv_file"] = path
 
     #!### Verify we have required input files and copy handy files to outdir ###
     if not os.path.isfile(params["bpix1_file"]):
@@ -2584,6 +2600,9 @@ def main_body( pars):
 
     if pars["set_ardlib"]:
         v1("\nWARNING: Observation-specific bad pixel file set for session use:\n         "+pars["bpix1_file"]+'\n         Run \'punlearn ardlib\' when analysis of this dataset completed.')
+
+    if pars["vv_file"]:
+        v1("\nAny issues pertaining to data quality for this observation will be listed in the Comments section of the Validation and Verification report located in:\n"+pars["vv_file"])
 
     v1('\nThe data have been reprocessed.\nStart your analysis with the new products in\n'+pars["outdir"]+'\n')
 
