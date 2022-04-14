@@ -489,6 +489,8 @@ def make_default_pars():
              "msk1_file":       "",
              "mtl1_file":       "",
              "stat1_file":      "",
+             "eph1_file":       [],
+             "sso_file":        None,
              "pbk0_file":       "",
              "bias0_file":      "",
              "asol1_file":      "",
@@ -966,6 +968,19 @@ def get_inputs(params):
             asollist.close()
 
             check_name_in_hdr( "asol1", newasol, params["hdr_asolfile"] )
+
+        ### If we find eph1 file that is not 'orbit' then this is a 
+        ### solar system object and well run sso_freeze
+        elif re.search(".*eph1.fits*", ff):
+            
+            if ff.startswith("orbit"):
+                params["eph1_file"].append(params["primarydir"] + ff)
+            else:
+                if params["sso_file"] is not None:
+                    verb0("There should only be 1 SSO eph1 file, skipping: "+ff)
+                    continue
+                params["sso_file"] = params["primarydir"] + ff
+                
 
 
     #!####################################################
@@ -1969,12 +1984,11 @@ def process_tg_events(params):
         if out:
             v0(out)
 
-
-
+    params["evt1a_file"] = evt1a
+    process_sso(params, is_gratings=True)
 
     #!### Success ###
-    v1("The new evt1a file is: "+evt1a)
-    params["evt1a_file"] = evt1a
+    v1("The new evt1a file is: "+params["evt1a_file"])
 
     return params
 
@@ -2532,8 +2546,65 @@ def remake_fov1_file( pars ):
     v5("skyfov returned")
     v5(out)
 
+def process_sso(pars, is_gratings=False):
+    """
+    Run sso_freeze to add solar system object coordinates to the 
+    event file and the aspect solution file.    
+    """
+    from ciao_contrib.runtool import sso_freeze
 
+    sso_eph = pars["sso_file"]
+    if sso_eph is None:
+        return
 
+    if is_gratings:
+        evt="evt1a_file"
+        out_evt1 = os.path.join(pars["outdir"], pars["root"] + '_repro_sso_evt1a.fits')
+    else:
+        evt="evt1_file"
+        out_evt1 = os.path.join(pars["outdir"], pars["root"] + '_repro_sso_evt1.fits')
+
+    evt1=pars[evt]
+    eph1=pars["eph1_file"]
+    asol1="@"+pars["asol1_file"]
+        
+    if len(eph1) == 0:
+        v0("WARNING: Could not find definitive orbit ephemeris file, orbit*eph1.fits, skipping sso_freeze")
+
+    tab = pyc.read_file(sso_eph)
+    obj = tab.get_key_value("OBJECT")        
+    v1("\nRunning sso_freeze to add solar system coordinates for object: "+obj)
+    
+    out_asol1 = os.path.join(pars["outdir"], pars["root"] + '_repro_sso_asol1.fits')
+
+    sso_freeze.infile = evt1
+    sso_freeze.scephemfile = eph1
+    sso_freeze.ssoephemfile = sso_eph
+    sso_freeze.asolfile = asol1
+    sso_freeze.outfile = out_evt1
+    sso_freeze.ocsolfile = out_asol1
+    sso_freeze.clobber = pars["clobber"]
+    sso_freeze.verbose = pars["verbose"]
+    out = sso_freeze()
+    
+    v5("sso_freeze returned")
+    v5(out)
+    
+    # It would be nice to set the ASOLFILE keyword to the sso asol
+    # since it has the same format. Unfortunately, the sso asol 
+    # has blockname="ocsol" instead of "ASPSOL" and that causes
+    # down stream tools (asphist) to error out.  Leave this 
+    # here for the day that's fixed.
+    # ~ tab = pyc.read_file(out_evt1, mode="rw")
+    # ~ tab.get_key("ASOLFILE").value = os.path.basename(out_asol1)
+    # ~ tab.write()
+    
+    if is_gratings:
+        dmappend(pars[evt]+"[REGION]", out_evt1)
+
+    pars[evt] = out_evt1
+    pars["cleanup_files"].append(out_evt1)
+    
 
 #!############
 # main routine
@@ -2574,6 +2645,7 @@ def main_body( pars):
         if pars["instrume"] == 'ACIS':
             pars = process_acis_events(pars)
             if pars["grating"] == 'NONE':
+                process_sso(pars)
                 pars = l2_acis_events(pars)
             else:
                 pars = process_tg_events(pars)
@@ -2582,6 +2654,7 @@ def main_body( pars):
         if pars["instrume"] == 'HRC':
             pars = process_hrc_events(pars)
             if pars["grating"] == 'NONE':
+                process_sso(pars)
                 pars = l2_hrc_events(pars)
             else:
                 pars = process_tg_events(pars)
