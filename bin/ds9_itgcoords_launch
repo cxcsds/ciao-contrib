@@ -20,24 +20,8 @@
 'Add a special grating region coordinates vector to ds9'
 
 import sys
-import subprocess as sp
 
-
-def xpaget(xpa, args):
-    'Run xpaget, return output as str'
-    cmd = ["xpaget", xpa, args]
-    retval = sp.run(cmd, check=True, stdout=sp.PIPE).stdout
-    retval = retval.decode()
-    return retval
-
-
-def xpaset(xpa, args):
-    'Run xpaset (pipe in via stdin)'
-    cmd = ["xpaset",  xpa, "regions"]
-    stdin_str = args
-    doit = sp.Popen(cmd, stdin=sp.PIPE)
-    doit.stdin.write(stdin_str.encode())
-    doit.communicate()
+from dax.utils import xpaset, xpaget
 
 
 def get_zero_order_location(xpa):
