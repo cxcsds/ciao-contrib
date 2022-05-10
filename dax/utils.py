@@ -15,9 +15,15 @@
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-__all__ = [ 'xpaget', 'xpaset', 'xpaset_p', ]
+
+'Common dax utilities'
+
 
 import subprocess as sp
+
+
+__all__ = [ 'xpaget', 'xpaset', 'xpaset_p', ]
+
 
 def xpaget(xpa, args):
     'Run xpaget, return output as str'
