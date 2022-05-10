@@ -35,9 +35,10 @@ def xpaset_p(xpa, args):
     sp.run(cmd, check=True)
 
 
-def xpaset(xpa, args):
+def xpaset(xpa, command, args):
     'Run xpaset (pipe in via stdin)'
-    cmd = ["xpaset",  xpa, "regions"]
+    cmd = ["xpaset",  xpa]
+    cmd.extend(command.split())
     stdin_str = args
     doit = sp.Popen(cmd, stdin=sp.PIPE)
     doit.stdin.write(stdin_str.encode())
