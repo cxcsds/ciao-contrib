@@ -63,3 +63,87 @@ proc stop_dax_progress {tnam} {
   }
 }
 
+
+
+# --------- Setup for interactive tg coordinates
+
+set tgcoords_arm 0
+set tgcoords_tg_r 1
+set tgcoords_tg_d 2
+set tgcoords_energy 3
+set tgcoords_order 1
+
+proc run_tgcoords { frame id } {
+    # Draw the magic grating region w/ special callbacks added.
+
+    global ds9
+    global tgcoords_order
+
+    launch_tgcoords_ui
+
+    # I need to put this into the background so that the script,
+    # stats.sh, can make XPA calls.  Otherwise, the Tk event loop is
+    # hung at this command and the XPA command in stats.sh times out.  
+    exec {ds9_itgcoords} $ds9(title) $tgcoords_order &
+}
+
+
+proc launch_tgcoords_ui { } {
+    # The TK widget to display the results
+
+    global tgcoords_order
+
+    if {[winfo exists .tgcoords ]} {
+        return
+    }
+
+    toplevel .tgcoords
+    ttk::frame .tgcoords.frm
+    pack .tgcoords.frm
+
+    ttk::label .tgcoords.frm.arm_label -text {Grating Arm}
+    ttk::label .tgcoords.frm.ord_label -text {Order}
+    ttk::label .tgcoords.frm.tgr_label -text {TG_R [deg]}
+    ttk::label .tgcoords.frm.tgd_label -text {TG_D [deg]}
+    ttk::label .tgcoords.frm.eng_label -text {Energy [keV]}
+    ttk::entry .tgcoords.frm.arm_value -textvariable tgcoords_arm 
+    ttk::entry .tgcoords.frm.ord_value -textvariable tgcoords_order
+    ttk::entry .tgcoords.frm.tgr_value -textvariable tgcoords_tg_r
+    ttk::entry .tgcoords.frm.tgd_value -textvariable tgcoords_tg_d
+    ttk::entry .tgcoords.frm.eng_value -textvariable tgcoords_energy
+
+    grid .tgcoords.frm.arm_label -row 1 -column 1 -padx 5
+    grid .tgcoords.frm.ord_label -row 2 -column 1 -padx 5
+    grid .tgcoords.frm.tgr_label -row 3 -column 1 -padx 5
+    grid .tgcoords.frm.tgd_label -row 4 -column 1 -padx 5
+    grid .tgcoords.frm.eng_label -row 5 -column 1 -padx 5
+    
+    grid .tgcoords.frm.arm_value -row 1 -column 2 -padx 5
+    grid .tgcoords.frm.ord_value -row 2 -column 2 -padx 5
+    grid .tgcoords.frm.tgr_value -row 3 -column 2 -padx 5
+    grid .tgcoords.frm.tgd_value -row 4 -column 2 -padx 5
+    grid .tgcoords.frm.eng_value -row 5 -column 2 -padx 5
+
+    bind .tgcoords.frm.ord_value <Return> {run_tgcoords 0 1}
+        
+}
+
+
+proc display_tgcoords { tgr tgd energy arm } {
+    # Update the display with the newly computed values
+
+    global tgcoords_arm
+    global tgcoords_tg_r
+    global tgcoords_tg_d
+    global tgcoords_energy
+
+    set tgcoords_arm $arm
+    set tgcoords_tg_r $tgr
+    set tgcoords_tg_d $tgd
+    set tgcoords_energy $energy
+
+    if {[winfo exists .tgcoords ] == 0} {
+        launch_tgcoords_ui
+    }
+}
+
