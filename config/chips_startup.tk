@@ -72,30 +72,43 @@ set tgcoords_tg_r 1
 set tgcoords_tg_d 2
 set tgcoords_energy 3
 set tgcoords_order 1
+set tgcoords_frame 0
+set tgcoords_id 1
 
 proc run_tgcoords { frame id } {
-    # Draw the magic grating region w/ special callbacks added.
+    # Process the magic grating region w/ special callbacks added.
 
     global ds9
     global tgcoords_order
 
-    launch_tgcoords_ui
+    set frm [lindex $ds9(frames) $frame]
+    set coords [$frm get marker $id line point physical]
+    set x0 [lindex $coords 0]
+    set y0 [lindex $coords 1]
+    set x1 [lindex $coords 2]
+    set y1 [lindex $coords 3]
+
+    launch_tgcoords_ui $frame $id
 
     # I need to put this into the background so that the script,
-    # stats.sh, can make XPA calls.  Otherwise, the Tk event loop is
-    # hung at this command and the XPA command in stats.sh times out.  
-    exec {ds9_itgcoords} $ds9(title) $tgcoords_order &
+    # ds9_itgcoords, can make XPA calls.  Otherwise, the Tk event loop is
+    # hung at this command and the XPA command in ds9_itgcoords times out.  
+    exec {ds9_itgcoords} $ds9(title) $tgcoords_order $x0 $y0 $x1 $y1 $frame $id &
 }
 
 
-proc launch_tgcoords_ui { } {
+proc launch_tgcoords_ui {frame id } {
     # The TK widget to display the results
 
-    global tgcoords_order
+    global tgcoords_frame 
+    global tgcoords_id
 
     if {[winfo exists .tgcoords ]} {
         return
     }
+
+    set tgcoords_frame $frame
+    set tgcoords_id $id
 
     toplevel .tgcoords
     ttk::frame .tgcoords.frm
@@ -124,12 +137,12 @@ proc launch_tgcoords_ui { } {
     grid .tgcoords.frm.tgd_value -row 4 -column 2 -padx 5
     grid .tgcoords.frm.eng_value -row 5 -column 2 -padx 5
 
-    bind .tgcoords.frm.ord_value <Return> {run_tgcoords 0 1}
+    bind .tgcoords.frm.ord_value <Return> {run_tgcoords $tgcoords_frame $tgcoords_id}
         
 }
 
 
-proc display_tgcoords { tgr tgd energy arm } {
+proc display_tgcoords { tgr tgd energy arm frame id} {
     # Update the display with the newly computed values
 
     global tgcoords_arm
@@ -143,7 +156,7 @@ proc display_tgcoords { tgr tgd energy arm } {
     set tgcoords_energy $energy
 
     if {[winfo exists .tgcoords ] == 0} {
-        launch_tgcoords_ui
+        launch_tgcoords_ui $frame $id
     }
 }
 
