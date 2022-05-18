@@ -34,34 +34,16 @@ def init_pixlib(xpa):
     return pix
 
 
-def get_region(xpa):
-    '''The "lauch" script adds a special "line" region to ds9.
-    It has special tag, tag={tgcoords}.  The line has an arrow
-    at 1 end.  The end w/o the arrow is the 0th order location.
-    The end with the arrow is the location to compute the grating
-    coordinates and energy.
-    '''
-    inregion = xpaget(xpa, "region -format ds9 -system physical")
-    magic_line = [x for x in inregion.split("\n")
-                  if x.startswith("line") and 'tag={tgcoords}' in x]
-    if len(magic_line) != 1:
-        raise RuntimeError("Only one special gratings regions is allowed")
-
-    # get coordinates of the line
-    coords = magic_line[0].split(")")[0].split("(")[1]
-    x0, y0, xx, yy = [float(x) for x in coords.split(",")]
-
-    return (x0, y0, xx, yy)
-
-
 def main():
     "Main routine"
 
     xpa = sys.argv[1]
     order = int(sys.argv[2])
+    x0, y0, xx, yy = [float(x) for x in sys.argv[3:7]]
+    frame = sys.argv[7]
+    reg_id = sys.argv[8]
 
     pix = init_pixlib(xpa)
-    x0, y0, xx, yy = get_region(xpa)
 
     if pix.grating_keyword == "LETG":
         tg_r, tg_d = pix.sky_to_grating_angles((xx, yy), "leg",
@@ -89,7 +71,7 @@ def main():
                                            (x0, y0))
 
     xpaset_p(xpa, ["tcl", f"{{display_tgcoords {tg_r:.5g} {tg_d:.5g}" +
-                   f" {energy:.3f} {arm}}}"])
+                   f" {energy:.3f} {arm} {frame} {reg_id}}}"])
 
 
 if __name__ == "__main__":
