@@ -48,6 +48,20 @@ def get_zero_order_location(xpa):
     return x0, y0, roll
 
 
+def alt_get_zero_order(xpa):
+    'Get 0th order from center of display instead'
+
+    coords = xpaget(xpa, "pan physical").strip()
+    x0, y0 = [float(aa) for aa in coords.split()]
+    roll = xpaget(xpa, "fits header keyword ROLL_PNT").strip()
+    if roll == '':
+        roll = 0
+    else:
+        roll = float(roll)
+
+    return x0, y0, roll
+
+
 def make_default_line(x0, y0, roll, dx=500, dy=500):
     'Get end point for the default line, try to match roll of obs.'
 
@@ -66,7 +80,13 @@ def main():
     'Main routine'
     xpa = sys.argv[1]
 
-    x0, y0, roll = get_zero_order_location(xpa)
+    try:
+        x0, y0, roll = get_zero_order_location(xpa)
+    except Exception:
+        sys.stderr.write("WARNING: Could not locate 0th order in [REGION] block; using center of display instead.\n")
+        x0, y0, roll = alt_get_zero_order(xpa)
+
+
     x1, y1 = make_default_line(x0, y0, roll)
 
     reg_str = f"""global font="helvetica 10 normal" select=1 highlite=1 edit=1 move=1 delete=1 include=1 fixed=0 source
