@@ -66,7 +66,7 @@ def _setup_sim( keyword_list ):
 
         _f = float(0.0)
         dsim = (_f,_f,_f)
-        droll = -f
+        droll = _f
     
     return sim, dsim, droll
 
