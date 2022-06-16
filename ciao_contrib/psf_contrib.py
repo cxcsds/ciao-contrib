@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2020
+#  Copyright (C) 2020, 2022
 #            Smithsonian Astrophysical Observatory, MIT
 #
 #
@@ -122,7 +122,7 @@ def psfFrac(energy, theta, phi, size):
 
     Returns
     -------
-    eef : float
+    ecf : float
         enclosed count fraction
     """
     with PSF() as _psf:
@@ -142,13 +142,13 @@ def psfSize(energy_keV, theta_arcmin, phi_deg, ecf):
     phi : float
         angle in degrees
         (see the MSC coordinate system described in "ahelp coords")
+    ecf : float
+        enclosed count fraction
 
     Returns
     -------
     size : float
         radius in arcsec
-    eef : float
-        enclosed count fraction
     """
     with PSF() as _psf:
         return _psf.psfSize(energy_keV, theta_arcmin, phi_deg, ecf)
