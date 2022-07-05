@@ -28,7 +28,7 @@ from pycrates import read_file
 
 import ciao_contrib.logger_wrapper as lw
 toolname = "statmap"
-__revision__ = "06 January 2022"
+__revision__ = "05 July 2022"
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
 verb0 = lgr.verbose0
@@ -74,7 +74,7 @@ def map_stat_function(stat):
     return do_stat[stat]
 
 
-def assign_mapid_to_events(evtfile, mapfile, column):
+def assign_mapid_to_events(evtfile, mapfile, column, xcol, ycol):
     "Lookup event locations in map"
 
     from ciao_contrib.runtool import make_tool
@@ -84,7 +84,7 @@ def assign_mapid_to_events(evtfile, mapfile, column):
     tmpevt = CIAONamedTemporaryFile()
 
     pick = make_tool("dmimgpick")
-    pick.infile = evtfile+f"[cols x,y,{column}]"   # fewer cols = faster
+    pick.infile = evtfile+f"[cols {xcol},{ycol},{column}]"   # fewer cols = faster
     pick.imgfile = mapfile
     pick.outfile = tmpevt.name
     pick.method = "closest"
@@ -93,19 +93,19 @@ def assign_mapid_to_events(evtfile, mapfile, column):
     return tmpevt
 
 
-def load_event_file(infile, column):
+def load_event_file(infile, column, xcol, ycol):
     "Load event file w/ map IDs"
 
-    def find_map_column_name(evtfile, column):
+    def find_map_column_name(evtfile):
         "find map column name by process of elimination"
         cols = evtfile.get_colnames(vectors=False)
-        map_col = [x for x in cols if x.lower() not in ['x', 'y', column]]
+        map_col = [x for x in cols if x.lower() not in [xcol, ycol, column]]
         assert len(map_col) == 1, "Somehow extra columns are present"
         return map_col[0]
 
     verb2("Loading event file")
     evtfile = read_file(infile)
-    map_col = find_map_column_name(evtfile, column)
+    map_col = find_map_column_name(evtfile)
     map_vals = evtfile.get_column(map_col).values
     col_vals = evtfile.get_column(column).values
     return map_vals, col_vals
@@ -184,8 +184,10 @@ def main():
 
     do_stat_func = map_stat_function(pars["statistic"])
     tmpevt = assign_mapid_to_events(pars["infile"], pars["mapfile"],
-                                    pars["column"])
-    map_vals, col_vals = load_event_file(tmpevt.name, pars["column"])
+                                    pars["column"], pars["xcolumn"],
+                                    pars["ycolumn"])
+    map_vals, col_vals = load_event_file(tmpevt.name, pars["column"],
+                                         pars["xcolumn"], pars["ycolumn"])
     stat_vals = compute_stats(map_vals, col_vals, do_stat_func)
 
     outvals = replace_mapid_with_stats(stat_vals, pars["mapfile"])
