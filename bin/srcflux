@@ -2931,7 +2931,6 @@ def run_user_plugin(myparams, at_energy):
                                          'vals': [v.value,]}
             else:
                 plugin_values[v.name]["vals"].append(v.value)
-
             
         if len(list_of_values) == 0:
             for v in has_vals:
@@ -2960,8 +2959,14 @@ def run_user_plugin(myparams, at_energy):
 
         
     try:
-        plugin = importlib.import_module("myfunc.py".strip(".py"))
+        pdir = os.path.dirname(myparams.pluginfile)
+        if pdir == "":
+            pdir = os.getcwd()
+        sys.path.append(pdir)
+        pfile = os.path.basename(myparams.pluginfile)
+        plugin = importlib.import_module(pfile.strip(".py"))
     except ModuleNotFoundError as not_found:
+        print(not_found)
         verb0("Cannot locate user plugin module")
         return
 
