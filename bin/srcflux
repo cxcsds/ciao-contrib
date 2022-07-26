@@ -2911,17 +2911,17 @@ def run_user_plugin(myparams, at_energy):
         for v in vals:            
             for k in ["name", "units", "value", "description"]:
                 if not hasattr(v, k):
-                    verb0(f"User plugin failed to return a '{k}' property")
+                    verb0(f"WARNING: User plugin failed to return a '{k}' property")
                     retval = False
                     continue
             if v.name in has_vals:
-                verb0(f"User plugin failed. It has multiple values with the same name: {v.name}")
+                verb0(f"WARNING: User plugin failed. It has multiple values with the same name: {v.name}")
                 retval = False
                 continue
             has_vals.append(v.name)
 
             if re.match("[A-Za-z0-9][A-Za-z0-9_\-]*$", v.name) is None:
-                verb0(f"User plugin failed with an invalid column name '{v.name}'. Only letter, number, dash, and underscore are allowed. Must start with a letter or number.")
+                verb0(f"WARNING: User plugin failed with an invalid column name '{v.name}'. Only letter, number, dash, and underscore are allowed. Must start with a letter or number.")
                 retval = False
                 continue
         
@@ -2938,7 +2938,7 @@ def run_user_plugin(myparams, at_energy):
         else:
             if set(has_vals) != set(list_of_values):
                 missing = set(has_vals).symmetric_difference(set(list_of_values))
-                verb0("User plugin failed to return the same list of properties for all values. Missing: {missing}")
+                verb0("WARNING: User plugin failed to return the same list of properties for all values. Missing: {missing}")
                 retval = False
         return retval
 
@@ -2967,12 +2967,14 @@ def run_user_plugin(myparams, at_energy):
         plugin = importlib.import_module(pfile.strip(".py"))
     except ModuleNotFoundError as not_found:
         print(not_found)
-        verb0("Cannot locate user plugin module")
+        verb0("WARNING: Cannot locate user plugin module")
         return
 
     if not hasattr(plugin, 'srcflux_obsid_plugin'):
-        verb0("User plugin does not have the required 'srcflux_obsid_plugin' method")
+        verb0("WARNING: User plugin does not have the required 'srcflux_obsid_plugin' method")
         return
+
+    verb1(f"Running user plugin from '{myparams.pluginfile}'")
         
     myroot = get_root( myparams, at_energy )
 
@@ -3001,7 +3003,7 @@ def run_user_plugin(myparams, at_energy):
                                            band, elo, ehi)
 
         if _check_vals(vals, list_of_values, plugin_values) == False:
-            verb0("User plugin failed.")
+            verb0("WARNING: User plugin failed.")
             return
 
     write_plugin_values(myroot+__osuf__, list_of_values, plugin_values)
