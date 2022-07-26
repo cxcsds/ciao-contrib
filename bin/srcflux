@@ -2863,11 +2863,6 @@ def check_parameters( myparams ):
             verb0("\nWARNING: dead time factors file parmater set to 'none'; DTF information will not be use.  This may lead to inaccuracies in the results\n")
 
 
-
-
-#-----------------------------------------
-
-
 def build_infile_stacks( pars ):
     """Collect the stacks of input files and make sure all are consistent.
     """
@@ -2898,33 +2893,50 @@ def build_infile_stacks( pars ):
     return infiles
 
 
-def run_user_plugin(myparams, at_energy):
+def run_user_plugin(myparams, at_energy, plugin_name):
+    """
+    Allow the user to write a plugin that can be run after all the 
+    other processing is complete and to collect those results with
+    in the output .flux file.    
+    """
 
     import importlib
     list_of_values = []
     plugin_values = {}
 
     def _check_vals(vals, list_of_values, plugin_values):
+        """
+        Check the values -- make sure each source (ie output row)
+        has the same values.
+        """
+
         import re
         retval = True
         has_vals = []
+
         for v in vals:            
+
+            # Check that value has require attributes
             for k in ["name", "units", "value", "description"]:
                 if not hasattr(v, k):
                     verb0(f"WARNING: User plugin failed to return a '{k}' property")
                     retval = False
                     continue
+
+            # Check if multiple values have the same name
             if v.name in has_vals:
                 verb0(f"WARNING: User plugin failed. It has multiple values with the same name: {v.name}")
                 retval = False
                 continue
             has_vals.append(v.name)
 
+            # Check for valid name (FITS standard)
             if re.match("[A-Za-z0-9][A-Za-z0-9_\-]*$", v.name) is None:
                 verb0(f"WARNING: User plugin failed with an invalid column name '{v.name}'. Only letter, number, dash, and underscore are allowed. Must start with a letter or number.")
                 retval = False
                 continue
-        
+
+            # Save the list of column properties and store the values
             if v.name not in plugin_values:
                 plugin_values[v.name] = {'units': v.units,
                                          'desc': v.description,
@@ -2932,6 +2944,8 @@ def run_user_plugin(myparams, at_energy):
             else:
                 plugin_values[v.name]["vals"].append(v.value)
             
+        # Keep a list of values so that we can easily check all sources
+        # return the same set of values.
         if len(list_of_values) == 0:
             for v in has_vals:
                 list_of_values.append(v)
@@ -2940,10 +2954,15 @@ def run_user_plugin(myparams, at_energy):
                 missing = set(has_vals).symmetric_difference(set(list_of_values))
                 verb0("WARNING: User plugin failed to return the same list of properties for all values. Missing: {missing}")
                 retval = False
+
         return retval
 
 
     def write_plugin_values(outfile, list_of_values, plugin_values):
+        """
+        Save the plugin values to the output .flux file
+        """
+
         from pycrates import CrateData, add_col
         intab = read_file(outfile, mode="rw")
         
@@ -2957,7 +2976,8 @@ def run_user_plugin(myparams, at_energy):
             
         intab.write()
 
-        
+
+    # Locate the plugin, add dirname to python path or cwd if no dir        
     try:
         pdir = os.path.dirname(myparams.pluginfile)
         if pdir == "":
@@ -2966,28 +2986,28 @@ def run_user_plugin(myparams, at_energy):
         pfile = os.path.basename(myparams.pluginfile)
         plugin = importlib.import_module(pfile.strip(".py"))
     except ModuleNotFoundError as not_found:
-        print(not_found)
+        verb0(str(not_found))
         verb0("WARNING: Cannot locate user plugin module")
         return
 
-    if not hasattr(plugin, 'srcflux_obsid_plugin'):
-        verb0("WARNING: User plugin does not have the required 'srcflux_obsid_plugin' method")
+    # The plugin is required to have this specific method defined:
+    if not hasattr(plugin, plugin_name):
+        verb0(f"WARNING: User plugin does not have the required '{plugin_name}' method")
         return
 
-    verb1(f"Running user plugin from '{myparams.pluginfile}'")
-        
-    myroot = get_root( myparams, at_energy )
+    plugin_cmd = getattr(plugin, plugin_name)
 
-    intab = read_file( myroot+__osuf__, mode="r")
-    src_cts = intab.get_column("counts").values
-    del intab
+    verb1(f"Running user plugin from '{myparams.pluginfile}'")
+
+    # Setup output root name and get energy band name
+    myroot = get_root( myparams, at_energy )
 
     if at_energy in ['broad', 'soft', 'medium', 'hard', 'wide', 'ultrasoft']:
         band = at_energy
     else:
         band = "-".join(at_energy.split(":")[0:2])
 
-    efilt = map_energy_to_filter(band)
+    efilt = map_energy_to_filter(at_energy)
     if efilt is None:
         elo = None
         ehi = None
@@ -2995,21 +3015,25 @@ def run_user_plugin(myparams, at_energy):
         _vals = efilt.split("=")[1]
         elo,ehi = [float(x) for x in _vals.split(":")]
 
+    # Get the number of sources    
+    intab = read_file( myroot+__osuf__, mode="r")
+    src_cts = intab.get_column("counts").values
+    del intab
 
+    # Loop over sources.  Not running in parallel 
+    # right now.
     for ii in range( len(src_cts) ):
         outroot = myparams.outroot+"{:04d}".format(ii+1)
     
-        vals = plugin.srcflux_obsid_plugin(myparams.infile, outroot,
-                                           band, elo, ehi)
+        vals = plugin_cmd(myparams.infile, outroot, band, elo, ehi, ii+1)
 
         if _check_vals(vals, list_of_values, plugin_values) == False:
             verb0("WARNING: User plugin failed.")
             return
 
     write_plugin_values(myroot+__osuf__, list_of_values, plugin_values)
+
     
-
-
 
 def process_single_obi( myparams, pars ):
     """
@@ -3042,7 +3066,7 @@ def process_single_obi( myparams, pars ):
         scale_modelflux_fluxes( myparams, at_energy )
         add_variability_to_output( myparams, at_energy, lcfiles)
         
-        run_user_plugin(myparams, at_energy)
+        run_user_plugin(myparams, at_energy, "srcflux_obsid_plugin")
         
         cleanup_outfile( myparams, pars, at_energy )
 
