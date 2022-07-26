@@ -43,7 +43,7 @@ import numpy as np
 
 
 
-def arestore_sample_srcflux_obsid_plugin(infile, outroot, band, elo, ehi):
+def srcflux_obsid_plugin(infile, outroot, band, elo, ehi):
     from ciao_contrib.runtool import make_tool
     from pycrates import read_file
     
@@ -52,11 +52,21 @@ def arestore_sample_srcflux_obsid_plugin(infile, outroot, band, elo, ehi):
     ri.matchfile =f"{outroot}_{band}_thresh.img"
     ri.outfile = f"{outroot}_{band}.psf_crop"
     ri(clobber=True)
+
+    tab = read_file(f"{outroot}_srcreg.fits")
+    x = tab.get_column("x").values[0]
+    y = tab.get_column("y").values[0]
+    dmc = make_tool("dmcoords")
+    dmc.punlearn()
+    dmc(infile=f"{outroot}_{band}_thresh.img", x=x, y=y, op="sky")
     
     arestore = make_tool("arestore")
     arestore.infile = f"{outroot}_{band}_thresh.img"
     arestore.psffile = ri.outfile
     arestore.outfile = f"{outroot}_{band}.deconvolve"
+    arestore.psf_x_center = dmc.logicalx
+    arestore.psf_y_center = dmc.logicaly
+    
     try:
         arestore(numiter=50, clobber=True)
     except Exception as wrong:
@@ -97,7 +107,7 @@ def srcextent_sample_srcflux_obsid_plugin(infile, outroot, band, elo, ehi):
 
 
 
-def srcflux_obsid_plugin(infile, outroot, band, elo, ehi):
+def spectral_fit_sammple_srcflux_obsid_plugin(infile, outroot, band, elo, ehi):
     """    
     
     """
