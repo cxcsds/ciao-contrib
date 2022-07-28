@@ -41,6 +41,16 @@ ReturnValue = namedtuple('ReturnValue', 'name value units description')
 
 import numpy as np
 
+def srcflux_merge_plugin(infile, outroot, band, elo, ehi, src_num):
+    print("--------------")
+    print(infile)
+    print(outroot)
+    print("--------------")
+    
+    return []
+
+
+
 def srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
     """
     Sample plugin:  Compute hardness ratios
@@ -83,8 +93,6 @@ def srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
     return retval
     
 
-
-
 def radial_profile_example_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
     """
     Sample plugin: running dmextract to create radial profiles
@@ -118,7 +126,6 @@ def radial_profile_example_srcflux_obsid_plugin(infile, outroot, band, elo, ehi,
     
     return []
     
-
 
 def arestore_sample_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
     """
@@ -164,7 +171,6 @@ def arestore_sample_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_nu
             os.unlink(ri.outfile)
     
     return []  #  No values are returned
-
 
 
 def srcextent_sample_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
