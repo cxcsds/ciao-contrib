@@ -2316,6 +2316,7 @@ def merge_aprates( cts, conf, rate=False ):
                'hilimit' : np.nan,
                'conf' : float(conf),
                'numobi': len(c) ,
+               'inside_fov' : good
                }
 
     pp = [C,A_S,Alpha,T_S,E_S,B,A_B,Beta,T_B,E_B]
@@ -2364,6 +2365,7 @@ def merge_aprates( cts, conf, rate=False ):
                'hilimit' : float(pfh),
                'conf' : float(conf),
                'numobi': len(c) ,
+               'inside_fov' : good
                }
 
     return retval
@@ -2466,13 +2468,14 @@ def merge_write_output( stk_params, myparams, modelflux_vals, merge_fluxes ):
         intab = read_file( dmmerge.outfile, mode="rw" )
 
         def pick_and_write( colname, desc, units, valname, store):
-            vals = [ r[valname] for r in merge_fluxes[at_energy][store]]
+            # Crates really wants them in a numpy array
+            vals = np.array([ r[valname] for r in merge_fluxes[at_energy][store]])
             add_array_to_crate( intab, colname,vals, desc, units )
 
         pick_and_write( "TOTAL_COUNTS", "Summed counts in src regions", "", "src_cts", "rates" )
         pick_and_write( "TOTAL_BG_COUNTS", "Summed counts in bkg regions", "", "bkg_cts", "rates" )
         pick_and_write( "NUM_OBI", "Number of OBIs included", "", "numobi", "rates" )
-
+        pick_and_write( "INSIDE_FOV", "Inside of which FOVs?", "", "inside_fov", "rates")
 
         pick_and_write( "MERGED_NET_RATE_APER", "Merged count rate", "counts/s", "value", "rates" )
         pick_and_write( "MERGED_NET_RATE_APER_LO", "Merged count rate lower limit", "counts/s", "lolimit", "rates" )
@@ -2931,7 +2934,7 @@ def run_user_plugin(myparams, at_energy, plugin_name):
             has_vals.append(v.name)
 
             # Check for valid name (FITS standard)
-            if re.match("[A-Za-z0-9][A-Za-z0-9_\-]*$", v.name) is None:
+            if re.match("^[A-Za-z0-9][A-Za-z0-9_\-]*$", v.name) is None:
                 verb0(f"WARNING: User plugin failed with an invalid column name '{v.name}'. Only letter, number, dash, and underscore are allowed. Must start with a letter or number.")
                 retval = False
                 continue
@@ -2976,6 +2979,8 @@ def run_user_plugin(myparams, at_energy, plugin_name):
             
         intab.write()
 
+    if myparams.pluginfile == "" or myparams.pluginfile.lower() == "none":
+        return
 
     # Locate the plugin, add dirname to python path or cwd if no dir        
     try:
@@ -3152,6 +3157,10 @@ def main():
     merged_fluxes = merge_counts( stk_pars, myparams)
     modelflux_vals = merge_modelflux( stk_pars, myparams )
     merge_write_output( stk_pars, myparams, modelflux_vals, merged_fluxes)
+    
+    for at_band in stk.build( myparams.bands):
+        run_user_plugin(myparams, at_band, "srcflux_merge_plugin")
+
 
     for ii,ss in enumerate(stk_pars):
         summarize_results( ss, obi=ii, single=False )
