@@ -2127,22 +2127,38 @@ def merge_modelflux( stk_params, myparams ):
 
         combine_spectra = make_tool("combine_spectra")
 
-        pi_files = [ p.outroot+"{:04d}.pi".format(snum+1) for p in stk_params ]
-        arf_files = [ p.outroot+"{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
-        rmf_files = [ p.outroot+"{:04d}.rmf".format(snum+1) for p in stk_params ]
+        src_pi_files = [ p.outroot+"{:04d}.pi".format(snum+1) for p in stk_params ]
+        src_arf_files = [ p.outroot+"{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
+        src_rmf_files = [ p.outroot+"{:04d}.rmf".format(snum+1) for p in stk_params ]
+        bkg_pi_files = [ p.outroot+"{:04d}_bkg.pi".format(snum+1) for p in stk_params ]
+        bkg_arf_files = [ p.outroot+"{:04d}_bkg.arf".format(snum+1) for p in stk_params ]
+        bkg_rmf_files = [ p.outroot+"{:04d}_bkg.rmf".format(snum+1) for p in stk_params ]
 
         p_good=[]
         a_good=[]
         r_good=[]
+        b_good=[]
 
-        for p_a_r in zip(pi_files, arf_files, rmf_files):
+        for p_a_r in zip(src_pi_files, src_arf_files, src_rmf_files, bkg_pi_files):
             ondisk = [ os.path.exists(x) for x in p_a_r]
             if not all(ondisk):
                 continue
             p_good.append(p_a_r[0])
             a_good.append(p_a_r[1])
             r_good.append(p_a_r[2])
+            b_good.append(p_a_r[3])
 
+        # User can set bkgresp=no to skip creating background responses.
+        # check for them separately
+
+        bkg_arf = []
+        bkg_rmf = []
+        for p_a_r in zip(bkg_arf_files, bkg_rmf_files):
+            ondisk = [ os.path.exists(x) for x in p_a_r]
+            if not all(ondisk):
+                continue
+            bkg_arf.append(p_a_r[0])
+            bkg_rmf.append(p_a_r[1])
 
         if p_good is None or 0 == len(p_good):
             for at_energy in bands:
@@ -2153,6 +2169,9 @@ def merge_modelflux( stk_params, myparams ):
         combine_spectra.src_spectra = p_good
         combine_spectra.src_arf = a_good
         combine_spectra.src_rmf = r_good
+        combine_spectra.bkg_spectra = b_good
+        combine_spectra.bkg_arfs = bkg_arf
+        combine_spectra.bkg_rmfs = bkg_rmf
         combine_spectra.outroot = myparams.outroot+"{:04d}".format(snum+1)
         combine_spectra.clobber=True
         vv = combine_spectra()
@@ -2896,7 +2915,7 @@ def build_infile_stacks( pars ):
     return infiles
 
 
-def run_user_plugin(myparams, at_energy, plugin_name):
+def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
     """
     Allow the user to write a plugin that can be run after all the 
     other processing is complete and to collect those results with
@@ -3022,7 +3041,7 @@ def run_user_plugin(myparams, at_energy, plugin_name):
 
     # Get the number of sources    
     intab = read_file( myroot+__osuf__, mode="r")
-    src_cts = intab.get_column("counts").values
+    src_cts = intab.get_column("component").values
     del intab
 
     # Loop over sources.  Not running in parallel 
@@ -3030,7 +3049,12 @@ def run_user_plugin(myparams, at_energy, plugin_name):
     for ii in range( len(src_cts) ):
         outroot = myparams.outroot+"{:04d}".format(ii+1)
     
-        vals = plugin_cmd(myparams.infile, outroot, band, elo, ehi, ii+1)
+        if stk_params is None:
+            infiles = myparams.infile
+        else:
+            infiles = [ s.infile for s in stk_params]
+        
+        vals = plugin_cmd(infiles, outroot, band, elo, ehi, ii+1)
 
         if _check_vals(vals, list_of_values, plugin_values) == False:
             verb0("WARNING: User plugin failed.")
@@ -3159,7 +3183,7 @@ def main():
     merge_write_output( stk_pars, myparams, modelflux_vals, merged_fluxes)
     
     for at_band in stk.build( myparams.bands):
-        run_user_plugin(myparams, at_band, "srcflux_merge_plugin")
+        run_user_plugin(myparams, at_band, "srcflux_merge_plugin", stk_params=stk_pars)
 
 
     for ii,ss in enumerate(stk_pars):
