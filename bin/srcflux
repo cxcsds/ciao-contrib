@@ -3016,7 +3016,7 @@ def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
 
     # The plugin is required to have this specific method defined:
     if not hasattr(plugin, plugin_name):
-        verb0(f"WARNING: User plugin does not have the required '{plugin_name}' method")
+        verb0(f"WARNING: User plugin does not have the '{plugin_name}' method")
         return
 
     plugin_cmd = getattr(plugin, plugin_name)
@@ -3044,16 +3044,16 @@ def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
     src_cts = intab.get_column("component").values
     del intab
 
+    if stk_params is None:
+        infiles = myparams.infile
+    else:
+        infiles = [s.infile for s in stk_params]
+
     # Loop over sources.  Not running in parallel 
     # right now.
     for ii in range( len(src_cts) ):
         outroot = myparams.outroot+"{:04d}".format(ii+1)
-    
-        if stk_params is None:
-            infiles = myparams.infile
-        else:
-            infiles = [ s.infile for s in stk_params]
-        
+            
         vals = plugin_cmd(infiles, outroot, band, elo, ehi, ii+1)
 
         if _check_vals(vals, list_of_values, plugin_values) == False:

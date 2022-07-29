@@ -3,33 +3,59 @@
 
 
 """
-Files used for spectral fits:
-    ${outroot}.arf
-    ${outroot}.pi
-    ${outroot}.rmf
-    ${outroot}_bkg.pi
-    ${outroot}_grp.pi
-    ${outroot}_nopsf.arf
+These are the files that will be available for the plugin to use.
+For a single input event file, the ${outroot} will be the same as 
+the outroot parameter.  For multiple input event files, 
+the obi number is appended to the outroot parameter.
 
-Region files:
-    ${outroot}_bkgreg.fits
-    ${outroot}_srcreg.fits
+    The main output files w/ all the src properties:
+        ${outroot}_${band}.flux
 
-Light curves
-    ${outroot}_${band}.gllc
-    ${outroot}_${band}.lc
+    Files used for spectral fits:
+        ${outroot}.arf
+        ${outroot}.pi
+        ${outroot}.rmf
+        ${outroot}_bkg.pi
+        ${outroot}_bkg.arf   (only if bkgresp=yes)
+        ${outroot}_bkg.rmf   (only if bkgresp=yes)
+        ${outroot}_grp.pi
+        ${outroot}_nopsf.arf
 
-Postage stamp images
-    ${outroot}_${band}_flux.img
-    ${outroot}_${band}_thresh.expmap
-    ${outroot}_${band}_thresh.img
+    Region files:
+        ${outroot}_bkgreg.fits
+        ${outroot}_srcreg.fits
 
-PSF (only if psfmethod=marx)
-    ${outroot}_${band}_projrays.fits
-    ${outroot}_${band}.psf
+    Light curves
+        ${outroot}_${band}.gllc
+        ${outroot}_${band}.lc
 
-aprates probability density function
-    ${outroot}_${band}_rates.prob
+    Postage stamp images
+        ${outroot}_${band}_flux.img
+        ${outroot}_${band}_thresh.expmap
+        ${outroot}_${band}_thresh.img
+
+    PSF (only if psfmethod=marx)
+        ${outroot}_${band}_projrays.fits
+        ${outroot}_${band}.psf
+
+    aprates probability density function
+        ${outroot}_${band}_rates.prob
+
+For multiple input event files, these files will be available to the 
+plugin. The outroot is the same as the outroot parameter.
+
+    The main output files w/ all the src properties:
+        ${outroot}_${band}.flux
+
+    Files used for spectral fits:
+        ${outroot}_src.arf   \
+        ${outroot}_src.pi     - Note: merge file names have _src 
+        ${outroot}_src.rmf   /
+        ${outroot}_bkg.pi
+        ${outroot}_bkg.arf   (only if bkgresp=yes)
+        ${outroot}_bkg.rmf   (only if bkgresp=yes)
+
+
 
 """
 
@@ -42,16 +68,91 @@ ReturnValue = namedtuple('ReturnValue', 'name value units description')
 import numpy as np
 
 def srcflux_merge_plugin(infile, outroot, band, elo, ehi, src_num):
-    print("--------------")
-    print(infile)
-    print(outroot)
-    print("--------------")
+    """
+    Sample plugin: combining obi images
     
+    This sample plugin combines the per-source images and exposure maps
+    for each observation where the source is inside the field of view.
+    
+    This is a little bit more tricky only because we need to 
+    use different file name roots to access the merged .flux file
+    and for the individual per-source, per-band files.
+    """
+
+    from pycrates import read_file
+    from ciao_contrib.runtool import make_tool
+
+    src_num_str = f"_{src_num:04d}"
+    merge_root = outroot.replace(src_num_str, "")
+    
+    valid_obi = read_file(merge_root+f"_{band}.flux").get_column("INSIDE_FOV").values[src_num-1]
+    
+    img_files = []
+    expmap_files = []
+    for obi,flag in enumerate(valid_obi):
+        # Check to see if source is inside the FOV, if not, then skip it.
+        if not flag:
+            continue
+
+        obi_num = obi+1
+        obi_root = outroot.replace(src_num_str, f"_obi{obi_num:03d}{src_num_str}")
+        
+        img_file = obi_root+f"_{band}_thresh.img"
+        if not os.path.exists(img_file):
+            print(f"MISSING {img_file}")
+            continue
+
+        expmap_file = obi_root+f"_{band}_thresh.expmap"
+        if not os.path.exists(expmap_file):
+            print(f"MISSING {expmap_file}")
+            continue        
+
+        img_files.append(img_file)
+        expmap_files.append(expmap_file)
+
+    if len(img_files) == 0:
+        return []
+
+    #
+    # Note: This is just for illustrative purposes.  For the counts image, 
+    # it would be better to reproject the events to a common tangent 
+    # point and combine them that way.  Luckily since we used
+    # fluximage to create the images, they are all nicely aligned on 
+    # half-pixel boundaries so we don't end up with any odd partial-pixels
+    # when regridding (essentially a 'blurring' effect).
+    #
+        
+    reproj_img = make_tool("reproject_image")
+    
+    reproj_img.infile = img_files
+    reproj_img.outfile = outroot+"_merge.img"
+    reproj_img.matchfile = img_files[0]
+    reproj_img.method = "sum"
+    reproj_img(clobber=True)
+
+    reproj_img.infile = expmap_files
+    reproj_img.outfile = outroot+"_merge.expmap"
+    reproj_img.matchfile = expmap_files[0]
+    reproj_img.method = "average"
+    reproj_img(clobber=True)
+        
     return []
 
 
+def spectral_fit_sample_srcflux_merge_plugin(infile, outroot, band, elo, ehi, src_num):
+    """
+    Sample plugin: fit combined spectra.
+    
+    This sample plugin shows how to use the same per-obi plugin on
+    the already combined spectrum files.    
+    """
 
-def srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
+    retval = spectral_fit_sample_srcflux_obsid_plugin( infile, outroot, band, elo, ehi, src_num)
+    return retval
+
+
+
+def hardness_ratio_sample_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
     """
     Sample plugin:  Compute hardness ratios
     
@@ -207,7 +308,7 @@ def srcextent_sample_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_n
         
 
 from sherpa.astro.ui import *
-def spectral_fit_sammple_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
+def spectral_fit_sample_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
     """    
     Sample plugin: fitting spectrum.
     
@@ -217,8 +318,16 @@ def spectral_fit_sammple_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, s
     """
     from sherpa.utils.logging import SherpaVerbosity
     
+
     try:
-        load_data(outroot+".pi")
+        if os.path.exists(outroot+".pi"):
+            pi_file = outroot+".pi"
+        elif os.path.exists(outroot+"_src.pi"):
+            pi_file = outroot+"_src.pi"
+        else:
+            raise IOError(f"Unable to locate source spectrum for this source number: {src_num}")
+
+        load_data(pi_file)
         group_counts(1)
         set_source(xsphabs.abs1*xspowerlaw.pl1)
         set_method("simplex")
