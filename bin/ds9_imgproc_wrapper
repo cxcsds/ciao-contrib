@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2019-2021  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2019-2022  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -198,6 +198,47 @@ class ImageProcTask():
             retval = retval.decode()
         return retval
 
+    def update_wcs_for_blocking(self, infile):
+        'Update the WCS if image has been blocked'
+
+        # ds9 does not update the WCS in the FITS header when it blocks
+        # data so we need to.
+        #
+        # The DM will re-write the WCS to it's own model here.
+        # This does "break" WCSs that DM doesn't handle correctly
+        # eg full skew matrices, -SIP coords, etc.
+        # BUT -- dax is using all DM tools so it's going to
+        # get broken at some point anyways.
+
+        from pycrates import read_file
+        from pytransform import LINEARTransform, LINEAR2DTransform
+
+        block = float(self.xpaget("block"))
+        if block == 1.0:
+            return
+
+        img = read_file(infile, mode="rw")
+        for axis in img.get_axisnames():
+            xform = img.get_transform(axis)
+            if xform is None:
+                continue
+
+            # Even if image doesn't have 'p' physcial xform, DM
+            # adds one.  So we need to be sure we only apply
+            # blocking to the linear/linear2d transforms.
+            if not isinstance(xform, (LINEARTransform, LINEAR2DTransform)):
+                continue
+
+            scale = xform.get_parameter("SCALE")
+            if scale is None:
+                continue
+
+            scale.set_value(scale.get_value()*block)
+
+        img.write()
+        del img
+        return
+
     def save_ds9_image(self):
         'Save image currently displayed by ds9'
 
@@ -224,6 +265,8 @@ class ImageProcTask():
         dmc = sp.Popen(cmd, stdin=sp.PIPE)
         dmc.stdin.write(fits)
         dmc.communicate()
+
+        self.update_wcs_for_blocking(ds9_file.name)
 
         return ds9_file.name
 
