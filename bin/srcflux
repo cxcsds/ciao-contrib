@@ -557,6 +557,23 @@ def get_counts( myparams, at_energy, src, bkg ):
     intab.write()
 
 
+def run_simulate_psf(sim_psf):
+    "Run a single instance of simulate_psf"        
+    verb1("Simulating PSF: "+sim_psf.outroot)
+
+    # The make_tool object can't be pickled so I'm just 
+    # going to copy parameters using the Params object.
+    simulate_psf = make_tool("simulate_psf")
+    for attr in dir(sim_psf):
+        if attr.startswith('_'):
+            continue
+        setattr(simulate_psf, attr, getattr(sim_psf, attr))
+
+    vv = simulate_psf()
+    if vv:
+        verb2(vv)
+
+
 def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
     """
     Run saotrace and psf_project_ray to simulate the PSF
@@ -566,6 +583,7 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
     ### so it inheriently is already parallelized, trying to run
     ### in parallel will only cause massive slowness.  But marx isn't
     ### so we could see some benifit from do those in parallel.
+
 
 
     if simulator == 'saotrace':
@@ -589,6 +607,7 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
     nrow = len(src_stk)
 
     eng = parse_mono_energy( at_energy )
+    taskrunner = TaskRunner()
 
     psf_files = []
 
@@ -605,7 +624,7 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
             rate = 1.0e-3
 
         outroot = "{}{:04d}_{}".format( myparams.outroot, ii, suffix)
-        simulate_psf = make_tool("simulate_psf")
+        simulate_psf = Params()
         simulate_psf.infile=myparams.infile
         simulate_psf.asolfile=''
         simulate_psf.outroot=outroot
@@ -627,11 +646,11 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
         simulate_psf.random_seed=myparams.random_seed
         simulate_psf.verbose=0
 
-        vv = simulate_psf()
-        if vv:
-            verb2(vv)
+        taskrunner.add_task(f"psf_{ii}", "", run_simulate_psf, simulate_psf)
 
         psf_files.append(outroot+".psf")
+
+    taskrunner.run_tasks(processes=myparams.nproc, label=False)
 
     return psf_files
 
