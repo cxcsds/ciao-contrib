@@ -122,7 +122,7 @@ def get_root( myparams, at_energy ):
     return myroot
 
 
-def run_roi( infile, fovfile, tmproot="/tmp", bkgmode='mul', bkgradius=3, bkgfunction='mul', bkgfactor=1 ):
+def run_roi( infile, fovfile, tmproot="/tmp", bkgmode='mul', bkgradius=3, bkgfunction='mul', bkgfactor=1.7 ):
     """
     Create src and background regions for each source
     """
@@ -145,6 +145,10 @@ def run_roi( infile, fovfile, tmproot="/tmp", bkgmode='mul', bkgradius=3, bkgfun
     roi.bkgradius = bkgradius
     roi.bkgfunction = bkgfunction
     roi.bkgfactor = bkgfactor
+    roi.bkgfactarg = "all"
+
+    roi.srcfactor = 1.2
+    roi.srcfunction = "mul"
 
     rr = roi()
 
@@ -189,8 +193,7 @@ def run_split_roi( myparams ):
     fov = locate_fovfile( myparams)
 
     roi_files = run_roi( myroot+"srcs.fits", fov,
-        tmproot=myroot, bkgradius=5.0,
-        bkgfactor=1.0 )
+        tmproot=myroot, bkgradius=5.0)
 
     mycmd = ["splitroi",
              myroot+r"????_reg.fits",
