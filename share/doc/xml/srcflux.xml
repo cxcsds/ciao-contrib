@@ -681,10 +681,24 @@ Summary of merged source fluxes
 </DESC>
 
   </QEXAMPLE>
+
+<QEXAMPLE>
+
+    <SYNTAX>
+    <LINE>&pr; srcflux evt2.fits pos=wavdetect_srclist.fits  \</LINE>
+    <LINE>      psfmethod=marx out=out_with_plugins.fits \</LINE>
+    <LINE>      pluginfile=my_plugin.py</LINE>
+    </SYNTAX>
+<DESC>
+  <PARA>
+    This example shows how to specify a plugin to be run after 
+    the source properties have been computed.  The Python script my_plugin.py
+    must contain a function called "srcflux_obsid_plugin".  The details
+    of the interface and example are shown in the Plugin section (below).
+  </PARA>
+</DESC>
+</QEXAMPLE>
     </QEXAMPLELIST>
-
-
-
 
 
 
@@ -1178,6 +1192,25 @@ bounds(region(my.reg))
 	  </PARA>
 	</DESC>
       </PARAM>
+
+    <PARAM name="pluginfile" type="file" filetype="input" reqd="no" stacks="no">
+    <SYNOPSIS>Python plugin script file name</SYNOPSIS>
+    <DESC>
+      <PARA>
+      The file name of the python scripts to run to perform additional
+      analysis tasks with the srcflux outputs.  The plugins must be
+      named "srcflux_obsid_plugin" and/or "srcflux_merge_plugin" depending 
+      on whether it should be run for each individual observation or
+      for the merged dataset (if multiple event files have been supplied).
+      </PARA>
+      <PARA>
+      For more details see the Plugin section (below).
+      </PARA>
+    
+    </DESC>
+    
+    </PARAM>
+
 
       <PARAM name="fovfile" type="file" filetype="input" reqd="no" stacks="no">
 	<SYNOPSIS>Field Of View (FOV) file</SYNOPSIS>
@@ -1773,14 +1806,17 @@ bounds(region(my.reg))
 	</ROW>
     <ROW>
         <DATA>SRC_VAR_ODDS</DATA>
+	  &nodmx;
         <DATA>Odds for variable signal 10Log in the source region (new in 4.14.2)</DATA>
     </ROW>
     <ROW>
         <DATA>SRC_VAR_PROB</DATA>
+	  &nodmx;
         <DATA>Probability of variability in the source region (new in 4.14.2)</DATA>
     </ROW>
     <ROW>
         <DATA>SRC_VAR_INDEX</DATA>
+	  &nodmx;
         <DATA>The Gregory-Loredo variability index for the events in the source region (new in 4.14.2)</DATA>
     </ROW>
       </TABLE>
@@ -1989,11 +2025,179 @@ the source region.</DATA>
 </ROW>
     </TABLE>
 
-
-
-
-
     </ADESC>
+
+  <ADESC title="Plugins">
+  
+  <PARA>
+  New in ciao-contrib 4.15.0
+  </PARA>
+  
+  <PARA title="Introduction">
+    While the purpose of the srcflux script is to provide users with 
+    robust flux estimates, along the way the script creates many 
+    data products which can be used for many other types of analysis:
+    spectral fitting, creating radial profiles, determining source extent,
+    refining source location, advanced timing analysis, etc.  To 
+    facilitate these other analysis paths, srcflux can now run user 
+    supplied plugins and conjoin the results with
+    the standard flux results it already produces.  There are two hooks
+    for plugins:  one that is run after each energy band for each 
+    individual observation, and one that is run after each energy band
+    for the merged datasets (if more than one event file has been supplied).
+  </PARA>
+
+  <PARA>
+    To use the plugins, users supply the file name to python scripts
+    via the pluginfile parameter.  If using both per-obsid and merged
+    plugins then they both must be defined in the same file.  
+    The plugin is run sequentially for each source (not run in parallel).
+  </PARA>
+
+  <PARA title="Per ObsID/Per Energy Band">
+
+  There are a few simple requirements for the user supplied plugin:
+
+  </PARA>
+    <LIST>
+      <CAPTION>Requirements for user supplied plugins</CAPTION>
+      <ITEM>Set the srcflux parameter pluginfile to the file name of the Python script. </ITEM>
+      <ITEM>The script must contain a function called 'srcflux_obsid_plugin'.
+      It must take the following parameters:
+      infile, outroot, energy-band name, min energy, max energy, and the ID number of the source
+       (component number).      
+      </ITEM>
+      <ITEM>
+      The function must return a list of values to be added to the output .flux file.
+      If there are no values, it must return an empty list, eg "[]".  The order
+      of the values in the list will be the same as in the output .flux file.
+      The function must always return the same list of value, even if 
+      there is an exception raised.
+      </ITEM>
+      <ITEM>
+      Each object in the list must have the following attributes: "name", "units", "value", and
+      "description".  This may be a NamedTuple, a dataclass object, or 
+      any other object type will work.      
+      The output column name must not already exist in the .flux file and
+      must adhere to FITS standards (letters, numbers, hyphens and underscores only).
+      </ITEM>
+      <ITEM>
+      The function is responsible for cleaning up any temporary files, and
+      conversely may create arbitrary new data products.
+      </ITEM>    
+    </LIST>
+
+<PARA>
+An example Python script to perform a spectral fit using Sherpa and
+return various fit parameters and metrics can look like this:
+
+</PARA>
+
+<VERBATIM>
+import sys
+import os
+from collections import namedtuple
+import numpy as np
+
+from sherpa.astro.ui import *
+
+ReturnValue = namedtuple('ReturnValue', 'name value units description')
+
+def srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
+    """    
+    Sample plugin: fitting spectrum.
+    
+    This sample plugin uses sherpa to fit a spectral model, and 
+    return an estimate of the flux w/ errors calculated with
+    the sample_flux routine.    
+    """
+
+    pi_file = outroot+".pi"
+
+    try:
+        load_data(pi_file)
+        group_counts(1)
+        set_source(xsphabs.abs1*xspowerlaw.pl1)
+        set_method("simplex")
+        notice(0.5,8.0)
+        fit()        
+        fit_info = get_fit_results()            
+        fflux, cflux, vals = sample_flux(lo=2.0, hi=10.0)
+        f0, fhi, flo = cflux
+                
+        retval = [ReturnValue("fitted_Nh", abs1.nH.val, "cm**-22", "Fitted Absorption value"),
+                  ReturnValue("photon_index", pl1.PhoIndex.val, "", "Fitted Photon Index"),
+                  ReturnValue("normalization", pl1.norm.val, "", "Spectrum Normalization"),
+                  ReturnValue("reduced_statistic", fit_info.rstat, "", "Reduced Fit Statistic"),
+                  ReturnValue("fit_statistic", fit_info.statval, "", "Fit Statistic"),
+                  ReturnValue("dof", fit_info.dof, "", "Degrees of Freedom"),
+                  ReturnValue("sample_flux", f0, "", "2-10 keV Sample Flux"),
+                  ReturnValue("sample_flux_lo", flo, "", "2-10 keV Sample Flux Uncertainty Low"),
+                  ReturnValue("sample_flux_hi", fhi, "", "2-10 Sample Flux Uncertainty Low"),
+                  ]
+    except Exception as wrong:
+        sys.stderr.write(str(wrong)+"\n")
+        sys.stderr.write(f"Problem fitting {outroot} spectrum. Skipping it.")
+
+        retval = [ReturnValue("fitted_Nh", np.nan, "cm**22", "Fitted Absorption value"),
+                  ReturnValue("photon_index", np.nan, "", "Fitted Photon Index"),
+                  ReturnValue("normalization", np.nan, "", "Spectrum Normalization"),
+                  ReturnValue("reduced_statistic", np.nan, "", "Reduced Fit Statistic"),
+                  ReturnValue("fit_statistic", np.nan, "", "Fit Statistic"),
+                  ReturnValue("dof", np.nan, "", "Degrees of Freedom"),
+                  ReturnValue("sample_flux", np.nan, "", "2-10 keV Sample Flux"),
+                  ReturnValue("sample_flux_lo", np.nan, "", "2-10 Sample Flux Uncertainty Low"),
+                  ReturnValue("sample_flux_hi", np.nan, "", "2-10 Sample Flux Uncertainty Low"),                  
+                  ]
+
+    return retval
+</VERBATIM>
+
+<PARA>
+In this sample code we are using a NamedTuple to store information about
+the fit including the fitted nH, Photon Index, normalization, fit statistic, and flux estimate
+obtained using the sample_flux routine.  In the event of an exception being thrown, the 
+script still returns but sets all the values to NaN.
+</PARA>
+
+  
+  <PARA title="Post Merge/Per Energy Band">
+  The post merge plugin works in the same way as the per ObsID plugin except
+  </PARA>
+
+  <LIST>
+    <ITEM>
+    The post merge plugin function must be called "srcflux_merge_plugin" with
+    the same input parameters as the per-obsid plugin.
+    </ITEM>
+    <ITEM>
+    The infile input parameter will now be a list of all the input
+    event files.
+    </ITEM>  
+  </LIST>  
+
+<PARA title="Examples">
+  Users can find example plugins in
+</PARA>
+<VERBATIM>
+$ASCDS_CONTRIB/data/sample_srcflux_plugins.py
+</VERBATIM>
+<PARA>
+These include
+</PARA>
+<LIST>
+<ITEM>Perform a spectral file (per obsid, and on merged data)</ITEM>
+<ITEM>Combined images and exposure maps on merged data</ITEM>
+<ITEM>Compute hardness ratios (per obsid)</ITEM>
+<ITEM>Extract radial profiles (per obsid)</ITEM>
+<ITEM>Perform blind deconvolution using arestore (per obsid)</ITEM>
+<ITEM>Extimate source extent (per obsid)</ITEM>
+</LIST>
+
+  </ADESC>
+
+
+
 
     <ADESC title="Processing steps">
       <PARA>
@@ -2012,13 +2216,14 @@ the source region.</DATA>
       </PARA>
       <PARA>
     The fraction of the PSF in the source and background regions is
-    computed in one of 4 ways.  Ideal: assumes 100% of the
+    computed in one of 5 ways.  Ideal: assumes 100% of the
     PSF in the source region and 0% in the background. Quick: looks up
     the PSF fraction given size of the source region (circle only).  Arfcorr:
     creates a 2D radially symmetric model of the PSF and estimates both
     the source and background PSF fractions.  PSFFile: user supplies
     an image of the PSF from which the source and background PSF fractions
-    are extracted.
+    are extracted. Marx: simulates the PSF at the user supplied location 
+    with the characteristic energy for the energy band.
       </PARA>
       <PARA>
 	The tool then computes a model independent flux using the
@@ -2063,6 +2268,10 @@ the source region.</DATA>
         The results are stored in an output file, one row per source, and one
         file for each energy band.  With verbose&gt;0, the results are also
         printed to the screen.
+      </PARA>
+      
+      <PARA>After the results are computed, and user supplied plugins are
+      run and the results added to the output file.
       </PARA>
     </ADESC>
 
@@ -2134,6 +2343,38 @@ the source region.</DATA>
 
       </PARA>
 
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.15.0 (December 2022) release">
+      <PARA title="Plugins">
+      Users can now write srcflux plugins that can add additional source
+      properties to the output .flux file.  There is a separate plugin that
+      is run for each energy band+obsid combination, and for each energy band 
+      with the merged data products.
+      For details see the Plugins section above.      
+      </PARA>
+      <PARA title="Default Region Changes">
+        The default has been that any source region which falls inside the
+        background annulus of another source is excluded from that annulus.
+        The source region contains roughly 90% of the PSF from the source so 
+        there is some contamination in the background.  This is can affect the
+        flux estimates especially in the case of a bright source influencing
+        the background estimate of a nearby faint source.  To ameliorate this we
+        have increased the size of the excluded sources.  This applies both
+        to sources overlapping the background annulus and to sources
+        overlapping source regions (circles).   For isolated sources this
+        has no effect on the results. 
+        
+      </PARA>
+      <PARA title="Parallelization of PSF simulations">
+        When psfmethod=marx, the simulations of the PSF are now done 
+        in parallel.      
+      </PARA>
+      <PARA>
+      
+      </PARA>
+    
+    
     </ADESC>
 
 
