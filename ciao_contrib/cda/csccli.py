@@ -55,7 +55,7 @@ __all__ = (
 )
 
 # Confirm, need rel1.1 to get HRC data for csc1
-__csc_version = { 'csc1' : 'rel1.1', 'csc2' : 'rel2.0' }
+__csc_version = { 'csc1' : 'rel1.1', 'csc2' : 'rel2.0', 'current': 'cur'}
 
 
 fileTypes_csc1 = {
@@ -134,7 +134,8 @@ fileTypes_cur = {
 
 fileTypes = {
     "csc1" : fileTypes_csc1,
-    "csc2"  : fileTypes_cur
+    "csc2"  : fileTypes_cur,
+    "current" : fileTypes_cur
 }
 
 
@@ -484,7 +485,7 @@ def cone_query_cli_cscview( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_co
     return page,cols
 
 
-def cone_query_cli_cscview_ver2( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns):
+def cone_query_cli_cscview_ver2( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns, cat_ver):
     """
     Perform the cone search query on the CSC using the getProperties API.
 
@@ -515,7 +516,7 @@ def cone_query_cli_cscview_ver2( ra_deg, dec_deg, radius_arcmin, ra_condition, d
 
     vals = {
         'query' : " ".join(query_string.split()) , # removes excess white spaces
-        'version' : __csc_version["csc2"],
+        'version' : __csc_version[cat_ver],
         'coordFormat' : 'decimal',
         'nullAppearance' : 'NaN',
         }
@@ -574,7 +575,7 @@ def obsid_query_cli_cscview( obsid, columns ):
     return page,cols
 
 
-def obsid_query_cli_cscview_ver2( obsid, columns ):
+def obsid_query_cli_cscview_ver2( obsid, columns, catver ):
     """
     Perform the cone search query on the CSC using the getProperties API.
 
@@ -602,7 +603,7 @@ def obsid_query_cli_cscview_ver2( obsid, columns ):
         'query' : " ".join(query_string.split()) , # removes excess white spaces
         'coordFormat' : 'decimal',
         'nullAppearance' : 'NaN',
-        'version' : __csc_version["csc2"]
+        'version' : __csc_version[catver]
         }
 
     page = make_URL_request( resource, vals )
@@ -863,8 +864,8 @@ def search_src_by_ra_dec( ra, dec, radius_arcmin, columns, cat_ver ):
 
     if "csc1" == cat_ver:
         page = cone_query_cli_cscview( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns)
-    elif "csc2" == cat_ver:
-        page = cone_query_cli_cscview_ver2( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns)
+    elif cat_ver in ["csc2", "current"]:
+        page = cone_query_cli_cscview_ver2( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns, cat_ver)
     else:
         raise ValueError("Unknown catalog version")
 
@@ -878,8 +879,8 @@ def search_src_by_obsid( obsid, columns, cat_ver ):
 
     if 'csc1' == cat_ver :
         page = obsid_query_cli_cscview( obsid, columns )
-    elif "csc2" == cat_ver :
-        page = obsid_query_cli_cscview_ver2( obsid, columns )
+    elif cat_ver in ["csc2", "current"] :
+        page = obsid_query_cli_cscview_ver2( obsid, columns, cat_ver )
     else:
         raise ValueError("Unknown catalog version")
     return page
@@ -1124,10 +1125,13 @@ def retrieve_files_per_type( filenames, filetype, root, catalog ):
             "filetype" : fileTypes[catalog][filetype]["filetype"],
             "filename" : ff,
             }
+
         if "csc2" == catalog:
             vals['version'] = __csc_version["csc2"]
         elif "csc1" == catalog:
             vals['version'] = __csc_version["csc1"]
+        elif "current" == catalog:
+            vals['version'] = __csc_version["current"]
         else:
             raise ValueError("Unknown catalog version")
 
@@ -1369,7 +1373,7 @@ def expand_standard_cols( cols, cat_version=None ):
                    "SOV"  : csc1_columns["source_observation_variability"]
                    }
 
-    if "csc2" == cat_version:
+    if cat_version in ["csc2", "current"]:
         check_list = { "MSBS" : csc2_columns["master_source_basic_summary"] ,
                        "MSS"  : csc2_columns["master_source_summary"],
                        "MSP"  : csc2_columns["master_source_photometry"],
