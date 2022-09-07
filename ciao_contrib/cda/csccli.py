@@ -1004,7 +1004,7 @@ def discover_filename_by_force( filetype, obsid, obi, region, band, instrume):
     #~ return filename
 
 
-def discover_filename_via_archive(myfile, obsid, obi, region, band, instrume):
+def discover_filename_via_archive(myfile, obsid, obi, region, band, instrume, catalog):
     """
     Use the csccli browse interface for release 2 file names.
 
@@ -1017,7 +1017,7 @@ def discover_filename_via_archive(myfile, obsid, obi, region, band, instrume):
     resource = "http://cda.cfa.harvard.edu/csccli/browse"
     vals = {
         "packageset" : pkg,
-        "version" : __csc_version["csc2"],
+        "version" : __csc_version[catalog],
         }
 
     try:
@@ -1063,13 +1063,13 @@ def discover_filenames_per_type( mysrc, myfile, mybands, catalog ):
             if 'csc1' == catalog:
                 ff = discover_filename_by_force( myfile, mysrc["obsid"], mysrc["obi"], rr, abbrv, myinst )
             else:
-                ff = discover_filename_via_archive( myfileType["filetype"], mysrc["obsid"], mysrc["obi"], rr, abbrv, myinst )
+                ff = discover_filename_via_archive( myfileType["filetype"], mysrc["obsid"], mysrc["obi"], rr, abbrv, myinst, catalog )
             filenames.append( ff )
     else:
         if 'csc1' == catalog:
             ff = discover_filename_by_force( myfile , mysrc["obsid"], mysrc["obi"], rr, "", myinst )
         else:
-            ff = discover_filename_via_archive( myfileType["filetype"], mysrc["obsid"], mysrc["obi"], rr, "", myinst )
+            ff = discover_filename_via_archive( myfileType["filetype"], mysrc["obsid"], mysrc["obi"], rr, "", myinst, catalog )
         filenames = [ ff ]
 
     return filenames
