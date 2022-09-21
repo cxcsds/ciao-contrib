@@ -1,5 +1,6 @@
 #
-#  Copyright (C) 2013-2014,2019  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2013-2014,2019,2022
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -39,7 +40,7 @@ v0 = logger.verbose0
 
 def _setup_sim( keyword_list ):
     """
-    Get the kewywords related to the SIM location    
+    Get the keywords related to the SIM location
     """
     #
     # Get SIM if all keys are present -- should be unless merged then
@@ -67,14 +68,14 @@ def _setup_sim( keyword_list ):
         _f = float(0.0)
         dsim = (_f,_f,_f)
         droll = _f
-    
+
     return sim, dsim, droll
 
 
 def _make_transform( crota, crpix, crval, cdelt ):
     """
-    
-    """        
+
+    """
     import pytransform as pt
     mytan = pt.WCSTANTransform()
     mytan.get_parameter("CROTA").set_value( crota )
@@ -97,8 +98,8 @@ def _check_keyword_list( keyword_list):
             "This may be a merged dataset.  "+
             "Coordinates for merged datasets may not be accurate")
 
-    # Do this after maybe_merged check 
-    must_have = ["TELESCOP", "INSTRUME", "DETNAM", "RA_PNT", "DEC_PNT", 
+    # Do this after maybe_merged check
+    must_have = ["TELESCOP", "INSTRUME", "DETNAM", "RA_PNT", "DEC_PNT",
         "ROLL_PNT", "RA_NOM", "DEC_NOM"]
     missing = [ k for k in must_have if k not in keyword_list ]
     if len(missing) !=0:
@@ -112,8 +113,8 @@ def _check_keyword_list( keyword_list):
     if keyword_list["INSTRUME"] not in ['ACIS', 'HRC']:
         e = "Unknown instrument '{}'"
         raise ValueError(e.format(keyword_list["INSTRUME"]))
-        
-    
+
+
 
 def _setup( keyword_list ):
     """
@@ -121,7 +122,7 @@ def _setup( keyword_list ):
 
     Input is a dictionary of keyword values that must contain
     the following values:
-        
+
         INSTRUME
         DETNAM
         RA_NOM
@@ -141,7 +142,7 @@ def _setup( keyword_list ):
     # Pixlib can only be init'ed once (and cannot successfully re-init'ed
     # after it's been closed.  So we have to use a hack to make sure
     # that if this routine is called multiple times that it only
-    # gets setup once -- thus the global (which is global only to 
+    # gets setup once -- thus the global (which is global only to
     # this module).  If someone init's pixlib outside of this routine
     # bad things will happen (results won't always be correct).
 
@@ -161,30 +162,30 @@ def _setup( keyword_list ):
         pix = myPixlib
 
     pix.detector = inst
-    
+
     # PNT gives us the optical axis and S/C roll
     crval = [ keyword_list["RA_PNT"], keyword_list["DEC_PNT"]  ]
     crota = keyword_list["ROLL_PNT"]
-    
+
     # NOM gives us the tangent point
     crnom = [ keyword_list["RA_NOM"] ,keyword_list["DEC_NOM"] ]
 
     # Get SIM related info
     sim, dsim, droll = _setup_sim( keyword_list )
 
-    if sim: 
+    if sim:
         pix.aimpoint = sim
     pix.mirror = (tuple(dsim), droll )
-    
+
     # get center of DET coord system by asking for on-axis
     # location (0,0)
     crpix = pix.msc2fpc( (-pix.flength, 0, 0 )  )
     cdelt = [ pix.fp_scale / 3600.0 ]*2 # replicate value
-    cdelt[0] *= -1    
+    cdelt[0] *= -1
 
     my_dettan = _make_transform( crota, crpix, crval, cdelt )
     my_skytan = _make_transform( 0.0,   crpix, crnom, cdelt ) # 0.0 : North is up
-    
+
     return pix, my_dettan, my_skytan, cdelt
 
 
@@ -196,10 +197,10 @@ def cel_to_chandra( keyword_list, ra_vals, dec_vals ):
         - sky
         - msc (theta/phi)
     RA/Dec must be decimal degrees, J2000, etc.
-    
+
     The input keyword dictionary must contain the follow
     values:
-    
+
         INSTRUME
         DETNAM
         RA_NOM
@@ -207,9 +208,9 @@ def cel_to_chandra( keyword_list, ra_vals, dec_vals ):
         RA_PNT
         DEC_PNT
         ROLL_PNT
-    
+
     The input keyword dictionary should also contain the following
-    values:        
+    values:
 
         SIM_X
         SIM_Y
@@ -220,7 +221,7 @@ def cel_to_chandra( keyword_list, ra_vals, dec_vals ):
 
     If they are missing the coordinate transforms will be inaccurate
     (SIM defaults based on INSTRUME|DETNAM).
-    """    
+    """
 
     try:
         rd_vals = zip( ra_vals, dec_vals )
@@ -229,8 +230,8 @@ def cel_to_chandra( keyword_list, ra_vals, dec_vals ):
 
 
     pix, my_dettan, my_skytan, cdelt = _setup( keyword_list)
-    
-    # loop over ra,dec's 
+
+    # loop over ra,dec's
     theta = []
     phi = []
     chip = []
@@ -250,7 +251,7 @@ def cel_to_chandra( keyword_list, ra_vals, dec_vals ):
         msc = pix.fpc2msc( dxy )    # msc[0] is focal len
         theta.append(msc[1] * 60.0) # arcmin
         phi.append( msc[2]*1.0 )
-            
+
         try:
             cixy = pix.fpc2chip( dxy )
             if cixy[0] < 0:
@@ -258,7 +259,7 @@ def cel_to_chandra( keyword_list, ra_vals, dec_vals ):
             chip.append( cixy )
         except:
             chip.append( (-999, (-999,-999)))
-    
+
 
     return { 'pixsize' : cdelt[1]*3600.0, # deg to arcsec
              'theta'   : theta, # arcmin
@@ -283,7 +284,7 @@ def sky_to_chandra( keyword_list, x_vals, y_vals ):
 
     The input keyword dictionary must contain the follow
     values:
-    
+
         INSTRUME
         DETNAM
         RA_NOM
@@ -291,9 +292,9 @@ def sky_to_chandra( keyword_list, x_vals, y_vals ):
         RA_PNT
         DEC_PNT
         ROLL_PNT
-    
+
     The input keyword dictionary should also contain the following
-    values:        
+    values:
         SIM_X
         SIM_Y
         SIM_Z
@@ -304,11 +305,11 @@ def sky_to_chandra( keyword_list, x_vals, y_vals ):
     If they are missing the coordinate transforms will be inaccurate
     (SIM defaults based on INSTRUME|DETNAM).
 
-    """    
+    """
 
     pix, my_dettan, my_skytan, cdelt = _setup( keyword_list)
 
-    # loop over ra,dec's 
+    # loop over ra,dec's
     theta = []
     phi = []
     chip = []
@@ -318,7 +319,7 @@ def sky_to_chandra( keyword_list, x_vals, y_vals ):
     try:
         xy_vals = zip( x_vals, y_vals )
     except:
-        xy_vals =  [ ( x_vals, y_vals ) ] 
+        xy_vals =  [ ( x_vals, y_vals ) ]
 
 
     for x,y in xy_vals:
@@ -326,7 +327,7 @@ def sky_to_chandra( keyword_list, x_vals, y_vals ):
         radec = my_skytan.apply( [[x*1.0,y*1.0]] )  # *1.0 make sure is a float
         rd = [ radec[0][0], radec[0][1] ]
         eqpos.append( rd )
-        
+
         detxy = my_dettan.invert( [rd] )
         dxy = [ detxy[0][0], detxy[0][1] ]
         det.append( dxy )
@@ -334,7 +335,7 @@ def sky_to_chandra( keyword_list, x_vals, y_vals ):
 
         theta.append(msc[1] * 60.0) # arcmin
         phi.append( msc[2]*1.0 )
- 
+
         try:
             cixy = pix.fpc2chip( dxy )
             if cixy[0] < 0:
@@ -342,7 +343,7 @@ def sky_to_chandra( keyword_list, x_vals, y_vals ):
             chip.append( cixy )
         except:
             chip.append( (-999, (-999,-999)))
-    
+
 
     return { 'pixsize' : cdelt[1]*3600.0, # deg to arcsec
              'theta'   : theta, # arcmin
