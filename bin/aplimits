@@ -1,0 +1,381 @@
+#!/usr/bin/env python
+
+# Copyright (C) 2022 MIT
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+'''
+Implementation notes
+--------------------
+
+The implementation is done in two classes instead of functions to make it
+easier to derive new variants. In principle, the machinary in the 
+Kashyap et al. (2010) paper is even more general then the implementation
+here, but it is still possible that we want to derive more specialized
+implementations than what is currently in this code at a later time, thus
+it does not hurt to implement as classes.
+
+This code uses a number of numeric functions and processes, all of which are
+available in scipy. Since the ciao_contrib cannot depend on scipy at this time
+they are taken from different sources:
+
+- Gamma function and incomplete gamma function as avaiable from Sherpa as a
+  thin wrapper around an underlying C implementation.
+- bicsection is available from Sherpa.
+- Numerical integration is implemented in the most naive form here, but while
+  not ideal we have enough knowledge on the shape of the integrated function
+  to simply evaluate and sum up in Python. An alternative would be to use 
+  ctypes to connect to the numerical integration in the GSL.
+- The PDF of the gamma distribution 
+  https://en.wikipedia.org/wiki/Gamma_distribution
+  (not to be confused with the Gamma function) is implemented here in Python
+  following the ideas the scipy's C code uses.
+'''
+
+import sys
+
+import ciao_contrib.logger_wrapper as lw
+from pycrates import read_file
+
+import numpy as np
+from sherpa.utils import gamma, igam, lgam, bisection
+
+TOOLNAME = "aplimits"
+__REVISION__ = "01 October 2022"
+
+lw.initialize_logger(TOOLNAME)
+v1 = lw.make_verbose_level(TOOLNAME, 1)
+v2 = lw.make_verbose_level(TOOLNAME, 2)
+
+
+
+# maxfev as parameter
+
+#
+# Numerical routines
+#
+def xlogy(x, y):
+    '''Following the idea of the Cython implementation in scipy'''
+    if x == 0 and not np.isnan(y):
+        return 0
+    elif np.isfinite(x) and y == 0:
+        # Numpy correctly returns -np.inf, but raises
+        # RuntimeWarning: divide by zero encountered in log
+        # To avoid this warning, hardcode the answer here.
+        return -np.inf
+    else:
+        return x * np.log(y)
+
+def gamma_pdf(x, alpha, beta):
+    
+    # Rescaling x -> x/b (see scipy docs)
+    # for easier numeric evaluation
+    x = x * beta
+    
+    # Calculate log of pdf to avoid overflow - following ideas of scipy implementation
+    logpdf = xlogy(alpha - 1.0, x) - x - lgam(alpha)
+    
+    return np.exp(logpdf) * beta
+
+class APLimits():
+    '''Calculate upper limit for a dectection following Kashyap et al. (2010)
+    
+    Parameters
+    ----------
+    lamb : float
+        background intensity in units of counts / area / time
+    taus : float
+        Exposure time in source region
+    taub : float
+        Exposure time in background region. Since lamb is already normalized to the exposure time,
+        this setting has no effect in this class.
+    r : float
+        Ratio of background to source area. Since lamb is already normalized to the exposure time,
+        this setting has no effect in this class.
+    '''
+    
+    def __init__(self, lamb, taus=1, taub=1, r=1):
+        self.lamb = lamb
+        self.taus = taus
+        self.taub = taub
+        self.r = r
+    
+    def find_sstar(self, alpha):
+        '''This is essentially evaluating eqn 4 to the value for Sstar'''
+        i = 0
+        while self.beta(lams=0, sstar=i) > alpha:
+            i +=1
+        return i
+
+    def beta(self, lams, sstar):
+        return igam(sstar + 1, (self.lamb + lams) * self.taus)
+
+    def rootfunc(self, lams, sstar, betalim=.5):
+        return self.beta(lams, sstar) - betalim
+    
+    def __call__(self, alpha, beta):
+        '''
+        Parameters
+        ----------
+        
+        Returns
+        -------
+        upper_limit : float
+            Upper limit 
+        '''
+        if alpha <=0 or alpha >= 1:
+            raise ValueError('alpha is a probability, which must be between 0 and 1.')
+        if beta <=0 or beta >= 1:
+            raise ValueError('beta is a probability, which must be between 0 and 1.')
+        sstar = self.find_sstar(alpha)
+
+        # Note on using sstar for upper guess
+        # for extreme values (e.g. alpha=.9, beta=.1, lamb=3) it can happen that 
+        # even a source count rate of 0 is already too large.
+        # In practice, that won't happen (alpha is typically 0.1 or 0.01)
+        # but we want the algorithm to work for every case.
+        if self.rootfunc(0, sstar, beta) > 0:
+            return 0
+        
+        # We use a bisect method for root finding,
+        # so we first need to extablish a brackting interval.
+        upper_bracket = sstar if sstar > 0 else 1
+        while self.rootfunc(upper_bracket, sstar, beta) < 0:
+            upper_bracket *= 10
+        out = bisection(self.rootfunc, 0, upper_bracket, args=(sstar, beta), maxfev=500)
+        
+        # replace by sherpa logging warning
+        if np.abs(out[0][1]) > 1e-6:
+            v1('Not converged')
+        return out[0][0], sstar
+ 
+    
+class APLimitsMarginalize(APLimits):
+    '''Calculate upper limit for a dectection following Kashyap et al. (2010)
+    
+    Parameters
+    ----------
+    nb : int
+        number of counts in background region
+    taus : float
+        Exposure time in source region
+    taub : float
+        Exposure time in background region. Since lamb is already normalized to the exposure time,
+        this setting has no effect in this class.
+    r : float
+        Ratio of background to source area. Since lamb is already normalized to the exposure time,
+        this setting has no effect in this class.
+    '''
+    # super().__init__ has lamb instead of "nb" 
+    # but the rest of the signature is the same.
+    def __init__(self, nb, taus=1, taub=1, r=1):
+        if nb < 0:
+            raise ValueError('Number of counts cannot be negative.')
+        if nb == 0:
+            raise ValueError('nb=0 does not contrain the background count rate. ' +
+                             'Thus, the posterior of the count rate cannot be normalised. ' +
+                             'At least one background count is required for this algorithm.')
+        if not float(nb).is_integer(nb):
+            raise ValueError('Number of counts in the background must be an integer number.')
+        if (taus <= 0) or (taub <= 0):
+            raise ValueError('Exposure time must to be >0.')
+        if r <= 0:
+            raise ValueError('The ratio of background to source area must be positive.')
+        self.nb = nb
+        self.taus = taus
+        self.taub = taub
+        self.r = r
+    
+    def lamb_posterior(self, lamb):
+        '''Estimate posterior distribution for lamb_b
+        
+        Need to take care to use right scaling for input output for r and 
+        taub/taus
+        Gamma is the conjugate prior for Poisson, so we can get the posterior
+        analytically which is nice because it is fast and there is no worry
+        about numerical stability.
+        
+        We are using an uninformative prior with gamma(1, 0). This represents
+        the information from an observation with 0 counts in 0 area 
+        (following what is done for aprates:
+        https://cxc.harvard.edu/csc/memos/files/Kashyap_xraysrc.pdf)
+        This prior is "improper" - it cannot be normalized. However, the 
+        gamma function is the conjugate prior for our problem and we can then
+        use the information passed in about the background to analytically
+        calculate the posterior - and that is normalizable and useful.
+        '''
+        return gamma_pdf(lamb, 1 + self.nb, self.taub * self.r)
+
+    def beta(self, lams, sstar, lamb):
+        return igam(sstar + 1, (lamb + lams) * self.taus)
+
+    def integrant(self, lamb, lams, sstar_trial):
+        p_of_lamb = self.lamb_posterior(lamb)
+        beta = self.beta(lams, sstar_trial, lamb)
+        return  beta * p_of_lamb
+    
+    def integrate(self, lams, sstar):
+        '''Integrate to marginalize over lamb
+           
+        We need to integrate over ``lamb`` from 0 to inf.
+        The easiest way to implement that is to pass this to a
+        numerical library with adptive bin size.
+        However, we don't have such a library available at te Python level.
+        So, choice is to use ctypes to get numerical integration functions from
+        the GSL, or to implement a simple integratin here by hand.
+        Fortunately, we know a lot about te shape of the function to be integrated.
+        In particular, we know the location of the peak and know that 
+        scale (the width) of the Gamma distribtion in `lamb_posterior`.
+
+        We also know that no great precision is needed, because this function
+        will only be invoked for low-count statistics. Last, we know that
+        executing the ``self.integrant`` function is relatively cheap, so we can
+        afford to evaluate it at more points instead of programming
+        more efficient schemes like Gauss-Kronrod or similar.
+        '''
+        # See wikipedia for mean and variance of distribution
+        loc_peak = self.nb / (self.r * self.taub)
+        width = np.sqrt(self.nb / (self.r * self.taub))
+        # Numerically integrate by using a regular grid from
+        # width = sqrt(variance)
+        # -10 * std to + 20 * std
+        # It's asymmetric because the function is for small numbers.
+        # choice of 10, 20 and 100 points is made by looking at functions
+        # plotted for typical values.
+        
+        x = np.linspace(max(0, loc_peak - 10 * width), loc_peak + 20 * width, 100)
+
+        # igam does not accept numpy arrays, so need to call one by one an put in list
+        return np.trapz([self.integrant(xp, lams, sstar) for xp in x], x)
+    
+    def find_sstar(self, alpha):
+        i = 0
+        while self.integrate(0, i) > alpha:
+            i += 1
+        return i
+            
+    def beta(self, lams, sstar):
+        return self.integrate(lams, sstar)
+
+
+def aplimits(typeIerror=.9, typeIIerror=.5, T_s=1, A_s=1,
+             bkg_rate=None, m=None, A_b=1, T_b=1, max_counts=50,
+             # Add some parameters here to control the integration and root finding, e.g. itermax as in aprates
+            ):
+    '''Calculate an upper limit on a count rate
+    
+    Parameters
+    ----------
+    typeIerror : float
+        Proability of a Type I error, i.e. that a background fluctuation
+        causes a count rate above the threshold used for the upper limit.
+    typeIIerror : float
+        Upper limit on the probability of a Type II error, i.e. that a true
+        source of a given intensity is missed because it gives a count rate
+        below the detection threshold.
+    T_s : float
+        Exposure time in source aperture. May be set to 1 if computation of
+        source rate is not desired.
+        Units: sec
+    A_s : float
+        Geometric area of source aperture. Either square arcsec or pixels are
+        allowed, as long as the units agree with those of A_b.
+        Units: pixels or arcsec^2
+    bkg_rate : float
+        Known background rate. The flux is given per area and time.
+        The unit of the area must match the units used for A_s and A_b.        
+        Units: photons / (pixel sec) or photons / (arcsec^2 sec)
+    m : integer
+        Number of counts in background aperture
+    A_b : float
+        Geometric area of background aperture. Either square arcsec or pixels
+        are allowed, as long as the units agree with those of A_s.
+        Units: pixels or arcsec^2
+    T_b : float
+        Exposure time in background aperture. May be set to 1 if computation
+        of background rate is not desired.
+        Units: sec        
+    max_counts : integer
+        Max total counts before switching from Baysian approach to assuming
+        that the background rate is known exactly, even if the input is given
+        as background counts and aperture area.
+
+        If the number of background counts is large, the Baysian posterior
+        becomes sharply peaked. In his case the algorithms for the numerical
+        integration may run very long or even fail while result is only
+        negligibly different from those obtained assuming that the background
+        is known exactly.
+
+        Comparison of both methods indicates that a value of max_counts=50
+        (the default) is a good choice for a wide range of input parameters.
+            
+    Returns
+    -------
+    lambs : float
+        Upper limit for the source intensity (in cts /area / time)
+        
+    Note
+    ----
+    The probabilities for Type I and Type II errors are called alpha and beta
+    in the Kashyap et al. (2010) paper but the same symbols are used with a
+    different meaning in aprates. To avoid confusion, the parameters of this
+    function are named typeIerror and typeIIerror.
+    '''
+    if typeIerror <=0 or typeIerror >= 1:
+        raise ValueError('typeIerror is a probability, which must be between 0 and 1.')
+    if typeIIerror <=0 or typeIIerror >= 1:
+        raise ValueError('typeIIerror is a probability, which must be between 0 and 1.')
+    if bkg_rate is None and m is None:
+        raise ValueError('Either bkg_rate or m have to be given.')
+    if bkg_rate is not None and m is not None:
+        v1('bkg_rate and m are given. Using bkg_rate for the computation.')
+    if bkg_rate is None and m >= max_counts:
+        bkg_rate = m / A_b / T_b * A_s * T_s
+    if bkg_rate is not None:
+        out = APLimits(lamb=bkg_rate)(typeIerror, typeIIerror)
+    else:
+        limitfinder = APLimitsMarginalize(nb=m, taus=T_s, taub=T_b, r=A_b/A_s)
+        out = limitfinder(typeIerror, typeIIerror)
+    return out
+#
+# Main Routine
+#
+@lw.handle_ciao_errors(TOOLNAME, __REVISION__)
+def main():
+    'Main routine'
+    from ciao_contrib.param_soaker import get_params
+    import paramio as pio
+
+    # get parameters
+    pars = get_params(TOOLNAME, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": v1})
+    ul, sstar = aplimits(typeIerror=float(pars["typeIError"]),
+                         typeIIerror=float(pars["typeIIerror"]),
+                         T_s=float(pars["T_s"]),
+                         A_s=float(pars["A_s"]),
+                         bkg_rate=float(pars["bkg_rate"])
+                         m=int(pars["m"]),
+                         T_b=float(pars["T_s"]),
+                         A_b=float(pars["A_s"]),
+                         max_counts=int(pars["max_counts"])
+
+    ph = pio.paramopen(TOOLNAME + "_out")
+    pio.pputi(sstar, 's_star')
+    pio.pputd(ul, 'upper_limit')
+    pio.paramclose(ph)
+
+if __name__ == "__main__":
+    main()
