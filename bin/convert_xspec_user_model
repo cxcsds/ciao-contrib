@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021, 2022
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "02 November 2021"
+toolver  = "31 August 2022"
 
 import sys
 import os
@@ -78,6 +78,8 @@ import glob
 import argparse
 import importlib
 import shutil
+
+from numpy import __version__ as numpyver
 
 import sherpa
 import sherpa.astro.ui as ui
@@ -151,7 +153,7 @@ running
 """
 
 copyright_str = """
-Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021
+Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021, 2022
 Smithsonian Astrophysical Observatory
 
 This program is free software; you can redistribute it and/or modify
@@ -393,6 +395,43 @@ def find_cplusplus_files():
                             "cc": "*.cc"})
 
 
+def find_header_files():
+    """Return the header files found in the current
+    directory, labelled by "type".
+
+      "h": *.h
+
+    The dictionary only contains keys if there was a
+    match for that pattern; if there are no matches
+    then None is returned.
+
+    Note that on case-insensitive file systems, this
+    will match the same files as find_c_files() for
+    the "C" and "c" options.
+    """
+
+    return find_file_types({"h": "*.h",
+                            "hh": "*.hh"})
+
+
+def find_cpreprocessor_files():
+    """Return the header files found in the current
+    directory, labelled by "type".
+
+      "cpp": *.cpp
+
+    The dictionary only contains keys if there was a
+    match for that pattern; if there are no matches
+    then None is returned.
+
+    Note that on case-insensitive file systems, this
+    will match the same files as find_c_files() for
+    the "C" and "c" options.
+    """
+
+    return find_file_types({"cpp": "*.cpp"})
+
+
 def count_nfiles(label, fileinfo):
     """Display, at verbose=1, the number of files
     found for this file type (combining all the
@@ -425,7 +464,7 @@ def count_nfiles(label, fileinfo):
     return ntot
 
 
-def build_setup(modname, sources, fortransources, extrafiles,
+def build_setup(modname, sources, cppsources, fortransources, extrafiles,
                 version,
                 clobber=False,
                 license='License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication'):
@@ -441,8 +480,11 @@ def build_setup(modname, sources, fortransources, extrafiles,
         The paths to the source files, excluding the FORTRAN files.
         It can be the empty list, but then fortransources must not be
         empty.
+    cppsources : list of str
+        The paths to the CPP source files.  It can be an empty list, 
+        but then fortransources must not be empty.
     fortransources : list of str
-        The paths to the FORTRAN source files.  It can be the empty
+        The paths to the FORTRAN source files.  It can be an empty
         list, but then sources must not be empty.
     extrafiles : list of str
         Extra files. What are we to do with these?
@@ -509,6 +551,7 @@ def build_setup(modname, sources, fortransources, extrafiles,
     mkdir(outdir)
 
     srcnames = []
+    cppnames = []
     fortnames = []
     for f in sources:
         v3(f" - copying over source file {f}")
@@ -521,6 +564,18 @@ def build_setup(modname, sources, fortransources, extrafiles,
 
         shutil.copy(f, outname)
         srcnames.append(outname)
+
+    for f in cppsources:
+        v3(f" - copying over CPP file {f}")
+        if not os.path.isfile(f):
+            raise OSError(f"Unable to find CPP name '{f}'")
+
+        outname = os.path.join(outdir, os.path.basename(f))
+        if not clobber:
+            check_clobber(outname)
+
+        shutil.copy(f, outname)
+        cppnames.append(outname)
 
     for f in fortransources:
         v3(f" - copying over FORTRAN file {f}")
@@ -580,7 +635,8 @@ sherpa_incpath = sherpa.get_include()
 #
 xspec_incpath = "{xspec_basedir}/include"
 
-includes = [this_incpath, numpy_incpath, sherpa_incpath, xspec_incpath]
+includes = [this_incpath, 
+numpy_incpath, sherpa_incpath, xspec_incpath]
 
 # Add in XSPEC-specific directories that it appears are needed by
 # XSPEC local models - this is a hack and hopefully can go away
@@ -646,7 +702,7 @@ mod = Extension('{modname}._models',
                 libraries=libnames,
                 sources=['src/{modname_slashes}/src/_models.cxx']
                         +
-                        {srcnames},
+                        {srcnames} + {cppnames},
                 extra_link_args=cargs,
                 depends=FORTRANFILES
                 )
@@ -739,11 +795,11 @@ where = src
 
     # Create the pyproject.toml file
     #
-    out = '''[build-system]
+    out = f'''[build-system]
 requires = ["setuptools >= 49.1.2",
             "wheel",
-            "numpy",
-            "sherpa"
+            "numpy == {numpyver}",
+            "sherpa == {sherpa.__version__}"
            ]
 build-backend = "setuptools.build_meta"
 '''
@@ -952,7 +1008,7 @@ get_xsversion()
     save(outfile, out)
 
 
-def build_module_cxx(modname, cxxcode, mdls, clobber=False):
+def build_module_cxx(modname, cxxcode, mdls, hdrfiles, cpreprocessor_files, clobber=False):
     """Create the C++ module code.
 
     Parameters
@@ -963,10 +1019,18 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
         The C++ code created by xspec.create_xspec_code.
     mdls : sequence of ModelDefintion objects
         The models to process.
+    hdrfiles : dictionary of lists of local header files to be in scope
     clobber : bool, optional
         Do we over-write existing files or error out if they exist.
 
     """
+
+    # Do we have any C models?
+    #
+    have_c = []
+    for mdl in mdls:
+        if mdl.language == 'C style':
+            have_c.append(mdl)
 
     # Do we have any C++ models?
     #
@@ -994,6 +1058,103 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 #include "sherpa/astro/xspec_extension.hh"
 
 '''
+
+
+    if len(hdrfiles) > 0:
+        # include local model headers to be available in the scope of
+        # 'sherpa/extension.hh' and 'sherpa/astro/xspec_extension.hh'
+        #
+
+        for hdrfn in sum(hdrfiles.values(), []):
+            for ext in ["cxx", "C", "cc"]:
+                if os.path.isfile(f"{hdrfn.split('.')[0]}.{ext}"):
+                    out += f'#include "{hdrfn}"\n'
+        out += '\n'
+        
+        out += '''extern "C" {
+'''
+
+        for hdrfn in sum(hdrfiles.values(), []):
+            if os.path.isfile(f"{hdrfn.split('.')[0]}.c"):
+                out += f'#include "{hdrfn}"\n'
+
+        out += '''
+}
+'''
+
+
+    if len(cpreprocessor_files) > 0:
+        ################################################################
+        ################################################################
+        ###                                                          ###
+        ### this is based on the <modelpackage>FunctionMap.h and     ###
+        ### <modelpackage>FunctionMap.cxx files generated by HEASoft ###
+        ### 6.30.1 'initpackage' in XSpec to build user-models       ###
+        ###                                                          ###
+        ################################################################
+        ################################################################
+
+        out += '''
+#ifndef FUNCTIONMAP_H
+#define FUNCTIONMAP_H
+
+#include <XSFunctions/Utilities/funcType.h>
+
+class XSModelFunction;
+
+extern ModelFunctionMap XSFunctionMap;
+
+void createrelxillFunctionMap();
+
+extern "C"  {
+'''
+        for cmdl in have_c:
+            out += f'     xsccCall {cmdl.funcname};\n'
+            
+        out += '''
+}
+
+#endif
+
+#ifndef FUNCTIONMAP
+#define FUNCTIONMAP
+
+#include <XSFunctions/Utilities/XSModelFunction.h>
+
+void createrelxillFunctionMap()
+{
+'''
+        for cmdl in have_c:
+            out += f'     XSFunctionMap["{cmdl.name}"] = new XSCall<xsccCall>({cmdl.funcname});\n'
+
+        out += '''
+}
+#endif
+
+'''
+
+        
+#    if len(have_c) > 0:    
+#         #################
+#         out += 'void xspec_C_wrapper_eval_model(ModelName model_name, const double* parameter_values, double* xspec_flux, int num_flux_bins, const double* xspec_energy) {\n'
+#         out += '  try {\n'
+#         out += '    LocalModel local_model{parameter_values, model_name};\n\n'
+#         out += '    XspecSpectrum spectrum{xspec_energy, xspec_flux, static_cast<size_t>(num_flux_bins)};\n'
+#         out += '    local_model.eval_model(spectrum);\n\n'
+#         out += '  } catch (ModelNotFound &e) {\n'
+#         out += '    std::cout << e.what();\n'
+#         out += '  }\n'
+#         out += '}\n\n'
+#         ################
+
+#         for cmdl in have_c:
+#             out += f'extern "C" void {cmdl.funcname}'
+#             out += '(const double* energy, int Nflux, const double* parameter, int spectrum, double* flux, double* fluxError, const char* init) \n'
+
+#             out += '{\n'
+#             out += '    xspec_C_wrapper_eval_model'
+#             out += f'(ModelName::{cmdl.name}, parameter, flux, Nflux, energy);\n'
+#             out += '}\n'
 
     if len(have_cxx) > 0:
         # cppModelWrapper is defined in XSFunctions/funcWrappers.cxx
@@ -1056,7 +1217,7 @@ PyMODINIT_FUNC PyInit__models(void) {
     save(outfile, out)
 
 
-def build_module(modname, mdls, modelfile, infiles, extrafiles,
+def build_module(modname, mdls, modelfile, hdrfiles, cpreprocessor_files, infiles, extrafiles,
                  version,
                  clobber=False):
     """Create the module files.
@@ -1096,7 +1257,7 @@ def build_module(modname, mdls, modelfile, infiles, extrafiles,
     build_module_init(modname, xdata.python, mdls,
                       modelfile, infiles, extrafiles, version,
                       clobber=clobber)
-    build_module_cxx(modname, xdata.compiled, mdls, clobber=clobber)
+    build_module_cxx(modname, xdata.compiled, mdls, hdrfiles, cpreprocessor_files, clobber=clobber)
 
 
 def compile_module(local=False, verbose=False):
@@ -1232,9 +1393,12 @@ def convert_xspec_user_model(modulename, modelfile,
     fortran_files = find_fortran_files()
     c_files = find_c_files()
     cpp_files = find_cplusplus_files()
+    cpreprocessor_files = find_cpreprocessor_files()
+    hdr_files = find_header_files()
     n_fortran = count_nfiles("Fortran", fortran_files)
     n_c = count_nfiles("C", c_files)
     n_cpp = count_nfiles("C++", cpp_files)
+    n_cpreprocessor = count_nfiles("CPP", cpreprocessor_files)
 
     if sum([n_fortran, n_c, n_cpp]) == 0:
         raise IOError(f"No Fortran/C/C++ files found in {os.getcwd()}")
@@ -1314,7 +1478,7 @@ def convert_xspec_user_model(modulename, modelfile,
         if mdl.modeltype in ['Mix', 'Acn']:
             v1(f"Skipping {mdl.name} as model type = {mdl.modeltype}")
             continue
-
+        
         # The following check should never fire, but leave in
         if mdl.language not in ['Fortran - single precision',
                                 'Fortran - double precision',  # un-tested
@@ -1360,6 +1524,7 @@ def convert_xspec_user_model(modulename, modelfile,
         v1(f"Processing {nmdl} models.")
 
     langs = sorted(list(langs))
+    
     if len(langs) == 1:
         v1(f"Using language interface: {langs[0]}")
     else:
@@ -1373,6 +1538,14 @@ def convert_xspec_user_model(modulename, modelfile,
         for vs in d.values():
             srcfiles.extend(vs)
 
+    cppfiles = []
+    for d in [cpreprocessor_files]:
+        if d is None:
+            continue
+
+        for vs in d.values():
+            cppfiles.extend(vs)
+            
     fortfiles = []
     for d in [fortran_files]:
         if d is None:
@@ -1383,11 +1556,12 @@ def convert_xspec_user_model(modulename, modelfile,
 
     build_setup(modulename,
                 srcfiles,
+                cppfiles,
                 fortfiles,
                 extrafiles,
                 version,
                 clobber=clobber)
-    build_module(modulename, mdls, modelfile, allfiles, extrafiles,
+    build_module(modulename, mdls, modelfile, hdr_files, cppfiles, allfiles, extrafiles,
                  version,
                  clobber=clobber)
 
