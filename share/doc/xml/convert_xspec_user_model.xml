@@ -154,15 +154,18 @@
       </QEXAMPLE>
 
       <QEXAMPLE>
+	<!--
 	<SYNTAX>
-	  <LINE>import logging</LINE>
-	  <LINE>lgr = logging.getLogger('sherpa')</LINE>
-	  <LINE>old_level = lgr.level</LINE>
-	  <LINE>lgr.level = logging.WARN</LINE>
-	  <LINE>import mymodel.ui</LINE>
-	  <LINE>lgr.level = old_level</LINE>
+	  <LINE>&spr; from sherpa.utils.logging import SherpaVerbosity</LINE>
+	  <LINE>&spr; with SherpaVerbosity("WARN"):</LINE>
+	  <LINE>...         import mymodel.ui</LINE>
 	</SYNTAX>
+	-->
 	<DESC>
+	  <VERBATIM>&spr; from sherpa.utils.logging import SherpaVerbosity
+&spr; with SherpaVerbosity("WARN"):
+...         import mymodel.ui
+</VERBATIM>
 	  <PARA>
 	    When the "model.ui" module is loaded a line is displayed for
 	    each model that is added to Sherpa. This output is controlled
@@ -311,7 +314,6 @@ with SherpaVerbosity('WARN'):
     import carbatm.ui
     import relxill.ui
 
-del SherpaVerbosity
 </VERBATIM>
 
       <PARA title="Notes">
@@ -522,7 +524,7 @@ undefined symbol: _gfortran_copy_string
 
       <PARA title="What files are compiled?">
 	The following files in the current working directory are
-	compiled: *.f, *.f03, *.f90, *.c, *.cxx, *.C, and
+	compiled: *.f, *.f03, *.f90, *.c, *.cxx, *.C, *.cpp, and
 	*.cc. These are compiled via the Python Extension
 	class (details are in the setup.py file), although
 	there is some extra work to compile FORTRAN files
@@ -539,9 +541,18 @@ undefined symbol: _gfortran_copy_string
 	The model class names are created by appending the
 	model name from the definition file to the prefix
 	value (which defaults to "XSUM"); since Python class
-	names have to start with a capital letter the prefix
+	are expected to start with a capital letter the prefix
 	must be capitalised (or, if blank, then the first
 	character of the model name is capitalized).
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.15.0 (December 2022) release">
+      <PARA>
+	Support for models that use *.cpp files has been added, such as
+	recent versions of relxill. The build system has been simplified
+	which should reduce the time taken to build, and avoid possible
+	issues with Sherpa and NumPy.
       </PARA>
     </ADESC>
 
