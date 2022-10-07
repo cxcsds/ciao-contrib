@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021, 2022
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "02 November 2021"
+toolver  = "07 October 2022"
 
 import sys
 import os
@@ -737,13 +737,17 @@ where = src
 '''
     save(setupcfg, out)
 
-    # Create the pyproject.toml file
+    # Create the pyproject.toml file. Since we end up building Sherpa
+    # (from PyPI) rather than using the installed version, we make
+    # sure that we use the same version, as PyPI could have a neweer
+    # version available. This assumes that the CIAO version label
+    # matches those used on PyPI (e.g. '4.14.0').
     #
-    out = '''[build-system]
+    out = f'''[build-system]
 requires = ["setuptools >= 49.1.2",
             "wheel",
-            "numpy",
-            "sherpa"
+            "oldest-supported-numpy",
+            "sherpa == {sherpa.__version__}"
            ]
 build-backend = "setuptools.build_meta"
 '''
