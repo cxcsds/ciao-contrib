@@ -39,7 +39,7 @@ match
 
   Fortran: *.f *.f03 *.f90
   C:       *.c
-  C++:     *.cxx *.C *.cc      (*.cpp files are ignored, unlike XSPEC)
+  C++:     *.cxx *.C *.cc *.cpp
 
 Unlike most CIAO tools and scripts this does not use the CIAO
 parameter interface, instead it uses the standard UNIX command-line
@@ -116,7 +116,7 @@ Files that match
 
   Fortran: *.f *.f03 *.f90
   C:       *.c
-  C++:     *.cxx *.C *.cc   (*.cpp files are ignored, unlike XSPEC)
+  C++:     *.cxx *.C *.cc *cpp
 
 are automatically compiled. To include other files on the link line
 - e.g. .o files - add there names on the command line.
@@ -151,7 +151,7 @@ running
 """
 
 copyright_str = """
-Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021
+Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021, 2022
 Smithsonian Astrophysical Observatory
 
 This program is free software; you can redistribute it and/or modify
@@ -373,11 +373,10 @@ def find_cplusplus_files():
     """Return the Fortran files found in the current
     directory, labelled by "type".
 
-      "cxx": *.cxx
-      "C"  : *.C
-      "cc" : *.cc
-
-    Note that .cpp files are ignored, unlike in XSPEC.
+      "cxx" : *.cxx
+      "C"   : *.C
+      "cc"  : *.cc
+      "cpp" : *.cpp
 
     The dictionary only contains keys if there was a
     match for that pattern; if there are no matches
@@ -390,7 +389,8 @@ def find_cplusplus_files():
 
     return find_file_types({"cxx": "*.cxx",
                             "C": "*.C",
-                            "cc": "*.cc"})
+                            "cc": "*.cc",
+                            "cpp": "*.cpp"})
 
 
 def count_nfiles(label, fileinfo):
@@ -976,9 +976,12 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
     # Do we have any C++ models?
     #
     have_cxx = []
+    have_c = []
     for mdl in mdls:
         if mdl.language == 'C++ style':
             have_cxx.append(mdl)
+        elif mdl.language == 'C style':
+            have_c.append(mdl)
 
     modname_slashes = modname.replace('.', '/')
     outdir = f"src/{modname_slashes}/src"
@@ -995,6 +998,7 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 #include <iostream>
 
 #include <xsTypes.h>
+#include <XSFunctions/Utilities/funcType.h>  // defines xsccCall
 
 #include "sherpa/astro/xspec_extension.hh"
 
@@ -1013,6 +1017,7 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 
 '''
 
+        # Does this ever get closed? Or is it a bug?
         out += '''extern "C" {
 '''
 
@@ -1031,6 +1036,18 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
         out += '''
 }
 '''
+
+    # This is needed to wrap relline. Is it needed for other
+    # models? Hopefully it doesn't mess anything up as it's
+    # just declaring symbols.
+    #
+    if len(have_c) > 0:
+        out += 'extern "C" {\n'
+
+        for cmdl in have_c:
+            out += f'  xsccCall {cmdl.funcname};\n'
+
+        out += "}\n"
 
     out += cxxcode
 
@@ -1146,7 +1163,7 @@ def convert_xspec_user_model(modulename, modelfile,
 
       Fortran: *.f *.f03 *.f90
       C:       *.c
-      C++:     *.cxx *.C *.cc  (*.cpp files are ignored, unlike XSPEC)
+      C++:     *.cxx *.C *.cc *.cpp
 
     It creates (using the clobber to determine whether to continue if
     the files already exist):
