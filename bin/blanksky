@@ -19,9 +19,9 @@
 #
 
 toolname = "blanksky"
-__revision__  = "12 September 2022"
+__revision__  = "7 October 2022"
 
-import os, sys, paramio, tempfile, shutil, stat, glob
+import os, sys, paramio, tempfile, shutil, stat
 
 import stk
 import pycrates as pcr
@@ -311,10 +311,10 @@ def find_acis_stowed_bkg(evtfile,ccd_list):
     else:
         datestr = epoch_dict["Epoch F"]["date"]
          
-    stowed_caldb = glob.glob(f"{bkg_path}/*bgstow*")
-    stowed_substr = [f"{bkg_path}/acis{ccd}{datestr}bgstow_cti" for ccd in ccds]
+    stowed_caldb = [fn for fn in os.listdir(bkg_path) if "bgstow" in fn]
+    stowed_substr = [f"acis{ccd}{datestr}bgstow_cti" for ccd in ccds]
 
-    stowedfiles = [fn for substr in stowed_substr for fn in stowed_caldb if fn.startswith(substr)]
+    stowedfiles = [f"{bkg_path}/{fn}" for substr in stowed_substr for fn in stowed_caldb if fn.startswith(substr)]
        
     return ",".join(stowedfiles)
 
