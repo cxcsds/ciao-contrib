@@ -19,7 +19,7 @@
 #
 
 toolname = "blanksky"
-__revision__  = "7 October 2022"
+__revision__  = "11 October 2022"
 
 import os, sys, paramio, tempfile, shutil, stat
 
@@ -612,6 +612,15 @@ def blanksky(infile,filters,asols,tmpdir,keywords,stowedbg,verbose,clobber):
         # *      any data on ACIS-4
         # *      CTI-corrected data on ACIS-9
         # *      ACIS-0 data, when ACIS-S is in the focal plane (a SIM_Z limit is exceeded)
+        if stowedbg and not set([4,8,9]).isdisjoint(set(ccds)):
+            v1("ACIS-S0, -S4, and/or -S5 will be ignored, as no stowed background files are available for these chips.\n")
+
+            for ccd in [4,8,9]:
+                try:
+                    ccds.remove(ccd)
+                except ValueError:
+                    pass
+        
         if 4 in ccds:
             v1("Ignoring ACIS-S0, as no blank-sky map is available for this chip.\n")
             ccds.remove(4)
