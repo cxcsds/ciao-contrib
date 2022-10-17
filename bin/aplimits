@@ -45,13 +45,13 @@ they are taken from different sources:
   following the ideas the scipy's C code uses.
 '''
 
+import os
 import sys
 
 import ciao_contrib.logger_wrapper as lw
-from pycrates import read_file
 
 import numpy as np
-from sherpa.utils import gamma, igam, lgam, bisection
+from sherpa.utils import igam, lgam, bisection
 
 TOOLNAME = "aplimits"
 __REVISION__ = "01 October 2022"
@@ -59,10 +59,7 @@ __REVISION__ = "01 October 2022"
 lw.initialize_logger(TOOLNAME)
 v1 = lw.make_verbose_level(TOOLNAME, 1)
 v2 = lw.make_verbose_level(TOOLNAME, 2)
-
-
-
-# maxfev as parameter
+v3 = lw.make_verbose_level(TOOLNAME, 3)
 
 #
 # Numerical routines
@@ -105,13 +102,16 @@ class APLimits():
     r : float
         Ratio of background to source area. Since lamb is already normalized to the exposure time,
         this setting has no effect in this class.
+    maxfev : int
+        maximum number of function evaluations in bisection
     '''
     
-    def __init__(self, lamb, taus=1, taub=1, r=1):
+    def __init__(self, lamb, taus=1, taub=1, r=1, maxfev=500):
         self.lamb = lamb
         self.taus = taus
         self.taub = taub
         self.r = r
+        self.maxfev = maxfev
     
     def find_sstar(self, alpha):
         '''This is essentially evaluating eqn 4 to the value for Sstar'''
@@ -120,8 +120,18 @@ class APLimits():
             i +=1
         return i
 
-    def beta(self, lams, sstar):
-        return igam(sstar + 1, (self.lamb + lams) * self.taus)
+    def beta(self, lams, sstar, lamb=None):
+        '''
+        In the derived class, lamb is not a class attribute, but is a
+        variable that is integrated over. In that case, we need to pass
+        in lamb.
+
+        In this class, lamb is an attribute of the class and not
+        passed in.
+        '''
+        if lamb is None:
+            lamb = self.lamb
+        return igam(sstar + 1, (lamb + lams) * self.taus)
 
     def rootfunc(self, lams, sstar, betalim=.5):
         return self.beta(lams, sstar) - betalim
@@ -155,11 +165,11 @@ class APLimits():
         upper_bracket = sstar if sstar > 0 else 1
         while self.rootfunc(upper_bracket, sstar, beta) < 0:
             upper_bracket *= 10
-        out = bisection(self.rootfunc, 0, upper_bracket, args=(sstar, beta), maxfev=500)
+        out = bisection(self.rootfunc, 0, upper_bracket, args=(sstar, beta),
+                        maxfev=self.maxfev)
         
-        # replace by sherpa logging warning
         if np.abs(out[0][1]) > 1e-6:
-            v1('Not converged')
+            v1('Numerical root finding did not converge.')
         return out[0][0], sstar
  
     
@@ -178,17 +188,19 @@ class APLimitsMarginalize(APLimits):
     r : float
         Ratio of background to source area. Since lamb is already normalized to the exposure time,
         this setting has no effect in this class.
+    maxfev : int
+        maximum number of function evaluations in bisection
     '''
     # super().__init__ has lamb instead of "nb" 
     # but the rest of the signature is the same.
-    def __init__(self, nb, taus=1, taub=1, r=1):
+    def __init__(self, nb, taus=1, taub=1, r=1, maxfev=500):
         if nb < 0:
             raise ValueError('Number of counts cannot be negative.')
         if nb == 0:
             raise ValueError('nb=0 does not contrain the background count rate. ' +
                              'Thus, the posterior of the count rate cannot be normalised. ' +
                              'At least one background count is required for this algorithm.')
-        if not float(nb).is_integer(nb):
+        if not float(nb).is_integer():
             raise ValueError('Number of counts in the background must be an integer number.')
         if (taus <= 0) or (taub <= 0):
             raise ValueError('Exposure time must to be >0.')
@@ -198,6 +210,7 @@ class APLimitsMarginalize(APLimits):
         self.taus = taus
         self.taub = taub
         self.r = r
+        self.maxfev = maxfev
     
     def lamb_posterior(self, lamb):
         '''Estimate posterior distribution for lamb_b
@@ -219,12 +232,9 @@ class APLimitsMarginalize(APLimits):
         '''
         return gamma_pdf(lamb, 1 + self.nb, self.taub * self.r)
 
-    def beta(self, lams, sstar, lamb):
-        return igam(sstar + 1, (lamb + lams) * self.taus)
-
     def integrant(self, lamb, lams, sstar_trial):
         p_of_lamb = self.lamb_posterior(lamb)
-        beta = self.beta(lams, sstar_trial, lamb)
+        beta = super().beta(lams=lams, sstar=sstar_trial, lamb=lamb)
         return  beta * p_of_lamb
     
     def integrate(self, lams, sstar):
@@ -271,12 +281,23 @@ class APLimitsMarginalize(APLimits):
         return self.integrate(lams, sstar)
 
 
-def aplimits(typeIerror=.9, typeIIerror=.5, T_s=1, A_s=1,
+def aplimits(typeIerror=.1, typeIIerror=.5, T_s=1, A_s=1,
              bkg_rate=None, m=None, A_b=1, T_b=1, max_counts=50,
-             # Add some parameters here to control the integration and root finding, e.g. itermax as in aprates
+             maxfev=500,
             ):
     '''Calculate an upper limit on a count rate
     
+    This function provides an interface between the two classes above and the
+    functional form that is more suitable for ciao_contrib scripts. It also
+    translates from an interface that is good for CIAO and is modeled after
+    the similar `aprates` to the definitions used in the Kashap et al. (2010)
+    paper. For example, in this ciao_contrib script, we call the main
+    parameters typeIerror and typeIIerror, while Kashyap et al. (2010) call
+    them alpha and beta, which might be confusing because aplimits uses
+    alpha and beta for different concepts. Similarly, Kashyap et al. (2010)
+    only have an error ratio "r", while in CIAO we measure source and
+    background areas.
+
     Parameters
     ----------
     typeIerror : float
@@ -321,11 +342,15 @@ def aplimits(typeIerror=.9, typeIIerror=.5, T_s=1, A_s=1,
 
         Comparison of both methods indicates that a value of max_counts=50
         (the default) is a good choice for a wide range of input parameters.
+    maxfev : int
+        maximimal number of function evaluations in bisection algorithm to find
+        numerical solution
             
     Returns
     -------
     lambs : float
-        Upper limit for the source intensity (in cts /area / time)
+        Upper limit for the source intensity (in cts/time), integrated over the
+        source aperture.
         
     Note
     ----
@@ -341,15 +366,22 @@ def aplimits(typeIerror=.9, typeIIerror=.5, T_s=1, A_s=1,
     if bkg_rate is None and m is None:
         raise ValueError('Either bkg_rate or m have to be given.')
     if bkg_rate is not None and m is not None:
-        v1('bkg_rate and m are given. Using bkg_rate for the computation.')
+        v1('bkg_rate and m are given. Using bkg_rate for the computation and ignoring m.')
     if bkg_rate is None and m >= max_counts:
-        bkg_rate = m / A_b / T_b * A_s * T_s
+        bkg_rate = m / A_b / T_b
     if bkg_rate is not None:
-        out = APLimits(lamb=bkg_rate)(typeIerror, typeIIerror)
+        v2(f'background rate known: {bkg_rate}')
+        limitfinder= APLimits(lamb=bkg_rate * A_s, taus=T_s, taub=T_b, r=A_b / A_s,
+                              maxfev=maxfev)
     else:
-        limitfinder = APLimitsMarginalize(nb=m, taus=T_s, taub=T_b, r=A_b/A_s)
-        out = limitfinder(typeIerror, typeIIerror)
-    return out
+        v2(f'background unknown. Marginalizing over background rate.')
+        v2(f'bkg counts {m} in {T_b} exposure time and {A_b} area.')
+        limitfinder = APLimitsMarginalize(nb=m, taus=T_s, taub=T_b, r=A_b / A_s,
+                                          maxfev=maxfev)
+    ul, s_star = limitfinder(typeIerror, typeIIerror)
+    return ul, s_star
+
+
 #
 # Main Routine
 #
@@ -357,25 +389,30 @@ def aplimits(typeIerror=.9, typeIIerror=.5, T_s=1, A_s=1,
 def main():
     'Main routine'
     from ciao_contrib.param_soaker import get_params
-    import paramio as pio
 
     # get parameters
     pars = get_params(TOOLNAME, "rw", sys.argv,
                       verbose={"set": lw.set_verbosity, "cmd": v1})
-    ul, sstar = aplimits(typeIerror=float(pars["typeIError"]),
+    ul, mincounts = aplimits(typeIerror=float(pars["typeIerror"]),
                          typeIIerror=float(pars["typeIIerror"]),
+                         bkg_rate=None if pars["bkg_rate"] == 'INDEF' else float(pars["bkg_rate"]),
                          T_s=float(pars["T_s"]),
                          A_s=float(pars["A_s"]),
-                         bkg_rate=float(pars["bkg_rate"])
                          m=int(pars["m"]),
-                         T_b=float(pars["T_s"]),
-                         A_b=float(pars["A_s"]),
-                         max_counts=int(pars["max_counts"])
+                         T_b=float(pars["T_b"]),
+                         A_b=float(pars["A_b"]),
+                         max_counts=int(pars["max_counts"]),
+                         maxfev=int(pars["maxfev"]))
+    v1(f"Minimum number of counts for detection: {mincounts} counts")
+    v1(f"Upper limit: {ul}")
+    v3("Clobber check")
+    if pars["clobber"] == "no" and os.path.exists(pars["outfile"]):
+        raise IOError(f"outfile={pars['outfile']} exists and clobber=no.")
 
-    ph = pio.paramopen(TOOLNAME + "_out")
-    pio.pputi(sstar, 's_star')
-    pio.pputd(ul, 'upper_limit')
-    pio.paramclose(ph)
+    with open(pars["outfile"], "w") as fp:
+        fp.write(f'min_counts_detect,i,h,{mincounts},,,"Detection threshold"\n')
+        fp.write(f'upper_limit,r,h,{ul},,,"Upper limit"\n')
+
 
 if __name__ == "__main__":
     main()

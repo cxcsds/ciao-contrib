@@ -1,9 +1,8 @@
- <?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
 <cxchelptopics>
   <ENTRY context="tools" key="aprates" refkeywords="poisson net count rate flux
-  background psf fraction average exposure upper limit" 
-  seealsogroups="stattools">
+  background psf fraction average exposure upper limit" seealsogroups="stattools">
     <SYNOPSIS>
       Compute upper limits for the detection of a source, using data
       obtained from background apertures in event lists, images,
@@ -11,148 +10,338 @@
     </SYNOPSIS>
     <DESC>
       <PARA>
-    The aplimits tool estimates the upper limit for a detection. This is a
-    property of the dection process and depends on the vales chosen for
-    two error conditions called the type I and type II error. The type I
-    error describes the maximum probability of a false detection, i.e. that
-    a background fluctuation alone exceeds the calculated upper limit. The
-    type II error describes the probability that a source with a flux of
-    exactly the upper limit will be missed, because Poisson fluctuation of
-    background and source counts lead to an observed count rate that is
-    below the detection limit. The value of the upper limit depends
-    only on the background rate and the probabilities chosen for the type
-    I and II errors, not on the observed number of counts in the source region.
-    All input is obtained from the input parameter file; output is written
-	to an output parameter file.
-    </PARA>
-    <PARA>
-    It is possible to find combinations of parameters that numerically result
-    in a negative upper limit. Since this does not make sense physically,
-    0 is reported as the upper limit in these cases.
-    </PARA>
-    <PARA>
-    If the background rate is not known exactly, it can be estimated from the
-    number of counts in a large source-free background region. In this case,
-    the true background rate is not known, and a Baysian computation needs to
-    marginalize over the possible background rates. To perform this
-    computation, one needs to set a prior on the background count rate.
-    This tool uses an uninformative prior expressed as a Gamma distribution
-    which represents an prior knowlegde of 0 counts in 0 area.
-    This uninformantive prior is an "improper" prior, which means that it cannot
-    be normalized. However, the gamma distribution is the conjugate prior for
-    this process and thus the posterior for the background rate can be
-    calculated analytically given the number of observed background counts.
-    The functional form for the posterior is the same as for aprates.
-    </PARA>
-    <PARA>
-	This tool is based on 
-    <HREF link="https://ui.adsabs.harvard.edu/abs/2010ApJ...719..900K">On computing upper limits to source intensities</HREF>, Kashyap et al. 2010, ApJ, 719, 900.
-	</PARA>
- 
-	<PARA title="User inputs">
-    This tool can either assume perfect knowledge of the background; in this
-    case the parameter bkg_rate must be set. Alternatively, the user can
-    set the number of counts m in the background region, and, unless source
-    and background region have the same area and exposure time, also set the
-    the geometric areas (A_s, A_b) and respective exposure times (T_s, T_b).
-    If both bkg_rate and m are given, the tool assumes that the background
-    rate is known and ignores the setting for m.
+        The aplimits tool estimates the upper limit for a detection. This is a
+        property of the detection process and depends on the values chosen for
+        two error conditions called the type I and type II error. The type I
+        error describes the maximum probability of a false detection (false
+        positive), i.e. that a background fluctuation alone exceeds the
+        calculated upper limit. The type II error describes the probability that
+        a source with a flux of exactly the upper limit will be missed (false
+        negative), because Poisson fluctuation of background and source counts
+        lead to an observed count rate that is below the detection limit. The
+        value of the upper limit depends only on the background rate and the
+        probabilities chosen for the type I and II errors, not on the observed
+        number of counts in the source region. All input is obtained from the
+        input parameter file; output is written to an output parameter file.
+      </PARA>
+      <PARA>
+        It is possible to find combinations of parameters that numerically
+        result in a negative upper limit. Since this does not make sense
+        physically, 0 is reported as the upper limit in these cases.
+      </PARA>
+      <PARA>
+        If the background rate is not known exactly, it can be estimated from
+        the number of counts in a large source-free background region. In this
+        case, the true background rate is not known, and a Bayesian computation
+        needs to marginalize over the possible background rates. To perform this
+        computation, one needs to set a prior on the background count rate. This
+        tool uses an uninformative prior expressed as a Gamma distribution which
+        represents an prior knowledge of 0 counts in 0 area. This uninformative
+        prior is an "improper" prior, which means that it cannot be normalized.
+        However, the gamma distribution is the conjugate prior for this process
+        and thus the posterior for the background rate can be calculated
+        analytically given the number of observed background counts. The
+        functional form for the posterior is the same as for aprates.
+      </PARA>
+      <PARA>
+        This tool is based on the following published article:
+        <HREF link="https://ui.adsabs.harvard.edu/abs/2010ApJ...719..900K">On computing upper limits to source intensities</HREF>
+        (Kashyap et al. 2010, ApJ, 719, 900).
+      </PARA>
+      <PARA title="User inputs">
+        This tool can either assume perfect knowledge of the background; in this
+        case the parameter bkg_rate must be set. Alternatively, the user can set
+        the number of counts m in the background region, and, unless source and
+        background region have the same area and exposure time, also set the the
+        geometric areas (A_s, A_b) and respective exposure times (T_s, T_b). If
+        both bkg_rate and m are given, the tool assumes that the background rate
+        is known and ignores the setting for m.
+      </PARA>
+      <PARA title="Return values">
+       Output is written to an output parameter file. The parameter files
+       contains two values: min_counts_detect, which is the minimum number of
+       counts in the source region that is needed to claim a detection, and
+       upper_limit, which is the upper limit on the count rate (counts per time)
+       for a non-detection. Note that the upper limit is given for the entire
+       source region and not normalized to the source area. In a typical case of
+       a point source, the source aperture should be large enough to include
+       most of the PSF and then the upper limit can be interpreted as the upper
+       limit on the source flux. For an extended source, the upper limit applies
+       to the part of the extended source that is covered by the source
+       aperture.
+      </PARA>
+      <PARA title="Things to Watch Out For:"></PARA>
+      <PARA title="1.) Extracting Aperture Quantities">
+        A number of different CIAO tools can be used to determine the area and
+        number of events in apertures. These tools may yield slightly different
+        results, depending on whether one starts with an event list or image.
+        Results from event lists are more accurate, since event locations are
+        typically known to finer resolution that a pixel size, and areas can be
+        determined analytically for simple apertures. For images, aperture
+        counts and areas are determined from those pixels whose centers fall
+        within the aperture. We recommend the use of dmextract if an event list
+        is available.
+      </PARA>
+      <PARA>
+        Unfortunately, determination of effective exposure and psf fractions in
+        apertures will almost always require the use of exposure map and psf
+        images, leading to possible inaccuracies in the determination of these
+        quantities. For apertures containing many image pixels, this is a
+        negligible effect, because exposure maps typically vary smoothly, and
+        thus inclusion or exclusion of particular exposure map pixels has little
+        effect on the average in the aperture. Similarly, the psf fraction
+        change due to inclusion or exclusion of a few pixels at the aperture
+        edge is likely to be small.
+      </PARA>
+      <PARA>
+        This will not be the case, however, if aperture sizes are small compared
+        to image pixel sizes. In those cases, it is recommended that the user
+        repixelate the psf and exposure map images to a finer scale.
+      </PARA>
+      <PARA>
+        This tool itself does not account for the fraction of the PSF that falls
+        outside the source aperture, but one can divide the resulting upper flux
+        limit by the PSF fraction in the aperture to estimate the upper limit on
+        the count rate.
+      </PARA>
+      <PARA title="2.) Upper limit on a detection vs. credible interval for the flux">
+        This tool calculates the upper limit on the source flux, given
+        properties of the detection method (type I and II errors and source
+        region size and exposure time) and background level. This calculation
+        true for all source region in an observations (assuming a smooth
+        background and constant exposure time). This is conceptually different
+        from aprates, which instead looks at the source count rate in one
+        specific region and then derives the credible interval for the flux of a
+        source at one specific region. For undetected or weak sources, the
+        credible interval includes 0 and sometimes the upper end of the interval
+        is taken as upper limit on the source flux. That is not mathematically
+        correct, since "upper limit" and "upper end of credible interval"
+        describe different statistical concepts, even though in the derived
+        numbers are can be similar; see
+        <HREF link="https://ui.adsabs.harvard.edu/abs/2010ApJ...719..900K">Kashyap et al. (2010)</HREF>
+        for a more detailed discussion.
+      </PARA>
+    </DESC>
 
-   <PARA title="Things to Watch Out For:">
-   </PARA>
-
-   <PARA title="1.) Extracting Aperture Quantities">
-     A number of different CIAO tools can be used to determine the area and
-     number of events in apertures. These tools may yield slightly different
-     results, depending on whether one starts with an event list or
-     image. Results from event lists are more accurate, since event
-     locations are typically known to finer resolution that a pixel size, and
-     areas can be determined analytically for simple apertures. For
-     images, aperture counts and areas are determined from those pixels whose centers
-     fall within the aperture. We recommend the use of dmextract if an event
-     list is available.
-   </PARA>
-   <PARA>
-     Unfortunately, determination of effective exposure and psf fractions in
-     apertures will almost always require the use of exposure map and psf
-     images, leading to possible inaccuracies in the determination of these
-     quantities. For apertures containing many image pixels, this is a
-     negligible effect, because exposure maps typically vary smoothly, and
-     thus inclusion or exclusion of particular exposure map pixels has little
-     effect on the average in the aperture. Similarly, the psf fraction
-     change due to inclusion or exclusion of a few pixels at the aperture edge
-     is likely to be small.
-   </PARA>
-   <PARA>
-     This will not be the case, however, if aperture sizes are small compared
-     to image pixel sizes. In those cases, it is recommended that the user
-     repixelate the psf and exposure map images to a finer scale.
-   </PARA>
-</DESC>
-
-   <QEXAMPLELIST>
-     <QEXAMPLE>
-     <DESC>
-    <PARA>
-    In this example, we know the background rate and calculate the upper limit on the flux.
-    We want to be the probability for a background fluctuation to appear as a source to
-    be less than 5%, and we want the probability to miss a real source with a flux
-    comparable to the upper limit to be below 50%. The expected background in the source
-    aperture is 1.23 counts (bkg_rate is given per unit area and unit exposure time, and
-    exposure time and area of the source aperture also default to 1, so for a rate or 1.23
-    we expect 1.23 source counts).
-    </PARA></DESC>
-       <SYNTAX>
-<LINE>unix% aplimits typeIerror=.1 typeIIerror=.5 bkg_rate=1.23</LINE>
-<LINE>unix% pget aplimits_out.par upper_limit</LINE>
-<LINE>2.44206</LINE>
-<LINE>3</LINE>
-       </SYNTAX>
-       <DESC>
-         <PARA>
-            In this example, the upper limit for an undetected source is 2.44 counts per unit
-            exposure time and area.
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>unix% aplimits typeIerror=.1 typeIIerror=.5 bkg_rate=1.23</LINE>
+          <LINE>unix% pget aplimits_out.par upper_limit</LINE>
+          <LINE>2.44206</LINE>
+          <LINE>3</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+      In this example, we know the background rate and calculate the upper limit
+      on the flux. We want the probability for a background fluctuation to
+      appear as a source to be less than 5%, and we want the probability to miss
+      a real source with a flux comparable to the upper limit to be below 50%.
+      The expected background in the source aperture is 1.23 counts (bkg_rate is
+      given per unit area and unit exposure time, and exposure time and area of
+      the source aperture also default to 1, so for a rate or 1.23 we expect
+      1.23 source counts). The upper limit for an undetected source is 2.44
+      counts per unit exposure time and area.
          </PARA>
-       </DESC>
-     </QEXAMPLE>
+        </DESC>
+      </QEXAMPLE>
 
-     <QEXAMPLE>
-     <DESC>
-    <PARA>
-    If the background rate is not known exactly, the tool can marginalize over all 
-    possible background rates given the information on a single backgound measurement.
-    With 5 counts in the background aperture and a region that is about 4.065 times
-    larger than the source aperture, one might naively expect a background count rate
-    of 5/4.065=1.23. However, given Poisson statistics, the true background rate could
-    be higher or lower and thus the resulting upper limit will differ slightly from
-    the result in the previous example.
-    </PARA></DESC>
-       <SYNTAX>
-<LINE>unix% aplimits typeIerror=.1 typeIIerror=.5 m=5 A_b=4.065</LINE>
-<LINE>unix% pget aplimits_out.par upper_limit</LINE>
-<LINE>2.2316</LINE>
-       </SYNTAX>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>unix% aplimits typeIerror=.1 typeIIerror=.5 bkg_rate=INDEF m=5 A_b=4.065</LINE>
+          <LINE>unix% pget aplimits_out.par upper_limit</LINE>
+          <LINE>2.2316</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+    If the background rate is not known exactly (bkg_rate set to INDEF), the
+    tool can marginalize over all possible background rates given the
+    information on a single background measurement. With 5 counts in the
+    background aperture and a region that is about 4.065 times larger than the
+    source aperture, one might naively expect a background count rate of
+    5/4.065=1.23. However, given Poisson statistics, the true background rate
+    could be higher or lower and thus the resulting upper limit is about 10%
+    smaller than in the first example. When the background is measured better
+    (more counts in a larger background area) the difference between the
+    calculation for a perfectly known background and marginalizing over the
+    background rate is even smaller.
+         </PARA>
+        </DESC>
+      </QEXAMPLE>
 
-     </QEXAMPLE>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>unix% aplimits typeIerror=.05 typeIIerror=.5 bkg_rate=0.34 A_b=1 T_b=1</LINE>
+          <LINE>unix% pget aplimits_out.par upper_limit</LINE>
+          <LINE>1.338348388671875</LINE>
+          <LINE>unix% aplimits typeIerror=.05 typeIIerror=.5 bkg_rate=0.34 A_b=10 T_b=23 clobber+</LINE>
+          <LINE>unix% pget aplimits_out.par upper_limit</LINE>
+          <LINE>1.338348388671875</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+          The background rate is given per unit are and unit time, so changing
+          the background area and exposure time has no effect on the results
+          when a background rate is input.
+         </PARA>
+        </DESC>
+      </QEXAMPLE>
     </QEXAMPLELIST>
- 
+
+    <PARAMLIST>
+      <PARAM name="typeIerror" type="real" min="0" max="1" def="0.1" reqd="yes">
+        <SYNOPSIS>
+	        Upper limit for the probability of a false detection
+	      </SYNOPSIS>
+        <DESC>
+          <PARA>
+            The probability of a type I error describes the possibility a background
+            fluctuation alone causes an observed count rate above the detection threshold.
+	        </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="typeIIerror" type="real" min="0" max="1" def="0.5" reqd="yes">
+        <SYNOPSIS>
+	        Probability of detecting a source with a flux equal to the upper limit
+	      </SYNOPSIS>
+        <DESC>
+          <PARA>
+            The probability of a type II error describes the possibility that a
+            true source with a flux of the upper limit will be missed in the
+            detection because the Poisson fluctuations of the source and
+            background flux lead to a count number below the detection
+            threshold.
+	        </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="outfile" type="file" def="aplimits.out" reqd="yes">
+        <SYNOPSIS>
+	        Filename of output file
+	      </SYNOPSIS>
+      </PARAM>
+      <PARAM name="T_s" type="real" min="0" def="1" reqd="yes">
+        <SYNOPSIS>
+	    Exposure time in source aperture
+	  </SYNOPSIS>
+        <DESC>
+          <PARA>
+      This is given in the same units as exposure time of the background T_b.
+	    </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="A_s" type="real" min="0" def="1" reqd="yes">
+        <SYNOPSIS>
+	    Geometric area of source aperture
+	  </SYNOPSIS>
+        <DESC>
+          <PARA>
+      This is given in the same units as geometric area of the background A_b.
+	    </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="bkg_rate" type="real" min="0" def="INDEF">
+        <SYNOPSIS>
+	    Background count rate
+	  </SYNOPSIS>
+        <DESC>
+          <PARA>
+        Known background rate. The flux is given per area and time. The unit of
+        the area must match the units used for A_s. When the exact background
+        rate is not known, bkg_rate has to be set to INDEF. In that case, the
+        number of observed background counts m has to be provided, so that the
+        tools can marginalize over the background rate.
+	    </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="m" type="integer" min="0">
+        <SYNOPSIS>
+	    Number of counts in background aperture
+	  </SYNOPSIS>
+      </PARAM>
+      <PARAM name="T_b" type="real" min="0" def="1">
+        <SYNOPSIS>
+	    Exposure time in background aperture
+	  </SYNOPSIS>
+        <DESC>
+          <PARA>
+      This is given in the same units as exposure time of the source T_s.
+      This parameter is only used if bkg_rate is not given.
+	    </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="A_b" type="real" min="0" def="1">
+        <SYNOPSIS>
+	    Geometric area of background aperture
+	  </SYNOPSIS>
+        <DESC>
+          <PARA>
+      This is given in the same units as geometric area of the source A_s.
+      This parameter is only used if bkg_rate is not given.
+	    </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="max_counts" type="integer" min="0" def="50">
+        <SYNOPSIS>
+	    Background count number above which the uncertainty on the background is ignored
+	  </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    When the background count rate is not know exactly, the tool performs a Bayesian
+      computation and marginalizes over the background. In particular for a large number
+      of counts, this computation can take a long time or be numerically unstable.
+      On the other hand, when the number of counts in the background is large, that means
+      that the uncertainty on the background flux is small and there is little difference
+      between the full Bayesian computation and assuming a known background rate.
+      When the number of background counts m becomes larger than max_counts, then the
+      tool switches from the Bayesian computation to the a faster and more numerically
+      stable formula for an exactly known background rate of m divided by the
+      area and exposure time of the background exposure.
+	    </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="maxfev" type="integer" min="1" def="500">
+        <SYNOPSIS>
+	    Maximal number of function evaluations in numerical root finding
+	  </SYNOPSIS>
+      </PARAM>
+      <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+        <SYNOPSIS>
+	    Verbose level
+	  </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    If set to a non-zero value then the tool will print information to the
+	    screen when it is run. The extra information produced when verbose is
+	    greater than 1 is only likely to be useful when debugging the script.
+	    </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>
+	    OK to overwrite existing output file?
+	  </SYNOPSIS>
+      </PARAM>
+    </PARAMLIST>
+
+
     <ADESC title="About Contributed Software">
       <PARA>
-	This script is not an official part of the CIAO release but is
+        This script is not an official part of the CIAO release but is
 	made available as "contributed" software via the
-	<HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>
+        .
 	Please see this page for installation instructions - such as how to
 	ensure that the parameter file is available.
       </PARA>
     </ADESC>
 
-   <BUGS>
-	<PARA>
-	For an up-to-date listing of known bugs, see the
+    <BUGS>
+      <PARA>
+        For an up-to-date listing of known bugs, see the
         <HREF link="https://cxc.harvard.edu/ciao/bugs/aplimits.html">bugs page
         for this tool.</HREF>
       </PARA>
     </BUGS>
-   <LASTMODIFIED>October 2022</LASTMODIFIED>
-</ENTRY>
+    <LASTMODIFIED>October 2022</LASTMODIFIED>
+  </ENTRY>
 </cxchelptopics>
