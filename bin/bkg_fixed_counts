@@ -1,0 +1,145 @@
+#!/usr/bin/env python
+
+'Create background annulus regions with a fixed number of counts'
+
+
+import numpy as np
+from pycrates import read_file
+
+
+def load_positions(pos):
+    "Get the RA/Dec of all sources"
+    tab = read_file(pos)
+    ra_deg = tab.get_column("RA").values
+    dec_deg = tab.get_column("DEC").values
+    return ra_deg, dec_deg
+
+
+def convert_coords(infile, ra_deg, dec_deg):
+    "Convert from RA/Dec to x,y and theta/phi"
+
+    from ciao_contrib._tools.fileio import get_keys_from_file
+    from coords.chandra import cel_to_chandra
+
+    keys = get_keys_from_file(infile)
+    coords = cel_to_chandra(keys, ra_deg, dec_deg)
+    return coords
+
+
+def get_psf_size(coords, energy, inner_ecf):
+    "Get the PSF size at the requested energy and ECF, convert to pixels"
+
+    from ciao_contrib.psf_contrib import PSF
+    psf = PSF()
+
+    coords['inner_rad_pix'] = []
+    for theta, phi in zip(coords['theta'], coords['phi']):
+        rad_arcsec = psf.psfSize(energy, theta, phi, inner_ecf)
+        rad_pix = rad_arcsec / coords['pixsize']
+        coords['inner_rad_pix'].append(rad_pix)
+
+
+def make_swiss_cheese(coords):
+    "Exclude the all the PSF ECF circles from the field"
+    from region import field, circle
+
+    exclude_region = field()
+    for xpos, ypos, rad in zip(coords['x'], coords['y'], coords['inner_rad_pix']):
+        exclude_region -= circle(xpos, ypos, rad)
+
+    return exclude_region
+
+
+def filter_events(infile, exclude_region):
+    "Filter the event file to remove all the source regions, only bkg events remain"
+
+    tab = read_file(infile)
+    xpos = tab.get_column('x').values
+    ypos = tab.get_column('y').values
+
+    bkg_x = []
+    bkg_y = []
+    for _xpos, _ypos in zip(xpos, ypos):
+        if exclude_region.is_inside(_xpos, _ypos):
+            bkg_x.append(_xpos)
+            bkg_y.append(_ypos)
+
+    return np.array(bkg_x), np.array(bkg_y)
+
+
+def find_outer_bkg_radius(coords, bkg_x, bkg_y, numcts, maxradius):
+    """Determine the radius around each source that encloses fixed number of counts.
+
+    With the sources purged, we just need to compute the distance
+    from each sources' center, sort, and then select the N-th distance
+    which is the outer radius of the annulus.  Kind a brute force,
+    but it runs quickly.
+    """
+
+    nbkg = len(bkg_x)
+    if nbkg < numcts:
+        pass
+
+    if (numcts/float(nbkg)) > 0.1:
+        pass
+
+    coords['outer_rad_pix'] = []
+    for xpos, ypos, rad_in in zip(coords['x'], coords['y'], coords['inner_rad_pix']):
+        dist = np.hypot(xpos-bkg_x, ypos-bkg_y)
+        sdist = np.sort(dist)
+        outer_rad = sdist[numcts]
+
+        if maxradius is not None and outer_rad > maxradius:
+            if maxradius < rad_in:
+                raise ValueError("Maximum radius is less than the inner PSF radius")
+            outer_rad = maxradius
+
+        coords['outer_rad_pix'].append(outer_rad)
+
+
+def write_output(outroot, coords):
+    """Write output files
+
+    One file for each source, since nearby sources are also excluded
+    """
+
+    from region import annulus, CXCRegion, circle
+
+    xpos = coords['x']
+    ypos = coords['y']
+    rad0 = coords['inner_rad_pix']
+    rad1 = coords['outer_rad_pix']
+
+    del_srcs = CXCRegion()
+    for pars in zip(xpos, ypos, rad0):
+        del_srcs += circle(*pars)
+
+    for idx, pars in enumerate(zip(xpos, ypos, rad0, rad1)):
+        out_region = annulus(*pars)-del_srcs
+        cmpt = idx+1
+        outfile = f"{outroot}_{cmpt:04d}_bkgreg.fits"
+        out_region.write(outfile, fits=True, clobber=True)
+
+
+def main():
+    'Main routine'
+
+    infile = "/home/kjg/Chandra/635/repro/acisf00635_repro_evt2.fits"
+    pos = "635.tsv[opt kernel=text/tsv][cols ra, dec]"
+    mincts = 100
+    maxradius = None
+    inner_ecf = 0.95
+    energy = 1.4
+    outfile = "zzz"
+
+    ra_deg, dec_deg = load_positions(pos)
+    coords = convert_coords(infile, ra_deg, dec_deg)
+    get_psf_size(coords, energy, inner_ecf)
+    excl = make_swiss_cheese(coords)
+    bkg_x, bkg_y = filter_events(infile, excl)
+    find_outer_bkg_radius(coords, bkg_x, bkg_y, mincts, maxradius)
+    write_output(outfile, coords)
+
+
+if __name__ == '__main__':
+    main()
