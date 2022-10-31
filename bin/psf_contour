@@ -31,7 +31,7 @@ import ciao_contrib.logger_wrapper as lw
 MIN_FRACTION = 0.6
 FRACTION_STEP = 0.1
 
-toolname = "contour_psf"
+toolname = "psf_contour"
 __revision__ = "30 October 2022"
 
 lw.initialize_logger(toolname)
@@ -392,23 +392,27 @@ def get_positions(params):
         tab = read_file(params['pos'])
         if tab is None:
             raise IOError("problem with pos")
+        ra = tab.get_column("ra").values
+        dec = tab.get_column("dec").values
     except Exception as try_again:
-        # TODO: try to parse as coordinates
-        raise try_again
-
-    ra = tab.get_column("ra").values
-    dec = tab.get_column("dec").values
+        from ciao_contrib.parse_pos import get_radec_from_pos
+        try:
+            ra, dec = get_radec_from_pos(params['pos'])
+            ra = np.array(ra)
+            dec = np.array(dec)
+        except Exception as bad_parse:
+            raise ValueError("Could not parse coordinates: "+str(params['pos']))
 
     return (ra, dec)
 
 
 def shrink_psfs(first_psf, second_psf):
     'We shrink the PSFs until the area of the overlapping regions is 0'
+
     keep_going = True
     while keep_going:
         keep_going = False
 
-        # ~ print((first_psf.outfile, second_psf.outfile, first_psf.params, second_psf.params))
         if first_psf.params['fraction'] > MIN_FRACTION + FRACTION_STEP:
             first_psf.params['fraction'] -= FRACTION_STEP
             first_psf.make_region()
@@ -424,6 +428,10 @@ def shrink_psfs(first_psf, second_psf):
             return
 
     # Only get here if both files are at min_frac
+    #
+    # If that's the case, then we stop shrinking regions and just exclude
+    # them from each other.
+
     new_first = CXCRegion(first_psf.outfile) - CXCRegion(second_psf.outfile)
     new_first.write(first_psf.outfile, fits=True, clobber=True)
 
