@@ -1,0 +1,250 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY context="tools::region" key="psf_contour" 
+        refkeywords="region contour lasso polygon ellipse PSF psf fraction fit ECF enclosed counts fraction" 
+        seealsogroups="regiontools">
+    <SYNOPSIS>
+        Create a source region file from a simulated PSF
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+        `psf_contour` simulates a monochromatic PSF at the input source
+        position(s) and then creates a region which encloses the requested fraction
+        of the PSF.  This region is appropriate to use a source region for
+        point sources.
+        </PARA>
+        <PARA>
+        The user has several choices for the kind of region to create. These include        
+        </PARA>
+        <LIST>
+          <ITEM>contour: a polygon chosen to enclose the requested input fraction.  This uses the dmcontour tool.</ITEM>
+          <ITEM>lasso: similar to `contour` except the edges follow the edge of pixel boundaries.  This uses the dmimglasso tool.</ITEM>
+          <ITEM>fitted_ellipse: the contour is computed to enclose the requested input fraction.
+              Then the coordinates are fit in a least squares sense to an ellipse.
+              The ellipse neither superscribes nor inscribes the polygon points, but
+              rather approximates the polygon.  As such, the actual PSF fraction will
+              be slightly different than the original polygon.</ITEM>
+          <ITEM>convex_hull: the contour is computed to enclose the requested input fraction.
+              Then the convex hull, another polygon, is computed the encloses the coordinates
+              of the contour.  As such the PSF fraction will be systematically
+              higher than the PSF fraction requested, though usually the
+              difference will be small.  The convex hull will frequently have 
+              many fewer vertices and will be more efficient. This uses the dmimghull tool.</ITEM>
+          <ITEM>ecf_ellipse: Directly finds an ellipse that enclosed the requested
+              fraction of the PSF. This uses the dmellipse tool.</ITEM>
+        </LIST>
+        <PARA>
+        Users can supply an input table with a list of coordinates (R.A. and Dec.)
+        and the script will generate regions for each source position.
+        After the initial regions are created, the script will then check
+        to see if any of the regions overlap.  If so, then the script will
+        decrease the requested PSF fraction of both sources and re-generate 
+        the regions.  This repeats until the overlap is gone or until both
+        sources reach the minimum PSF fraction (0.6, ie 60%).  If this happens then
+        the tool will stop trying to shrink the regions any more and will simply
+        exclude the source regions from each other.
+        </PARA>
+
+        <PARA>
+        Four files are created for each source position:        
+        </PARA>
+        <LIST>
+          <ITEM>
+          ${outroot}_i${srcno}.projrays :  The MARX simulated PSF rays
+          </ITEM>
+          <ITEM>
+          ${outroot}_i${srcno}.psf : The MARX PSF binned into an image and normalized.
+          </ITEM>
+          <ITEM>
+          ${outroot}_i${srcno}.smpsf :  The PSF smoothed with a Gaussian. This is the file used to generate the regions.
+          </ITEM>
+          <ITEM>
+          ${outroot}_i${srcno}_src.reg :  The output FITS format region file.
+          </ITEM>        
+        </LIST>
+
+        <PARA>
+        Note: since the PSF is being simulated then users can expect to see
+        slightly different results each time this script is run.  The
+        random_seed parameter can be use to fix the random seed to generate 
+        repeatable results.  The fidelity of the PSF can be controlled with the flux parameter.
+        Increasing the flux will provide a better estimate of the PSF at the 
+        expense of taking longer to run.        
+        </PARA>
+
+
+
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+          </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+    <PARAMLIST>
+      <PARAM filetype="input" name="infile" reqd="yes" type="file">
+        <SYNOPSIS>
+          The input image or event file.
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            The meta-data (header keywords) in the input image or event 
+            file is used to setup the MARX simulation and to compute 
+            various coordinates. 
+            </PARA>
+
+        </DESC>
+      </PARAM>
+      <PARAM filetype="output" name="outroot" reqd="yes" type="file">
+        <SYNOPSIS>
+            The root of the output file names
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            If the output root contains a directory, then that directory
+            must already exist.
+            </PARA>
+
+        </DESC>
+      </PARAM>
+      <PARAM filetype="input" name="pos" reqd="yes" type="file">
+        <SYNOPSIS>
+            Input position.  
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            The input position can either be a pair of celestial coordinates
+            or can be a table with RA and DEC values (in decimal degrees).            
+            </PARA>
+
+        </DESC>
+      </PARAM>
+      <PARAM  name="method" type="string" def="contour">
+        <SYNOPSIS>
+            Method used to create the region
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            The choice of algorithm used to create the region.  Options are
+            </PARA>
+            <LIST>
+                <ITEM>contour</ITEM>
+                <ITEM>lasso</ITEM>
+                <ITEM>fitted_ellipse</ITEM>
+                <ITEM>convex_hull</ITEM>
+                <ITEM>ecf_ellipse</ITEM>
+            </LIST>
+
+        </DESC>
+      </PARAM>
+      <PARAM name="energy" def="1.0" min="0.3" max="10.0" type="real" units="keV">
+        <SYNOPSIS>
+        Monochromatic energy at which to simulate the PSF
+        </SYNOPSIS>
+        <DESC>
+        </DESC>
+      </PARAM>
+      <PARAM name="fraction" def="0.9" min="0.6" max="0.95" type="real">
+        <SYNOPSIS>
+        The target fraction of the PSF for the region to enclose.
+        </SYNOPSIS>
+        <DESC>
+        <PARA>
+        The actual PSF fraction that the region encloses may be different
+        from this value based on factors such as source crowding
+        (regions are shrunk to avoid overlaps) and choice of region creation method.
+        </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="tolerance" def="0.01" min="0.0001" max="0.1" type="real">
+        <SYNOPSIS>
+        The +/- tolerance on the fraction.
+        </SYNOPSIS>
+      </PARAM>
+      <PARAM name="flux" def="0.01" min="0.0000001" max="0.01" type="real" units="photon/cm**2/sec">
+        <SYNOPSIS>
+        Photon flux of the point source to simulate the PSF.
+        </SYNOPSIS>
+        <DESC>
+        <PARA>
+        The higher the flux the better the fidelity of the PSF
+        simulation, and thus better the region will approximate the "true"
+        PSF.  The disadvantage is the increased run-time.
+        </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="parallel" type="boolean" def="yes" reqd="no">
+        <SYNOPSIS>Run code in parallel using multiple processors?</SYNOPSIS>
+        <DESC>
+          <PARA>
+            If multiple processors are available, then 
+            this parameter controls whether the tool should 
+            run various underlying tools in parallel.
+          </PARA>
+          <PARA>
+            If parallel=yes, then the script will create the PSFs and perform
+            the initial region creation in parallel.  However, 
+            the check for overlapping regions then proceeds serially.          
+          </PARA>
+        </DESC>        
+      </PARAM>
+      
+      <PARAM name="nproc" type="integer" def="INDEF" min="1" reqd="no">
+        <SYNOPSIS>Number of processors to use</SYNOPSIS>
+        <DESC>
+          <PARA>
+            If parallel=yes, then this controls the number of
+            processes to run at once.  The default, INDEF,
+            will use all available processors.  The value
+            cannot be larger than the number of processors.
+          </PARA>
+        </DESC>        
+      </PARAM>
+    
+
+    <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+       <SYNOPSIS>
+        Amount of tool chatter level.
+       </SYNOPSIS>
+     </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>
+            Overwrite output files if they already exist?
+        </SYNOPSIS>
+      </PARAM>
+
+    </PARAMLIST>
+
+
+   <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+    
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/psf_contour.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>December 2022</LASTMODIFIED>
+
+
+  </ENTRY>
+</cxchelptopics>
