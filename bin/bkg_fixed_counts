@@ -18,6 +18,7 @@
 #
 
 'Create background annulus regions with a fixed number of counts'
+
 import sys, os
 import numpy as np
 from pycrates import read_file
@@ -77,15 +78,27 @@ def get_psf_size(coords, energy, inner_ecf):
         coords['inner_rad_pix'].append(rad_pix)
 
 
-def make_swiss_cheese(coords):
+def make_swiss_cheese(coords,src_region_list):
     "Exclude the all the PSF ECF circles from the field"
-    from region import field, circle
+    from region import field, circle, CXCRegion
 
     exclude_region = field()
     for xpos, ypos, rad in zip(coords['x'], coords['y'], coords['inner_rad_pix']):
         exclude_region -= circle(xpos, ypos, rad)
 
-    return exclude_region
+    srcregs = None
+    if src_region_list.lower() not in ['', 'none']:
+        import stk
+        src_stk = stk.build(src_region_list)
+
+        srcregs = CXCRegion()
+        for src_file in src_stk:
+            src = CXCRegion(src_file)
+            srcregs += src
+
+        exclude_region -= srcregs
+
+    return exclude_region, srcregs
 
 
 def filter_events(infile, exclude_region):
@@ -135,7 +148,7 @@ def find_outer_bkg_radius(coords, bkg_x, bkg_y, numcts, maxradius):
         coords['outer_rad_pix'].append(outer_rad)
 
 
-def write_output(outroot, coords, input_pars):
+def write_output(outroot, coords, src_regions, input_pars):
     """Write output files
 
     One file for each source, since nearby sources are also excluded
@@ -152,6 +165,9 @@ def write_output(outroot, coords, input_pars):
     del_srcs = CXCRegion()
     for pars in zip(xpos, ypos, rad0):
         del_srcs += circle(*pars)
+
+    if src_regions:
+        del_srcs += src_regions
 
     for idx, pars in enumerate(zip(xpos, ypos, rad0, rad1)):
         out_region = annulus(*pars)-del_srcs
@@ -180,27 +196,19 @@ def get_cli():
 def main():
     'Main routine'
 
-    # ~ infile = "/home/kjg/Chandra/635/repro/acisf00635_repro_evt2.fits"
-    # ~ pos = "635.tsv[opt kernel=text/tsv][cols ra, dec]"
-    # ~ mincts = 100
-    # ~ maxradius = None
-    # ~ inner_ecf = 0.95
-    # ~ energy = 1.4
-    # ~ outfile = "zzz"
-
     pars = get_cli()
 
     ra_deg, dec_deg = load_positions(pars["pos"])
     coords = convert_coords(pars['infile'], ra_deg, dec_deg)
     get_psf_size(coords, pars['energy'], pars['inner_ecf'])
-    excl = make_swiss_cheese(coords)
+    excl, srcregs = make_swiss_cheese(coords, pars["src_region"])
     bkg_x, bkg_y = filter_events(pars['infile'], excl)
     find_outer_bkg_radius(coords, bkg_x, bkg_y, pars['min_counts'],
                           pars['max_radius'])
 
     if pars["max_radius"] == None:
         pars["max_radius"] = "INDEF"
-    write_output(pars['outroot'], coords, pars)
+    write_output(pars['outroot'], coords, srcregs, pars)
 
 
 if __name__ == '__main__':
