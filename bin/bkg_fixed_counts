@@ -1,18 +1,56 @@
 #!/usr/bin/env python
+#
+# Copyright (C) 2022 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
 
 'Create background annulus regions with a fixed number of counts'
-
-
+import sys, os
 import numpy as np
 from pycrates import read_file
+import ciao_contrib.logger_wrapper as lw
+
+
+toolname = "bkg_fixed_counts"
+__revision__ = "31 October 2022"
+
+lw.initialize_logger(toolname)
+verb0 = lw.get_logger(toolname).verbose0
+verb1 = lw.get_logger(toolname).verbose1
+verb2 = lw.get_logger(toolname).verbose2
 
 
 def load_positions(pos):
     "Get the RA/Dec of all sources"
-    tab = read_file(pos)
-    ra_deg = tab.get_column("RA").values
-    dec_deg = tab.get_column("DEC").values
-    return ra_deg, dec_deg
+    try:
+        tab = read_file(pos)
+        if tab is None:
+            raise IOError("problem with pos")
+        ra = tab.get_column("ra").values
+        dec = tab.get_column("dec").values
+    except Exception as try_again:
+        from ciao_contrib.parse_pos import get_radec_from_pos
+        try:
+            ra, dec = get_radec_from_pos(pos)
+            ra = np.array(ra)
+            dec = np.array(dec)
+        except Exception as bad_parse:
+            raise ValueError(f"Could not parse coordinates: {pos}")
+
+    return ra, dec
 
 
 def convert_coords(infile, ra_deg, dec_deg):
@@ -97,13 +135,14 @@ def find_outer_bkg_radius(coords, bkg_x, bkg_y, numcts, maxradius):
         coords['outer_rad_pix'].append(outer_rad)
 
 
-def write_output(outroot, coords):
+def write_output(outroot, coords, input_pars):
     """Write output files
 
     One file for each source, since nearby sources are also excluded
     """
 
     from region import annulus, CXCRegion, circle
+    from ciao_contrib.runtool import add_tool_history
 
     xpos = coords['x']
     ypos = coords['y']
@@ -117,28 +156,51 @@ def write_output(outroot, coords):
     for idx, pars in enumerate(zip(xpos, ypos, rad0, rad1)):
         out_region = annulus(*pars)-del_srcs
         cmpt = idx+1
-        outfile = f"{outroot}_{cmpt:04d}_bkgreg.fits"
+        outfile = f"{outroot}_i{cmpt:04d}_bkg.reg"
         out_region.write(outfile, fits=True, clobber=True)
+        add_tool_history(outfile, toolname, input_pars,
+                         toolversion=__revision__)
+
+
+def get_cli():
+    'Get parameter values from .par file'
+
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(toolname, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": verb1})
+
+    pars['min_counts'] = int(pars['min_counts'])
+    pars['max_radius'] = None if pars['max_radius'] == "INDEF" else float(pars['max_radius'])
+    pars['inner_ecf'] = float(pars['inner_ecf'])
+    pars['energy'] = float(pars['energy'])
+
+    return pars
 
 
 def main():
     'Main routine'
 
-    infile = "/home/kjg/Chandra/635/repro/acisf00635_repro_evt2.fits"
-    pos = "635.tsv[opt kernel=text/tsv][cols ra, dec]"
-    mincts = 100
-    maxradius = None
-    inner_ecf = 0.95
-    energy = 1.4
-    outfile = "zzz"
+    # ~ infile = "/home/kjg/Chandra/635/repro/acisf00635_repro_evt2.fits"
+    # ~ pos = "635.tsv[opt kernel=text/tsv][cols ra, dec]"
+    # ~ mincts = 100
+    # ~ maxradius = None
+    # ~ inner_ecf = 0.95
+    # ~ energy = 1.4
+    # ~ outfile = "zzz"
 
-    ra_deg, dec_deg = load_positions(pos)
-    coords = convert_coords(infile, ra_deg, dec_deg)
-    get_psf_size(coords, energy, inner_ecf)
+    pars = get_cli()
+
+    ra_deg, dec_deg = load_positions(pars["pos"])
+    coords = convert_coords(pars['infile'], ra_deg, dec_deg)
+    get_psf_size(coords, pars['energy'], pars['inner_ecf'])
     excl = make_swiss_cheese(coords)
-    bkg_x, bkg_y = filter_events(infile, excl)
-    find_outer_bkg_radius(coords, bkg_x, bkg_y, mincts, maxradius)
-    write_output(outfile, coords)
+    bkg_x, bkg_y = filter_events(pars['infile'], excl)
+    find_outer_bkg_radius(coords, bkg_x, bkg_y, pars['min_counts'],
+                          pars['max_radius'])
+
+    if pars["max_radius"] == None:
+        pars["max_radius"] = "INDEF"
+    write_output(pars['outroot'], coords, pars)
 
 
 if __name__ == '__main__':
