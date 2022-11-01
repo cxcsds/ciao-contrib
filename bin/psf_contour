@@ -465,7 +465,17 @@ def write_history(psfs, pars):
     'Write history -- using original pars not local copy'
     from ciao_contrib.runtool import add_tool_history
 
+    fov = None
+    if pars['fovfile'].lower() not in ['', 'none']:
+        fov = CXCRegion(pars['fovfile'])
+
     for psf in psfs:
+        # Intersect the region w/ the FOV file
+        if fov:
+            src = CXCRegion(psf.outfile)
+            src *= fov
+            src.write(psf.outfile, fits=True, clobber=True)
+
         add_tool_history(psf.outfile, toolname, pars,
                          toolversion=__revision__)
         tab = read_file(psf.outfile, mode="rw")
