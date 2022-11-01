@@ -77,16 +77,65 @@
 
     </DESC>
     <QEXAMPLELIST>
+
       <QEXAMPLE>
         <SYNTAX>
-          <LINE>
+          <LINE>% psf_contour infile=acisf00635_repro_evt2.fits outroot=acis635 pos=246.9665257,-24.6805581 method=contour 
           </LINE>
         </SYNTAX>
         <DESC>
           <PARA>
+            In this example the input event file is used to simulate the PSF (at the default energy of 1.0keV) 
+            at a single source position, and then the source region is computed as a contour that encloses
+            90% of the PSF.
           </PARA>
         </DESC>
       </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>% psf_contour infile=acisf00635_repro_evt2.fits outroot=acis635 pos=246.9665257,-24.6805581 method=lasso energy=6.7 frac=0.95 
+          </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            This is similar to example 1, except now the PSF is simulated at 6.7keV and the lasso algorithm is 
+            used to find the contour that encloses 95% of the PSF.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>% psf_contour infile=acisf00635_repro_evt2.fits outroot=acis635 pos=my_catalog.dat method=fitted_ellipse
+          </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            In this example, the source position are taken from the input table: my_catalog.dat, which
+            much contain RA and Dec columns (in decimal degrees). There will be one output file
+            for each individual source listed in the input table.  Each source region will be an ellipse that
+            has been fitted to the contour.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>% psf_contour infile=hrc_repro_evt2.fits outroot=hrc pos=my_catalog.dat"[cols ra=_raj2000,dec=_dej2000]" fov=hrc.fov 
+          </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            This is similar to the previous example.  In this example the input file used to get the source positions
+            has columns _RAJ2000 and _DEJ2000 instead of RA and Dec, so they columns are renamed on-the-fly
+            using the datamodel's [cols ] syntax.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+
+
     </QEXAMPLELIST>
     <PARAMLIST>
       <PARAM filetype="input" name="infile" reqd="yes" type="file">
@@ -142,6 +191,8 @@
                 <ITEM>ecf_ellipse</ITEM>
             </LIST>
 
+            <PARA>See above for details on each algorithm.</PARA>
+
         </DESC>
       </PARAM>
       <PARAM name="energy" def="1.0" min="0.3" max="10.0" type="real" units="keV">
@@ -177,6 +228,18 @@
         The higher the flux the better the fidelity of the PSF
         simulation, and thus better the region will approximate the "true"
         PSF.  The disadvantage is the increased run-time.
+        </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="fovfile" type="file" filetype="input">
+        <SYNOPSIS>Field of view file name
+        </SYNOPSIS>
+        <DESC>
+        <PARA>
+        The final output regions will be intersected with the field-of-view
+        file (if it is supplied).  This is important if any of the source
+        regions intersect the edge of the detector; the FOV will clip the region 
+        to ensure that the proper geometric area of the region can be computed.
         </PARA>
         </DESC>
       </PARAM>
