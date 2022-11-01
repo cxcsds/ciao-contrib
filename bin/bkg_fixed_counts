@@ -148,7 +148,7 @@ def find_outer_bkg_radius(coords, bkg_x, bkg_y, numcts, maxradius):
         coords['outer_rad_pix'].append(outer_rad)
 
 
-def write_output(outroot, coords, src_regions, input_pars):
+def write_output(input_pars, coords, src_regions):
     """Write output files
 
     One file for each source, since nearby sources are also excluded
@@ -169,10 +169,15 @@ def write_output(outroot, coords, src_regions, input_pars):
     if src_regions:
         del_srcs += src_regions
 
+    fov = None
+    if input_pars['fovfile'].lower() not in ['', 'none']:
+        fov = CXCRegion(input_pars['fovfile'])
+
     for idx, pars in enumerate(zip(xpos, ypos, rad0, rad1)):
         out_region = annulus(*pars)-del_srcs
+        out_region *= fov
         cmpt = idx+1
-        outfile = f"{outroot}_i{cmpt:04d}_bkg.reg"
+        outfile = f"{input_pars['outroot']}_i{cmpt:04d}_bkg.reg"
         out_region.write(outfile, fits=True, clobber=True)
         add_tool_history(outfile, toolname, input_pars,
                          toolversion=__revision__)
@@ -208,7 +213,7 @@ def main():
 
     if pars["max_radius"] is None:
         pars["max_radius"] = "INDEF"
-    write_output(pars['outroot'], coords, srcregs, pars)
+    write_output(pars, coords, srcregs)
 
 
 if __name__ == '__main__':
