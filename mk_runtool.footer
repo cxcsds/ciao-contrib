@@ -46,8 +46,9 @@ def make_no_par_file_message(toolname):
     return no_parfile
 
 for toolname in no_par_file_tools:
-    setattr(sys.modules[__name__], toolname, make_no_par_file_message(toolname))
-    __all__.append(toolname)
+    if toolname not in dir(sys.modules[__name__]):
+        setattr(sys.modules[__name__], toolname, make_no_par_file_message(toolname))
+        __all__.append(toolname)
 
 __all__.extend(['no_par_file_tools', 'make_no_par_file_message'])
 
