@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "07 October 2022"
+toolver  = "03 November 2022"
 
 import sys
 import os
@@ -118,8 +118,10 @@ Files that match
   C:       *.c
   C++:     *.cxx *.C *.cc *cpp
 
-are automatically compiled. To include other files on the link line
-- e.g. .o files - add there names on the command line.
+are automatically compiled. The order of compilation is done
+alphabetically, as this appears to be what XSPEC does. To include
+other files on the link line - e.g. .o files - add there names on the
+command line.
 
 So, if the model is defined in lmodel.dat and the source code is in
 mdl1.f and mdl2.f then you could run this script as
@@ -267,7 +269,7 @@ def find_xspec_basedir():
     incdir = os.path.join(out, 'include')
     for path in [libdir, incdir]:
         if not os.path.isdir(path):
-            raise OSError(f'Unable to find {path}')
+            raise OSError(f'Unable to find {path} or not a directory')
 
     matches = glob.glob(os.path.join(libdir, 'libXS*'))
     if len(matches) == 0:
@@ -281,13 +283,13 @@ def validate_namefunc(namefunc):
     inval = 'bob'
     outval = namefunc(inval)
     if not outval[0].isupper():
-        raise ValueError("The namefunc routine does not capitalize the return value - e.g. '{}' -> '{}'.".format(inval, outval))
+        raise ValueError(f"The namefunc routine does not capitalize the return value - e.g. '{inval}' -> '{outval}'.")
 
 
 def add_prefix(prefix, inval):
     """Returns prefix prepended to inval (converting it to a string if
     necessary)."""
-    return "{}{}".format(prefix, inval)
+    return f"{prefix}{inval}"
 
 
 def add_xsum_prefix(inval):
@@ -304,28 +306,30 @@ def no_prefix(inval):
 
 
 def find_file_types(types):
-    """Return a dictionary listing the types of
-    files in the types dictionary, which has
-    key as the type name and value as the glob
+    """Return a dictionary listing the types of files in the types
+    dictionary, which has key as the type name and value as the glob
     pattern - e.g.
 
       types = { "generic": "*.f", "90": "*.f90" }
 
-    Only those types that contain a match are
-    included; if there are no matches then None
-    is returned.
+    Only those types that contain a match are included; if there are
+    no matches then None is returned. The return names are sorted
+    alphabetically.
 
-    At present it turns out that it is possible to
-    create the pattern from the typename, ie a
-    dictionary is not needed as input, but leave
-    as is as there is no need to "optimise" this.
+    At present it turns out that it is possible to create the pattern
+    from the typename, ie a dictionary is not needed as input, but
+    leave as is as there is no need to "optimise" this.
+
     """
 
     out = {}
     for (typename, pattern) in types.items():
         match = glob.glob(pattern)
         if len(match) > 0:
-            out[typename] = match
+            # It looks like XSPEC uses alphabetical sorting so do this
+            # here (needed for reltrans to compile the F90 code in the
+            # correct order).
+            out[typename] = sorted(match)
 
     if len(out) == 0:
         return None
@@ -402,7 +406,7 @@ def count_nfiles(label, fileinfo):
     """
 
     if fileinfo is None:
-        v1("Found no {} files.".format(label))
+        v1(f"Found no {label} files.")
         return 0
 
     ntot = 0
@@ -410,17 +414,17 @@ def count_nfiles(label, fileinfo):
         n = len(vs)
         ntot += n
         if n == 1:
-            v2("Found one *.{} file".format(k))
+            v2(f"Found one *.{k} file")
         else:
-            v2("Found {} *.{} files".format(n, k))
+            v2(f"Found {n} *.{k} files")
         for v in vs:
-            v2("  {}".format(v))
+            v2(f"  {v}")
 
     v2("")
     if ntot == 1:
-        v1("Found one {} file.".format(label))
+        v1(f"Found one {label} file.")
     else:
-        v1("Found {} {} files.".format(ntot, label))
+        v1(f"Found {ntot} {label} files.")
 
     return ntot
 
@@ -598,7 +602,7 @@ for path in ['XSFunctions', 'XSFunctions/Utilities']:
 #
 for include in includes:
     if not os.path.isdir(include):
-        raise IOError("Unable to find {{}}".format(include))
+        raise IOError(f"Unable to find {{include}} or not a directory")
 
 # Where are the XSPEC libraries?
 #
@@ -1453,7 +1457,7 @@ def convert_xspec_user_model(modulename, modelfile,
         if n == 1:
             v1("The following model is available:")
         else:
-            v1("The following {} models are available:".format(n))
+            v1(f"The following {n} models are available:")
 
         v1("  {}".format("\n  ".join(mnames)))
         v1("")
@@ -1464,13 +1468,13 @@ def convert_xspec_user_model(modulename, modelfile,
         if n == 1:
             v1("Please note the following problem:")
         else:
-            v1("Please note the following {} problems:".format(n))
+            v1(f"Please note the following {n} problems:")
 
         v1("  {}".format("\n  ".join(probs)))
         v1("")
 
     if ierr is not None:
-        raise ImportError("Unable to import model:\n{}".format(ierr))
+        raise ImportError(f"Unable to import model:\n{ierr}")
 
 
 if __name__ == "__main__":
