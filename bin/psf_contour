@@ -67,6 +67,7 @@ class PSF_Region():
 
     def make_psf(self):
         'Simulate PSF and smooth it'
+        verb1(f"Making PSF for {self.params['outroot']}")
         marx_psf = self.sim_psf()
         self.smooth_psf(marx_psf)
 
@@ -409,6 +410,7 @@ def get_positions(params):
 
 def shrink_psfs(first_psf, second_psf):
     'We shrink the PSFs until the area of the overlapping regions is 0'
+    verb1(f"Shrinking regions for {first_psf.params['outroot']} and {first_psf.params['outroot']}")
 
     keep_going = True
     while keep_going:
@@ -425,7 +427,7 @@ def shrink_psfs(first_psf, second_psf):
             keep_going = True
 
         overlap = CXCRegion(first_psf.outfile) * CXCRegion(second_psf.outfile)
-        if overlap.area() == 0:
+        if overlap.area(bin=0.25) == 0:
             return
 
     # Only get here if both files are at min_frac
@@ -446,6 +448,8 @@ def shrink_overlaps(psfs):
     PSF fraction).   But it will stop if it goes below a threshold
     and just exclude overlapping regions'''
 
+    verb1("Checking for region overlaps")
+
     num_psf = len(psfs)
 
     for ii in range(num_psf):
@@ -455,7 +459,7 @@ def shrink_overlaps(psfs):
             that_region = CXCRegion(psfs[jj].outfile)
 
             overlap = this_region * that_region
-            if overlap.area() == 0:
+            if overlap.area(bin=0.25) == 0:
                 continue
 
             shrink_psfs(psfs[ii], psfs[jj])
@@ -464,6 +468,9 @@ def shrink_overlaps(psfs):
 def write_history(psfs, pars):
     'Write history -- using original pars not local copy'
     from ciao_contrib.runtool import add_tool_history
+    from math import isclose
+
+    verb1("Writing outputs")
 
     fov = None
     if pars['fovfile'].lower() not in ['', 'none']:
@@ -472,9 +479,35 @@ def write_history(psfs, pars):
     for psf in psfs:
         # Intersect the region w/ the FOV file
         if fov:
+            # So it turns out that the region lib will include both the
+            # region and the fov, if their bounding boxes overlap.
+            #
+            # That means that all sources inside the fov will have the FOV
+            # included in the region file -- which really isn't what we want.
+            # We really only want the FOV when it clips the region.
+            #
+            # Next problem is that region areas are computed differently
+            # for simple regions vs. composite|complex regions.  So
+            # just doing a simple area-check doesn't work because one
+            # will may be computed analytically and the other computed
+            # by pixelating.  Even if we force both to be pixelated, we can't
+            # control the grid (only the step size) which can still lead
+            # to diffs in the area.  Argh.
+            #
+            # So, we use the math.isclose() to check if the values are
+            # within 10% of each other, with a half pixel absolute
+            # tolerance.
+            #
+            # We could do something like check all the polygon end-points
+            # are inside the FOV, but this has to work for ellipses too
+            #
+
             src = CXCRegion(psf.outfile)
-            src *= fov
-            src.write(psf.outfile, fits=True, clobber=True)
+            src_and_fov = src * fov
+            src_area = src.area(bin=0.25)
+            saf_area = src_and_fov.area(bin=0.25)
+            if not isclose(src_area, saf_area, rel_tol=0.1, abs_tol=0.5):
+                src_and_fov.write(psf.outfile, fits=True, clobber=True)
 
         add_tool_history(psf.outfile, toolname, pars,
                          toolversion=__revision__)
