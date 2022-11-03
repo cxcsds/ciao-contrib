@@ -36,6 +36,8 @@ verb2 = lw.get_logger(toolname).verbose2
 
 def load_positions(pos):
     "Get the RA/Dec of all sources"
+    verb1("Loading source positions")
+
     try:
         tab = read_file(pos)
         if tab is None:
@@ -60,6 +62,8 @@ def convert_coords(infile, ra_deg, dec_deg):
     from ciao_contrib._tools.fileio import get_keys_from_file
     from coords.chandra import cel_to_chandra
 
+    verb1("Convert coordinates")
+
     keys = get_keys_from_file(infile)
     coords = cel_to_chandra(keys, ra_deg, dec_deg)
     return coords
@@ -70,6 +74,8 @@ def get_psf_size(coords, energy, inner_ecf):
 
     from ciao_contrib.psf_contrib import PSF
     psf = PSF()
+
+    verb1("Getting PSF size for inner radius")
 
     coords['inner_rad_pix'] = []
     for theta, phi in zip(coords['theta'], coords['phi']):
@@ -82,9 +88,14 @@ def make_swiss_cheese(coords, src_region_list):
     "Exclude the all the PSF ECF circles from the field"
     from region import field, circle, CXCRegion
 
+    verb1("Building excluded region expression")
+
     exclude_region = field()
+
+    inner_srcs = CXCRegion()
     for xpos, ypos, rad in zip(coords['x'], coords['y'], coords['inner_rad_pix']):
-        exclude_region -= circle(xpos, ypos, rad)
+        inner_srcs += circle(xpos, ypos, rad)
+    exclude_region = field() - inner_srcs
 
     srcregs = None
     if src_region_list.lower() not in ['', 'none']:
@@ -94,7 +105,17 @@ def make_swiss_cheese(coords, src_region_list):
         srcregs = CXCRegion()
         for src_file in src_stk:
             src = CXCRegion(src_file)
-            srcregs += src
+
+            # Why [0]?  (See long comment in psf_contour re:
+            # region area and FOV boundaries.
+            #
+            # if the FOV is included in the source region then
+            # the exclusion operation below will take a REALLY, REALLY
+            # long time (hours) .. and yet it won't matter since it's
+            # intersected with the interesting shape. We know that the
+            # interesting source region is the 1st shape, so we'll just
+            # go ahead and only consider the 1st shape here:
+            srcregs += src[0]
 
         exclude_region -= srcregs
 
@@ -103,6 +124,8 @@ def make_swiss_cheese(coords, src_region_list):
 
 def filter_events(infile, exclude_region):
     "Filter the event file to remove all the source regions, only bkg events remain"
+
+    verb1("Filtering events with excluded region expression")
 
     tab = read_file(infile)
     xpos = tab.get_column('x').values
@@ -126,6 +149,8 @@ def find_outer_bkg_radius(coords, bkg_x, bkg_y, numcts, maxradius):
     which is the outer radius of the annulus.  Kind a brute force,
     but it runs quickly.
     """
+
+    verb1("Determining outer background radius")
 
     nbkg = len(bkg_x)
     if nbkg < numcts:
@@ -156,6 +181,9 @@ def write_output(input_pars, coords, src_regions):
 
     from region import annulus, CXCRegion, circle
     from ciao_contrib.runtool import add_tool_history
+    from math import isclose
+
+    verb1("Writing outputs")
 
     xpos = coords['x']
     ypos = coords['y']
@@ -175,7 +203,23 @@ def write_output(input_pars, coords, src_regions):
 
     for idx, pars in enumerate(zip(xpos, ypos, rad0, rad1)):
         out_region = annulus(*pars)-del_srcs
-        out_region *= fov
+
+        if fov:
+            # So it turns out that the region lib will include both the
+            # region and the fov, if their bounding boxes overlap.
+            #
+            # That means that all background inside the fov will have the FOV
+            # included in the region file -- which really isn't what we want.
+            # We really only want the FOV when it clips the region.
+            #
+            # (see longer discussion in psf_contour)
+
+            bkg_and_fov = out_region * fov
+            bkg_area = out_region.area(bin=0.25)
+            baf_area = bkg_and_fov.area(bin=0.25)
+            if not isclose(bkg_area, baf_area, rel_tol=0.1, abs_tol=0.5):
+                out_region = bkg_and_fov
+
         cmpt = idx+1
         outfile = f"{input_pars['outroot']}_i{cmpt:04d}_bkg.reg"
         out_region.write(outfile, fits=True, clobber=True)
