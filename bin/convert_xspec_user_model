@@ -975,6 +975,15 @@ get_xsversion()
 #
 '''
 
+    # Fix an error in Sherpa 4.15.0 and earlier.
+    # - replace "{t2}" by "        "
+    #
+    import re
+    conv = re.subn(r"\{t2\}", "        ", pycode)
+    if conv[1] > 0:
+        pycode = conv[0]
+        v2(f"NOTE: had to correct the python code {conv[1]} times")
+
     out += pycode
 
     save(outfile, out)
@@ -1098,11 +1107,58 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 
         out += "}\n"
 
-    out += cxxcode
-
+    # out += cxxcode
     # This should be fixed in Sherpa but work around it here.
-    if not cxxcode.endswith(';'):
-        out += ';\n'
+    # if not cxxcode.endswith(';'):
+    #     out += ';\n'
+
+    # START HACK
+
+    # Argh: it looks like I need to update the sherpa.astro.utils.xspec
+    # code to handle fortran-style models - as the cxxcode has them as
+    #   void x_(float* ear, ...)
+    # but the C++ template wants them to be 'const float* ear ...'.
+    #
+    # We could try and decode cxxcode and extract just the parts we
+    # need, but for now just manually re-create the whole thing.
+    #
+    fmods = []
+    for mdl in mdls:
+        if not mdl.language.startswith("Fortran"):
+            continue
+
+        if mdl.language == "Fortran - single precision":
+            fmods.append(f"xsf77Call {mdl.funcname}_;")
+        elif mod.language == "Fortran - double precision":
+            # We do not support this type of model at the moment
+            fmods.append(f"xsF77Call {mdlfuncname}_;")
+        else:
+            v1(f"WARNING: unrecognized model style for {mdl.name}/{mdl.funcname}: {mdl.language}")
+
+    if len(fmods):
+        out += '''// Defines (re-created as sherpa.astro.utils.xspec needs updating)
+
+extern "C" {
+'''
+
+        for fmod in fmods:
+            out += f"  {fmod}\n"
+
+        out += "}\n\n"
+
+    out += '''// Wrapper
+
+static PyMethodDef Wrappers[] = {
+'''
+
+    for mdl in mdls:
+        wrapcode, defcode = xspec.model_to_compiled(mdl)
+        out += f"  {wrapcode}\n"
+
+    out += "  { NULL, NULL, 0, NULL }\n"
+    out += "};\n\n"
+
+    # END HACK
 
     out += '''static struct PyModuleDef wrapper_module = {
   PyModuleDef_HEAD_INIT,
