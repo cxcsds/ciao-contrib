@@ -84,6 +84,7 @@ import sysconfig
 import sherpa
 import sherpa.astro.ui as ui
 from sherpa.astro.utils import xspec
+from sherpa.astro.xspec import get_xsversion
 
 import ciao_version
 
@@ -465,18 +466,6 @@ def build_setup(modname, sources, fortransources, extrafiles,
     collection of C++ and FORTRAN, and take advantage of the interface
     that the Sherpa XSPEC model uses (that handles the conversion from
     the user-supplied grid to the one that XSPEC needs).
-
-    It is also complicated by the need to access the XSPEC model
-    include files, which in the HEASARC environment requires access to
-    the build directory. As we don't have this in an installed version
-    of the XSPEC model library (the header files seem to get installed
-    but all in the same directory, which means that paths like
-    XSFunctions/Utilities/FunctionUtulity.h can't be resolved), I have
-    just included the full set of headers from XSPEC 12.10.1 - patch
-    level s - in this repository (as used for CIAO 4.13).  Hopefully
-    there aren't any significant changes in these over time ;-) There
-    is also the fact that the XSPEC library requires linking to a set
-    of versioned libraries, so this is also version dependent.
 
     A large complication is that I want to compile FORTRAN code and
     link it into the extension, but do not want any Python interface
@@ -1034,6 +1023,32 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 #include <xsTypes.h>
 #include <XSFunctions/Utilities/funcType.h>  // defines xsccCall
 
+// What XSPEC version do we support
+'''
+
+    # Declare the XSPEC defines used to control the code; this is a
+    # bit OTT as we know we don't need all of them, but put them all
+    # in for now. This needs to be updated with each CIAO release.
+    #
+    xspec_version_str = get_xsversion()
+    v1(f"Using XSPEC version: {xspec_version_str}")
+
+    toks = xspec_version_str.split(".")
+    if len(toks) != 3:
+        raise ValueError(f"Unrecognized XSPEC version: {xspec_version_str}")
+
+    # assume the micro version is 1 digit
+    #
+    xspec_version = (int(toks[0]), int(toks[1]), int(toks[2][:1]))
+
+    for v in [(12, 9, 0), (12, 9, 1),
+              (12, 10, 0), (12, 10, 1),
+              (12, 11, 0), (12, 11, 1),
+              (12, 12, 0), (12, 12, 1)]:
+        if v <= xspec_version:
+            out += "#define XSPEC_{}_{}_{}\n".format(*v)
+
+    out += '''
 #include "sherpa/astro/xspec_extension.hh"
 
 '''
