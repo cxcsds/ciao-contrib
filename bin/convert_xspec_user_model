@@ -1387,8 +1387,21 @@ def convert_xspec_user_model(modulename, modelfile,
 
     # Unlike earlier versions of convert_xspec_user_model we do not
     # check compiled files when clobber is not set.
-
+    #
     mdlinfo = xspec.parse_xspec_model_description(modelfile, namefunc=namefunc)
+
+    # Temporarily force the fortran "function" name to lower case (this
+    # should be done by sherpa.astro.utils.xspec but it's just one of
+    # those things that I never noticed).
+    #
+    for mdl in mdlinfo:
+        if not mdl.language.startswith("Fortran"):
+            continue
+
+        oname = mdl.funcname
+        mdl.funcname = oname.lower()
+        if mdl.funcname != oname:
+            v2(f" - lower case conversion for Fortran model: {oname}")
 
     # Strip out models that call the same function. This is a somewhat
     # odd check, and could perhaps be done after other checks, but I
