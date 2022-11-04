@@ -1,0 +1,92 @@
+#!/usr/bin/env python
+#
+#  Copyright (C) 2022  Smithsonian Astrophysical Observatory
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+'Provide interactive grating coordinates'
+
+import sys
+
+from coords.gratings import TGPixlib
+from dax.utils import xpaget, xpaset_p
+
+def init_pixlib(xpa):
+    '''Setup pixlib and various xforms from header info
+    
+    Turns out this is faster than sending file name to pycrates
+    '''
+    _keys = ["instrume", "detnam", "grating", "sim_x", "sim_y", "sim_z",
+             "dy_avg", "dz_avg", "dth_avg", "ra_pnt", "dec_pnt", "roll_pnt",
+             "ra_nom", "dec_nom"]
+    
+    keywords = {}
+    for kk in _keys:
+        kk_upper = kk.upper()
+        keyval = xpaget(xpa, f"fits header keyword {kk_upper}").strip()
+        if keyval == "":
+            raise ValueError(f"Unable to find the value for the '{kk_upper}' keyword")
+
+        if kk not in ['instrume', 'detnam', 'grating']:
+            keyval = float(keyval)
+        keywords[kk_upper] = keyval
+
+    pix = TGPixlib(keywords)
+    return pix
+
+
+def main():
+    "Main routine"
+
+    xpa = sys.argv[1]
+    order = int(sys.argv[2])
+    x0, y0, xx, yy = [float(x) for x in sys.argv[3:7]]
+    frame = sys.argv[7]
+    reg_id = sys.argv[8]
+
+    pix = init_pixlib(xpa)
+
+    if pix.grating_keyword == "LETG":
+        tg_r, tg_d = pix.sky_to_grating_angles((xx, yy), "leg",
+                                               order, (x0, y0))
+        energy = pix.grt_energy((tg_r, tg_d))
+        arm = "LEG"
+    else:
+        # If HETG, then we will compute coords for both MEG and HEG.
+        # We pick the one with the smallest dispersion angle (ie
+        # closest).
+
+        tg_r_m, tg_d_m = pix.sky_to_grating_angles((xx, yy), "meg",
+                                                   order, (x0, y0))
+        tg_r_h, tg_d_h = pix.sky_to_grating_angles((xx, yy), "heg",
+                                                   order, (x0, y0))
+
+        if abs(tg_d_m) < abs(tg_d_h):
+            tg_r, tg_d = tg_r_m, tg_d_m
+            arm = "MEG"
+        else:
+            tg_r, tg_d = tg_r_h, tg_d_h
+            arm = "HEG"
+
+        energy = pix.sky_to_grating_energy((xx, yy), arm, order,
+                                           (x0, y0))
+
+    xpaset_p(xpa, ["tcl", f"{{display_tgcoords {tg_r:.5g} {tg_d:.5g}" +
+                   f" {energy:.3f} {arm} {frame} {reg_id}}}"])
+
+
+if __name__ == "__main__":
+    main()
