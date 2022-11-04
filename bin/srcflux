@@ -1637,6 +1637,9 @@ def run_specextract( myparams, outroot, srcreg, bkgreg, ii, at_energy ):
             except Exception as e:
                 raise FailAndSkip(str(e))
 
+        if not os.path.exists(outroot+".arf"):
+            raise FailAndSkip("Specextract failed for "+outroot)
+
         # Get PSF fraction correction in separate file, will get renamed at end
 
         #
@@ -2032,7 +2035,7 @@ def run_glvary(at_energy, ii, src, bkg, myparams):
     We run glvary, but only on the source region    
     """
 
-    verb2("Making Lightcurve for source "+str(ii))
+    verb1("Making Lightcurve for source "+str(ii))
 
     def get_gti(infile,region):
         tab = read_file("{}[sky={}]".format(infile,region))
