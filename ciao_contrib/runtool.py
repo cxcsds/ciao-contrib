@@ -28,8 +28,8 @@
 """Summary
 =======
 
-This module allows users to run CIAO command-line tools by calling a
-function with the name of the tool: for example
+This module allows users to run CIAO command-line tools with parameter files
+by calling a function with the name of the tool: for example
 
   dmcopy("in.fits", "out.fits", clobber=True, option="all")
   print(dmstat(infile="img.fits", centroid=False, verbose=0))
@@ -39,7 +39,7 @@ output will be displayed on-screen, so you can just say
 
   dmstat(infile="img.fits", centroid=False, verbose=0)
 
-Paremeters may also be set before running the tool using the syntax
+Parameters may also be set before running the tool using the syntax
 toolname.paramname - e.g. the dmstat call above can be written as
 
   dmstat.centroid = False
@@ -237,7 +237,7 @@ support the <@@name.par> syntax for calling a CIAO tool (see the
 'ahelp parameter' page for more information on this functionality). Care
 should be taken to avoid running multiple copies of these tools at the
 same time; if this is likely to happen use the new_pfiles_environment
-context handler or the set_pfiles() routine to set up seprate user
+context handler or the set_pfiles() routine to set up separate user
 parameter directories.
 
 The tools for which this is true are: axbary, dmgti, evalpos, fullgarf,
@@ -283,7 +283,7 @@ Parameter redirects
 -------------------
 
 There is limited support for setting a parameter value using the
-"re-direct" funtionality of the parameter library - e.g. values like
+"re-direct" functionality of the parameter library - e.g. values like
 ")sclmin", which mean use the value of the sclmin parameter of the
 tool . Such re-directs can only be used to parameter values from the
 same tool, so the value ")dmstat.centroid" is not permitted.
@@ -440,7 +440,7 @@ Verbose level
 =============
 
 If the CIAO verbose level is set to 2 then the command-line used to
-run the tool is logged, as long as a logging instamce has been created
+run the tool is logged, as long as a logging instance has been created
 using ciao_contrib.logger_wrapper.initialize_logger. As an example
 
   from ciao_contrib.logger_wrapper import initialize_logger, set_verbosity
@@ -3784,5 +3784,59 @@ __all__ = ["get_pfiles", "set_pfiles",
 for toolname in list_tools():
     setattr(sys.modules[__name__], toolname, make_tool(toolname))
     __all__.append(toolname)
+
+# Now, some tools added that don't use par files and are thus not
+# handled by this tool.
+# However, that's a fine distinction that users might not appreciate.
+# Thus, we add them here, so that least there is a helpful message
+# if they try to use it.
+# The list of tools is manually curated and believed to be correct
+# as of COA 4.14 (see https://github.com/cxcsds/ciao-contrib/issues/643#issue-1419049281)
+# We are not adding all scripts, just those that a casual user might expect here.
+# In particular, ds9* and install_marx clearly interact with non-Python systems
+# and as such we believe that users would not look for thme here.
+no_par_file_tools = [
+    'acis_clear_status_bits',
+    'check_ciao_caldb',
+    'check_ciao_version',
+    'convert_xspec_script',
+    'convert_xspec_user_model',
+    'splitroi',
+    'summarize_status_bits',
+    'tg_bkg'
+]
+
+def make_no_par_file_message(toolname):
+    '''Make a dummy function that raises an error with a helpful message when called.'''
+    def no_parfile(*args, **kwargs):
+        '''CIAO tools without parameter file.
+
+        This is a dummy function that will raise an error when called and
+        advice to call the CIAO tool using
+        `subprocess.run()` from the Python standard library.
+        '''
+        raise NotImplementedError(f"{toolname} does not use a parameter file and thus is not handled " +
+                                  "by ciao_contrib.runtool. Use `subprocess.run` instead " +
+                                  f"(see https://docs.python.org/3/library/subprocess.html) to call {toolname}.")
+    return no_parfile
+
+for toolname in no_par_file_tools:
+    if toolname not in dir(sys.modules[__name__]):
+        setattr(sys.modules[__name__], toolname, make_no_par_file_message(toolname))
+        __all__.append(toolname)
+
+__all__.extend(['no_par_file_tools', 'make_no_par_file_message'])
+
+# And this one is special, so list individually.
+def download_chandra_obsid(*args, **kwargs):
+    '''Dummy function that raises an error when called.
+
+    The error message tells the user to use
+    `ciao_contrib.cda.data.download_chandra_obsids`
+    instead to download Chandra data.
+    '''
+    raise NotImplementedError(f"download_chandra_obsid does not use a parameter file and thus is not handled " +
+                               "by ciao_contrib.runtool. " +
+                               "Use ciao_contrib.cda.data.download_chandra_obsids instead.")
 
 __all__ = tuple(__all__)
