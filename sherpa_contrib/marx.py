@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2018, 2019
+#  Copyright (C) 2018, 2019, 2022
 #           Massachusetts Institute of Technology
 #
 #
@@ -37,7 +37,8 @@ Examples
 
 """
 
-from sherpa.plot import HistogramPlot, backend
+from sherpa.plot import HistogramPlot
+from sherpa import plot
 
 from crates_contrib.utils import write_columns
 
@@ -203,10 +204,8 @@ def plot_marx_spectrum(id=None, elow=None, ehigh=None, ewidth=None,
     hplot.title = 'MARX Spectrum: {}'.format(vals['model'])
 
     # LaTeX support depends on the backend
-    if backend.name == 'pylab':
+    if plot.backend.name == 'pylab':
         hplot.ylabel = 'Flux (photon cm$^{-2}$ s$^{-1}$ keV$^{-1}$)'
-    elif backend.name == 'chips':
-        hplot.ylabel = 'Flux (photon cm^{-2} s^{-1} keV^{-1})'
     else:
         hplot.ylabel = 'Flux (photon cm^-2 s^-1)'
 
