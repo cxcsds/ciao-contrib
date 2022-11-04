@@ -206,8 +206,6 @@ def plot_marx_spectrum(id=None, elow=None, ehigh=None, ewidth=None,
     # LaTeX support depends on the backend
     if plot.backend.name == 'pylab':
         hplot.ylabel = 'Flux (photon cm$^{-2}$ s$^{-1}$ keV$^{-1}$)'
-    elif plot.backend.name == 'chips':
-        hplot.ylabel = 'Flux (photon cm^{-2} s^{-1} keV^{-1})'
     else:
         hplot.ylabel = 'Flux (photon cm^-2 s^-1)'
 
