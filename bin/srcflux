@@ -18,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "28 March 2022"
+__revision__ = "04 November 2022"
 
 import os
 
@@ -238,7 +238,7 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
 
     def region_to_phys( reg ):
         dmmakereg = make_tool("dmmakereg")
-        tmproot = NamedTemporaryFile( dir=tmpdir)
+        tmproot = NamedTemporaryFile( dir=tmpdir, suffix="_phys.reg", delete=False)
         tfile = tmproot.name
         tmproot.close()
 
@@ -283,7 +283,7 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
             fp.write( s+"\n")
 
 
-    bb = map( validate_region, bkg_stk )
+    bb = list(map( validate_region, bkg_stk ))
     outbkg = myroot+"bkg.stk"
     with open( outbkg, "w" ) as fp:
         for b in bb:
@@ -372,7 +372,9 @@ def save_regions( myparams, regions, flavor ):
     # CIAO 4.10 changes to NULL regions no longer creates a fake
     # "point(0,0)" -- I'm using that so we'll put it back.
     try:
-        ss = stk.build(regions)
+        with open(regions[2:],"r") as fp:
+            ss = [x.strip() for x in fp.readlines()]
+
     except ValueError as ve:
         ss = [ "point(0,0)" ]
 
@@ -380,7 +382,8 @@ def save_regions( myparams, regions, flavor ):
         for ii in range( len(ss)):
             outfile = "{}{:04d}_{}reg.fits".format(myparams.outroot, ii+1, flavor)
 
-            tmpreg = NamedTemporaryFile( dir=myparams.tmpdir )
+            tmpreg = NamedTemporaryFile( dir=myparams.tmpdir, delete=False, suffix=f"_{flavor}.reg" )
+            tmpreg.close()
 
             with open(tmpreg.name, "w") as fp:
                 fp.write( ss[ii].replace("|","\n") )
@@ -391,7 +394,7 @@ def save_regions( myparams, regions, flavor ):
             dmmakereg.kernel="FITS"
             dmmakereg()
 
-            tmpreg.close()
+            gorm(tmpreg.name)
 
             oo.write( "region({})\n".format(outfile))
 
@@ -1208,7 +1211,7 @@ def run_fluximage( infile, outroot, at_energy, src, bkg, myparams ):
 
     """
 
-    verb1("Running fluximage for "+outroot)
+    verb1(f"Running fluximage for {outroot}")
 
     fluximage = make_tool("fluximage")
     dmextract = make_tool("dmextract")
