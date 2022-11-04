@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2010, 2011, 2013, 2014, 2015, 2016, 2017, 2019, 2020, 2021
+#  Copyright (C) 2010, 2011, 2013, 2014, 2015, 2016, 2017, 2019, 2020, 2021, 2022
 #  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -18,7 +18,7 @@
 #
 
 """
-Download publically-available data from the Chandra Data Archive (CDA).
+Download publicly-available data from the Chandra Data Archive (CDA).
 
 Routines that wrap up HTTPS access to the Chandra Data Archive -
 https://cxc.harvard.edu/cdaftp/ - supporting mirror sites under the
