@@ -18,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "28 March 2022"
+__revision__ = "04 November 2022"
 
 import os
 
@@ -122,7 +122,7 @@ def get_root( myparams, at_energy ):
     return myroot
 
 
-def run_roi( infile, fovfile, tmproot="/tmp", bkgmode='mul', bkgradius=3, bkgfunction='mul', bkgfactor=1 ):
+def run_roi( infile, fovfile, tmproot="/tmp", bkgmode='mul', bkgradius=3, bkgfunction='mul', bkgfactor=1.7 ):
     """
     Create src and background regions for each source
     """
@@ -145,6 +145,10 @@ def run_roi( infile, fovfile, tmproot="/tmp", bkgmode='mul', bkgradius=3, bkgfun
     roi.bkgradius = bkgradius
     roi.bkgfunction = bkgfunction
     roi.bkgfactor = bkgfactor
+    roi.bkgfactarg = "all"
+
+    roi.srcfactor = 1.2
+    roi.srcfunction = "mul"
 
     rr = roi()
 
@@ -189,8 +193,7 @@ def run_split_roi( myparams ):
     fov = locate_fovfile( myparams)
 
     roi_files = run_roi( myroot+"srcs.fits", fov,
-        tmproot=myroot, bkgradius=5.0,
-        bkgfactor=1.0 )
+        tmproot=myroot, bkgradius=5.0)
 
     mycmd = ["splitroi",
              myroot+r"????_reg.fits",
@@ -235,7 +238,7 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
 
     def region_to_phys( reg ):
         dmmakereg = make_tool("dmmakereg")
-        tmproot = NamedTemporaryFile( dir=tmpdir)
+        tmproot = NamedTemporaryFile( dir=tmpdir, suffix="_phys.reg", delete=False)
         tfile = tmproot.name
         tmproot.close()
 
@@ -280,7 +283,7 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
             fp.write( s+"\n")
 
 
-    bb = map( validate_region, bkg_stk )
+    bb = list(map( validate_region, bkg_stk ))
     outbkg = myroot+"bkg.stk"
     with open( outbkg, "w" ) as fp:
         for b in bb:
@@ -369,7 +372,9 @@ def save_regions( myparams, regions, flavor ):
     # CIAO 4.10 changes to NULL regions no longer creates a fake
     # "point(0,0)" -- I'm using that so we'll put it back.
     try:
-        ss = stk.build(regions)
+        with open(regions[2:],"r") as fp:
+            ss = [x.strip() for x in fp.readlines()]
+
     except ValueError as ve:
         ss = [ "point(0,0)" ]
 
@@ -377,7 +382,8 @@ def save_regions( myparams, regions, flavor ):
         for ii in range( len(ss)):
             outfile = "{}{:04d}_{}reg.fits".format(myparams.outroot, ii+1, flavor)
 
-            tmpreg = NamedTemporaryFile( dir=myparams.tmpdir )
+            tmpreg = NamedTemporaryFile( dir=myparams.tmpdir, delete=False, suffix=f"_{flavor}.reg" )
+            tmpreg.close()
 
             with open(tmpreg.name, "w") as fp:
                 fp.write( ss[ii].replace("|","\n") )
@@ -388,7 +394,7 @@ def save_regions( myparams, regions, flavor ):
             dmmakereg.kernel="FITS"
             dmmakereg()
 
-            tmpreg.close()
+            gorm(tmpreg.name)
 
             oo.write( "region({})\n".format(outfile))
 
@@ -557,6 +563,23 @@ def get_counts( myparams, at_energy, src, bkg ):
     intab.write()
 
 
+def run_simulate_psf(sim_psf):
+    "Run a single instance of simulate_psf"        
+    verb1("Simulating PSF: "+sim_psf.outroot)
+
+    # The make_tool object can't be pickled so I'm just 
+    # going to copy parameters using the Params object.
+    simulate_psf = make_tool("simulate_psf")
+    for attr in dir(sim_psf):
+        if attr.startswith('_'):
+            continue
+        setattr(simulate_psf, attr, getattr(sim_psf, attr))
+
+    vv = simulate_psf()
+    if vv:
+        verb2(vv)
+
+
 def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
     """
     Run saotrace and psf_project_ray to simulate the PSF
@@ -566,6 +589,7 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
     ### so it inheriently is already parallelized, trying to run
     ### in parallel will only cause massive slowness.  But marx isn't
     ### so we could see some benifit from do those in parallel.
+
 
 
     if simulator == 'saotrace':
@@ -589,6 +613,7 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
     nrow = len(src_stk)
 
     eng = parse_mono_energy( at_energy )
+    taskrunner = TaskRunner()
 
     psf_files = []
 
@@ -605,7 +630,7 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
             rate = 1.0e-3
 
         outroot = "{}{:04d}_{}".format( myparams.outroot, ii, suffix)
-        simulate_psf = make_tool("simulate_psf")
+        simulate_psf = Params()
         simulate_psf.infile=myparams.infile
         simulate_psf.asolfile=''
         simulate_psf.outroot=outroot
@@ -627,11 +652,11 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
         simulate_psf.random_seed=myparams.random_seed
         simulate_psf.verbose=0
 
-        vv = simulate_psf()
-        if vv:
-            verb2(vv)
+        taskrunner.add_task(f"psf_{ii}", "", run_simulate_psf, simulate_psf)
 
         psf_files.append(outroot+".psf")
+
+    taskrunner.run_tasks(processes=myparams.nproc, label=False)
 
     return psf_files
 
@@ -1186,6 +1211,8 @@ def run_fluximage( infile, outroot, at_energy, src, bkg, myparams ):
 
     """
 
+    verb1(f"Running fluximage for {outroot}")
+
     fluximage = make_tool("fluximage")
     dmextract = make_tool("dmextract")
 
@@ -1610,6 +1637,9 @@ def run_specextract( myparams, outroot, srcreg, bkgreg, ii, at_energy ):
             except Exception as e:
                 raise FailAndSkip(str(e))
 
+        if not os.path.exists(outroot+".arf"):
+            raise FailAndSkip("Specextract failed for "+outroot)
+
         # Get PSF fraction correction in separate file, will get renamed at end
 
         #
@@ -2005,7 +2035,7 @@ def run_glvary(at_energy, ii, src, bkg, myparams):
     We run glvary, but only on the source region    
     """
 
-    verb2("Making Lightcurve for source "+str(ii))
+    verb1("Making Lightcurve for source "+str(ii))
 
     def get_gti(infile,region):
         tab = read_file("{}[sky={}]".format(infile,region))
@@ -2127,22 +2157,38 @@ def merge_modelflux( stk_params, myparams ):
 
         combine_spectra = make_tool("combine_spectra")
 
-        pi_files = [ p.outroot+"{:04d}.pi".format(snum+1) for p in stk_params ]
-        arf_files = [ p.outroot+"{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
-        rmf_files = [ p.outroot+"{:04d}.rmf".format(snum+1) for p in stk_params ]
+        src_pi_files = [ p.outroot+"{:04d}.pi".format(snum+1) for p in stk_params ]
+        src_arf_files = [ p.outroot+"{:04d}_nopsf.arf".format(snum+1) for p in stk_params ]
+        src_rmf_files = [ p.outroot+"{:04d}.rmf".format(snum+1) for p in stk_params ]
+        bkg_pi_files = [ p.outroot+"{:04d}_bkg.pi".format(snum+1) for p in stk_params ]
+        bkg_arf_files = [ p.outroot+"{:04d}_bkg.arf".format(snum+1) for p in stk_params ]
+        bkg_rmf_files = [ p.outroot+"{:04d}_bkg.rmf".format(snum+1) for p in stk_params ]
 
         p_good=[]
         a_good=[]
         r_good=[]
+        b_good=[]
 
-        for p_a_r in zip(pi_files, arf_files, rmf_files):
+        for p_a_r in zip(src_pi_files, src_arf_files, src_rmf_files, bkg_pi_files):
             ondisk = [ os.path.exists(x) for x in p_a_r]
             if not all(ondisk):
                 continue
             p_good.append(p_a_r[0])
             a_good.append(p_a_r[1])
             r_good.append(p_a_r[2])
+            b_good.append(p_a_r[3])
 
+        # User can set bkgresp=no to skip creating background responses.
+        # check for them separately
+
+        bkg_arf = []
+        bkg_rmf = []
+        for p_a_r in zip(bkg_arf_files, bkg_rmf_files):
+            ondisk = [ os.path.exists(x) for x in p_a_r]
+            if not all(ondisk):
+                continue
+            bkg_arf.append(p_a_r[0])
+            bkg_rmf.append(p_a_r[1])
 
         if p_good is None or 0 == len(p_good):
             for at_energy in bands:
@@ -2153,6 +2199,9 @@ def merge_modelflux( stk_params, myparams ):
         combine_spectra.src_spectra = p_good
         combine_spectra.src_arf = a_good
         combine_spectra.src_rmf = r_good
+        combine_spectra.bkg_spectra = b_good
+        combine_spectra.bkg_arfs = bkg_arf
+        combine_spectra.bkg_rmfs = bkg_rmf
         combine_spectra.outroot = myparams.outroot+"{:04d}".format(snum+1)
         combine_spectra.clobber=True
         vv = combine_spectra()
@@ -2316,6 +2365,7 @@ def merge_aprates( cts, conf, rate=False ):
                'hilimit' : np.nan,
                'conf' : float(conf),
                'numobi': len(c) ,
+               'inside_fov' : good
                }
 
     pp = [C,A_S,Alpha,T_S,E_S,B,A_B,Beta,T_B,E_B]
@@ -2364,6 +2414,7 @@ def merge_aprates( cts, conf, rate=False ):
                'hilimit' : float(pfh),
                'conf' : float(conf),
                'numobi': len(c) ,
+               'inside_fov' : good
                }
 
     return retval
@@ -2466,13 +2517,14 @@ def merge_write_output( stk_params, myparams, modelflux_vals, merge_fluxes ):
         intab = read_file( dmmerge.outfile, mode="rw" )
 
         def pick_and_write( colname, desc, units, valname, store):
-            vals = [ r[valname] for r in merge_fluxes[at_energy][store]]
+            # Crates really wants them in a numpy array
+            vals = np.array([ r[valname] for r in merge_fluxes[at_energy][store]])
             add_array_to_crate( intab, colname,vals, desc, units )
 
         pick_and_write( "TOTAL_COUNTS", "Summed counts in src regions", "", "src_cts", "rates" )
         pick_and_write( "TOTAL_BG_COUNTS", "Summed counts in bkg regions", "", "bkg_cts", "rates" )
         pick_and_write( "NUM_OBI", "Number of OBIs included", "", "numobi", "rates" )
-
+        pick_and_write( "INSIDE_FOV", "Inside of which FOVs?", "", "inside_fov", "rates")
 
         pick_and_write( "MERGED_NET_RATE_APER", "Merged count rate", "counts/s", "value", "rates" )
         pick_and_write( "MERGED_NET_RATE_APER_LO", "Merged count rate lower limit", "counts/s", "lolimit", "rates" )
@@ -2863,11 +2915,6 @@ def check_parameters( myparams ):
             verb0("\nWARNING: dead time factors file parmater set to 'none'; DTF information will not be use.  This may lead to inaccuracies in the results\n")
 
 
-
-
-#-----------------------------------------
-
-
 def build_infile_stacks( pars ):
     """Collect the stacks of input files and make sure all are consistent.
     """
@@ -2897,6 +2944,155 @@ def build_infile_stacks( pars ):
     infiles = list(zip( evt_files, fov_files, asp_files, msk_files, bad_files, dtf_files ))
     return infiles
 
+
+def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
+    """
+    Allow the user to write a plugin that can be run after all the 
+    other processing is complete and to collect those results with
+    in the output .flux file.    
+    """
+
+    import importlib
+    list_of_values = []
+    plugin_values = {}
+
+    def _check_vals(vals, list_of_values, plugin_values):
+        """
+        Check the values -- make sure each source (ie output row)
+        has the same values.
+        """
+
+        import re
+        retval = True
+        has_vals = []
+
+        for v in vals:            
+
+            # Check that value has require attributes
+            for k in ["name", "units", "value", "description"]:
+                if not hasattr(v, k):
+                    verb0(f"WARNING: User plugin failed to return a '{k}' property")
+                    retval = False
+                    continue
+
+            # Check if multiple values have the same name
+            if v.name in has_vals:
+                verb0(f"WARNING: User plugin failed. It has multiple values with the same name: {v.name}")
+                retval = False
+                continue
+            has_vals.append(v.name)
+
+            # Check for valid name (FITS standard)
+            if re.match("^[A-Za-z0-9][A-Za-z0-9_\-]*$", v.name) is None:
+                verb0(f"WARNING: User plugin failed with an invalid column name '{v.name}'. Only letter, number, dash, and underscore are allowed. Must start with a letter or number.")
+                retval = False
+                continue
+
+            # Save the list of column properties and store the values
+            if v.name not in plugin_values:
+                plugin_values[v.name] = {'units': v.units,
+                                         'desc': v.description,
+                                         'vals': [v.value,]}
+            else:
+                plugin_values[v.name]["vals"].append(v.value)
+            
+        # Keep a list of values so that we can easily check all sources
+        # return the same set of values.
+        if len(list_of_values) == 0:
+            for v in has_vals:
+                list_of_values.append(v)
+        else:
+            if set(has_vals) != set(list_of_values):
+                missing = set(has_vals).symmetric_difference(set(list_of_values))
+                verb0("WARNING: User plugin failed to return the same list of properties for all values. Missing: {missing}")
+                retval = False
+
+        return retval
+
+
+    def write_plugin_values(outfile, list_of_values, plugin_values):
+        """
+        Save the plugin values to the output .flux file
+        """
+
+        from pycrates import CrateData, add_col
+        intab = read_file(outfile, mode="rw")
+        
+        for newcol in list_of_values:
+            _col = CrateData()
+            _col.name = newcol
+            _col.unit = plugin_values[newcol]["units"]
+            _col.desc = plugin_values[newcol]["desc"]
+            _col.values = plugin_values[newcol]["vals"]
+            add_col(intab, _col)
+            
+        intab.write()
+
+    if myparams.pluginfile == "" or myparams.pluginfile.lower() == "none":
+        return
+
+    # Locate the plugin, add dirname to python path or cwd if no dir        
+    try:
+        pdir = os.path.dirname(myparams.pluginfile)
+        if pdir == "":
+            pdir = os.getcwd()
+        sys.path.append(pdir)
+        pfile = os.path.basename(myparams.pluginfile)
+        plugin = importlib.import_module(pfile.strip(".py"))
+    except ModuleNotFoundError as not_found:
+        verb0(str(not_found))
+        verb0("WARNING: Cannot locate user plugin module")
+        return
+
+    # The plugin is required to have this specific method defined:
+    if not hasattr(plugin, plugin_name):
+        verb0(f"WARNING: User plugin does not have the '{plugin_name}' method")
+        return
+
+    plugin_cmd = getattr(plugin, plugin_name)
+
+    verb1(f"Running user plugin from '{myparams.pluginfile}'")
+
+    # Setup output root name and get energy band name
+    myroot = get_root( myparams, at_energy )
+
+    if at_energy in ['broad', 'soft', 'medium', 'hard', 'wide', 'ultrasoft']:
+        band = at_energy
+    else:
+        band = "-".join(at_energy.split(":")[0:2])
+
+    efilt = map_energy_to_filter(at_energy)
+    if efilt is None:
+        elo = None
+        ehi = None
+    else:
+        _vals = efilt.split("=")[1]
+        elo,ehi = [float(x) for x in _vals.split(":")]
+
+    # Get the number of sources    
+    intab = read_file( myroot+__osuf__, mode="r")
+    src_cts = intab.get_column("component").values
+    del intab
+
+    if stk_params is None:
+        infiles = myparams.infile
+    else:
+        infiles = [s.infile for s in stk_params]
+
+    # Loop over sources.  Not running in parallel 
+    # right now.
+    for ii in range( len(src_cts) ):
+        outroot = myparams.outroot+"{:04d}".format(ii+1)
+            
+        vals = plugin_cmd(infiles, outroot, band, elo, ehi, ii+1)
+
+        if _check_vals(vals, list_of_values, plugin_values) == False:
+            verb0("WARNING: User plugin failed.")
+            return
+
+    write_plugin_values(myroot+__osuf__, list_of_values, plugin_values)
+
+    
 
 def process_single_obi( myparams, pars ):
     """
@@ -2928,6 +3124,9 @@ def process_single_obi( myparams, pars ):
         add_modelflux_to_output( myparams, at_energy, mfluxfiles )
         scale_modelflux_fluxes( myparams, at_energy )
         add_variability_to_output( myparams, at_energy, lcfiles)
+        
+        run_user_plugin(myparams, at_energy, "srcflux_obsid_plugin")
+        
         cleanup_outfile( myparams, pars, at_energy )
 
 
@@ -3012,6 +3211,10 @@ def main():
     merged_fluxes = merge_counts( stk_pars, myparams)
     modelflux_vals = merge_modelflux( stk_pars, myparams )
     merge_write_output( stk_pars, myparams, modelflux_vals, merged_fluxes)
+    
+    for at_band in stk.build( myparams.bands):
+        run_user_plugin(myparams, at_band, "srcflux_merge_plugin", stk_params=stk_pars)
+
 
     for ii,ss in enumerate(stk_pars):
         summarize_results( ss, obi=ii, single=False )
