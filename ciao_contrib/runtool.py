@@ -3598,6 +3598,13 @@ parinfo['sso_freeze'] = {
     }
 
 
+parinfo['statmap'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input event file",None),ParValue("mapfile","f","Input map file",None),ParValue("outfile","f","Output file name",None)],
+    'opt': [ParValue("column","s","Column name to compute statistics",'energy'),ParSet("statistic","s","Which statistic to compute?",'median',["median","mean","min","max","sum","count"]),ParValue("xcolumn","s","Column to use for the X-coordinate",'x'),ParValue("ycolumn","s","Column to use for the Y-coordinate",'y'),ParValue("clobber","b","Remove output file if it already exists?",False),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
+    }
+
+
 parinfo['stk_build'] = {
     'istool': True,
     'req': [ParValue("infile","f","Stack to expand",None),ParValue("outfile","f","Output file name",None)],
