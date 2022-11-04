@@ -1,0 +1,304 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY context="tools::region" key="bkg_fixed_counts" 
+        refkeywords="region background counts snr constant exclude source" 
+        seealsogroups="regiontools">
+    <SYNOPSIS>
+        Create a background region with a fixed number of counts
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+            'bkg_fixed_counts' will create a annular background region at each
+            input source position that encloses a minimum number of counts.
+            The inner annulus radius is determined from the size of the PSF
+            at that location, which encloses the inner_ecf fraction of the PSF
+            at the specified value of energy.  Users can specify a 
+            maximum radius to keep the background region from becoming
+            too large (and thus possibly becoming non-representative
+            of the source region).
+        </PARA>
+        <PARA>
+            The background excludes other overlapping inner_ecf regions. 
+            If the src_region's are specified, the background regions will
+            also exclude those source regions.
+        </PARA>
+        <PARA>
+          The background is also bound by the input fovfile which
+          is needed if any of the regions intersect the edge of the detector.
+        </PARA>
+        <PARA>
+          The output will be one file for each input source position.  The
+          output will be a FITS region file (in physical coords, as all FITS region files are).
+          The output file names will look like ${outroot}_i${src_number}_bkg.reg, where
+          outroot is the user supplied output root file name, and src_number is the 
+          source number matching the input positions (going from 1 to N,
+          where N is the number of positions).
+        </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>% bkg_fixed_counts infile=acis_evt.fits outroot=my_catalog pos=my_catalog.fits min_counts=100
+          </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            This will create annular background regions centered at each RA and Dec 
+            position from the input table: my_catalog.fits.  Each 
+            background region will include 100 counts (as determined from
+            the input event file: acis_evt.fits), and will be written out
+            into individual FITS region files my_catalog_${n}_bkg.reg;
+            where ${n} is the row number in the input catalog.
+            The inner radius of the annulus will be computed as
+            as the radius of a circle that encloses 95% of PSF at 1.0keV (default parameters).
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>% bkg_fixed_counts infile=acis_evt.fits"[energy=500:7000]" outroot=my_catalog pos=my_catalog.fits min_counts=100
+          </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+              Same as the previous example, but only consider events in the 
+              energy range from 500 to 7000 eV.              
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>% bkg_fixed_counts infile=acis_evt.fits outroot=my_catalog pos=my_catalog.fits min_counts=100 \
+            </LINE><LINE>
+              energy=2.0 inner_ecf=0.98 max_radius=128
+          </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            Same as Example 1, but the inner radius will be the size of the PSF
+            at 2.0keV that encloses 98% of the PSF.  Also, there is an 128 pixel outer
+            radius threshold applied; that is the maximum radius allowed, meaning 
+            that there may be some regions with fewer than 100 counts.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>% bkg_fixed_counts infile=acis_evt.fits outroot=my_catalog pos=my_catalog.fits min_counts=100 \
+          </LINE>
+          <LINE>
+              src_region=@my_catalog_src.lis 
+            </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>where the input stack: my_catalog_src.lis looks like
+          </PARA>
+<VERBATIM>
+% cat my_catalog_src.lis
+my_catalog_i0001_src.reg
+my_catalog_i0002_src.reg
+my_catalog_i0003_src.reg
+my_catalog_i0004_src.reg
+</VERBATIM>
+
+<PARA>
+This is similar to Example 1, but now a stack of source region files has been provided.
+These source regions will also be excluded from the background regions, in addition to the
+inner 95% ECF region.
+</PARA>
+
+
+        </DESC>
+      </QEXAMPLE>
+
+
+    </QEXAMPLELIST>
+
+
+    <PARAMLIST>
+      <PARAM filetype="input" name="infile" reqd="yes" type="file">
+        <SYNOPSIS>
+          The input event file.
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            The input event file is used to determine the number
+            of counts in the background region.  Users can filter
+            the background event file if they wish to only consider
+            events in certain energy bands.
+            </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM filetype="output" name="outroot" reqd="yes" type="file">
+        <SYNOPSIS>
+            The root of the output file names
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            If the output root contains a directory, then that directory
+            must already exist.
+            </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM filetype="input" name="pos" reqd="yes" type="file">
+        <SYNOPSIS>
+            Input position.  
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+            The input position can either be a pair of celestial coordinates
+            or can be a table with RA and DEC values (in decimal degrees).            
+            </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM  name="min_counts" type="integer" def="10" reqd="yes">
+        <SYNOPSIS>
+          The target minimum number of counts in the background region
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+                The minimum number of counts may not be met if the 
+                user specifies a value for the max_radius parameter.                
+            </PARA>
+            <PARA>
+                The user may also see small differences in the
+                number of background counts when filtering an image
+                vs filtering an event file.            
+            </PARA>
+            
+        </DESC>
+      </PARAM>
+
+      <PARAM name="src_region" type="file" filetype="input" stacks="yes">
+        <SYNOPSIS>
+            A stack of source regions to exclude.
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+                In addition to excluding the inner ECF PSF fraction radius,
+                users can exclude source regions from the background.
+            </PARA>
+            <PARA>
+              The input stack can also contain other regions that the
+              users wishes to exclude such as for the readout streak.
+            </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="fovfile" type="file" filetype="input">
+        <SYNOPSIS>
+            Field-of-view file name
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+                The background regions will be intersected with the 
+                FOV region if supplied.  It is necessary to include the FOV 
+                when the background regions intersect the edge of the detector to ensure 
+                that the area of the region can be computed correctly.  
+                Otherwise the FOV file does not affect how the background
+                region is created.
+            </PARA>
+        </DESC>
+      </PARAM>
+
+
+
+
+      <PARAM name="max_radius" def="INDEF" type="real" units="pixels">
+        <SYNOPSIS>
+            The maximum allowed outer radius, in pixels.
+        </SYNOPSIS>
+        <DESC>
+            <PARA>
+                The background region should be located close to
+                the source region.  However, for low count observations
+                the background radius needed to obtain the requested
+                number of background counts may grow very large.  If this
+                parameter is set, then it will limit the outer radius size
+                to this value.
+            </PARA>
+            <PARA>Setting this parameter to 'INDEF' removes any
+            limit on the background radius.</PARA>
+
+        </DESC>
+      </PARAM>
+
+      <PARAM name="inner_ecf" def="0.95" min="0.9" max="0.99" type="real">
+        <SYNOPSIS>
+            The PSF ECF size to use for the inner annulus radius.
+        </SYNOPSIS>
+        <DESC>
+        <PARA>
+            The background region is an annulus located at the source
+            position.  The inner radius is obtained by finding the
+            size of the PSF at that location which encloses this fraction
+            of the PSF at the specified energy.  The outer radius then
+            is computed to enclose the specified minimum number of counts.
+        </PARA>
+        </DESC>
+
+      </PARAM>
+
+      <PARAM name="energy" def="1.0" min="0.3" max="10.0" type="real" units="keV">
+        <SYNOPSIS>
+            The energy used for the PSF size lookup, in units of keV.
+        </SYNOPSIS>
+      </PARAM>    
+
+    <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+       <SYNOPSIS>
+        Amount of tool chatter level.
+       </SYNOPSIS>
+     </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>
+            Overwrite output files if they already exist?
+        </SYNOPSIS>
+      </PARAM>
+
+    </PARAMLIST>
+
+
+    <ADESC title="Relation to acis_extract">
+      <PARA>
+        This script is inspired by the acis_extract tool developed by the
+        ACIS IPI team at PSU.  
+      </PARA>
+    </ADESC>
+
+
+   <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+    
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/psf_contour.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>December 2022</LASTMODIFIED>
+
+
+  </ENTRY>
+</cxchelptopics>
