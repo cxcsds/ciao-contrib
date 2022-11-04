@@ -2646,10 +2646,17 @@ parinfo['axbary'] = {
     }
 
 
+parinfo['bkg_fixed_counts'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input event file",None),ParValue("outroot","f","Output filename root",None),ParValue("pos","f","Input position or file with RA and Dec columns",None),ParRange("min_counts","i","Minimum number of counts in background region",10,0,None)],
+    'opt': [ParValue("src_region","f","Input stack of source region files",None),ParValue("fovfile","f","Input field-of-view file",None),ParValue("max_radius","r","Maximum background radius, None=unrestricted",None),ParRange("inner_ecf","r","PSF ECF for inner annulus radius (pixels)",0.95,0.9,0.99),ParRange("energy","r","Energy to simulate the PSF (kev)",1.0,0.3,10),ParRange("verbose","i","Amount of tool chatter",1,0,5),ParValue("clobber","b","Overwrite output files if they already exist?",False)],
+    }
+
+
 parinfo['blanksky'] = {
     'istool': True,
     'req': [ParValue("evtfile","f","Source event file",None),ParValue("outfile","f","Output directory path + file name for output files",None)],
-    'opt': [ParValue("asolfile","f","Source aspect solution file(s)",None),ParSet("weight_method","s","Method to calculate background scale factor",'particle',["particle","time","particle-rate"]),ParValue("bkgparams","s","Optional argument for background scaling, default is [pi=300:500] for HRC and [energy=9000:12000] for ACIS",'default'),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParRange("random","i","Random seed, 0=clock time",0,0,None),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
+    'opt': [ParValue("asolfile","f","Source aspect solution file(s)",None),ParValue("stowedbg","b","Use ACIS stowed background files?",False),ParSet("weight_method","s","Method to calculate background scale factor",'particle',["particle","time","particle-rate"]),ParValue("bkgparams","s","Optional argument for background scaling, default is [pi=300:500] for HRC and [energy=9000:12000] for ACIS",'default'),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParRange("random","i","Random seed, 0=clock time",0,0,None),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
     }
 
 
@@ -2914,8 +2921,8 @@ parinfo['dmimgdist'] = {
 
 parinfo['dmimgfilt'] = {
     'istool': True,
-    'req': [ParValue("infile","f","Input image file name",None),ParValue("outfile","f","Output file name",None),ParSet("function","s","Filter function",'mean',["min","max","mean","median","mode","mid","sigma","extreme","locheq","kuwahara","unsharp","range","variance","nmode","q25","q33","q67","q75","mcv","sum","rclip","peak","valley","count","olympic","pmean","mu3","mu4","jitter","rms","nslope","3sigmean","3sigmedian"]),ParValue("mask","s","masking filter",None)],
-    'opt': [ParRange("numiter","i","Number of iterations to loop over",1,1,None),ParValue("lookupTab","f","lookup table",'${ASCDS_CALIB}/dmmerge_header_lookup.txt'),ParRange("verbose","i","Tool verbosity",0,0,5),ParValue("clobber","b","Clobber existing output?",False),ParValue("box3","s","Box: 3x3",'box(0,0,3,3)'),ParValue("box5","s","Box: 5x5",'box(0,0,5,5)'),ParValue("box7","s","Box: 7x7",'box(0,0,7,7)'),ParValue("circle3","s","Circle: r=3",'circle(0,0,3)'),ParValue("circle5","s","Circle: r=5",'circle(0,0,5)'),ParValue("circle7","s","Circle: r=7",'circle(0,0,7)'),ParValue("annulus5_3","s","Annulus: o=5,i=3",'annulus(0,0,3,5)'),ParValue("annulus7_5","s","Annulus: o=7,i=5",'annulus(0,0,5,7)'),ParValue("annulus7_3","s","Annulus: o=7,i=3",'annulus(0,0,3,7)'),ParValue("bann5_3","s","Box Annulus: o=5,i=3",'box(0,0,5,5)-box(0,0,3,3)'),ParValue("bann7_3","s","Box Annulus: o=7,i=3",'box(0,0,7,7)-box(0,0,3,3)'),ParValue("bann7_5","s","Box Annulus: o=7,i=5",'box(0,0,7,7)-box(0,0,5,5)')],
+    'req': [ParValue("infile","f","Input image file name",None),ParValue("outfile","f","Output file name",None),ParSet("function","s","Filter function",'mean',["min","max","mean","median","mode","mid","sigma","extreme","locheq","kuwahara","unsharp","range","variance","nmode","q10","q25","q33","q67","q75","q90","qxx","mcv","sum","rclip","peak","ridge","valley","plain","count","olympic","pmean","mu3","mu4","jitter","rms","nslope","3sigmean","3sigmedian"]),ParValue("mask","s","masking filter",None)],
+    'opt': [ParRange("numiter","i","Number of iterations to loop over",1,1,None),ParValue("lookupTab","f","lookup table",'${ASCDS_CALIB}/dmmerge_header_lookup.txt'),ParRange("randseed","i","Seed for random seed generator",0,0,65535),ParRange("verbose","i","Tool verbosity",0,0,5),ParValue("clobber","b","Clobber existing output?",False),ParValue("box3","s","Box: 3x3",'box(0,0,3,3)'),ParValue("box5","s","Box: 5x5",'box(0,0,5,5)'),ParValue("box7","s","Box: 7x7",'box(0,0,7,7)'),ParValue("circle3","s","Circle: r=3",'circle(0,0,3)'),ParValue("circle5","s","Circle: r=5",'circle(0,0,5)'),ParValue("circle7","s","Circle: r=7",'circle(0,0,7)'),ParValue("annulus5_3","s","Annulus: o=5,i=3",'annulus(0,0,3,5)'),ParValue("annulus7_5","s","Annulus: o=7,i=5",'annulus(0,0,5,7)'),ParValue("annulus7_3","s","Annulus: o=7,i=3",'annulus(0,0,3,7)'),ParValue("bann5_3","s","Box Annulus: o=5,i=3",'box(0,0,5,5)-box(0,0,3,3)'),ParValue("bann7_3","s","Box Annulus: o=7,i=3",'box(0,0,7,7)-box(0,0,3,3)'),ParValue("bann7_5","s","Box Annulus: o=7,i=5",'box(0,0,7,7)-box(0,0,5,5)')],
     }
 
 
@@ -3413,6 +3420,13 @@ parinfo['pileup_map'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input counts image",None),ParValue("outfile","f","Output pileup image",None)],
     'opt': [ParValue("clobber","b","Remove existing output?",False),ParRange("verbose","i","Tool chatter",0,0,5)],
+    }
+
+
+parinfo['psf_contour'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input event file or image",None),ParValue("outroot","f","Output directory and root filename",None),ParValue("pos","s","Position: coordinate or input file with columns RA and DEC",None)],
+    'opt': [ParSet("method","s","Region creating algorithm",'contour',["contour","lasso","fitted_ellipse","ecf_ellipse","convex_hull"]),ParRange("energy","r","Monochromatic energy to simulate PSF",1.0,0.3,10.0),ParRange("fraction","r","Target fraction of the PSF to include",0.9,0.6,0.95),ParRange("tolerance","r","Tolerance on fraction",0.01,0.0001,0.1),ParRange("flux","r","Photon flux to simulate",0.01,0.0000001,0.01),ParValue("fovfile","f","Input field of view file",None),ParValue("random_seed","i","PSF random seed, -1: current time",-1),ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use (None:use all available)",None),ParRange("verbose","i","Amount of tool chatter",1,0,5),ParValue("clobber","b","Delete output file if it already exists?",False)],
     }
 
 
