@@ -1,7 +1,7 @@
 """
 Create the CIAO contributed package. Options include:
 
-  --version=4.14.0
+  --version=4.15.0
 
 """
 
@@ -26,7 +26,7 @@ def list_files(pattern):
     return sorted(files)
 
 
-VERSION = "4.14.0"
+VERSION = "4.15.0"
 for val in sys.argv:
     if val.startswith("--version="):
         VERSION = val.split("=")[1]
