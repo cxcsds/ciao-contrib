@@ -12,15 +12,14 @@
       <PARA>
         The aplimits tool estimates the upper limit for a detection. This is a
         property of the detection process and depends on the values chosen for
-        two error conditions called the type I and type II error. The type I
-        error describes the maximum probability of a false detection (false
+        two error conditions: First, the maximum probability of a false detection (false
         positive), i.e. that a background fluctuation alone exceeds the
-        calculated upper limit. The type II error describes the probability that
+        calculated upper limit, and second the probability that
         a source with a flux of exactly the upper limit will be missed (false
         negative), because Poisson fluctuation of background and source counts
         lead to an observed count rate that is below the detection limit. The
         value of the upper limit depends only on the background rate and the
-        probabilities chosen for the type I and II errors, not on the observed
+        probabilities chosen for the two errors, not on the observed
         number of counts in the source region. All input is obtained from the
         input parameter file; output is written to an output parameter file.
       </PARA>
@@ -44,7 +43,7 @@
         functional form for the posterior is the same as for aprates.
       </PARA>
       <PARA>
-        This tool is based on the following published article:
+        This tool is based on the following article:
         <HREF link="https://ui.adsabs.harvard.edu/abs/2010ApJ...719..900K">On computing upper limits to source intensities</HREF>
         (Kashyap et al. 2010, ApJ, 719, 900).
       </PARA>
@@ -126,7 +125,7 @@
     <QEXAMPLELIST>
       <QEXAMPLE>
         <SYNTAX>
-          <LINE>unix% aplimits typeIerror=.1 typeIIerror=.5 bkg_rate=1.23</LINE>
+          <LINE>unix% aplimits prob_false_detection=.1 prob_missed_detection=.5 bkg_rate=1.23</LINE>
           <LINE>unix% pget aplimits_out.par upper_limit</LINE>
           <LINE>2.44206</LINE>
           <LINE>unix% pget aplimits_out.par min_counts_detect</LINE>
@@ -149,7 +148,7 @@
 
       <QEXAMPLE>
         <SYNTAX>
-          <LINE>unix% aplimits typeIerror=.1 typeIIerror=.5 bkg_rate=INDEF m=5 A_b=4.065</LINE>
+          <LINE>unix% aplimits prob_false_detection=.1 prob_missed_detection=.5 bkg_rate=INDEF m=5 A_b=4.065</LINE>
           <LINE>unix% pget aplimits_out.par upper_limit</LINE>
           <LINE>2.2316</LINE>
         </SYNTAX>
@@ -172,10 +171,10 @@
 
       <QEXAMPLE>
         <SYNTAX>
-          <LINE>unix% aplimits typeIerror=.05 typeIIerror=.5 bkg_rate=0.34 A_b=1 T_b=1</LINE>
+          <LINE>unix% aplimits prob_false_detection=.05 prob_missed_detection=.5 bkg_rate=0.34 A_b=1 T_b=1</LINE>
           <LINE>unix% pget aplimits_out.par upper_limit</LINE>
           <LINE>1.338348388671875</LINE>
-          <LINE>unix% aplimits typeIerror=.05 typeIIerror=.5 bkg_rate=0.34 A_b=10 T_b=23 clobber+</LINE>
+          <LINE>unix% aplimits prob_false_detection=.05 prob_missed_detection=.5 bkg_rate=0.34 A_b=10 T_b=23 clobber+</LINE>
           <LINE>unix% pget aplimits_out.par upper_limit</LINE>
           <LINE>1.338348388671875</LINE>
         </SYNTAX>
@@ -190,7 +189,7 @@
     </QEXAMPLELIST>
 
     <PARAMLIST>
-      <PARAM name="typeIerror" type="real" min="0" max="1" def="0.1" reqd="yes">
+      <PARAM name="prob_false_detection" type="real" min="0" max="1" def="0.1" reqd="yes">
         <SYNOPSIS>
 	        Upper limit for the probability of a false detection
 	      </SYNOPSIS>
@@ -201,7 +200,7 @@
 	        </PARA>
         </DESC>
       </PARAM>
-      <PARAM name="typeIIerror" type="real" min="0" max="1" def="0.5" reqd="yes">
+      <PARAM name="prob_missed_detection" type="real" min="0" max="1" def="0.5" reqd="yes">
         <SYNOPSIS>
 	        Probability of detecting a source with a flux equal to the upper limit
 	      </SYNOPSIS>
