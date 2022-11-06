@@ -975,6 +975,15 @@ get_xsversion()
 #
 '''
 
+    # Fix an error in Sherpa 4.15.0 and earlier.
+    # - replace "{t2}" by "        "
+    #
+    import re
+    conv = re.subn(r"\{t2\}", "        ", pycode)
+    if conv[1] > 0:
+        pycode = conv[0]
+        v2(f"NOTE: had to correct the python code {conv[1]} times")
+
     out += pycode
 
     save(outfile, out)
