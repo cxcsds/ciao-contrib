@@ -243,7 +243,7 @@ class APLimitsMarginalize(APLimits):
         We need to integrate over ``lamb`` from 0 to inf.
         The easiest way to implement that is to pass this to a
         numerical library with adaptive bin size.
-        However, we don't have such a library available at te Python level.
+        However, we don't have such a library available at the Python level.
         So, choice is to use ctypes to get numerical integration functions from
         the GSL, or to implement a simple integration here by hand.
         Fortunately, we know a lot about te shape of the function to be integrated.
@@ -265,11 +265,21 @@ class APLimitsMarginalize(APLimits):
         # It's asymmetric because the function is for small numbers.
         # choice of 10, 20 and 100 points is made by looking at functions
         # plotted for typical values.
-
         x = np.linspace(max(0, loc_peak - 10 * width), loc_peak + 20 * width, 100)
-
-        # igam does not accept numpy arrays, so need to call one by one an put in list
-        return np.trapz([self.integrant(xp, lams, sstar) for xp in x], x)
+        # For very small backgrounds, loc_peak << width
+        # In that case, we have to make sure that the region around the peak is well
+        # sampled. Without the following added points, the peak can be missed and thus
+        # the integrated value is close to 0.
+        # Note: Even in an alternative implementation that uses quad from scipy.optimize
+        #       it is still necessary to ensure that that region is sampled well.
+        if loc_peak < 3 * width:
+            # Region around peak not well sampled by np.linspace. Add points.
+            x_around_peak = np.linspace(0, 20 * loc_peak, 100)
+            x = np.concatenate([x, x_around_peak])
+            x.sort()
+        # igam does not accept numpy arrays, so need to call one by one and put in list
+        y = [self.integrant(xp, lams, sstar) for xp in x]
+        return np.trapz(y, x)
 
     def find_sstar(self, alpha):
         i = 0
