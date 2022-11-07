@@ -404,7 +404,7 @@ def correct_arf(full_outroot, infile, evt_filename, orig_arf,
 
 
 
-def determine_rmf_tool(infile,rmffile):
+def determine_rmf_tool(infile,rmffile,evtfile):
     """
     Decide whether to run mkrmf or mkacisrmf, return the name of the tool to run.
     """
@@ -991,7 +991,7 @@ def resp_setup(args,asphist):
         else:
             tdetwmap = None
 
-        if all([weight_rmf == "no",rmftool == "mkrmf"]) and any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
+        if weight_rmf == "no" and any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
             acis_fef_lookup.punlearn()
 
             acis_fef_lookup.infile = evt_filename
@@ -1139,7 +1139,8 @@ def build_acis_rmf(args):
 
     null_rmffile = args["null_rmffile"]
     rmffile_ccd = args["rmffile_ccd"]
-
+    rmftool = args["rmftool"]
+    
     dobpix = args["dobpix"]
     dobkgresp = args["dobkgresp"]
     wmap_clip = args["wmap_clip"]
@@ -1174,8 +1175,6 @@ def build_acis_rmf(args):
         if null_rmffile:
             v1(f"WARNING: Setting rmffile parameter (and calquiz calfile) to '{rmffile_ccd}'.\n")
 
-        rmftool = determine_rmf_tool(phafile,rmffile_ccd)
-
         try:
             if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
                 if all([weight == "yes",weight_rmf == "yes"]):
@@ -1189,6 +1188,7 @@ def build_acis_rmf(args):
                                             ebin,rmfbin,clobber,verbose,phafile,feffile,
                                             ccd_id,chipx,chipy,infostr)
 
+        except OSError as exc:
             raise IOError(f"Failed to create RMF for {fullfile}") from exc
 
     if srcbkg == "bkg" and not dobkgresp:
@@ -1498,7 +1498,7 @@ def resps(args):
                     asphist = None
 
         if instrument == "ACIS":
-            rmftool = determine_rmf_tool(phafile,rmffile_ccd)
+            rmftool = determine_rmf_tool(phafile,rmffile_ccd,filename.split("/")[-1])
                    
             tdetwmap, fef_file = resp_setup(args,asphist)
 
