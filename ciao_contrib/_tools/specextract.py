@@ -45,7 +45,7 @@ from multiprocessing import cpu_count
 
 toolname = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "04 February 2022"
+__revision__ = "October 27 2022"
 
 # Set up the logging/verbose code
 initialize_logger(toolname)
@@ -778,9 +778,8 @@ class ParDicts(object):
 
 
     def check_fp_temp(self,kwdict,inf,ebin):
-
         """
-        check focal plane temperature, if >-110C, then check FEF energy range.        
+        check focal plane temperature, if >-109C prior to 2000-01-29T20:00:00 (Chandra Time: 65563201), then check FEF energy range for mkrmf
         """
 
         #####################################################################################
@@ -794,16 +793,19 @@ class ParDicts(object):
         
         v3("Checking detector focal plane temperature\n")
 
+        mkrmf_tstop = 65563201
+        
         fp_temp = kwdict["FP_TEMP"] - 273.15 # convert from Kelvin to Celsius
-
-        if fp_temp > -110:
+        tstart = kwdict["TSTART"]
+        
+        if fp_temp > -109 and tstart < mkrmf_tstop:
             v3("Checking FEF energy range for warm observation")
 
             with new_pfiles_environment(ardlib=False,copyuser=False):
                 acis_fef_lookup.punlearn()
                 acis_fef_lookup.infile = inf
                 acis_fef_lookup.chipid = "none"
-                acis_fef_lookup.verbose = "0"
+                acis_fef_lookup.verbose = 0
 
                 try:
                     acis_fef_lookup()
@@ -825,7 +827,7 @@ class ParDicts(object):
             fef_estat = (float(ebin_min) >= fef_emin, float(ebin_max) <= fef_emax)
 
             if fef_estat != (True,True):
-                raise ValueError(f"ObsID {kwdict['OBS_ID']} was made at a warm focal plane temperature, >-110C.  The available calibration products are valid for an energy range of {fef_emin:.3f}-{fef_emax:.3f} keV while the 'energy' parameter has been set to {ebin_min}-{ebin_max} keV (energy={ebin})") # the ":.3f" in the format prints up to three decimal places of the float
+                raise ValueError(f"ObsID {kwdict['OBS_ID']} was made at a warm focal plane temperature, >-109C before 2000-01-29T20:00:00.  The available calibration products are valid for an energy range of {fef_emin:.3f}-{fef_emax:.3f} keV while the 'energy' parameter has been set to {ebin_min}-{ebin_max} keV (energy={ebin})") # the ":.3f" in the format prints up to three decimal places of the float
 
 
     def _check_merged_input(self,kwdict,toolname):

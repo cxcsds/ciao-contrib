@@ -34,7 +34,7 @@ Script:
 __version__ = "CIAO 4.14"
 
 toolname = "specextract"
-__revision__ = "10 February 2022"
+__revision__ = "27 October 2022"
 
 
 ##########################################################################
@@ -404,7 +404,7 @@ def correct_arf(full_outroot, infile, evt_filename, orig_arf,
 
 
 
-def determine_rmf_tool(infile,rmffile):
+def determine_rmf_tool(infile,rmffile,evtfile):
     """
     Decide whether to run mkrmf or mkacisrmf, return the name of the tool to run.
     """
@@ -418,7 +418,7 @@ def determine_rmf_tool(infile,rmffile):
     if len(calresult) == 0:
         v1("Cannot use mkacisrmf because no P2_RESP files were found.\n")
 
-        v1(f"Please reprocess {infile} with acis_process_events if you wish to use mkacisrmf, unless the focal plane temperature is greater than -110C and the observation is taken in graded-mode or the extraction region is on a front-illuminated CCD.\n")
+        v1(f"{infile}: Please reprocess {evtfile} with acis_process_events if you wish to use mkacisrmf, unless the focal plane temperature is greater than -109C and the observation is taken in graded-mode or the extraction region is on a front-illuminated CCD.\n")
 
         v1("Using mkrmf...\n")
 
@@ -1085,8 +1085,6 @@ def build_acis_arf(args):
                                                       da,msk,
                                                       tdetwmap,tmpdir,infostr)
                 weightfile.close()
-                
-                add_history_scriptver(ancrfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
             if all([srcbkg == "src", weight == "no"]):
                 try:
@@ -1094,8 +1092,6 @@ def build_acis_arf(args):
                                              asphist,ebin,clobber,verbose,
                                              da,msk,
                                              ccd_id,skyx,skyy,infostr)
-
-                    add_history_scriptver(ancrfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
                     
                 except OSError as exc:
                     raise IOError(f"Failed to create ARF for {fullfile}") from exc
@@ -1143,7 +1139,8 @@ def build_acis_rmf(args):
 
     null_rmffile = args["null_rmffile"]
     rmffile_ccd = args["rmffile_ccd"]
-
+    rmftool = args["rmftool"]
+    
     dobpix = args["dobpix"]
     dobkgresp = args["dobkgresp"]
     wmap_clip = args["wmap_clip"]
@@ -1178,8 +1175,6 @@ def build_acis_rmf(args):
         if null_rmffile:
             v1(f"WARNING: Setting rmffile parameter (and calquiz calfile) to '{rmffile_ccd}'.\n")
 
-        rmftool = determine_rmf_tool(phafile,rmffile_ccd)
-
         try:
             if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
                 if all([weight == "yes",weight_rmf == "yes"]):
@@ -1192,8 +1187,6 @@ def build_acis_rmf(args):
                     respfile = build_rmf_ps(rmftool,filename,fullfile,ptype,full_outroot,
                                             ebin,rmfbin,clobber,verbose,phafile,feffile,
                                             ccd_id,chipx,chipy,infostr)
-
-                add_history_scriptver(respfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
         except OSError as exc:
             raise IOError(f"Failed to create RMF for {fullfile}") from exc
@@ -1498,8 +1491,6 @@ def resps(args):
                                                        dtf,instrument,chip_id,
                                                        verbose,clobber,tmpdir)
 
-                    add_history_scriptver(asphist,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
-
                 except OSError as exc:
                     if dobkgresp:
                         raise IOError(f"Failed to create aspect histogram file for {fullfile}") from exc
@@ -1507,7 +1498,7 @@ def resps(args):
                     asphist = None
 
         if instrument == "ACIS":
-            rmftool = determine_rmf_tool(phafile,rmffile_ccd)
+            rmftool = determine_rmf_tool(phafile,rmffile_ccd,filename.split("/")[-1])
                    
             tdetwmap, fef_file = resp_setup(args,asphist)
 
@@ -1525,8 +1516,6 @@ def resps(args):
                                                           da,msk,
                                                           tdetwmap,tmpdir,infostr)
                     
-                    add_history_scriptver(ancrfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
-
                 except OSError as exc:
                     raise IOError(f"Failed to create ARF for {fullfile}") from exc
 
@@ -1543,8 +1532,6 @@ def resps(args):
                     
                     weightfile.close()
 
-                    add_history_scriptver(respfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
-                        
                 except OSError as exc:
                     raise IOError(f"Failed to create RMF for {fullfile}") from exc
 
@@ -1563,15 +1550,13 @@ def resps(args):
                              {**args, "mkresp" : "RMF", "rmftool" : rmftool, "tdetwmap" : tdw, "feffile" : fef_file}]
 
                 if nproc == 1:
-                    resps = parallel_map(_build_resp,resp_args,numcores=nproc)
-                elif args["key_id_total"] > nproc/2:
-                    resps = parallel_pool(_build_resp,resp_args,ncores=nproc)
+                    resps_build = [_build_resp(arg) for arg in resp_args]
                 else:
-                    resps = parallel_map(_build_resp,resp_args,numcores=nproc)
+                    resps_build = parallel_map(_build_resp,resp_args,numcores=nproc)
 
-                resps = {k:v for resp in resps for k,v in resp.items()}
-                ancrfile = resps["ARF"]
-                respfile = resps["RMF"]
+                resps_dict = {k:v for resp in resps_build for k,v in resp.items()}
+                ancrfile = resps_dict["ARF"]
+                respfile = resps_dict["RMF"]
 
         else:
             ##########################################
@@ -1586,10 +1571,6 @@ def resps(args):
                 ancrfile, respfile = create_hrc_resp(phafile,rmffile,refcoord,full_outroot,
                                                      asphist,clobber,verbose,msk,
                                                      skyx,skyy,instrument,chip_id,infostr)
-
-                add_history_scriptver(ancrfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
-
-                add_history_scriptver(respfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
 
                 if all([srcbkg == "src",correct == "yes"]):
                     try:
@@ -1704,11 +1685,17 @@ def groupspec(args):
 
 def add_history_scriptver(fn,toolname,params,toolversion,modname,modversion):
     add_tool_history(fn, toolname, params, toolversion=toolversion)
-    edit_headers(0, fn, "SCRPTVER", f"{toolname} - {toolversion}")
-    edit_headers(0, fn, "SCRPTMOD", f"{modname} - {modversion}")
-    
-    
-        
+
+    if isinstance(fn,str):
+        edit_headers(0, fn, "SCRPTVER", f"{toolname} - {toolversion}")
+        edit_headers(0, fn, "SCRPTMOD", f"{modname} - {modversion}")
+    else:
+        for f in fn:
+            edit_headers(0, f, "SCRPTVER", f"{toolname} - {toolversion}")
+            edit_headers(0, f, "SCRPTMOD", f"{modname} - {modversion}")
+
+
+            
 def add_header_keys(args):
     key_id = args["key_id"]
     srcbkg = args["srcbkg"]
@@ -1822,13 +1809,7 @@ def add_header_keys(args):
         except Exception:
             v1(f"Failed to update the BACKFILE keyword in {fn}.\n")
 
-
-        add_history_scriptver(phafile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
-
-        if grpfile is not None:
-            add_history_scriptver(grpfile,toolname,pars,toolversion=__revision__,modname=spec.toolname,modversion=spec.__revision__)
-
-            
+           
     
 def coadd(outroot,spec_src_stk,spec_bkg_stk,
           arf_src_stk,arf_bkg_stk,
@@ -1886,8 +1867,57 @@ def coadd(outroot,spec_src_stk,spec_bkg_stk,
                 
         else:
             v1("Output spectra and responses were not combined because spectra and/or responses were not created for every item in the input stack(s) of files.")
-            
 
+
+
+def warm_temperature_warning(fn_iter):
+    """
+    check for later warm temperature observations and
+    throw warning after 2020-07-01T00:00:00 (Chandra Time: 709948806)
+    """
+    
+    warm_tstart = 709948806
+    warm_dict = {}
+    
+    for fn in fn_iter:
+        kw = fileio.get_keys_from_file(f"{fn}[#row=0]")
+
+        tstart = kw["TSTART"]
+        instrument = kw["INSTRUME"]
+        
+        if instrument == "ACIS" and tstart >= warm_tstart:
+            obsid = kw["OBS_ID"]
+            fptemp = kw["FP_TEMP"]
+
+            warm_dict[f"{obsid}"] = fptemp - 273.15
+        
+    if len(warm_dict) > 0:
+        for obsid,fptemp in warm_dict.items():
+            msg = f'''
+Caution:
+
+    The mean ACIS focal plane temperature for ObsID {obsid} is {fptemp:.2f} C which is warmer than the currently calibrated high temperature limit of -109 C (164.15 K). 
+
+    Users fitting ACIS imaging spectra that fulfill all the following three conditions may see line-centroids shifted by 1-2% from systematic offsets due to calibration uncertainty:
+
+    (1) Spectra with more than 1000 counts on a front-illuminated (FI) chip or more 
+        than 2000 counts on a back-illuminated (BI) chip (CCD_ID 5,7).
+
+    (2) More than half of source counts were acquired above the current temperature 
+        limit of -109 C.
+
+    (3) More than half of source counts are in emission or absorption lines.
+
+    Under these conditions, users may benefit from trying to identify time periods when the focal plane temperature was within the currently calibrated range, below -109 C, using the following thread:
+
+    https://cxc.cfa.harvard.edu/ciao/threads/acisfptemp/
+
+where {fptemp:.2f} is the FP_TEMP keyword converted from K to C.
+            '''
+            
+            v0(f"{msg}\n")
+
+    
             
 ##########################################################################
 # 
@@ -2116,7 +2146,12 @@ def run_specextract(args):
     #
     ###########################
 
-    pardict_update_resps = parallelize(resps,[{**d, "key_id_total" : len(specextract_args), "nproc" : nproc} for d in specextract_args])
+    if nproc > 1:
+        nc = nproc/2
+    else:
+        nc = nproc
+        
+    pardict_update_resps = parallelize(resps,[{**d, "key_id_total" : len(specextract_args), "nproc" : int(nc)} for d in specextract_args])   
     specextract_args = update_param_args_and_dict(pardict_update_resps,specdicts,specextract_args,pars)
 
     ###########################
@@ -2127,7 +2162,69 @@ def run_specextract(args):
 
     pardict_update_grp = parallelize(groupspec,specextract_args)
     specextract_args = update_param_args_and_dict(pardict_update_grp,specdicts,specextract_args,pars)
+
+    ###########################
+    #
+    # check output files exist
+    #
+    ###########################
+
+    dobg = specdicts["src1"]["dobg"]
+    dobkgresp = specdicts["src1"]["dobkgresp"]
+    dogroup = specdicts["src1"]["dogroup"]
+    bgdogroup = specdicts["src1"]["bgdogroup"]
     
+    sdvals = specdicts.values()
+
+    src_spec = [d["phafile"] for d in sdvals if d["srcbkg"]=="src"]
+    src_arf = [d["ARF"] for d in sdvals if d["srcbkg"] == "src"]
+    src_rmf = [d["RMF"] for d in sdvals if d["srcbkg"] == "src"]
+
+    if all([weight == "no",correct == "yes"]):
+        src_corrarf = [ancr.replace(".corr.arf",".arf") for ancr in src_arf]
+    else:
+        src_corrarf = None
+        
+    if dogroup:
+        src_grpspec = [d["grpfile"] for d in sdvals if d["srcbkg"]=="src"]
+    else:
+        src_grpspec = None
+        
+    if dobg:
+        bkg_spec = [d["phafile"] for d in sdvals if d["srcbkg"]=="bkg"]
+
+        if dogroup and bgdogroup:
+            bkg_grpspec = [d["grpfile"] for d in sdvals if d["srcbkg"]=="bkg"]
+        else:
+            bkg_grpspec = None
+            
+        if dobkgresp:
+            bkg_arf = [d["ARF"] for d in sdvals if d["srcbkg"]=="bkg"]
+            bkg_rmf = [d["RMF"] for d in sdvals if d["srcbkg"]=="bkg"]
+        else:
+            bkg_arf = None
+            bkg_rmf = None
+    else:
+        bkg_spec = None
+        bkg_grpspec = None
+        bkg_arf = None
+        bkg_rmf = None    
+
+    filecheck = [item for sublist in [fn for fn in [src_spec,src_grpspec,src_arf,src_rmf,src_corrarf,bkg_spec,bkg_grpspec,bkg_arf,bkg_rmf] if fn is not None] for item in sublist]
+
+    for fn in filecheck:
+        if not os.path.isfile(fn):
+            v0(f"WARNING: the output file {fn} failed to be created.\n")
+
+    ################################
+    #
+    # add history to output files
+    #
+    ################################
+            
+    add_history_scriptver(filecheck,toolname,pars,toolversion=__revision__,
+                          modname=spec.toolname,modversion=spec.__revision__)
+
     ###########################
     #
     # update header keywords
@@ -2137,8 +2234,7 @@ def run_specextract(args):
     specextract_args = [{**d , "specdicts" : specdicts} for d in specextract_args]
     #parallelize(add_header_keys,specextract_args)
 
-    ### may be better to run 'add_header_keys' in serial, parallelization prone to race condition error
-    # ## test in serial: 
+    ### may be better to run 'add_header_keys' in serial, parallelization prone to race condition error ###
     for dargs in specextract_args:
         add_header_keys(dargs)
     
@@ -2150,35 +2246,21 @@ def run_specextract(args):
 
     if combine == "yes":
         combine_outroot = specdicts["src1"]["full_outroot"].rstrip("_src1")
-        dobg = specdicts["src1"]["dobg"]
-        dobkgresp = specdicts["src1"]["dobkgresp"]
 
-        sdvals = specdicts.values()
-
-        src_spec = [d["phafile"] for d in sdvals if d["srcbkg"]=="src"]
-        src_arf = [d["ARF"] for d in sdvals if d["srcbkg"] == "src"]
-        src_rmf = [d["RMF"] for d in sdvals if d["srcbkg"] == "src"]
-        
-        if dobg:
-            bkg_spec = [d["phafile"] for d in sdvals if d["srcbkg"]=="bkg"]
-
-            if dobkgresp:
-                bkg_arf = [d["ARF"] for d in sdvals if d["srcbkg"]=="bkg"]
-                bkg_rmf = [d["RMF"] for d in sdvals if d["srcbkg"]=="bkg"]
-            else:
-                bkg_arf = None
-                bkg_rmf = None
-        else:
-            bkg_spec = None
-            bkg_arf = None
-            bkg_rmf = None    
-        
         coadd(combine_outroot,
               src_spec,bkg_spec,
               src_arf,bkg_arf,
               src_rmf,bkg_rmf,
               dobg,dobkgresp,
               verbose,clobber)
+
+    ######################################################################
+    #
+    # check for later warm temperature observations and throw warning
+    #
+    ######################################################################
+
+    warm_temperature_warning(src_spec)
 
 
             
@@ -2190,4 +2272,3 @@ if __name__  == "__main__":
 
     sys.exit(0)
 
-    
