@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021, 2022
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -39,7 +39,7 @@ match
 
   Fortran: *.f *.f03 *.f90
   C:       *.c
-  C++:     *.cxx *.C *.cc      (*.cpp files are ignored, unlike XSPEC)
+  C++:     *.cxx *.C *.cc *.cpp
 
 Unlike most CIAO tools and scripts this does not use the CIAO
 parameter interface, instead it uses the standard UNIX command-line
@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "02 November 2021"
+toolver  = "07 November 2022"
 
 import sys
 import os
@@ -78,10 +78,13 @@ import glob
 import argparse
 import importlib
 import shutil
+from pathlib import Path
+import sysconfig
 
 import sherpa
 import sherpa.astro.ui as ui
 from sherpa.astro.utils import xspec
+from sherpa.astro.xspec import get_xsversion
 
 import ciao_version
 
@@ -116,10 +119,12 @@ Files that match
 
   Fortran: *.f *.f03 *.f90
   C:       *.c
-  C++:     *.cxx *.C *.cc   (*.cpp files are ignored, unlike XSPEC)
+  C++:     *.cxx *.C *.cc *cpp
 
-are automatically compiled. To include other files on the link line
-- e.g. .o files - add there names on the command line.
+are automatically compiled. The order of compilation is done
+alphabetically, as this appears to be what XSPEC does. To include
+other files on the link line - e.g. .o files - add there names on the
+command line.
 
 So, if the model is defined in lmodel.dat and the source code is in
 mdl1.f and mdl2.f then you could run this script as
@@ -151,7 +156,7 @@ running
 """
 
 copyright_str = """
-Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021
+Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021, 2022
 Smithsonian Astrophysical Observatory
 
 This program is free software; you can redistribute it and/or modify
@@ -267,7 +272,7 @@ def find_xspec_basedir():
     incdir = os.path.join(out, 'include')
     for path in [libdir, incdir]:
         if not os.path.isdir(path):
-            raise OSError(f'Unable to find {path}')
+            raise OSError(f'Unable to find {path} or not a directory')
 
     matches = glob.glob(os.path.join(libdir, 'libXS*'))
     if len(matches) == 0:
@@ -281,13 +286,13 @@ def validate_namefunc(namefunc):
     inval = 'bob'
     outval = namefunc(inval)
     if not outval[0].isupper():
-        raise ValueError("The namefunc routine does not capitalize the return value - e.g. '{}' -> '{}'.".format(inval, outval))
+        raise ValueError(f"The namefunc routine does not capitalize the return value - e.g. '{inval}' -> '{outval}'.")
 
 
 def add_prefix(prefix, inval):
     """Returns prefix prepended to inval (converting it to a string if
     necessary)."""
-    return "{}{}".format(prefix, inval)
+    return f"{prefix}{inval}"
 
 
 def add_xsum_prefix(inval):
@@ -304,28 +309,30 @@ def no_prefix(inval):
 
 
 def find_file_types(types):
-    """Return a dictionary listing the types of
-    files in the types dictionary, which has
-    key as the type name and value as the glob
+    """Return a dictionary listing the types of files in the types
+    dictionary, which has key as the type name and value as the glob
     pattern - e.g.
 
       types = { "generic": "*.f", "90": "*.f90" }
 
-    Only those types that contain a match are
-    included; if there are no matches then None
-    is returned.
+    Only those types that contain a match are included; if there are
+    no matches then None is returned. The return names are sorted
+    alphabetically.
 
-    At present it turns out that it is possible to
-    create the pattern from the typename, ie a
-    dictionary is not needed as input, but leave
-    as is as there is no need to "optimise" this.
+    At present it turns out that it is possible to create the pattern
+    from the typename, ie a dictionary is not needed as input, but
+    leave as is as there is no need to "optimise" this.
+
     """
 
     out = {}
     for (typename, pattern) in types.items():
         match = glob.glob(pattern)
         if len(match) > 0:
-            out[typename] = match
+            # It looks like XSPEC uses alphabetical sorting so do this
+            # here (needed for reltrans to compile the F90 code in the
+            # correct order).
+            out[typename] = sorted(match)
 
     if len(out) == 0:
         return None
@@ -373,11 +380,10 @@ def find_cplusplus_files():
     """Return the Fortran files found in the current
     directory, labelled by "type".
 
-      "cxx": *.cxx
-      "C"  : *.C
-      "cc" : *.cc
-
-    Note that .cpp files are ignored, unlike in XSPEC.
+      "cxx" : *.cxx
+      "C"   : *.C
+      "cc"  : *.cc
+      "cpp" : *.cpp
 
     The dictionary only contains keys if there was a
     match for that pattern; if there are no matches
@@ -390,7 +396,8 @@ def find_cplusplus_files():
 
     return find_file_types({"cxx": "*.cxx",
                             "C": "*.C",
-                            "cc": "*.cc"})
+                            "cc": "*.cc",
+                            "cpp": "*.cpp"})
 
 
 def count_nfiles(label, fileinfo):
@@ -402,7 +409,7 @@ def count_nfiles(label, fileinfo):
     """
 
     if fileinfo is None:
-        v1("Found no {} files.".format(label))
+        v1(f"Found no {label} files.")
         return 0
 
     ntot = 0
@@ -410,17 +417,17 @@ def count_nfiles(label, fileinfo):
         n = len(vs)
         ntot += n
         if n == 1:
-            v2("Found one *.{} file".format(k))
+            v2(f"Found one *.{k} file")
         else:
-            v2("Found {} *.{} files".format(n, k))
+            v2(f"Found {n} *.{k} files")
         for v in vs:
-            v2("  {}".format(v))
+            v2(f"  {v}")
 
     v2("")
     if ntot == 1:
-        v1("Found one {} file.".format(label))
+        v1(f"Found one {label} file.")
     else:
-        v1("Found {} {} files.".format(ntot, label))
+        v1(f"Found {ntot} {label} files.")
 
     return ntot
 
@@ -459,18 +466,6 @@ def build_setup(modname, sources, fortransources, extrafiles,
     collection of C++ and FORTRAN, and take advantage of the interface
     that the Sherpa XSPEC model uses (that handles the conversion from
     the user-supplied grid to the one that XSPEC needs).
-
-    It is also complicated by the need to access the XSPEC model
-    include files, which in the HEASARC environment requires access to
-    the build directory. As we don't have this in an installed version
-    of the XSPEC model library (the header files seem to get installed
-    but all in the same directory, which means that paths like
-    XSFunctions/Utilities/FunctionUtulity.h can't be resolved), I have
-    just included the full set of headers from XSPEC 12.10.1 - patch
-    level s - in this repository (as used for CIAO 4.13).  Hopefully
-    there aren't any significant changes in these over time ;-) There
-    is also the fact that the XSPEC library requires linking to a set
-    of versioned libraries, so this is also version dependent.
 
     A large complication is that I want to compile FORTRAN code and
     link it into the extension, but do not want any Python interface
@@ -541,11 +536,48 @@ def build_setup(modname, sources, fortransources, extrafiles,
     # included in the contrib code.
     #
     xspec_basedir = find_xspec_basedir()
-    v2(f"  xspec basedir:  {xspec_basedir}")
 
-    # We could send in the sherpa.get_include path, but it
-    # doesn't seem worth it.
+    # We send in the sherpa.get_include_path so that we do not need to
+    # build and install a version of Sherpa that we then immediately
+    # throw away. This may need to be re-evaluated if we ever need
+    # more functionality from Sherpa.
     #
+    sherpa_include = sherpa.get_include()
+
+    v2(f"  xspec basedir:    {xspec_basedir}")
+    v2(f"  sherpa includes:  {sherpa_include}")
+
+    # Let's find the version names of the XSPEC libraries:
+    # hdsp_xxx, CCfits_xxx
+    #
+    # How clever should we be here?
+    #
+    suffix = sysconfig.get_config_var("SHLIB_SUFFIX")
+    if suffix is None:
+        suffix = ".so"
+
+    def find_libname(head):
+        libdir = Path(xspec_basedir) / 'lib'
+        if not libdir.is_dir():
+            raise OSError(f"XSPEC lib dir not found or not a directory: {libdir}")
+
+        # For now assume the library is always versioned.
+        #
+        match_path = libdir / f"lib{head}_*{suffix}"
+        matches = glob.glob(str(match_path))
+        if len(matches) == 0:
+            raise OSError(f"Unable to find {match_path}")
+
+        if len(matches) > 1:
+            raise OSError(f"Multiple matches for {match_path}")
+
+        v2(f"   - found: {head:8s}  {matches[0]}")
+        out = Path(matches[0]).stem
+        return out[3:]  # drop the "lib" prefix
+
+    hdsp_version = find_libname("hdsp")
+    ccfits_version = find_libname("CCfits")
+
     date = time.asctime()
     out = f"""# Auto-generated by convert_xspec_user_model
 # Version: {toolver}
@@ -570,11 +602,9 @@ from numpy.distutils import fcompiler
 # from numpy.distutils.command.build_ext import build_ext
 
 
-import sherpa
-
 this_incpath = os.getcwd()
 numpy_incpath = numpy.get_include()
-sherpa_incpath = sherpa.get_include()
+sherpa_incpath = "{sherpa_include}"
 
 # Where do we take the XSPEC includes from?
 #
@@ -594,7 +624,7 @@ for path in ['XSFunctions', 'XSFunctions/Utilities']:
 #
 for include in includes:
     if not os.path.isdir(include):
-        raise IOError("Unable to find {{}}".format(include))
+        raise IOError(f"Unable to find {{include}} or not a directory")
 
 # Where are the XSPEC libraries?
 #
@@ -605,10 +635,7 @@ for include in includes:
 libs = []
 
 # The choice of libs depends on the XSPEC model library version,
-# which makes this harder to write than I'd like. So Let's just
-# hard code it at the moment.
-#
-# These should be valid for CIAO 4.14.
+# which makes this harder to write than I'd like.
 #
 # The list is based on
 # - Appendix F: Using the XSPEC Models Library in Other Programs
@@ -616,7 +643,7 @@ libs = []
 # - looking at the link line created by XSPEC initpackage
 #
 libnames = ["XSModel", "XSFunctions", "XSUtil", "XS",
-            "hdsp_6.29", "CCfits_2.6", "cfitsio"]
+            "{hdsp_version}", "{ccfits_version}", "cfitsio"]
 
 # What FORTRAN code needs compiling?
 #
@@ -737,13 +764,14 @@ where = src
 '''
     save(setupcfg, out)
 
-    # Create the pyproject.toml file
+    # Create the pyproject.toml file. As we send in the Sherpa
+    # include path from the installed Sherpa we do not need to
+    # build a version of Sherpa, which saves time.
     #
-    out = '''[build-system]
+    out = f'''[build-system]
 requires = ["setuptools >= 49.1.2",
             "wheel",
-            "numpy",
-            "sherpa"
+            "oldest-supported-numpy"
            ]
 build-backend = "setuptools.build_meta"
 '''
@@ -896,9 +924,18 @@ def build_module_init(modname, pycode, mdls,
     else:
         normpar = ""
 
+    # Do we need to import warnings? We could do this by checking what
+    # condition leads to this (ie the model flags) but for now just check
+    # if warnings.warn is used
+    #
+    use_warnings = pycode.find("warnings.warn") > -1
+    warning_str = "import warnings" if use_warnings else ""
+
     out = PYTHON_HEADER
     out += f'''
 """Sherpa interfaces to XSPEC models."""
+
+{warning_str}
 
 from sherpa.models.parameter import {normpar}hugeval
 from sherpa.astro.xspec import {xsnames}, XSParameter, get_xsversion
@@ -947,6 +984,24 @@ get_xsversion()
 #
 '''
 
+    # Fix an error in Sherpa 4.15.0 and earlier.
+    # - replace "{t2}" by "        "
+    #
+    import re
+    conv = re.subn(r"\{t2\}", "        ", pycode)
+    if conv[1] > 0:
+        pycode = conv[0]
+        v2(f"NOTE: had to correct the python code {conv[1]} times [t2 replacement]")
+
+    # Fix an error in Sherpa 4.15.0 and earlier
+    # - warnings.warn string not correctly interpolated when generated.
+    #
+    conv = re.subn(r"warnings.warn\('support for models like {mdl.clname.lower\(\)}",
+                   "warnings.warn(f'support for models like {self.__class__.__name__.lower()}", pycode)
+    if conv[1] > 0:
+        pycode = conv[0]
+        v2(f"NOTE: had to correct the python code {conv[1]} times [warn f-string]")
+
     out += pycode
 
     save(outfile, out)
@@ -971,9 +1026,12 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
     # Do we have any C++ models?
     #
     have_cxx = []
+    have_c = []
     for mdl in mdls:
         if mdl.language == 'C++ style':
             have_cxx.append(mdl)
+        elif mdl.language == 'C style':
+            have_c.append(mdl)
 
     modname_slashes = modname.replace('.', '/')
     outdir = f"src/{modname_slashes}/src"
@@ -990,7 +1048,34 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 #include <iostream>
 
 #include <xsTypes.h>
+#include <XSFunctions/Utilities/funcType.h>  // defines xsccCall
 
+// What XSPEC version do we support
+'''
+
+    # Declare the XSPEC defines used to control the code; this is a
+    # bit OTT as we know we don't need all of them, but put them all
+    # in for now. This needs to be updated with each CIAO release.
+    #
+    xspec_version_str = get_xsversion()
+    v1(f"Using XSPEC version: {xspec_version_str}")
+
+    toks = xspec_version_str.split(".")
+    if len(toks) != 3:
+        raise ValueError(f"Unrecognized XSPEC version: {xspec_version_str}")
+
+    # assume the micro version is 1 digit
+    #
+    xspec_version = (int(toks[0]), int(toks[1]), int(toks[2][:1]))
+
+    for v in [(12, 9, 0), (12, 9, 1),
+              (12, 10, 0), (12, 10, 1),
+              (12, 11, 0), (12, 11, 1),
+              (12, 12, 0), (12, 12, 1)]:
+        if v <= xspec_version:
+            out += "#define XSPEC_{}_{}_{}\n".format(*v)
+
+    out += '''
 #include "sherpa/astro/xspec_extension.hh"
 
 '''
@@ -1008,6 +1093,7 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 
 '''
 
+        # Does this ever get closed? Or is it a bug?
         out += '''extern "C" {
 '''
 
@@ -1026,6 +1112,18 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
         out += '''
 }
 '''
+
+    # This is needed to wrap relline. Is it needed for other
+    # models? Hopefully it doesn't mess anything up as it's
+    # just declaring symbols.
+    #
+    if len(have_c) > 0:
+        out += 'extern "C" {\n'
+
+        for cmdl in have_c:
+            out += f'  xsccCall {cmdl.funcname};\n'
+
+        out += "}\n"
 
     out += cxxcode
 
@@ -1141,7 +1239,7 @@ def convert_xspec_user_model(modulename, modelfile,
 
       Fortran: *.f *.f03 *.f90
       C:       *.c
-      C++:     *.cxx *.C *.cc  (*.cpp files are ignored, unlike XSPEC)
+      C++:     *.cxx *.C *.cc *.cpp
 
     It creates (using the clobber to determine whether to continue if
     the files already exist):
@@ -1260,8 +1358,21 @@ def convert_xspec_user_model(modulename, modelfile,
 
     # Unlike earlier versions of convert_xspec_user_model we do not
     # check compiled files when clobber is not set.
-
+    #
     mdlinfo = xspec.parse_xspec_model_description(modelfile, namefunc=namefunc)
+
+    # Temporarily force the fortran "function" name to lower case (this
+    # should be done by sherpa.astro.utils.xspec but it's just one of
+    # those things that I never noticed).
+    #
+    for mdl in mdlinfo:
+        if not mdl.language.startswith("Fortran"):
+            continue
+
+        oname = mdl.funcname
+        mdl.funcname = oname.lower()
+        if mdl.funcname != oname:
+            v2(f" - lower case conversion for Fortran model: {oname}")
 
     # Strip out models that call the same function. This is a somewhat
     # odd check, and could perhaps be done after other checks, but I
@@ -1431,7 +1542,7 @@ def convert_xspec_user_model(modulename, modelfile,
         if n == 1:
             v1("The following model is available:")
         else:
-            v1("The following {} models are available:".format(n))
+            v1(f"The following {n} models are available:")
 
         v1("  {}".format("\n  ".join(mnames)))
         v1("")
@@ -1442,13 +1553,13 @@ def convert_xspec_user_model(modulename, modelfile,
         if n == 1:
             v1("Please note the following problem:")
         else:
-            v1("Please note the following {} problems:".format(n))
+            v1(f"Please note the following {n} problems:")
 
         v1("  {}".format("\n  ".join(probs)))
         v1("")
 
     if ierr is not None:
-        raise ImportError("Unable to import model:\n{}".format(ierr))
+        raise ImportError(f"Unable to import model:\n{ierr}")
 
 
 if __name__ == "__main__":
