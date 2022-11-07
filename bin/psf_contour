@@ -32,7 +32,7 @@ MIN_FRACTION = 0.6
 FRACTION_STEP = 0.1
 
 toolname = "psf_contour"
-__revision__ = "30 October 2022"
+__revision__ = "06 November 2022"
 
 lw.initialize_logger(toolname)
 verb0 = lw.get_logger(toolname).verbose0
@@ -84,6 +84,7 @@ class PSF_Region():
         sim.flux = self.params['flux']
         sim.minsize = 256
         sim.random_seed = self.params['random_seed']
+        sim.marx_root = self.params['marx_root']
         sim()
 
         if not os.path.exists(f"{self.params['outroot']}{self.psf_suffix}"):
@@ -383,6 +384,19 @@ def get_cli():
 
     for to_real in ['energy', 'fraction', 'tolerance', 'flux']:
         pars[to_real] = float(pars[to_real])
+
+    if pars["marx_root"] == '':
+        raise ValueError("ERROR: marx_root parameter cannot be blank;" +
+                         " set to the directory where MARX is installed")
+
+    if not os.path.isdir(pars["marx_root"]):
+        raise ValueError("ERROR: marx_root parameter must be set to " +
+                         "the top level directory where MARX is installed")
+
+    marx_exe = os.path.join(pars["marx_root"], "bin", "marx")
+    if not os.path.isfile(marx_exe):
+        raise ValueError(f"ERROR: Cannot find marx executable in '{marx_exe}'" +
+                          "; check the marx_root parameter")
 
     return pars
 
