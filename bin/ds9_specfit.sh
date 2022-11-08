@@ -300,8 +300,13 @@ if "${absmodel2}" != "none":
 
 
 from dax.dax_model_editor import *
-
-DaxModelEditor(mdls, "${ds9}").run(sherpa.fit,sherpa.conf)
+try:
+    DaxModelEditor(mdls, "${ds9}").run(sherpa.fit,sherpa.conf)
+except DaxCancel:
+    import sys
+    print("Cancel button pressed")
+    sherpa.save("$sav", clobber=True)
+    sys.exit(0)
 
 try:
   sherpa.conf()

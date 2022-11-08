@@ -179,7 +179,7 @@ def fit_profile( xpa, infile, model, xcol, method, ycol="sur_bri", ycol_err="sur
     sherpa.set_model(model)
     sherpa.set_method(method)
 
-    from dax.dax_model_editor import DaxModelEditor
+    from dax.dax_model_editor import DaxModelEditor, DaxCancel
 
     s = sherpa.get_source()
     if hasattr(s,"parts") is True:
@@ -192,16 +192,19 @@ def fit_profile( xpa, infile, model, xcol, method, ycol="sur_bri", ycol_err="sur
     else:
         xcol = 'arcsec'
 
-    me = DaxModelEditor(mdl, xpa, xlabel="Radius [{}]".format(xcol),
-        ylabel="sur_bri [counts/pixel**2]")
-    me.run(sherpa.fit, sherpa.conf)
+    try:
+        me = DaxModelEditor(mdl, xpa, xlabel="Radius [{}]".format(xcol),
+            ylabel="sur_bri [counts/pixel**2]")
+        me.run(sherpa.fit, sherpa.conf)
+        fobj = sherpa.get_fit_plot()    
+        blt_plot_fit( fobj, xpa, 
+           tle="Radial Profile: {}".format(model.name),
+           xlb="Radius [{}]".format(xcol),
+           ylb="sur_bri [counts/pixel**2]"        
+           )
+    except DaxCancel:
+        print("Cancel button pressed")
 
-    fobj = sherpa.get_fit_plot()    
-    blt_plot_fit( fobj, xpa, 
-       tle="Radial Profile: {}".format(model.name),
-       xlb="Radius [{}]".format(xcol),
-       ylb="sur_bri [counts/pixel**2]"        
-       )
     sav = ROOT+"/sherpa.save"
     sherpa.save( sav, clobber=True)
     print("\nTo restore session, start sherpa and type\n\nrestore('{}')".format(sav))

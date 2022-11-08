@@ -134,9 +134,13 @@ if hasattr(mdl1,"xpos") and hasattr(mdl1,"ypos"):
   mdl1.ypos=$yy
 
 from dax.dax_model_editor import *
-mod_edit = DaxModelEditor(dax_mdls, hide_plot_button=True)
-mod_edit.run(sherpa.fit, sherpa.conf)
-
+try:
+    mod_edit = DaxModelEditor(dax_mdls, hide_plot_button=True)
+    mod_edit.run(sherpa.fit, sherpa.conf)
+except DaxCancel:
+    import sys
+    print("Cancel button pressed")
+    sys.exit(1)
 
 sherpa.notice()
 sherpa.save_model("${DAX_OUTDIR}/out.fits", clobber=True)
