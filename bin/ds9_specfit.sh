@@ -259,11 +259,15 @@ echo " (4/4) Fitting spectrum"
 cat <<EOF > $cmd
 
 import sherpa.astro.ui as sherpa
+from sherpa.utils.logging import SherpaVerbosity
 
 sherpa.load_data("$spi")
 
 sherpa.group_counts(${grpcts})
-sherpa.notice(${elo},${ehi})
+
+with SherpaVerbosity('WARN'):
+    sherpa.notice(${elo},${ehi})
+
 $subtract
 
 if "${absmodel2}" == "none":
