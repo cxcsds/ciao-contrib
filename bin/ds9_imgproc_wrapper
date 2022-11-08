@@ -1293,8 +1293,7 @@ class PsfContour(ImageProcTask):
 
     toolname = 'psf_contour'
 
-    def set_args(self, args):
-        'Args: method, energy, fraction, fovfile'
+    def _convert_sky_to_cel(self):
         from pycrates import read_file
 
         xpos, ypos = self.get_coords(multi_ok=True)
@@ -1304,31 +1303,65 @@ class PsfContour(ImageProcTask):
 
         xypos = list(zip(xpos, ypos))
         radec = eqpos_t.apply(xypos)
+        outfile = self.outfile.name.replace(".fits", "_pos.dat")
 
-        self.tool.pos = self.outfile.name.replace(".fits", "_pos.dat")
-        with open(self.tool.pos, "w") as fp:
+        with open(outfile, "w") as fp:
             fp.write("#RA\tDEC\n")
             for r, d in radec:
                 fp.write(f"{r}\t{d}\n")
 
+        return outfile
+
+    def set_args(self, args):
+        'Args: method, energy, fraction, fovfile'
+        self.use_eventfile()
+
+        self.tool.pos = self._convert_sky_to_cel()
         self.tool.outroot = self.outfile.name.replace(".fits", "")
         self.tool.method = args[0]
         self.tool.energy = args[1]
         self.tool.fraction = args[2]
         self.tool.fovfile = args[3]
 
-    def send_output(self):
+    def _send_multiple_regions(self, suffix):
         'Display the regions in ds9'
 
         outroot = self.outfile.name.replace(".fits", "")
         ii = 1
         while True:
-            outfile = f'{outroot}_i{ii:04d}_src.reg'
+            outfile = f'{outroot}_i{ii:04d}_{suffix}'
             if not os.path.exists(outfile):
                 break
             self.xpaset_p(f"regions load {outfile}")
             print(f"Loaded region file {outfile}")
             ii += 1
+
+    def send_output(self):
+        'Display the regions'
+        self._send_multiple_regions("src.reg")
+
+
+class BkgFixedCounts(PsfContour):
+    'CIAO bkg_fixed_counts tool'
+
+    toolname = 'bkg_fixed_counts'
+
+    def set_args(self, args):
+        'Args: min_counts fov inner energy max_rad src_stk'
+
+        self.use_eventfile()
+        self.tool.pos = self._convert_sky_to_cel()
+        self.tool.outroot = self.outfile.name.replace(".fits", "")
+        self.tool.min_counts = args[0]
+        self.tool.fovfile = args[1]
+        self.tool.inner_ecf = args[2]
+        self.tool.energy = args[3]
+        self.tool.max_radius = args[4]
+        self.tool.src_region = args[5]
+
+    def send_output(self):
+        'Display the regions'
+        self._send_multiple_regions("bkg.reg")
 
 
 class Reprojectimage(ImageProcTaskImgOut):
@@ -1692,7 +1725,7 @@ def map_tool_to_object(toolname, xpa, args):
                'dme_pha': Dmepha, 'dme_pi': Dmepi, 'dme_time': Dmetime,
                'dme_expno': Dmeexpno, 'dme_generic': Dmegeneric,
                'dmcopy': Dmcopy, 'dmradar': Dmradar,
-               'psf_contour': PsfContour}
+               'psf_contour': PsfContour, 'bkg_fixed_counts': BkgFixedCounts}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool

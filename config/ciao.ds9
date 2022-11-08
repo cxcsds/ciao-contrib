@@ -321,6 +321,18 @@ param psfcontour
     pc_fov open {FOV File} {} {Field of view filename, leave blank to omit FOV}
 endparam
 
+
+param bkgcounts
+    bc_min_counts entry {Counts} {10} {Minimum number of counts in region}
+    bc_fov open {FOV File} {} {Field of view filename, leave blank to omit FOV}
+    bc_inner entry {Inner ECF} {0.95} {PSF ECF for inner annulus radius}
+    bc_energy entry {Energy} {1.0} {Energy for PSF ECF lookup, keV}
+    bc_max entry {Maximum Radius} {INDEF} {Maximum background radius, INDEF=unrestricted}
+    bc_src entry {Source Regions} {} {Input stack of source regions}
+endparam
+
+
+
 #
 # New in ds9 8.4 -- put some dax tasks on the button bar
 
@@ -709,6 +721,12 @@ hmenu CIAO tools (DAX)
     *evt* *EVT*
     menu
     $param(psfcontour); ds9_imgproc_wrapper $xpa psf_contour $pc_method $pc_energy $pc_fraction "$pc_fov" |& $text
+
+    Fixed Counts Backgrounds
+    *evt* *EVT*
+    menu
+    $param(bkgcounts); ds9_imgproc_wrapper $xpa bkg_fixed_counts $bc_min_counts "$bc_fov" $bc_inner $bc_energy $bc_max "$bc_src" |& $text
+
 
    
     ---
