@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "15 March 2022"
+version = "08 November 2022"
 
 # import standard python modules as required
 #
@@ -1824,8 +1824,10 @@ def run_tgdetect2_and_create_mask(params):
     x_targ = dmcoords.x
     y_targ = dmcoords.y
 
-    goodevt = os.path.join(outdir, root + '_goodevt1.fits')
-    params["cleanup_files"].append(goodevt)
+    goodevtA = os.path.join(outdir, root + '_goodevt1.fits')
+    goodevtB = os.path.join(outdir, root + '_goodevt1a.fits')
+    params["cleanup_files"].append(goodevtA)
+    params["cleanup_files"].append(goodevtB)
 
     # standard L2 filters
     if params["detnam"].startswith("ACIS"):
@@ -1837,16 +1839,25 @@ def run_tgdetect2_and_create_mask(params):
     else:
         error_out(params, "Bad detnam", 'input error')  # should have crashed long before this
         
-    dmcopy.infile = "{}[@{}]{}".format(params["evt1_file"],
-                                       params["flt1_file"],
-                                       evtfilter)
-    dmcopy.outfile = goodevt
+
+    # Work around DM bug. 
+    # To work around a dm bug we have to separately apply the @flt
+    # filter from the status+grade filter.
+    #
+    # status & energy filter removes most events so run it 1st. 
+    #
+    dmcopy.infile = params["evt1_file"]+evtfilter
+    dmcopy.outfile = goodevtA
+    dmcopy(clobber=params["clobber"])
+
+    dmcopy.infile = goodevtA+f'[@{params["flt1_file"]}]'
+    dmcopy.outfile = goodevtB
     dmcopy(clobber=params["clobber"])
 
     v1("Getting the zero-order source position with tgdetect2...")
     from ciao_contrib.runtool import tgdetect2, tg_create_mask
     tgdetect2.punlearn()
-    tgdetect2.infile=goodevt
+    tgdetect2.infile=goodevtB
     tgdetect2.outfile = src1a
     tgdetect2.zo_pos_x = x_targ
     tgdetect2.zo_pos_y = y_targ
