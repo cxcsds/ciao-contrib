@@ -2583,6 +2583,13 @@ parinfo['addresp'] = {
     }
 
 
+parinfo['aplimits'] = {
+    'istool': True,
+    'req': [ParRange("prob_false_detection","r","Upper limit on the probability of a type I error",.1,0., 1.),ParRange("prob_missed_detection","r","Upper limit on the probability of a type II error",.5,0., 1.),ParValue("outfile","f","Filename of output file",None),ParRange("T_s","r","Exposure time in source aperture",1,0,None),ParRange("A_s","r","Geometric area of source aperture",1,0,None),ParRange("bkg_rate","r","Background count rate",None,0,None),ParRange("m","i","Number of counts in background aperture",None,0,None),ParRange("T_b","r","Exposure time in background aperture",1,0,None),ParRange("A_b","r","Geometric area of background aperture",1,0,None)],
+    'opt': [ParRange("max_counts","i","Background count number above which the uncertainty on the background is ignored",50,0,None),ParRange("maxfev","i","Maximal number of function evaluations in numerical root finding",500,0,None),ParRange("verbose","i","Debug Level(0-5)",1,0,5),ParValue("clobber","b","OK to overwrite existing output file?",False)],
+    }
+
+
 parinfo['apowerspectrum'] = {
     'istool': True,
     'req': [ParValue("infilereal","f","Input file name for real part",None),ParValue("infileimag","f","Input file name for imaginary part",None),ParValue("outfile","f","File name for output",None)],
