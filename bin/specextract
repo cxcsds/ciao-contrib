@@ -1887,9 +1887,10 @@ def warm_temperature_warning(fn_iter):
         
         if instrument == "ACIS" and tstart >= warm_tstart:
             obsid = kw["OBS_ID"]
-            fptemp = kw["FP_TEMP"]
+            fptemp = kw["FP_TEMP"] - 273.15
 
-            warm_dict[f"{obsid}"] = fptemp - 273.15
+            if fptemp > -109:
+                warm_dict[f"{obsid}"] = fptemp
         
     if len(warm_dict) > 0:
         for obsid,fptemp in warm_dict.items():
