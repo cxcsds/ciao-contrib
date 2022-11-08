@@ -314,6 +314,12 @@ param dmradar
 endparam
 
 
+param psfcontour
+    pc_method menu {Method} {contour|lasso|fitted_ellipse|ecf_ellipse|convex_hull} {Region creating method}
+    pc_energy entry {Energy} {1.0} {Monochromatic energy at which simulate the PSF, keV}
+    pc_fraction entry {Fraction} {0.9} {Target fraction of the PSF to enclose}
+    pc_fov open {FOV File} {} {Field of view filename, leave blank to omit FOV}
+endparam
 
 #
 # New in ds9 8.4 -- put some dax tasks on the button bar
@@ -693,6 +699,16 @@ hmenu CIAO tools (DAX)
     menu
     $param(regions); ds9_imgproc_wrapper $xpa dmimghull "$minval" |& $text
 
+
+    ---
+
+    # The background is restricted to evt files, so I'll do the same for
+    # src region here too.
+    
+    PSF Contour
+    *evt* *EVT*
+    menu
+    $param(psfcontour); ds9_imgproc_wrapper $xpa psf_contour $pc_method $pc_energy $pc_fraction "$pc_fov" |& $text
 
    
     ---

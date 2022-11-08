@@ -363,7 +363,7 @@ class ImageProcTask():
 
         return retval
 
-    def get_coords(self):
+    def get_coords(self, multi_ok=False):
         """
         Get coords: use crosshair if in crosshair mode,otherwise
           Get selected region, if any selected, otherwise
@@ -394,17 +394,25 @@ class ImageProcTask():
 
         shapes = srcreg.strip(";").split(";")
 
-        if len(shapes) > 1:
+        if len(shapes) > 1 and not multi_ok:
             raise RuntimeError("Please select a single region")
 
         from region import CXCRegion
-        reg = CXCRegion(shapes[0])
+        xpos = []
+        ypos = []
 
-        if reg.shapes[0].name in ['rectangle', 'polygon', 'field']:
-            raise ValueError("Unsupported shape type: try circle or ellipse?")
+        for shape in shapes:
+            reg = CXCRegion(shape)
 
-        xpos = reg.shapes[0].xpoints[0]
-        ypos = reg.shapes[0].ypoints[0]
+            if reg.shapes[0].name in ['rectangle', 'polygon', 'field']:
+                raise ValueError("Unsupported shape type: try circle or ellipse?")
+
+            xpos.append(reg.shapes[0].xpoints[0])
+            ypos.append(reg.shapes[0].ypoints[0])
+
+        if not multi_ok:
+            xpos = xpos[0]
+            ypos = ypos[0]
 
         return (xpos, ypos)
 
@@ -1280,6 +1288,49 @@ class Ditherregion(ImageProcTaskPlotOut):
         self.title = "Dither Region for {}".format(self.tool.outfile)
 
 
+class PsfContour(ImageProcTask):
+    'CIAO psf_contour tool'
+
+    toolname = 'psf_contour'
+
+    def set_args(self, args):
+        'Args: method, energy, fraction, fovfile'
+        from pycrates import read_file
+
+        xpos, ypos = self.get_coords(multi_ok=True)
+
+        # OK to hard code eqpos, must be chandra data anyway
+        eqpos_t = read_file(self.tool.infile).get_transform("eqpos")
+
+        xypos = list(zip(xpos, ypos))
+        radec = eqpos_t.apply(xypos)
+
+        self.tool.pos = self.outfile.name.replace(".fits", "_pos.dat")
+        with open(self.tool.pos, "w") as fp:
+            fp.write("#RA\tDEC\n")
+            for r, d in radec:
+                fp.write(f"{r}\t{d}\n")
+
+        self.tool.outroot = self.outfile.name.replace(".fits", "")
+        self.tool.method = args[0]
+        self.tool.energy = args[1]
+        self.tool.fraction = args[2]
+        self.tool.fovfile = args[3]
+
+    def send_output(self):
+        'Display the regions in ds9'
+
+        outroot = self.outfile.name.replace(".fits", "")
+        ii = 1
+        while True:
+            outfile = f'{outroot}_i{ii:04d}_src.reg'
+            if not os.path.exists(outfile):
+                break
+            self.xpaset_p(f"regions load {outfile}")
+            print(f"Loaded region file {outfile}")
+            ii += 1
+
+
 class Reprojectimage(ImageProcTaskImgOut):
     'CIAO reproject_image tool'
 
@@ -1640,7 +1691,8 @@ def map_tool_to_object(toolname, xpa, args):
                'glvary': Glvary, 'pfold': Pfold,
                'dme_pha': Dmepha, 'dme_pi': Dmepi, 'dme_time': Dmetime,
                'dme_expno': Dmeexpno, 'dme_generic': Dmegeneric,
-               'dmcopy': Dmcopy, 'dmradar': Dmradar}
+               'dmcopy': Dmcopy, 'dmradar': Dmradar,
+               'psf_contour': PsfContour}
     ToolClass = toolmap[toolname]
     tool = ToolClass(xpa, args)
     return tool
