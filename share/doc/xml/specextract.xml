@@ -3,7 +3,7 @@
   <!ENTITY pr "unix&#37;">
 ]>
 <cxchelptopics>
-  <ENTRY key="specextract" context="Tools::Composite"
+  <ENTRY key="specextract" context="tools"
 	 refkeywords="dmextract extract create spectrum spectra pha pi arf rmf arfs rmfs
 		      response background acis sum weight unweight correct uncorrect
 		      point-source pointsource psf"
@@ -603,6 +603,48 @@ unix% cat output.lis
 	</DESC>
       </PARAM>
 
+      <PARAM name="resp_pos" type="string"  def="REGION">
+	<SYNOPSIS>
+	  Method to refine the unweighted response position and to
+	  determine the coordinates to query ColDen for the Galactic
+	  neutral hydrogen column density.  This parameter is only
+	  used if the 'refcoord' parameter is not set. 
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    This parameter can be used to refine the detector location of where
+	    the unweighted responses are generated.  The refined
+	    positions are based on images using a sky binsize of 2
+	    pixels is used if 'weight=no' and 'correctpsf=no' or when
+	    'weight=yes'.  A binsize equal to 'binarfcorr' is used if
+	    'weight=no' and 'correctpsf=yes'. 
+	  </PARA>
+	  
+	  <LIST>
+	    <ITEM>
+	      REGION: The position defined by the extraction region's 
+	      center is used.
+	    </ITEM>
+	    <ITEM>
+	      CENTROID: The centroided position based on the
+	      image pixels encompassed by the extraction region.  This
+	      method can fail, particularly if used with annuli, and
+	      another method must be selected.
+	    </ITEM>
+	    <ITEM>
+	      MAX: The brightest image pixel encompassed by the extraction region
+	      is used.  This was specextract's default behavior prior
+	      to CIAO 4.15 if the 'refcoord' parameter was not set.  
+	    </ITEM>
+	    <ITEM>
+	      REGEXTENT: The center of the box encompassing the extent
+	      of the extraction region is used.  
+	    </ITEM>
+	  </LIST>	  
+	</DESC>
+      </PARAM>
+      
       <PARAM name="refcoord" type="string"  def="">
 	<SYNOPSIS>
 	  Reference coordinates of unweighted response files.
@@ -1814,6 +1856,19 @@ unix% cat output.lis
 	effective exposure time for the streak spectrum.
       </PARA>
     </ADESC>
+
+    <ADESC title="Changes in the scripts 4.15.0 (December 2022) release">
+      <PARA>
+	The "resp_pos" parameter has been added to provide the user
+	several options on determining the detector position where
+	unweighted responses are generated.  Prior versions of
+	'specextract' would default to the maximum location
+	encompassed by the extraction region on an image binned by a
+	factor of 2 (to avoid duplicate pixel values).  The new
+	default is to use the center defined by the extraction
+	region with 'resp_pos=REGION'.  
+      </PARA>
+    </ADESC>
     
     <BUGS>
       <PARA title="Caveat: Exposure Variations">
@@ -1860,7 +1915,7 @@ unix% cat output.lis
       </PARA>
     </BUGS>
     
-    <LASTMODIFIED>December 2022</LASTMODIFIED>
+    <LASTMODIFIED>October 2022</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>
