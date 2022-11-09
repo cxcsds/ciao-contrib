@@ -130,10 +130,50 @@ unix% ds9 -analysis $ASCDS_CONTRIB/config/ciao.ds9 ...
 </DESC>
 
 <ADESC title="Changes in the 4.15.0 (December 2022) release">
-  <PARA>
+  <PARA title="Blocked Images">
     dax now properly updates the WCS when ds9 has blocked the
     image being analyzed.  Note: block is different than both
     zoom and bin, neither of which have this problem.
+  </PARA>
+  <PARA title="Interactive Gratings Coordinates">
+      There is a new dax task: Coordinates -&gt; Interactive Grating Coordinates Vector.
+      It will draw a vector with the non-arrow end point located at the
+      grating 0 order location (obtained from the REGION extension
+      in the event file).  Then as the user moves the end-point with
+      the arrow around, an information box will pop-up that displays
+      the grating coordinates.  For HETG observations, the task will
+      determine which grating arm the end-point is closest to and will 
+      compute the coordinates for that grating arm.  Users can 
+      change the grating order by typing the value into the information box
+      and pressing Enter.
+  </PARA>
+  <PARA title="PSF Contour">
+    The new Regions -&gt; PSF Contour task will use the center of all 
+    selected regions (or all regions if none are selected) and 
+    run the psf_contour tool.  This tools simulates the Chandra PSF
+    at each location and generates a region that encloses a fraction of
+    the PSF.  For overlapping regions: the PSF fraction is reduced until
+    they no longer overlap or until a minimum PSF fraction of 60% is reached;
+    after hitting that limit the regions are simply excluded from each other.  
+  </PARA>
+  <PARA title="Fixed Counts Backgrounds">
+      The new Regions -&gt; Fixed Counts Backgrounds task will use the center of
+      all selected regions (or all regions if non are selected) and
+      run the bkg_fixed_counts tool.  The tool creates background annulus
+      regions located at the source location which include a minimum number of counts
+      while excluding a fraction of the PSF (and additional source regions, 
+      if specified).  
+  </PARA>
+  <PARA title="Fitting updates">
+      The Sherpa fitting tasks have two changes: pressing the 
+      Cancel button when the Dax Model Editor will now produce a 
+      nicer message (rather than the raw Python traceback), and
+      internal changes to suppress info about noticed/ignored channels/regions.  
+  </PARA>
+  <PARA title="New non-linear filters">
+      The following new dmimgfilt filters have been added to the
+      Image Processing -&gt; Non-Linear Filter task: ridge, plain, q10, q90,
+      and jitter.  
   </PARA>
 
 </ADESC>
