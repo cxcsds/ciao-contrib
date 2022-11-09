@@ -120,12 +120,40 @@
         <HREF link="https://ui.adsabs.harvard.edu/abs/2010ApJ...719..900K">Kashyap et al. (2010)</HREF>
         for a more detailed discussion.
       </PARA>
+      <PARA title="3.) What are the units for area and exposure time?">
+        To calculate the upper limit, the tool needs to know the number of expected
+        background counts in the source area. Because of that the formulas do not
+        depend directly on the exposure time or apeture area.
+        Instead, the source aperture area is
+        only used to get the number of expected background counts (if bkg_rate is given)
+        or the ratio to the background area (if the number of counts m in the background
+        aperture is given). So, it is sufficient to use consistent units for areas,
+        e.g., A_s and A_b can be given in pixels or arcsec**2, so long as both numbers
+        use the same units (and if source and background aperture are the same size,
+        they can both be left at their default 1.0).
+        Similarly, bkg_rate can be "per pixel" or "per arcsec" as long as the unit
+        is consistent with A_s.
+        The same is true for the units of exposure time:
+        T_s and bkg_rate (or T_b) just need to be
+        consistent and the output will be in the same time unit.
+        If T_s is given in seconds, then the upper limit will be returned as counts/sec;
+        but one can also use "exposure time" as the unit:
+        if T_s and T_b are left at the default of 1.0 (or bkg_rate is "counts over the
+        entire observation"), then the upper limit will be in
+        "counts over the entire observation".
+      </PARA>
+      <PARA title="4.) Incomplete PSF in source aperture">
+        The calculation of the upper limit is done in counts. If the source aperture does not cover
+        the full PSF, it will only apply to that fraction of the PSF, e.g., if A_s only
+        include 90% of the PSF, then the resulting upper limit is a limit on 90% of the
+        source flux; in other words, the limit on the full source flux is upper_limit/0.9.
+      </PARA>
     </DESC>
 
     <QEXAMPLELIST>
       <QEXAMPLE>
         <SYNTAX>
-          <LINE>unix% aplimits prob_false_detection=.1 prob_missed_detection=.5 bkg_rate=1.23</LINE>
+          <LINE>unix% aplimits prob_false_detection=.05 prob_missed_detection=.5 bkg_rate=1.23</LINE>
           <LINE>unix% pget aplimits_out.par upper_limit</LINE>
           <LINE>2.44206</LINE>
           <LINE>unix% pget aplimits_out.par min_counts_detect</LINE>
@@ -134,14 +162,19 @@
         <DESC>
           <PARA>
       In this example, we know the background rate and calculate the upper limit
-      on the flux. We want the probability for a background fluctuation to
+      on the source count rate (in cts/s).
+      We want the probability for a background fluctuation to
       appear as a source to be less than 5%, and we want the probability to miss
       a real source with a flux comparable to the upper limit to be below 50%.
-      The expected background in the source aperture is 1.23 counts (bkg_rate is
-      given per unit area and unit exposure time, and exposure time and area of
-      the source aperture also default to 1, so for a rate or 1.23 we expect
-      1.23 source counts). The upper limit for an undetected source is 2.44
-      counts per unit exposure time and area.
+      We do not set the source extraction area and exposure time. Both default to 1.
+      So, we can interpret the resulting number as source flux per unit time.
+      However, the calculation of the limits does not directly depend on the exposure
+      time; it is really just about the number of counts. It also does not depend directly
+      on A_s, that is only needed to calculate the number of expected background counts.
+      The defaults for exposure time and area are 1.0 for each value. So, we can also view
+      this example as follows: We expect 1.23 background counts in the source area
+      over the entire exposure time and and the upper limit to the source flux is
+      2.44206 counts over the entire exposure time.
          </PARA>
         </DESC>
       </QEXAMPLE>
