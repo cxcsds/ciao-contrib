@@ -1,6 +1,6 @@
     
 # 
-#  Copyright (C) 2004-2021  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2004-2022  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -46,7 +46,7 @@ endparam
 # dmimgfilt
 # ---------------
 param filt
-  function menu  {function} median|extreme|kuwahara|locheq|max|mcv|mean|min|mid|mode|nmode|peak|q25|q33|q67|q75|range|rclip|sigma|sum|unsharp|valley|variance|count|olympic|pmean {Filter function}
+  function menu  {function} median|extreme|kuwahara|locheq|max|mcv|mean|min|mid|mode|nmode|peak|ridge|q10|q25|q33|q67|q75|q90|range|rclip|sigma|sum|unsharp|valley|plain|variance|count|olympic|pmean|jitter {Filter function}
   mask entry {mask} {} {Region mask}
   niter entry {niter} 1 {Number of iterations}
 endparam
@@ -311,6 +311,24 @@ param dmradar
     rad_rot entry {Rotation Angle} {0} {Rotation anble of shape}
     rad_radmin entry {Minimum Radius} {0.5} {Minimum radius size when dividing, phys pixels}
     rad_angmin entry {Minimum Angle} {1} {Minimum angle when dividing (deg)}
+endparam
+
+
+param psfcontour
+    pc_method menu {Method} {contour|lasso|fitted_ellipse|ecf_ellipse|convex_hull} {Region creating method}
+    pc_energy entry {Energy} {1.0} {Monochromatic energy at which simulate the PSF, keV}
+    pc_fraction entry {Fraction} {0.9} {Target fraction of the PSF to enclose}
+    pc_fov open {FOV File} {} {Field of view filename, leave blank to omit FOV}
+endparam
+
+
+param bkgcounts
+    bc_min_counts entry {Counts} {10} {Minimum number of counts in region}
+    bc_fov open {FOV File} {} {Field of view filename, leave blank to omit FOV}
+    bc_inner entry {Inner ECF} {0.95} {PSF ECF for inner annulus radius}
+    bc_energy entry {Energy} {1.0} {Energy for PSF ECF lookup, keV}
+    bc_max entry {Maximum Radius} {INDEF} {Maximum background radius, INDEF=unrestricted}
+    bc_src entry {Source Regions} {} {Input stack of source regions}
 endparam
 
 
@@ -604,6 +622,14 @@ hmenu CIAO tools (DAX)
     Chandra Grating Energy Lookup - [dmcoords] show where the dispersed 
     energy+order will be imaged using the zero order position taken from
     the location of the crosshair or the 1st selected region
+
+    Interactive Grating Coordinates Vector - when this task is invoked
+    it draw a vector with the non-arrow end point located at the grating
+    0th order location.  As the user moves the arrow end point around,
+    a dialogue will open that provides the grating coordinates and energy.
+    For HETG observations it will pick the grating arm , HEG or MEG, 
+    closest to the end point.  Users can change the order by typing it
+    into the dialogue and pressing Enter.
     
     endhelp
     
@@ -694,6 +720,22 @@ hmenu CIAO tools (DAX)
     $param(regions); ds9_imgproc_wrapper $xpa dmimghull "$minval" |& $text
 
 
+    ---
+
+    # The background is restricted to evt files, so I'll do the same for
+    # src region here too.
+    
+    PSF Contour
+    *evt* *EVT*
+    menu
+    $param(psfcontour); ds9_imgproc_wrapper $xpa psf_contour $pc_method $pc_energy $pc_fraction "$pc_fov" |& $text
+
+    Fixed Counts Backgrounds
+    *evt* *EVT*
+    menu
+    $param(bkgcounts); ds9_imgproc_wrapper $xpa bkg_fixed_counts $bc_min_counts "$bc_fov" $bc_inner $bc_energy $bc_max "$bc_src" |& $text
+
+
    
     ---
     
@@ -715,9 +757,17 @@ hmenu CIAO tools (DAX)
     Convex Hull - [dmimghull] computes the convex hull around the
     pixels in region above the threshold.
     
-    endhelp
-   
+    PSF Contour - [psf_contour] simulate the PSF at the selected region
+    positions (or all position if non are selected) and generates a region
+    the encloses the specified fraction of the PSF.
     
+    Fixed Counts Background - [bkg_fixed_counts] will generate a background
+    annulus at each selected source position (or all if none are selected). 
+    The inner annulus radius is determined to exclude a fraction of the PSF
+    and the outer radius is selected to enclose the total number of counts,
+    which excluding any overlapping regions.
+    
+    endhelp
     
   endhmenu
     

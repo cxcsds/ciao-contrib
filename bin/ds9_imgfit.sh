@@ -83,6 +83,7 @@ phi=`pget imgmoment phi | awk '{print (($1+360.0)%360)*3.141592/180.0}'`
 cat <<EOF > ${DAX_OUTDIR}/fit.cmd
 
 import sherpa.astro.ui as sherpa
+from sherpa.utils.logging import SherpaVerbosity
 import numpy as np
 
 sherpa.load_data("${DAX_OUTDIR}/img.fits")
@@ -116,8 +117,9 @@ if "${psf}" != "x":
     # This doesn't work, psf1.pars is empty tuple
     # dax_mdls.append(psf1)
 
-sherpa.ignore2d()
-sherpa.notice2d("${src}")
+with SherpaVerbosity('WARN'):
+    sherpa.ignore2d()
+    sherpa.notice2d("${src}")
 
 
 if hasattr(mdl1, "theta"):
@@ -134,9 +136,13 @@ if hasattr(mdl1,"xpos") and hasattr(mdl1,"ypos"):
   mdl1.ypos=$yy
 
 from dax.dax_model_editor import *
-mod_edit = DaxModelEditor(dax_mdls, hide_plot_button=True)
-mod_edit.run(sherpa.fit, sherpa.conf)
-
+try:
+    mod_edit = DaxModelEditor(dax_mdls, hide_plot_button=True)
+    mod_edit.run(sherpa.fit, sherpa.conf)
+except DaxCancel:
+    import sys
+    print("Cancel button pressed")
+    sys.exit(1)
 
 sherpa.notice()
 sherpa.save_model("${DAX_OUTDIR}/out.fits", clobber=True)

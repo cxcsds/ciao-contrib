@@ -259,11 +259,15 @@ echo " (4/4) Fitting spectrum"
 cat <<EOF > $cmd
 
 import sherpa.astro.ui as sherpa
+from sherpa.utils.logging import SherpaVerbosity
 
 sherpa.load_data("$spi")
 
 sherpa.group_counts(${grpcts})
-sherpa.notice(${elo},${ehi})
+
+with SherpaVerbosity('WARN'):
+    sherpa.notice(${elo},${ehi})
+
 $subtract
 
 if "${absmodel2}" == "none":
@@ -300,8 +304,13 @@ if "${absmodel2}" != "none":
 
 
 from dax.dax_model_editor import *
-
-DaxModelEditor(mdls, "${ds9}").run(sherpa.fit,sherpa.conf)
+try:
+    DaxModelEditor(mdls, "${ds9}").run(sherpa.fit,sherpa.conf)
+except DaxCancel:
+    import sys
+    print("Cancel button pressed")
+    sherpa.save("$sav", clobber=True)
+    sys.exit(0)
 
 try:
   sherpa.conf()
