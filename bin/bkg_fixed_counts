@@ -26,7 +26,7 @@ import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "bkg_fixed_counts"
-__revision__ = "31 October 2022"
+__revision__ = "09 November 2022"
 
 lw.initialize_logger(toolname)
 verb0 = lw.get_logger(toolname).verbose0
@@ -173,6 +173,29 @@ def find_outer_bkg_radius(coords, bkg_x, bkg_y, numcts, maxradius):
         coords['outer_rad_pix'].append(outer_rad)
 
 
+def _remove_inner_circle(background, inner_circle):
+    """The ecf circle with the radius equal to the annulus'
+    inner radius is always excluded.  We don't want that.
+    """
+    from region import CXCRegion, opAND, opOR, opNOOP
+    idx = background.index(-inner_circle)
+
+    for ii in range(len(background)):
+        if ii in idx:
+            continue
+        if background.shapes[ii].logic == opNOOP:
+            assert ii == 0, "Undefined region logic found"
+            return_value = CXCRegion(background.shapes[ii])
+        elif background.shapes[ii].logic == opOR:
+            return_value = return_value + CXCRegion(background.shapes[ii])
+        elif background.shapes[ii].logic == opAND:
+            return_value = return_value * CXCRegion(background.shapes[ii])
+        else:
+            raise ValueError("Unknown region logic")
+
+    return return_value
+
+
 def write_output(input_pars, coords, src_regions):
     """Write output files
 
@@ -203,6 +226,7 @@ def write_output(input_pars, coords, src_regions):
 
     for idx, pars in enumerate(zip(xpos, ypos, rad0, rad1)):
         out_region = annulus(*pars)-del_srcs
+        inner_circle = circle(pars[0], pars[1], pars[2])
 
         if fov:
             # So it turns out that the region lib will include both the
@@ -220,6 +244,7 @@ def write_output(input_pars, coords, src_regions):
             if not isclose(bkg_area, baf_area, rel_tol=0.1, abs_tol=0.5):
                 out_region = bkg_and_fov
 
+        out_region = _remove_inner_circle(out_region, inner_circle)
         cmpt = idx+1
         outfile = f"{input_pars['outroot']}_i{cmpt:04d}_bkg.reg"
         out_region.write(outfile, fits=True, clobber=True)
