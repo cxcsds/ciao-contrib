@@ -28,8 +28,30 @@ class TGPixlib(Pixlib):
 
     # pylint: disable=too-many-instance-attributes
 
+    @staticmethod
+    def _check_keywords(keywords):
+        'Check for list of required keywords'
+
+        must_have = ['GRATING', 'INSTRUME', 'DETNAM', 'SIM_X', 'SIM_Y',
+                     'SIM_Z', 'DY_AVG', 'DZ_AVG', 'DTH_AVG',
+                     'RA_PNT', 'DEC_PNT', 'ROLL_PNT', 'RA_NOM', 'DEC_NOM']
+
+        missing = []
+        for check in must_have:
+            if check not in keywords:
+                missing.append(check)
+
+        if len(missing) != 0:
+            missing = ", ".join(missing)
+            raise ValueError("ERROR: The following required keywords are missing: " + missing)
+
     def __init__(self, keywords):
         'Setup pixlib params based on keyword values'
+
+        self._check_keywords(keywords)
+
+        if keywords['GRATING'] not in ['HETG', 'LETG']:
+            raise ValueError("ERROR: GRATING keyword must be either HETG or LETG")
 
         Pixlib.__init__(self, "chandra", "geom")
         self._set_instrument(keywords)
@@ -43,8 +65,10 @@ class TGPixlib(Pixlib):
 
         if keywords["INSTRUME"] == "HRC":
             self.detector = keywords["DETNAM"]
-        else:
+        elif keywords["INSTRUME"] == "ACIS":
             self.detector = keywords["INSTRUME"]
+        else:
+            raise ValueError("ERROR: Unknown INSTRUME keyword")
 
     def _set_sim(self, keywords):
         'Set SIM values and mirror alignment values'
@@ -100,11 +124,11 @@ class TGPixlib(Pixlib):
 
         if zero_xy is None:
             zero_xy = self.zero_xy
-        fpc_zo = self.sky_to_det(*zero_xy)
+        fpc_zo = self._sky_to_det(*zero_xy)
         fc_zo = self.fpc2fc(fpc_zo)
         self.grt_zo = fc_zo
 
-    def sky_to_det(self, skyxx, skyyy):
+    def _sky_to_det(self, skyxx, skyyy):
         'Convert sky to det (via celestial coords)'
 
         # *1.0 make sure is a float
@@ -116,15 +140,49 @@ class TGPixlib(Pixlib):
         return dxy
 
     def sky_to_grating_angles(self, sky_xy, grattype, order, zero_xy=None):
-        'Convert sky to grating angles, tg_r and tg_d [degrees]'
+        '''Convert sky to grating angles, tg_r and tg_d [degrees]
+
+        Example:
+
+        >>> from coords.gratings import TGPixlib
+        >>> from pycrates import read_file
+        >>> evt = read_file("acisf17600_repro_evt2.fits")
+        >>> keys = {x: evt.get_key_value(x) for x in evt.get_keynames()}
+        >>> tg_coords = TGPixlib(keys)
+        >>> reg = read_file("acisf17600_repro_evt2.fits[region][shape=circle]")
+        >>> x0 = reg.get_column('x').values[0]
+        >>> y0 = reg.get_column('y').values[0]
+        >>> zero_order = (x0, y0)
+        >>> sky = (3976, 4296)
+        >>> tg_r,tg_d = tg_coords.sky_to_grating_angles(sky, "heg", 1, zero_order)
+        >>> tg_r,tg_d
+        (-0.04148751081946563, -0.0005054652107781537)
+        '''
         self._set_grating_order_arm_pos(grattype, order, zero_xy)
-        my_fpc_coords = self.sky_to_det(*sky_xy)
+        my_fpc_coords = self._sky_to_det(*sky_xy)
         gdp = self.fpc2gdp(my_fpc_coords)
         gac = self.gdp2gac(gdp)    # tg_r, tg_d
         return gac
 
     def sky_to_grating_energy(self, sky_xy, grattype, order, zero_xy=None):
-        'Convert sky to grating energy, [keV]'
+        '''Convert sky to grating energy, [keV]
+
+        Example:
+
+        >>> from coords.gratings import TGPixlib
+        >>> from pycrates import read_file
+        >>> evt = read_file("acisf17600_repro_evt2.fits")
+        >>> keys = {x: evt.get_key_value(x) for x in evt.get_keynames()}
+        >>> tg_coords = TGPixlib(keys)
+        >>> reg = read_file("acisf17600_repro_evt2.fits[region][shape=circle]")
+        >>> x0 = reg.get_column('x').values[0]
+        >>> y0 = reg.get_column('y').values[0]
+        >>> zero_order = (x0, y0)
+        >>> sky = (3976, 4296)
+        >>> energy = tg_coords.sky_to_grating_energy(sky, "heg", 1, zero_order)
+        >>> energy
+        8.557954827914854
+        '''
         gac = self.sky_to_grating_angles(sky_xy, grattype, order, zero_xy)
         energy = self.grt_energy(gac)
         return energy
@@ -182,14 +240,49 @@ class TGPixlib(Pixlib):
         return self._mnc_to_chip(mnc_ray)
 
     def grating_energy_to_chip(self, energy, grattype, order, zero_xy=None):
-        'Convert grating energy to chip coordinates'
+        '''Convert grating energy to chip coordinates
+
+        Example:
+
+        >>> from coords.gratings import TGPixlib
+        >>> from pycrates import read_file
+        >>> evt = read_file("acisf17600_repro_evt2.fits")
+        >>> keys = {x: evt.get_key_value(x) for x in evt.get_keynames()}
+        >>> tg_coords = TGPixlib(keys)
+        >>> reg = read_file("acisf17600_repro_evt2.fits[region][shape=circle]")
+        >>> x0 = reg.get_column('x').values[0]
+        >>> y0 = reg.get_column('y').values[0]
+        >>> zero_order = (x0, y0)
+        >>> tg_coords.grating_energy_to_chip(1.0, "heg", 1, zero_order)
+        (9, (343.25780808168605, -204.1822083042423))
+
+        In this obsid the zero order location is right at the edge of the
+        detector which results in off-chip coordinates (negative chip Y value).
+        '''
         self._set_grating_order_arm_pos(grattype, order, zero_xy)
         gac = self._energy_to_gac(energy, order)
         gzo = self.gac2gzo(gac)
         return self._gzo_to_chip(gzo)
 
     def chip_to_sky(self, chipid, chip):
-        'Convert chip coords to sky coords'
+        '''Convert chip coords to sky coords
+
+        Example:
+
+        >>> from coords.gratings import TGPixlib
+        >>> from pycrates import read_file
+        >>> evt = read_file("acisf17600_repro_evt2.fits")
+        >>> keys = {x: evt.get_key_value(x) for x in evt.get_keynames()}
+        >>> tg_coords = TGPixlib(keys)
+        >>> reg = read_file("acisf17600_repro_evt2.fits[region][shape=circle]")
+        >>> x0 = reg.get_column('x').values[0]
+        >>> y0 = reg.get_column('y').values[0]
+        >>> zero_order = (x0, y0)
+        >>> chip_id, chip_coords = tg_coords.grating_energy_to_chip(1.0, "heg", 1, zero_order)
+        >>> tg_coords.chip_to_sky(chip_id, chip_coords)
+        array([5026.16976026, 2041.35481574])
+        '''
+
         det = self.chip2fpc((chipid, chip))
         ra_dec = self.dettan.apply([det])    # ra, dec
         sky_xy = self.skytan.invert(ra_dec)
