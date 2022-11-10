@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "03 November 2022"
+toolver  = "10 November 2022"
 
 import sys
 import os
@@ -924,9 +924,18 @@ def build_module_init(modname, pycode, mdls,
     else:
         normpar = ""
 
+    # Do we need to import warnings? We could do this by checking what
+    # condition leads to this (ie the model flags) but for now just check
+    # if warnings.warn is used
+    #
+    use_warnings = pycode.find("warnings.warn") > -1
+    warning_str = "import warnings" if use_warnings else ""
+
     out = PYTHON_HEADER
     out += f'''
 """Sherpa interfaces to XSPEC models."""
+
+{warning_str}
 
 from sherpa.models.parameter import {normpar}hugeval
 from sherpa.astro.xspec import {xsnames}, XSParameter, get_xsversion
@@ -982,10 +991,18 @@ get_xsversion()
     conv = re.subn(r"\{t2\}", "        ", pycode)
     if conv[1] > 0:
         pycode = conv[0]
-        v2(f"NOTE: had to correct the python code {conv[1]} times")
+        v2(f"NOTE: had to correct the python code {conv[1]} times [t2 replacement]")
+
+    # Fix an error in Sherpa 4.15.0 and earlier
+    # - warnings.warn string not correctly interpolated when generated.
+    #
+    conv = re.subn(r"warnings.warn\('support for models like {mdl.clname.lower\(\)}",
+                   "warnings.warn(f'support for models like {self.__class__.__name__.lower()}", pycode)
+    if conv[1] > 0:
+        pycode = conv[0]
+        v2(f"NOTE: had to correct the python code {conv[1]} times [warn f-string]")
 
     out += pycode
-
     save(outfile, out)
 
 
@@ -1319,12 +1336,14 @@ def convert_xspec_user_model(modulename, modelfile,
 
     extrafiles = []
 
-    v2(f"{toolname}: {toolver}")
-    v2(f"  name:       {modulename}")
-    v2(f"  modelfile:  {modelfile}")
-    # v2(f"  extrafiles: {extrafiles}")
-    v2(f"  clobber:    {clobber}")
-    v2("")
+    # These used to be v2 but I find them useful so make them v1.
+    #
+    v1(f"{toolname}: {toolver}")
+    v1(f"  name:       {modulename}")
+    v1(f"  modelfile:  {modelfile}")
+    # v1(f"  extrafiles: {extrafiles}")
+    v1(f"  clobber:    {clobber}")
+    v1("")
 
     # When local is False ensure that the modulename is "unique". We
     # want to allow the user to re-use the same module name (e.g.
