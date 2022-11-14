@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "10 November 2022"
+toolver  = "14 November 2022"
 
 import sys
 import os
@@ -80,12 +80,15 @@ import importlib
 import shutil
 from pathlib import Path
 import sysconfig
+import tempfile
 
 import sherpa
 import sherpa.astro.ui as ui
 from sherpa.astro.utils import xspec
 from sherpa.astro.xspec import get_xsversion
 
+# Do we need this (other than to make sure this is a CIAO environment?)
+#
 import ciao_version
 
 import ciao_contrib.logger_wrapper as lw
@@ -124,7 +127,10 @@ Files that match
 are automatically compiled. The order of compilation is done
 alphabetically, as this appears to be what XSPEC does. To include
 other files on the link line - e.g. .o files - add there names on the
-command line.
+command line. Note that C++ files matching lpack_*.cxx and those that
+end in FunctionMap.cxx are automatically excluded since XSPEC creates
+files with these names; please contact the CXC HelpDesk if this is a
+problem for your model!
 
 So, if the model is defined in lmodel.dat and the source code is in
 mdl1.f and mdl2.f then you could run this script as
@@ -246,7 +252,7 @@ def find_xspec_basedir():
     there's
 
       - include/ and lib/ dirs
-      - the file lib/libXS\* present.
+      - the file lib/libXS* present.
 
     We then return the path, and it is guaranteed to be an absolute
     path. So, the includes should be in /include and the libraries in
@@ -336,8 +342,8 @@ def find_file_types(types):
 
     if len(out) == 0:
         return None
-    else:
-        return out
+
+    return out
 
 
 def find_fortran_files():
@@ -376,6 +382,22 @@ def find_c_files():
     return find_file_types({"c": "*.c"})
 
 
+def is_fs_case_sensitive(path):
+    """Is this filesystem case sensitive?
+
+    This seems a lot of work.... It is taken from
+    https://stackoverflow.com/a/36612604
+    """
+
+    # We force the filename to have mixed case by virtue of the
+    # prefix.
+    #
+    with tempfile.NamedTemporaryFile(prefix='TmP',
+                                     dir=path,
+                                     delete=True) as tfile:
+        return (not os.path.exists(tfile.name.lower()))
+
+
 def find_cplusplus_files():
     """Return the Fortran files found in the current
     directory, labelled by "type".
@@ -385,19 +407,60 @@ def find_cplusplus_files():
       "cc"  : *.cc
       "cpp" : *.cpp
 
-    The dictionary only contains keys if there was a
-    match for that pattern; if there are no matches
-    then None is returned.
+    The dictionary only contains keys if there was a match for that
+    pattern; if there are no matches then None is returned.
 
-    Note that on case-insensitive file systems, this
-    will match the same files as find_c_files() for
-    the "C" and "c" options.
+    Note that on case-insensitive file systems, this will match the
+    same files as find_c_files() for the "C" and "c" options.
+
+    Files that match the patterns
+
+        lpack_*.cxx
+        *FunctionMap.cxx
+
+    are excluded from the searches, as they are typically created by
+    XSPEC (unfortunately it depends on what name the user who called
+    initpackage used to know what the '*' should be, so we just ignore
+    any matches).
+
     """
 
-    return find_file_types({"cxx": "*.cxx",
-                            "C": "*.C",
-                            "cc": "*.cc",
-                            "cpp": "*.cpp"})
+    this_dir = os.getcwd()
+    is_case_sen = is_fs_case_sensitive(this_dir)
+
+    out = find_file_types({"cxx": "*.cxx",
+                           "C": "*.C",
+                           "cc": "*.cc",
+                           "cpp": "*.cpp"})
+
+    if not is_case_sen and "C" in out:
+        v1(f"WARNING: directory {this_dir} is  not case sensitive, so C++ may have found *.c files!")
+
+    try:
+        cxx = out["cxx"]
+        repl = []
+        for fname in cxx:
+            if is_case_sen:
+                check = fname.startswith("lpack_") or fname.endswith("FunctionMap.cxx")
+            else:
+                lname = fname.lower()
+                check = lname.startswith("lpack_") or lname.endswith("functionmap.cxx")
+
+            if check:
+                v1(f"Skipping {fname} as assumed to have been created by initpackage")
+                continue
+
+            repl.append(fname)
+
+        if len(repl) == 0:
+            del out["cxx"]
+        elif len(repl) != len(cxx):
+            out["cxx"] = repl
+
+    except KeyError:
+        pass
+
+    return out
 
 
 def count_nfiles(label, fileinfo):
@@ -768,7 +831,7 @@ where = src
     # include path from the installed Sherpa we do not need to
     # build a version of Sherpa, which saves time.
     #
-    out = f'''[build-system]
+    out = '''[build-system]
 requires = ["setuptools >= 49.1.2",
             "wheel",
             "oldest-supported-numpy"
@@ -897,7 +960,8 @@ def build_module_init(modname, pycode, mdls,
 
     if len(mdlnames) == 0:
         raise ValueError("Somehow got this far with no models to process!")
-    elif len(mdlnames) == 1:
+
+    if len(mdlnames) == 1:
         mdlnames = f"{mdlnames[0]},"
     else:
         mdlnames = ', '.join(mdlnames)
@@ -1001,6 +1065,20 @@ get_xsversion()
     if conv[1] > 0:
         pycode = conv[0]
         v2(f"NOTE: had to correct the python code {conv[1]} times [warn f-string]")
+
+    # Replace the warning message about "recalculated-per spectrum"
+    # with a change to the _use_caching value. Note that we've just
+    # made a change to this code. Also note that we need to make the
+    # _use_caching call after calling the superclass but the warning
+    # is made before calling things, which complicates the
+    # replacement.
+    #
+    conv = re.subn(r"\n(\s+)warnings.warn\(f'support for models like {self.__class__.__name__.lower\(\)} \(recalculated per spectrum\) is untested.'\)\n([^\n]*)\n",
+                   r"\n\2\n\1self._use_caching = False",
+                   pycode)
+    if conv[1] > 0:
+        pycode = conv[0]
+        v2(f"NOTE: replaced recalulated warning with self._use_caching setting {conv[1]} times")
 
     out += pycode
     save(outfile, out)
@@ -1146,13 +1224,13 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 
         if mdl.language == "Fortran - single precision":
             fmods.append(f"xsf77Call {mdl.funcname}_;")
-        elif mod.language == "Fortran - double precision":
+        elif mdl.language == "Fortran - double precision":
             # We do not support this type of model at the moment
-            fmods.append(f"xsF77Call {mdlfuncname}_;")
+            fmods.append(f"xsF77Call {mdl.funcname}_;")
         else:
             v1(f"WARNING: unrecognized model style for {mdl.name}/{mdl.funcname}: {mdl.language}")
 
-    if len(fmods):
+    if len(fmods) > 0:
         out += '''// Defines (re-created as sherpa.astro.utils.xspec needs updating)
 
 extern "C" {
@@ -1461,7 +1539,7 @@ def convert_xspec_user_model(modulename, modelfile,
     # Strip out unsupported models and check on the model names.
     #
     known_models = ui.list_models()
-    known_symbols = dir(ui)
+    # known_symbols = dir(ui)
 
     mdls = []
     mnames = []
@@ -1596,7 +1674,7 @@ def convert_xspec_user_model(modulename, modelfile,
         v1("")
 
     # report any problems
-    if probs != []:
+    if probs:
         n = len(probs)
         if n == 1:
             v1("Please note the following problem:")

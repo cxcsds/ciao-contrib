@@ -519,13 +519,24 @@ undefined symbol: _gfortran_copy_string
 	uses to build its interface to the XSPEC model library.
 	The C++ code is generated in the src/{modname}/src/_models.cxx
 	file. The sherpa.astro.utils.xspec.create_xspec_code
-	routine is used to create the files.
+	routine is used to create the files, although some
+	post-processing is needed to fix up known problems
+	and to integrate it into a full Python module.
       </PARA>
 
       <PARA title="What files are compiled?">
 	The following files in the current working directory are
 	compiled: *.f, *.f03, *.f90, *.c, *.cxx, *.C, *.cpp, and
-	*.cc. These are compiled via the Python Extension
+	*.cc. The CXX files are checked and any that match
+	lpack*.cxx or *FunctionMap.cxx are removed, as they
+	are assumed to have been created by XSPEC's initpackage
+	call. Please contact the
+	<HREF link="https://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	if you have problems with this file selection.
+      </PARA>
+
+      <PARA>
+	The selected files are compiled via the Python Extension
 	class (details are in the setup.py file), although
 	there is some extra work to compile FORTRAN files
 	using this iinterface. Any improvements to this
@@ -550,7 +561,9 @@ undefined symbol: _gfortran_copy_string
     <ADESC title="Changes in the scripts 4.15.0 (December 2022) release">
       <PARA>
 	The script has been updated to work with Sherpa in CIAO 4.15,
-	as the interface to the XSPEC model library was updated.
+	as the interface to the XSPEC model library was changed. The
+	script will now exclude any file that appears to have been
+	created by a call to the initpackage routine of XSPEC.
       </PARA>
     </ADESC>
 
