@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2010, 2011, 2012, 2014, 2015, 2018, 2019, 2021
+#  Copyright (C) 2010, 2011, 2012, 2014, 2015, 2018, 2019, 2021, 2022
 #  Smithsonian Astrophysical Observatory
 #
 #
@@ -100,8 +100,17 @@ def add_defargs(args, clobber, verbose):
     else:
         clstr = "no"
 
-    args.append("clobber={}".format(clstr))
-    args.append("verbose={}".format(verbose))
+    args.append(f"clobber={clstr}")
+    args.append(f"verbose={verbose}")
+
+
+def add_lookupTab(args, lookupTab):
+    """Add lookupTab if set. args is modified *in place*."""
+
+    if lookupTab is None:
+        return
+
+    args.append(f"lookupTab={lookupTab}")
 
 
 def punlearn(tname):
@@ -131,7 +140,7 @@ def dmcopy(infile, outfile,
     # Note: trying to move away from passing around a string
     # instead of a boolean; can probably remove this now.
     if clobber in ["yes", "no"]:
-        print("*** Internal warning: dmcopy clobber={}".format(clobber))
+        print(f"*** Internal warning: dmcopy clobber={clobber}")
         clobber = clobber == "yes"
 
     v3("Copying <{}> to <{}>".format(infile, outfile))
@@ -153,10 +162,10 @@ def update_column_range(infile, verbose=0):
 
     punlearn('update_column_range')
     run('update_column_range',
-        ["infile=" + infile,
+        [f"infile={infile}",
          "columns=sky",
          "round=yes",
-         "verbose={}".format(verbose),
+         f"verbose={verbose}",
          "mode=h"])
 
 
@@ -174,8 +183,7 @@ def dmmerge(infile, outfile,
 
     args = ['infile=' + infile,
             'outfile=' + outfile]
-    if lookupTab is not None:
-        args.append("lookupTab=" + lookupTab)
+    add_lookupTab(args, lookupTab)
 
     add_defargs(args, clobber, verbose)
     punlearn('dmmerge')
@@ -201,11 +209,10 @@ def dmimgcalc2(infile1, infile2, outfile, op,
             "infile2=" + infile2,
             "outfile=" + outfile,
             "operation=" + op,
-            "weight={}".format(weight1),
-            "weight2={}".format(weight2),
+            f"weight={weight1}",
+            f"weight2={weight2}",
             "mode=h"]
-    if lookupTab is not None:
-        args.append("lookupTab=" + lookupTab)
+    add_lookupTab(args, lookupTab)
 
     add_defargs(args, clobber, verbose)
     punlearn("dmimgcalc")
@@ -222,23 +229,49 @@ def dmimgcalc(infiles, outfile, op,
     argument, so op should be "img1+img2" rather than "imgout=img1+img2".
 
     If lookupTab is not None it is passed to dmimgcalc.
+
+    As of CIAO 4.15, we can now set the operation argument to
+    dmimgcalc as a stack, which will help cases when the op string is
+    >~ 1000 characters. We therefore switch to this option when op
+    is "too long" (and do not do so for shorter operations to reduce
+    the number of changes in existing code).
+
     """
+
+    # Do we want to use a stack for operation? The belief is that we
+    # want to do when len('imgout=' + op) > 1023 (or 1024) but we
+    # don't know the exact length, so we just use 990  (as some
+    # testing I did suggests the stack library has problems with lines
+    # of 1000 characters).
+    #
+    if len(op) > 990:
+        v3(f"run.dmimgcalc sent {len(op)} chars for op - using stack")
+        opstk = tempfile.NamedTemporaryFile(mode='w+', dir=tmpdir,
+                                            suffix=".op", delete=True)
+        opstk.write("imgout=")
+        opstk.write(op)
+        opstk.flush()
+        opval = f"@{opstk.name}"
+    else:
+        opval = f"imgout={op}"
+        opstk = None
 
     instk = make_stackfile(infiles, dir=tmpdir, suffix=".dmimgcalc")
     try:
-        args = ["infile=@" + instk.name,
+        args = [f"infile=@{instk.name}",
                 "infile2=",
-                "outfile=" + outfile,
-                "op=imgout=" + op,
+                f"outfile={outfile}",
+                f"op={opval}",
                 "mode=h"]
-        if lookupTab is not None:
-            args.append("lookupTab=" + lookupTab)
+        add_lookupTab(args, lookupTab)
 
         add_defargs(args, clobber, verbose)
         punlearn("dmimgcalc")
         run("dmimgcalc", args)
     finally:
         instk.close()
+        if opstk is not None:
+            opstk.close()
 
 
 def dmimgcalc_add(infiles, outfile,
@@ -258,10 +291,13 @@ def dmimgcalc_add(infiles, outfile,
     have had crashes when ~160 files have been combined even though I
     can combine a larger number of files, which suggests that it's the
     length of the total command string - see #481. So pick a
-    hopefully-safe chunk size. There is however a limit: 100**2,
-    just because I can't be bothered with recursion here. If we
-    are trying to add this many files we are probably going to
-    have problems anyway!
+    hopefully-safe chunk size. There is however a limit: 100**2, just
+    because I can't be bothered with recursion here. If we are trying
+    to add this many files we are probably going to have problems
+    anyway! This can be ameliorated in CIAO 4.15 and later by taking
+    advantage of the stack support for the operation parameter to
+    dmimgcalc, but we do not try here as we still have this workaround
+    (and we may benefit from not loading all the data in at once).
 
     """
 
