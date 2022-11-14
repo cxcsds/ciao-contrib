@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "10 November 2022"
+toolver  = "14 November 2022"
 
 import sys
 import os
@@ -86,6 +86,8 @@ import sherpa.astro.ui as ui
 from sherpa.astro.utils import xspec
 from sherpa.astro.xspec import get_xsversion
 
+# Do we need this (other than to make sure this is a CIAO environment?)
+#
 import ciao_version
 
 import ciao_contrib.logger_wrapper as lw
@@ -246,7 +248,7 @@ def find_xspec_basedir():
     there's
 
       - include/ and lib/ dirs
-      - the file lib/libXS\* present.
+      - the file lib/libXS* present.
 
     We then return the path, and it is guaranteed to be an absolute
     path. So, the includes should be in /include and the libraries in
@@ -336,8 +338,8 @@ def find_file_types(types):
 
     if len(out) == 0:
         return None
-    else:
-        return out
+
+    return out
 
 
 def find_fortran_files():
@@ -768,7 +770,7 @@ where = src
     # include path from the installed Sherpa we do not need to
     # build a version of Sherpa, which saves time.
     #
-    out = f'''[build-system]
+    out = '''[build-system]
 requires = ["setuptools >= 49.1.2",
             "wheel",
             "oldest-supported-numpy"
@@ -897,7 +899,8 @@ def build_module_init(modname, pycode, mdls,
 
     if len(mdlnames) == 0:
         raise ValueError("Somehow got this far with no models to process!")
-    elif len(mdlnames) == 1:
+
+    if len(mdlnames) == 1:
         mdlnames = f"{mdlnames[0]},"
     else:
         mdlnames = ', '.join(mdlnames)
@@ -1146,13 +1149,13 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
 
         if mdl.language == "Fortran - single precision":
             fmods.append(f"xsf77Call {mdl.funcname}_;")
-        elif mod.language == "Fortran - double precision":
+        elif mdl.language == "Fortran - double precision":
             # We do not support this type of model at the moment
-            fmods.append(f"xsF77Call {mdlfuncname}_;")
+            fmods.append(f"xsF77Call {mdl.funcname}_;")
         else:
             v1(f"WARNING: unrecognized model style for {mdl.name}/{mdl.funcname}: {mdl.language}")
 
-    if len(fmods):
+    if len(fmods) > 0:
         out += '''// Defines (re-created as sherpa.astro.utils.xspec needs updating)
 
 extern "C" {
@@ -1461,7 +1464,7 @@ def convert_xspec_user_model(modulename, modelfile,
     # Strip out unsupported models and check on the model names.
     #
     known_models = ui.list_models()
-    known_symbols = dir(ui)
+    # known_symbols = dir(ui)
 
     mdls = []
     mnames = []
@@ -1596,7 +1599,7 @@ def convert_xspec_user_model(modulename, modelfile,
         v1("")
 
     # report any problems
-    if probs != []:
+    if probs:
         n = len(probs)
         if n == 1:
             v1("Please note the following problem:")
