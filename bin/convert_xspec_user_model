@@ -1066,6 +1066,20 @@ get_xsversion()
         pycode = conv[0]
         v2(f"NOTE: had to correct the python code {conv[1]} times [warn f-string]")
 
+    # Replace the warning message about "recalculated-per spectrum"
+    # with a change to the _use_caching value. Note that we've just
+    # made a change to this code. Also note that we need to make the
+    # _use_caching call after calling the superclass but the warning
+    # is made before calling things, which complicates the
+    # replacement.
+    #
+    conv = re.subn(r"\n(\s+)warnings.warn\(f'support for models like {self.__class__.__name__.lower\(\)} \(recalculated per spectrum\) is untested.'\)\n([^\n]*)\n",
+                   r"\n\2\n\1self._use_caching = False",
+                   pycode)
+    if conv[1] > 0:
+        pycode = conv[0]
+        v2(f"NOTE: replaced recalulated warning with self._use_caching setting {conv[1]} times")
+
     out += pycode
     save(outfile, out)
 
