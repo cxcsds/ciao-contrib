@@ -80,6 +80,7 @@ import importlib
 import shutil
 from pathlib import Path
 import sysconfig
+import tempfile
 
 import sherpa
 import sherpa.astro.ui as ui
@@ -126,7 +127,10 @@ Files that match
 are automatically compiled. The order of compilation is done
 alphabetically, as this appears to be what XSPEC does. To include
 other files on the link line - e.g. .o files - add there names on the
-command line.
+command line. Note that C++ files matching lpack_*.cxx and those that
+end in FunctionMap.cxx are automatically excluded since XSPEC creates
+files with these names; please contact the CXC HelpDesk if this is a
+problem for your model!
 
 So, if the model is defined in lmodel.dat and the source code is in
 mdl1.f and mdl2.f then you could run this script as
@@ -378,6 +382,22 @@ def find_c_files():
     return find_file_types({"c": "*.c"})
 
 
+def is_fs_case_sensitive(path):
+    """Is this filesystem case sensitive?
+
+    This seems a lot of work.... It is taken from
+    https://stackoverflow.com/a/36612604
+    """
+
+    # We force the filename to have mixed case by virtue of the
+    # prefix.
+    #
+    with tempfile.NamedTemporaryFile(prefix='TmP',
+                                     dir=path,
+                                     delete=True) as tfile:
+        return (not os.path.exists(tfile.name.lower()))
+
+
 def find_cplusplus_files():
     """Return the Fortran files found in the current
     directory, labelled by "type".
@@ -387,19 +407,60 @@ def find_cplusplus_files():
       "cc"  : *.cc
       "cpp" : *.cpp
 
-    The dictionary only contains keys if there was a
-    match for that pattern; if there are no matches
-    then None is returned.
+    The dictionary only contains keys if there was a match for that
+    pattern; if there are no matches then None is returned.
 
-    Note that on case-insensitive file systems, this
-    will match the same files as find_c_files() for
-    the "C" and "c" options.
+    Note that on case-insensitive file systems, this will match the
+    same files as find_c_files() for the "C" and "c" options.
+
+    Files that match the patterns
+
+        lpack_*.cxx
+        *FunctionMap.cxx
+
+    are excluded from the searches, as they are typically created by
+    XSPEC (unfortunately it depends on what name the user who called
+    initpackage used to know what the '*' should be, so we just ignore
+    any matches).
+
     """
 
-    return find_file_types({"cxx": "*.cxx",
-                            "C": "*.C",
-                            "cc": "*.cc",
-                            "cpp": "*.cpp"})
+    this_dir = os.getcwd()
+    is_case_sen = is_fs_case_sensitive(this_dir)
+
+    out = find_file_types({"cxx": "*.cxx",
+                           "C": "*.C",
+                           "cc": "*.cc",
+                           "cpp": "*.cpp"})
+
+    if not is_case_sen and "C" in out:
+        v1(f"WARNING: directory {this_dir} is  not case sensitive, so C++ may have found *.c files!")
+
+    try:
+        cxx = out["cxx"]
+        repl = []
+        for fname in cxx:
+            if is_case_sen:
+                check = fname.startswith("lpack_") or fname.endswith("FunctionMap.cxx")
+            else:
+                lname = fname.lower()
+                check = lname.startswith("lpack_") or lname.endswith("functionmap.cxx")
+
+            if check:
+                v1(f"Skipping {fname} as assumed to have been created by initpackage")
+                continue
+
+            repl.append(fname)
+
+        if len(repl) == 0:
+            del out["cxx"]
+        elif len(repl) != len(cxx):
+            out["cxx"] = repl
+
+    except KeyError:
+        pass
+
+    return out
 
 
 def count_nfiles(label, fileinfo):
