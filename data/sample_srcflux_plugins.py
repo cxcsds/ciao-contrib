@@ -372,7 +372,7 @@ def aplimits_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
     """
     Sample plugin: aplimits
     
-    This plugin runs the new `aplimits` script to compute
+    This plugin runs the `aplimits` script to compute
     upper limits and rate limits on false detections.    
     """
 
