@@ -366,3 +366,48 @@ def spectral_fit_sample_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, sr
 
     return retval
     
+
+
+def aplimits_srcflux_obsid_plugin(infile, outroot, band, elo, ehi, src_num):
+    """
+    Sample plugin: aplimits
+    
+    This plugin runs the new `aplimits` script to compute
+    upper limits and rate limits on false detections.    
+    """
+
+    from paramio import pgetd, pgeti
+    from ciao_contrib.runtool import make_tool
+    from pycrates import read_file
+    
+    index = src_num-1
+    aplimits = make_tool("aplimits")
+
+    aplimits.prob_false_detection = 0.05
+    aplimits.prob_missed_detection = 0.5
+
+    base_root = outroot.replace(f"_{src_num:04d}","")
+    infile = f"{base_root}_{band}.flux"
+
+    tab = read_file(infile)
+    aplimits.T_s = tab.get_column("EXPOSURE").values[index]
+    aplimits.A_s = tab.get_column("AREA").values[index]
+    aplimits.m = tab.get_column("BG_COUNTS").values[index]
+    aplimits.T_b = aplimits.T_s
+    aplimits.A_b = tab.get_column("BG_AREA").values[index]
+    aplimits.outfile = f"{outroot}_lims.par"
+    aplimits(clobber=True)
+    
+    psf_frac = tab.get_column("PSFFRAC").values[index]
+
+    return [ReturnValue('SRC_RATE_UPPER_LIMIT', 
+                        pgetd(aplimits.outfile, "upper_limit")/psf_frac, 
+                        "counts/sec", 
+                        "Upper limit on 50% probability of missed source"),
+            ReturnValue('SRC_MIN_COUNTS_DETECT',
+                        pgeti(aplimits.outfile, "min_counts_detect"),
+                        "counts",
+                        "Min counts for 5% probability of false detect")]
+     
+    
+    
