@@ -45,7 +45,7 @@ from multiprocessing import cpu_count
 
 toolname = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "8 November 2022"
+__revision__ = "16 November 2022"
 
 # Set up the logging/verbose code
 initialize_logger(toolname)
@@ -451,7 +451,7 @@ class ParDicts(object):
                         bin_setting = f"[bin chipx={binarfcorr},chipy={binarfcorr}]"
                     
 
-            with new_pfiles_environemt(ardlib=False,copyuser=False):
+            with new_pfiles_environment(ardlib=False,copyuser=False):
                 dmstat.punlearn()
                 dmstat.verbose = 0
                 
@@ -544,7 +544,7 @@ class ParDicts(object):
                             raise IOError(f"EOL: the line ends in the ASCII region file, '{regfile}', using Windows/DOS-style carriage return & line feed (CRLF) rather than Unix-compatible line feed only.")
 
                 except FileNotFoundError:
-                    raise IOError(f"region file '{regfile}' not found")
+                    raise IOError(f"region file '{regfile}' not found") from None
 
                 except UnicodeDecodeError:
                     pass
