@@ -83,6 +83,30 @@ v5 = make_verbose_level(toolname, 5)
 
 
 
+def make_combined_outroot(outroot: str, label: str) -> str:
+    """create the outroot for combined data.
+
+    Do we really need to send in label or can we assume
+    it is always "src1"?
+
+    See
+    https://github.com/cxcsds/ciao-contrib/issues/686
+
+    """
+
+    # Originally we used outroot.rstrip("_src1") but this lead to odd
+    # behavior, so we can just be explicit.
+    #
+    elabel = f"_{label}"
+    if outroot.endswith(elabel):
+        return outroot[:-len(elabel)]
+
+    # This shouldn't happen, but leave in just in case to match the
+    # old behavior.
+    #
+    return outroot.rstrip(elabel)
+
+
 def extract_spectra(full_outroot, infile, ptype, channel,
                     ewmap, binwmap, instrument,
                     clobber, verbose):
@@ -1865,7 +1889,6 @@ def add_header_keys(args):
             v1(f"Failed to update the BACKFILE keyword in {fn}.\n")
 
 
-
 def coadd(outroot,spec_src_stk,spec_bkg_stk,
           arf_src_stk,arf_bkg_stk,
           rmf_src_stk,rmf_bkg_stk,
@@ -1951,7 +1974,9 @@ def clobber_file_check(specextract_args,combine):
                 fileclobber.append(fn)
 
     if combine == "yes":
-        combine_outroot = "{}_combined".format(specextract_args[0]["full_outroot"].rstrip(f"_{specextract_args[0]['key_id']}"))
+        temp = make_combined_outroot(specextract_args[0]["full_outroot"],
+                                     specextract_args[0]['key_id'])
+        combine_outroot = f"{temp}_combined"
 
         combine_extension = ["src.pi","src.arf","src.rmf","bkg.pi","bkg.arf","bkg.rmf"]
 
@@ -2380,7 +2405,8 @@ def run_specextract(args):
     ###########################
 
     if combine == "yes":
-        combine_outroot = specdicts["src1"]["full_outroot"].rstrip("_src1")
+        combine_outroot = make_combined_outroot(specdicts["src1"]["full_outroot"],
+                                                "src1")
 
         coadd(combine_outroot,
               src_spec,bkg_spec,
