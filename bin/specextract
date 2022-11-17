@@ -34,7 +34,7 @@ Script:
 __version__ = "CIAO 4.15"
 
 toolname = "specextract"
-__revision__ = "15 November 2022"
+__revision__ = "17 November 2022"
 
 
 ##########################################################################
@@ -1878,54 +1878,53 @@ def coadd(outroot,spec_src_stk,spec_bkg_stk,
 
     if len(spec_src_stk) < 2:
         v1("Warning: There are fewer than two source event files specified in the 'infile' parameter; the 'combine=yes' setting will be ignored.\n")
+        return
 
-    else:
-        #################################################
-        #
-        # Combine output spectra and responses if the
-        # appropriate files were successfully created.
-        #
-        #################################################
+    #################################################
+    #
+    # Combine output spectra and responses if the
+    # appropriate files were successfully created.
+    #
+    #################################################
 
-        if verbose == 2:
-            verbose = 1
+    nsrcs = set([len(spec_src_stk), len(arf_src_stk), len(rmf_src_stk)])
+    if len(nsrcs) > 1:
+        v1("Output spectra and responses were not combined because spectra and/or responses were not created for every item in the input stack(s) of files.")
+        return
 
-        combine_spectra.punlearn()
-        combine_spectra.outroot = f"{outroot}_combined"
-        combine_spectra.clobber = clobber
-        combine_spectra.verbose = verbose
+    if verbose == 2:
+        verbose = 1
 
-        src_length = [len(spec_src_stk),len(arf_src_stk),len(rmf_src_stk)]
+    combine_spectra.punlearn()
+    combine_spectra.outroot = f"{outroot}_combined"
+    combine_spectra.clobber = clobber
+    combine_spectra.verbose = verbose
 
-        if all(slen == src_length[0] for slen in src_length):
-            combine_spectra.src_spectra = spec_src_stk
-            combine_spectra.src_arfs = arf_src_stk
-            combine_spectra.src_rmfs = rmf_src_stk
+    combine_spectra.src_spectra = spec_src_stk
+    combine_spectra.src_arfs = arf_src_stk
+    combine_spectra.src_rmfs = rmf_src_stk
 
-            combine_infostr = "Combined source spectra and responses."
+    combine_infostr = "Combined source spectra and responses."
 
-            if dobg:
-                if len(spec_bkg_stk) == len(spec_src_stk):
-                    combine_spectra.bkg_spectra = spec_bkg_stk
+    if dobg:
+        # Should we warn when these don't match?
+        if len(spec_bkg_stk) == len(spec_src_stk):
+            combine_spectra.bkg_spectra = spec_bkg_stk
+            combine_infostr = "Combined source spectra and responses, and background spectra."
 
-                    combine_infostr = "Combined source spectra and responses, and background spectra."
+            if dobkgresp and all([arf_bkg_stk is not None,rmf_bkg_stk is not None]):
+                combine_spectra.bkg_arfs = arf_bkg_stk
+                combine_spectra.bkg_rmfs = rmf_bkg_stk
 
-                    if dobkgresp and all([arf_bkg_stk is not None,rmf_bkg_stk is not None]):
-                        combine_spectra.bkg_arfs = arf_bkg_stk
-                        combine_spectra.bkg_rmfs = rmf_bkg_stk
+                combine_infostr = "Combined source and background spectra and responses."
 
-                        combine_infostr = "Combined source and background spectra and responses."
+    try:
+        combine_spectra()
+        v2(combine_infostr)
 
-            try:
-                combine_spectra()
-                v2(combine_infostr)
-
-            except OSError:
-                v1("Failed to combine output spectra and responses, please do so manually or with 'combine_spectra'.")
-
-        else:
-            v1("Output spectra and responses were not combined because spectra and/or responses were not created for every item in the input stack(s) of files.")
-
+    except OSError as exc:
+        v1("Failed to combine output spectra and responses, please do so manually or with 'combine_spectra'.")
+        v2(f"Error: {exc}")
 
 
 def clobber_file_check(specextract_args,combine):
