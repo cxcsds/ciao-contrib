@@ -45,7 +45,7 @@ from multiprocessing import cpu_count
 
 toolname = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "04 February 2022"
+__revision__ = "16 November 2022"
 
 # Set up the logging/verbose code
 initialize_logger(toolname)
@@ -113,6 +113,7 @@ class ParDicts(object):
         self.bkgfile = params["bkgfile"]
         self.bkgresp = params["bkgresp"]
         self.asp = params["asp"]
+        self.resp_pos = params["resp_pos"]
         self.refcoord = params["refcoord"]
         self.rmffile = params["rmffile"]
         self.streakspec = params["streakspec"]
@@ -242,6 +243,11 @@ class ParDicts(object):
             else:
                 fn_stk = stk.build(infpar)
 
+            for fn in fn_stk:
+                if "\r" in fn:
+                    inf = infpar.strip("@")
+                    raise IOError(f"EOL: the line ends in the ASCII stack file, '{inf}', using Windows/DOS-style carriage return & line feed (CRLF) rather than Unix-compatible line feed only.")
+                
         else:
             fn_stk = []
 
@@ -445,9 +451,9 @@ class ParDicts(object):
                         bin_setting = f"[bin chipx={binarfcorr},chipy={binarfcorr}]"
                     
 
-            with new_pfiles_environemt(ardlib=False,copyuser=False):
+            with new_pfiles_environment(ardlib=False,copyuser=False):
                 dmstat.punlearn()
-                dmstat.verbose = "0"
+                dmstat.verbose = 0
                 
                 dmstat(f"{file}{bin_setting}")
 
@@ -535,10 +541,10 @@ class ParDicts(object):
                         if b"\r\n" in r.read():
                             ## n.b.: modify region file by doing
                             ## `cat regfile | tr -d '\015' > regfile.lf-only`
-                            raise IOError(f"EOL: the line ends in the ASCII region file, '{regfile}', use Windows/DOS-style carriage return & line feed (CRLF) rather than Unix-compatible line feed only.")
+                            raise IOError(f"EOL: the line ends in the ASCII region file, '{regfile}', using Windows/DOS-style carriage return & line feed (CRLF) rather than Unix-compatible line feed only.")
 
                 except FileNotFoundError:
-                    raise IOError(f"region file '{regfile}' not found")
+                    raise IOError(f"region file '{regfile}' not found") from None
 
                 except UnicodeDecodeError:
                     pass
@@ -677,7 +683,7 @@ class ParDicts(object):
             return asol_dict
 
 
-    def resp_pos(self,infile,asol,refcoord,binimg=2):
+    def get_resp_pos(self,infile,asol,resp_pos,refcoord,binimg=2):
         """
         determine coordinates to use to produce responses
         """
@@ -703,63 +709,71 @@ class ParDicts(object):
                     raise IOError("No region filter with the event file, nor a refcoord value, provided to produce response files.")
 
                 else:
-                    ############ Current but OUTDATED approach ############
-                    #
-                    # follow general procedures used in _event_stats()
-                    dmstat.punlearn()
-                    dmstat.infile = f"{infile}[bin sky={binimg}]"
-                    dmstat.verbose = "0"
-                    dmstat.centroid = "yes"
-                    dmstat()
+                    if resp_pos.lower() in ["centroid","max"]:
+                        dmstat.punlearn()
+                        dmstat.infile = f"{infile}[bin sky={binimg}]"
+                        dmstat.verbose = 0
+                        dmstat.centroid = True
+                        dmstat()
 
-                    # get sky position
-                    skyx,skyy = dmstat.out_max_loc.split(",")
-                    # skyx,skyy = dmstat.out_cntrd_phys.split(",") # having issues if centroid falls
-                    #                                              # in a zero-count location
-                    # if 'nan' in [skyx,skyy]:
-                    #     skyx,skyy = dmstat.out_max_loc.split(",")
+                        ## get centroided sky position ##
+                        if resp_pos.lower() == "centroid":
+                            skyx,skyy = dmstat.out_cntrd_phys.split(",")
 
-                    # convert to chip coordinates
-                    dmcoords.opt = "sky"
-                    dmcoords.x = skyx
-                    dmcoords.y = skyy
-                    
+                            # if centroid falls in a zero-count location, NaN's will be returned
+                            if 'nan' in [skyx,skyy]:
+                                raise ValueError("Region centroiding failed, please select another 'resp_pos' method to determine the position to calculate the unweighted responses.")
+
+                        ## get sky position using maximal location encompassed by the region ##
+                        else:
+                            skyx,skyy = dmstat.out_max_loc.split(",")
+
+                    if resp_pos.lower() == "regextent":
+                        ## determine response location using center of region extent ##                    
+                        regext = region.CXCRegion(pcr.read_file(f"{infile}[#row=0]").get_subspace_data(1,"sky").region).extent()
+
+                        skyx = 0.5*(regext["x0"] + regext["x1"])
+                        skyy = 0.5*(regext["y0"] + regext["y1"])
+
+                    if resp_pos.lower() == "region":
+                        regcent = region.CXCRegion(pcr.read_file(f"{infile}[#row=0]").get_subspace_data(1,"sky").region)
+
+                        if len(regcent) > 1:
+                            v1("Warning: more than 1 shape found, using the coordinates of the first defined shape")
+
+                        if regcent.shapes[0].name.lower() in ["polygon","rectangle"]:
+                            skyx = numpy.mean(regcent.shapes[0].xpoints)
+                            skyy = numpy.mean(regcent.shapes[0].ypoints)
+                        else:
+                            skyx = regcent.shapes[0].xpoints[0]
+                            skyy = regcent.shapes[0].ypoints[0]
+                            
+                        
                     #######################################################
-                    
-                    # ## determine response location using center of region extent ##
-                    # #
-                    # # regext = region.CXCRegion(pcr.read_file(f"{infile}[#row=0]").get_subspace_data(1,"sky").region).extent()
-
-                    # # skyx = str(0.5*(regext["x0"] + regext["x1"]))
-                    # # skyy = str(0.5*(regext["y0"] + regext["y1"]))
-
-                    # # # convert to chip coordinates
-                    # # dmcoords.opt = "sky"
-                    # # dmcoords.x = skyx
-                    # # dmcoords.y = skyy
-                    
-                    
+                    # ## ... or ...
                     # ## use get_sky_limits instead of region module since it's
                     # ## agnostic on coordinates used for extraction region
-
+                    #
                     # get_sky_limits.punlearn()
-
+                    #
                     # get_sky_limits.image = f"{infile}[bin sky={binimg}]"
                     # get_sky_limits.precision = numpy.abs(numpy.floor(numpy.log10(binimg))) + 2
                     # get_sky_limits.verbose = 0
                     # get_sky_limits()
-
+                    #
                     # x,y = get_sky_limits.xygrid.split(",")
                     # x = [float(n) for n in x.split(":")[:-1]]
                     # y = [float(n) for n in y.split(":")[:-1]]
-
+                    #
                     # skyx = 0.5*(x[0]+x[1])
                     # skyy = 0.5*(y[0]+y[1])
+                    #
+                    #######################################################
                     
-                    # # convert to chip coordinates
-                    # dmcoords.opt = "sky"
-                    # dmcoords.x = skyx
-                    # dmcoords.y = skyy
+                    # convert to chip coordinates
+                    dmcoords.opt = "sky"
+                    dmcoords.x = skyx
+                    dmcoords.y = skyy
                     
             dmcoords()
 
@@ -778,9 +792,8 @@ class ParDicts(object):
 
 
     def check_fp_temp(self,kwdict,inf,ebin):
-
         """
-        check focal plane temperature, if >-110C, then check FEF energy range.        
+        check focal plane temperature, if >-109C prior to 2000-01-29T20:00:00 (Chandra Time: 65563201), then check FEF energy range for mkrmf
         """
 
         #####################################################################################
@@ -794,16 +807,19 @@ class ParDicts(object):
         
         v3("Checking detector focal plane temperature\n")
 
+        mkrmf_tstop = 65563201
+        
         fp_temp = kwdict["FP_TEMP"] - 273.15 # convert from Kelvin to Celsius
-
-        if fp_temp > -110:
+        tstart = kwdict["TSTART"]
+        
+        if fp_temp > -109 and tstart < mkrmf_tstop:
             v3("Checking FEF energy range for warm observation")
 
             with new_pfiles_environment(ardlib=False,copyuser=False):
                 acis_fef_lookup.punlearn()
                 acis_fef_lookup.infile = inf
                 acis_fef_lookup.chipid = "none"
-                acis_fef_lookup.verbose = "0"
+                acis_fef_lookup.verbose = 0
 
                 try:
                     acis_fef_lookup()
@@ -825,7 +841,7 @@ class ParDicts(object):
             fef_estat = (float(ebin_min) >= fef_emin, float(ebin_max) <= fef_emax)
 
             if fef_estat != (True,True):
-                raise ValueError(f"ObsID {kwdict['OBS_ID']} was made at a warm focal plane temperature, >-110C.  The available calibration products are valid for an energy range of {fef_emin:.3f}-{fef_emax:.3f} keV while the 'energy' parameter has been set to {ebin_min}-{ebin_max} keV (energy={ebin})") # the ":.3f" in the format prints up to three decimal places of the float
+                raise ValueError(f"ObsID {kwdict['OBS_ID']} was made at a warm focal plane temperature, >-109C before 2000-01-29T20:00:00.  The available calibration products are valid for an energy range of {fef_emin:.3f}-{fef_emax:.3f} keV while the 'energy' parameter has been set to {ebin_min}-{ebin_max} keV (energy={ebin})") # the ":.3f" in the format prints up to three decimal places of the float
 
 
     def _check_merged_input(self,kwdict,toolname):
@@ -909,16 +925,18 @@ class ParDicts(object):
         """
         run various parameter test functions in parallel
         """
-
-        if method == "map":
+        
+        if method.lower() == "map":
             status = parallel_map(parallelfunc,args,numcores=numcores)
-        else:
+        elif method.lower() == "pool":
             status = parallel_pool(parallelfunc,args,ncores=numcores)
-            
+        else:
+            status = [parallelfunc(f) for f in args] # do things serially       
+
         for stat in status:
             if isinstance(stat,Exception):
                 raise stat
-        
+
         
     def check_input_stacks(self,infile,bkgfile,outroot,weight,bkgresp,refcoord,streakspec,ebin,nproc):
         """
@@ -976,7 +994,7 @@ class ParDicts(object):
             except Exception as E:
                 return E
 
-        self.paralleltests(parallel_region_check,fn_stk,method="map",numcores=nproc)
+        self.paralleltests(parallel_region_check,fn_stk,method="pool",numcores=nproc)
         
         # for fn in set(src_stk).union(bkg_stk):
         #     self._valid_regstr(fn)
@@ -1025,9 +1043,9 @@ class ParDicts(object):
 
         ### check ACIS focal-plane temperature ###
         fp_temp_check = [{"srcbkg_kw" : srcbkg_kw, "weight" : weight, "bkgresp" : bkgresp, "ebin" : ebin, "hdr" : headerkeys} for fhs in fn_header_stk for srcbkg_kw,headerkeys in fhs.items() if headerkeys["INSTRUME"]=="ACIS"]
-
+        
         if fp_temp_check != []:
-            
+                    
             def parallel_fptemp(args):
                 srcbkg_kw = args["srcbkg_kw"]
                 weight = args["weight"]
@@ -1041,8 +1059,7 @@ class ParDicts(object):
                     except Exception as E:
                         return E
 
-            self.paralleltests(parallel_fptemp,fp_temp_check,method="pool",numcores=nproc)
-
+            self.paralleltests(parallel_fptemp,fp_temp_check,method="map",numcores=nproc)
             
         ### check background files are valid ###
         if bkg_count > 0:
@@ -1063,6 +1080,9 @@ class ParDicts(object):
             
             if all([None not in src_obsid_stk, None not in bkg_obsid_stk]):
 
+                src_obsid_stk = [int(i) for i in src_obsid_stk]
+                bkg_obsid_stk = [int(i) for i in bkg_obsid_stk]
+                
                 ## Check that src & bkg stacks have matching ObsID values
                 ## and also same number of each unique value.
                 if all([src_obsid_stk == bkg_obsid_stk, sorted(src_obsid_stk) == sorted(bkg_obsid_stk)]):
@@ -1111,7 +1131,7 @@ class ParDicts(object):
         return src_stk,bkg_stk,out_stk,common_dict
 
     
-    def common_args(self,correct,weight,weight_rmf,bkgresp,refcoord,
+    def common_args(self,correct,weight,weight_rmf,bkgresp,resp_pos,refcoord,
                     streakspec,ptype,gtype,gspec,bggtype,bggspec,
                     ebin,channel,ewmap,binwmap,bintwmap,binarfcorr,wmap_clip,
                     wmap_threshold,tmpdir,clobber,verbose):
@@ -1120,6 +1140,7 @@ class ParDicts(object):
                        "weight" : weight,
                        "weight_rmf" : weight_rmf,
                        "bkgresp" : bkgresp,
+                       "resp_pos" : resp_pos,
                        "refcoord" : refcoord,
                        "streakspec" : streakspec,
                        "ptype" : ptype,
@@ -1239,16 +1260,16 @@ class ParDicts(object):
             try:
                 if not weights_check:
                     self._check_event_stats(file,refcoord_check=refcoord_check,weights_check=False)
-
+                
                 if ewmap_range_check is not None:
                     if fileio.get_keys_from_file(f"{file}[#row=0]")["INSTRUME"] == "ACIS":
                         self._check_event_stats(file,ewmap_range_check=ewmap_range_check)
 
             except Exception as E:
                 return E
-
+            
         self.paralleltests(parallel_event_stats,[*src_dict,*ewmap_srcbg_dict],method="map",numcores=nproc)
-
+        
         ## find ancillary files, if exists, add to stack
         ancil = {"asol" : {"var" : asp,
                            "stk" : [],
@@ -1283,7 +1304,7 @@ class ParDicts(object):
                         else:
                             suffix = "s"
 
-                        v1(f"{ancil[key]['v1str']} file{suffix} {asolstr} found.\n")
+                        v2(f"{ancil[key]['v1str']} file{suffix} {asolstr} found.\n")
 
                     else:
                         if key == "dtf" and fobs.instrument == "ACIS":
@@ -1291,7 +1312,7 @@ class ParDicts(object):
                         else:
                             v3(f"Looking in header for {key.upper()}FILE keyword\n")
                             ancil[key]["stk"].append(fobs.get_ancillary(key))
-                            v1(f"{ancil[key]['v1str']} file {fobs.get_ancillary(key)} found.\n")
+                            v2(f"{ancil[key]['v1str']} file {fobs.get_ancillary(key)} found.\n")
 
             else:
                 if type(ancil[key]["var"]) is list:
@@ -1368,6 +1389,7 @@ class ParDicts(object):
 
         weight = common_args.pop("weight",None) # remove keyword from dictionary and copy value
         dobg = common_args["dobg"]
+        resp_pos = common_args["resp_pos"]
         refcoord = common_args["refcoord"]
         binarfcorr = common_args["binarfcorr"]
         fcount = common_args["fcount"]
@@ -1467,7 +1489,7 @@ class ParDicts(object):
                         asol_arg = None
 
                 if ahiststat:
-                    # set asol_arg for resp_pos
+                    # set asol_arg for get_resp_pos
                     asol_arg = "none"
 
                     aspfile_block = get_block_info_from_file(asp_stk[i])
@@ -1563,9 +1585,9 @@ class ParDicts(object):
                 #########################################################
 
                 if weight == "no" and common_args["correct"] == "yes":
-                    ra,dec,skyx,skyy,chipx,chipy,chip_id = self.resp_pos(fullfile,asol_arg,refcoord,binimg=binarfcorr)
+                    ra,dec,skyx,skyy,chipx,chipy,chip_id = self.get_resp_pos(fullfile,asol_arg,resp_pos,refcoord,binimg=binarfcorr)
                 else:
-                    ra,dec,skyx,skyy,chipx,chipy,chip_id = self.resp_pos(fullfile,asol_arg,refcoord,binimg=2)
+                    ra,dec,skyx,skyy,chipx,chipy,chip_id = self.get_resp_pos(fullfile,asol_arg,resp_pos,refcoord,binimg=2)
 
                 arg_dict["skyx"] = skyx
                 arg_dict["skyy"] = skyy
@@ -1655,7 +1677,7 @@ class ParDicts(object):
         #
         ###############################################################
 
-        common_dict = self.common_args(self.correct,self.weight,self.weight_rmf,self.bkgresp,
+        common_dict = self.common_args(self.correct,self.weight,self.weight_rmf,self.bkgresp,self.resp_pos,
                                        self.refcoord,self.streakspec,self.ptype,self.gtype,self.gspec,self.bggtype,
                                        self.bggspec,self.ebin,self.channel,self.ewmap,self.binwmap,
                                        self.bintwmap,self.binarfcorr,self.wmap_clip,self.wmap_threshold,
