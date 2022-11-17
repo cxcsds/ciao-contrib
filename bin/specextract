@@ -1292,20 +1292,19 @@ def spectra(args):
 
         try:
             phafile = extract_spectra(full_outroot,fullfile,ptype,channel,
-                                      ewmap,binwmap,instrument,clobber,verbose)
-
-            ## update extracted readout streak spectrum effective exposure time ##
-            if streakspec == "yes" and srcbkg == "src":
-                readout_streak_spec(specfile=phafile,infile=fullfile,src_x=float(args["skyx"]),src_y=float(args["skyy"]))
-
-            try:
-                pardict[key_id].update({"phafile" : phafile})
-            except NameError:
-                pardict = {key_id : {"phafile" : phafile}}
-                
+                                      ewmap,binwmap,instrument,clobber,verbose)            
         except OSError as exc:
             raise IOError(f"Failed to extract spectrum for {fullfile}") from exc
 
+        ## update extracted readout streak spectrum effective exposure time ##
+        if streakspec == "yes" and srcbkg == "src":
+            readout_streak_spec(specfile=phafile,infile=fullfile,src_x=float(args["skyx"]),src_y=float(args["skyy"]))
+
+        try:
+            pardict[key_id].update({"phafile" : phafile})
+        except NameError:
+            pardict = {key_id : {"phafile" : phafile}}
+        
         ## add nH values to phafile header ##
         if nrao_nh is not None:
             # Galactic neutral hydrogen column density at the source position using
