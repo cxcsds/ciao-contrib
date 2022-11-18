@@ -34,7 +34,7 @@ Script:
 __version__ = "CIAO 4.15"
 
 toolname = "specextract"
-__revision__ = "17 November 2022"
+__revision__ = "18 November 2022"
 
 
 ##########################################################################
@@ -80,6 +80,13 @@ v2 = make_verbose_level(toolname, 2)
 v3 = make_verbose_level(toolname, 3)
 v4 = make_verbose_level(toolname, 4)
 v5 = make_verbose_level(toolname, 5)
+
+if not _check_tty(): 
+    vprogress = make_verbose_level(toolname, 1)
+elif paramio.pgetstr(open_param_file(sys.argv, toolname=toolname)["fp"],"parallel").lower() == "no" and paramio.pgeti(open_param_file(sys.argv, toolname=toolname)["fp"], "verbose") == 1:
+    vprogress = make_verbose_level(toolname, 2)
+else:
+    vprogress = make_verbose_level(toolname, 2)
 
 
 
@@ -299,7 +306,7 @@ def create_arf_ps(full_outroot, evt_filename, asp_param, ebin,
         local_id = ccdid_mode_val
         detname = f"ACIS-I{local_id}"
 
-    v2(infostr)
+    vprogress(infostr)
 
     if verbose == 2:
         verbose = 1
@@ -340,7 +347,7 @@ def create_arf_ext(full_outroot, ebin,
     Return the names of the ARF, weights, and TDET WMAP files
     """
 
-    v2(infostr)
+    vprogress(infostr)
 
     if verbose == 2:
         verbose = 1
@@ -441,7 +448,7 @@ def _determine_rmf_tool(infile,rmffile,evtfile):
 
         v1(f"{infile.split('/')[-1]}: Please reprocess {evtfile} with acis_process_events if you wish to use mkacisrmf, unless the focal plane temperature is greater than -109C and the observation is taken in graded-mode or the extraction region is on a front-illuminated CCD.\n")
 
-        v2("Using mkrmf...\n")
+        vprogress("Using mkrmf...\n")
 
         rmftool = "mkrmf"
 
@@ -450,7 +457,7 @@ def _determine_rmf_tool(infile,rmffile,evtfile):
 
         v3(f"Found the following P2_RESP file(s): {caldb_p2_resp_file}")
 
-        v2("Using mkacisrmf...\n")
+        vprogress("Using mkacisrmf...\n")
 
         rmftool = "mkacisrmf"
 
@@ -537,7 +544,7 @@ def build_rmf_ps(rmftool, evt_filename, infile, ptype, full_outroot,
     Returns unweighted ACIS RMF filename.
     """
 
-    v2(infostr)
+    vprogress(infostr)
 
     rmffile = f"{full_outroot}.rmf"
 
@@ -578,7 +585,7 @@ def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose,
     Returns weighted ACIS RMF filename.
     """
 
-    v2(infostr)
+    vprogress(infostr)
 
     rmffile = f"{full_outroot}.rmf"
 
@@ -668,7 +675,7 @@ def create_hrc_resp(specfile,rmf_file,refcoord,full_outroot,
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
         # ARF output file
-        v2(infostr)
+        vprogress(infostr)
 
         if verbose == 2:
             verbose = 1
@@ -1186,7 +1193,7 @@ def build_acis_rmf(args):
         infostr = f"Creating {srcbkg} RMF {iteminfostr}"
 
         if null_rmffile:
-            v2(f"WARNING: Setting rmffile parameter (and calquiz calfile) to '{rmffile_ccd}'.\n")
+            vprogress(f"WARNING: Setting rmffile parameter (and calquiz calfile) to '{rmffile_ccd}'.\n")
 
         try:
             if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
@@ -1296,7 +1303,7 @@ def spectra(args):
         #
         ###########################
 
-        v2(f"Extracting {srcbkg} spectra {iteminfostr}")
+        vprogress(f"Extracting {srcbkg} spectra {iteminfostr}")
 
         # If 'binwmap' contains 'tdet' string, check that TDET column exists
         # in file; if not, change 'binwmap' value to
@@ -1609,7 +1616,7 @@ def _build_resps(args):
                 if all([srcbkg == "src",correct == "yes"]):
                     try:
                         if verbose == 1:
-                            v1("Calculating aperture correction")
+                            vprogress("Calculating aperture correction")
                         else:
                             v2(f"Calculating aperture correction for {srcbkg} ARF {iteminfostr}")
 
@@ -1944,7 +1951,7 @@ def coadd(outroot,spec_src_stk,spec_bkg_stk,
 
     try:
         combine_spectra()
-        v2(combine_infostr)
+        vprogress(combine_infostr)
 
     except OSError as exc:
         v1("Failed to combine output spectra and responses, please do so manually or with 'combine_spectra'.")
@@ -2252,7 +2259,7 @@ def run_specextract(args):
     # error out if output files already exist and clobber=no
     if clobber == "no":
         clobber_file_check(specextract_args,combine)
-
+        
     if parallel == "yes":
         if verbose == 1 and _check_tty():
             def parallelize(func,args,numcores=nproc,progress=True,prefix=""):
@@ -2277,8 +2284,16 @@ def run_specextract(args):
                 return status
 
     else:
-        def parallelize(func,args,numcores=nproc,progress=None,prefix=None):
-            return [func(arg) for arg in args]
+        if verbose == 1 and _check_tty():
+            def parallelize(func,args,numcores=nproc,progress=True,prefix=""):
+                if progress:
+                    return [func(arg) for arg in progressbar_iter(args,use_unicode=_use_unicode(),prefix=prefix)]
+                else:
+                    return [func(arg) for arg in args]
+        else:        
+            def parallelize(func,args,numcores=nproc,progress=None,prefix=None):
+                return [func(arg) for arg in args]
+
 
     ###########################
     #
@@ -2392,7 +2407,7 @@ def run_specextract(args):
     #parallelize(add_header_keys,specextract_args)
 
     ### may be better to run 'add_header_keys' in serial, parallelization prone to race condition error ###
-    if verbose == 1:
+    if all([verbose == 1, parallel == "yes", _check_tty()]):
         for dargs in progressbar_iter(specextract_args,use_unicode=_use_unicode(),prefix="Adding Header Keywords:"):
             add_header_keys(dargs)
     else:
