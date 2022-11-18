@@ -25,13 +25,14 @@ Routines to support the specextract tool.
 
 """
 
-import os, numpy, cxcdm, stk, tempfile, region
+import os, sys, numpy, cxcdm, paramio, stk, tempfile, region
 import pycrates as pcr
 
 from ciao_contrib.runtool import dmstat, dmcoords, dmlist, acis_fef_lookup, get_sky_limits, new_pfiles_environment
 
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level
 from ciao_contrib.cxcdm_wrapper import get_block_info_from_file
+from ciao_contrib.param_wrapper import open_param_file
 
 import ciao_contrib._tools.fileio as fileio
 import ciao_contrib._tools.utils as utils
@@ -41,11 +42,11 @@ from ciao_contrib.proptools import colden
 from sherpa.utils import parallel_map
 from ciao_contrib.parallel_wrapper import parallel_pool
 from multiprocessing import cpu_count
-
+from ciao_contrib.parallel_wrapper import _check_tty
 
 toolname = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "16 November 2022"
+__revision__ = "18 November 2022"
 
 # Set up the logging/verbose code
 initialize_logger(toolname)
@@ -58,7 +59,14 @@ v3 = make_verbose_level(toolname, 3)
 v4 = make_verbose_level(toolname, 4)
 v5 = make_verbose_level(toolname, 5)
 
+if not _check_tty():
+    vprogress = make_verbose_level(toolname, 1)
+elif paramio.pgetstr(open_param_file(sys.argv, toolname=__toolname__)["fp"],"parallel").lower() == "no" and paramio.pgeti(open_param_file(sys.argv, toolname=__toolname__)["fp"], "verbose") == 1:
+    vprogress = make_verbose_level(toolname, 2)
+else:
+    vprogress = make_verbose_level(toolname, 2)
 
+    
 
 class suppress_stdout_stderr(object):
     #########################################################
@@ -1304,7 +1312,7 @@ class ParDicts(object):
                         else:
                             suffix = "s"
 
-                        v2(f"{ancil[key]['v1str']} file{suffix} {asolstr} found.\n")
+                        vprogress(f"{ancil[key]['v1str']} file{suffix} {asolstr} found.\n")
 
                     else:
                         if key == "dtf" and fobs.instrument == "ACIS":
@@ -1312,7 +1320,7 @@ class ParDicts(object):
                         else:
                             v3(f"Looking in header for {key.upper()}FILE keyword\n")
                             ancil[key]["stk"].append(fobs.get_ancillary(key))
-                            v2(f"{ancil[key]['v1str']} file {fobs.get_ancillary(key)} found.\n")
+                            vprogress(f"{ancil[key]['v1str']} file {fobs.get_ancillary(key)} found.\n")
 
             else:
                 if type(ancil[key]["var"]) is list:
