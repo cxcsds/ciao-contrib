@@ -336,7 +336,11 @@ def make_table_crate(*args, **kwargs):
     if nargs == 0:
         raise TypeError("make_table_crate() takes at least one argument (0 given)")
     elif nargs == 1:
-        isdict = isinstance(args[0], collections.Mapping)
+        try:
+            isdict = isinstance(args[0], collections.Mapping)
+        except AttributeError:
+            isdict = isinstance(args[0], collections.abc.Mapping)
+            
         if hasattr(args[0], "dtype") and hasattr(args[0].dtype, "names"):
             isstruct = args[0].dtype.names is not None
 

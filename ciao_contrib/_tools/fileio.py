@@ -280,8 +280,11 @@ def get_keys_cols_from_file(fname):
         # get_block_info_from_file loses the ordering
         # of the columns, so need to reconstruct it
         colinfo = [None] * keys['__NCOLS']
-        for cinfo in bi['columns'].values():
-            colinfo[cinfo.pos - 1] = cinfo
+        try:
+            for cinfo in bi['columns'].values():
+                colinfo[cinfo.pos - 1] = cinfo
+        except IndexError as exc:
+            raise IndexError(f"check if '{fname}' has duplicate column names!") from exc
 
     else:
         colinfo = None
