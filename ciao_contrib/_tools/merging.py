@@ -1051,7 +1051,7 @@ def validate_obsinfo(infiles, colcheck=True):
                 continue
 
             if readmode == 'CONTINUOUS':
-                v1(f"Skipping {nifile} as it is a CC-mode observation.")
+                v1(f"Skipping {infile} as it is a CC-mode observation.")
                 blank_line = True
                 continue
 
