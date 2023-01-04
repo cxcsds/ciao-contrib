@@ -25,7 +25,7 @@ Routines to support the specextract tool.
 
 """
 
-import os, sys, numpy, cxcdm, paramio, stk, tempfile, region
+import os, sys, numpy, cxcdm, paramio, stk, region
 import pycrates as pcr
 
 from ciao_contrib.runtool import dmstat, dmcoords, dmlist, acis_fef_lookup, get_sky_limits, new_pfiles_environment
@@ -39,14 +39,13 @@ import ciao_contrib._tools.utils as utils
 import ciao_contrib._tools.obsinfo as obsinfo
 from ciao_contrib.proptools import colden
 
-from sherpa.utils import parallel_map
-from ciao_contrib.parallel_wrapper import parallel_pool
 from multiprocessing import cpu_count
-from ciao_contrib.parallel_wrapper import _check_tty
+from sherpa.utils import parallel_map
+from ciao_contrib.parallel_wrapper import parallel_pool, _check_tty
 
 toolname = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "18 November 2022"
+__revision__ = "22 November 2022"
 
 # Set up the logging/verbose code
 initialize_logger(toolname)
@@ -66,12 +65,11 @@ elif paramio.pgetstr(open_param_file(sys.argv, toolname=__toolname__)["fp"],"par
 else:
     vprogress = make_verbose_level(toolname, 2)
 
-    
 
 class suppress_stdout_stderr(object):
     #########################################################
     #
-    # suppress warnings printed to screen from get_keyvals 
+    # suppress warnings printed to screen from get_keyvals
     # when probing for blank sky files
     #
     #########################################################
@@ -86,7 +84,7 @@ class suppress_stdout_stderr(object):
 
     https://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
     '''
-    
+
     def __init__(self):
         # Open a pair of null files
         self.null_fds = [os.open(os.devnull,os.O_RDWR) for x in range(2)]
@@ -156,7 +154,7 @@ class ParDicts(object):
         else:
             self.nproc = int(params["nproc"])
 
-        
+
     def _asol_asphist(self,asp_stk,asp_cnt,src_stk):
         """
         Determine if asphist or asol files were input
@@ -183,7 +181,7 @@ class ParDicts(object):
             ahist = False
 
         if ahist:
-            if asp_cnt != 1 and asp_cnt != src_cnt:
+            if asp_cnt not in (1,src_cnt):
                 raise IOError(f"Error: asp stack must have either 1 element or the same number of elements as the source stack.  Source stack={src_cnt}    asp stack={asp_cnt}")
 
         if asol:
@@ -212,7 +210,7 @@ class ParDicts(object):
                 asp_stk = self._sort_files(utils.getUniqueSynset(asp_stk), "aspsol", "TSTART")
                 asp_stk = ",".join(asp_stk)
 
-            asp_stk = self.group_by_obsid(asp_stk,"aspsol")            
+            asp_stk = self.group_by_obsid(asp_stk,"aspsol")
             v3(f"ObsIDs matched to aspect solution files: \n{asp_stk}")
 
         if not ahist and not asol:
@@ -231,7 +229,7 @@ class ParDicts(object):
 
             # handle a stack of regions, but single input file, in the format: "evt.fits[sky=@reg.lis]",
             # assume no other dmfilter included
-            
+
             if checkreg and all([get_region_filter(infpar)[0], get_region_filter(infpar)[1].startswith("@")]):
                 regfile = get_region_filter(infpar)[1]
                 regfilter = fileio.get_filter(infpar)
@@ -255,7 +253,7 @@ class ParDicts(object):
                 if "\r" in fn:
                     inf = infpar.strip("@")
                     raise IOError(f"EOL: the line ends in the ASCII stack file, '{inf}', using Windows/DOS-style carriage return & line feed (CRLF) rather than Unix-compatible line feed only.")
-                
+
         else:
             fn_stk = []
 
@@ -284,8 +282,8 @@ class ParDicts(object):
             try:
                 table = cxcdm.dmTableOpen(filename)
 
-            except IOError:
-                raise IOError(f"{filetype} file {filename} does not exist or could not be opened.")
+            except IOError as exc:
+                raise IOError(f"{filetype} file {filename} does not exist or could not be opened.") from exc
 
             cxcdm.dmTableClose(table)
 
@@ -416,12 +414,12 @@ class ParDicts(object):
                 else:
                     raise IOError(f"{file} has zero counts. Check that the region format is in sky pixels coordinates.")
 
-            except AttributeError:
+            except AttributeError as exc:
                 if ewmap_range_check is not None:
                     ## do we want to error out if the number of counts is
                     ## smaller than some magic count, instead of just zero?
 
-                    raise IOError(f"{file} has zero counts in the 'energy_wmap={ewmap_range_check}' eV range needed to generate a weights map.")
+                    raise IOError(f"{file} has zero counts in the 'energy_wmap={ewmap_range_check}' eV range needed to generate a weights map.") from exc
 
             return False
 
@@ -437,32 +435,32 @@ class ParDicts(object):
         for ccd_id column (psextract algorithm uses mean ccd_id value,
         which isn't appropriate for this quantity).
         """
-        
+
         if colname in ["x","y","chipx","chipy"]:
             if colname in ["x","y"]:
                 bin_setting = "[bin sky=2]"
 
             if colname in ["chipx","chipy"]:
                 bin_setting = "[bin chipx=2,chipy=2]"
-                    
+
             if args is not None:
                 if args["weight"] == "no" and args["correct"] == "yes":
                     binarfcorr = args["binarfcorr"]
-                    
+
                     if colname in ["x","y"]:
                         bin_setting = f"[bin sky={binarfcorr}]"
 
                     if colname in ["chipx","chipy"]:
                         if binarfcorr < 1:
                             binarfcorr = 1
-                            
+
                         bin_setting = f"[bin chipx={binarfcorr},chipy={binarfcorr}]"
-                    
+
 
             with new_pfiles_environment(ardlib=False,copyuser=False):
                 dmstat.punlearn()
                 dmstat.verbose = 0
-                
+
                 dmstat(f"{file}{bin_setting}")
 
                 max_cnts_src_pos = dmstat.out_max_loc
@@ -481,7 +479,7 @@ class ParDicts(object):
 
             if colname == "chipy":
                 return int(float(src_y))
-        
+
         cr = pcr.read_file(file)
 
         if cr is None:
@@ -514,7 +512,7 @@ class ParDicts(object):
             return mode
 
         del(cr)
-                
+
 
     def _valid_regstr(self,inf):
         """
@@ -526,7 +524,7 @@ class ParDicts(object):
         if any(["=(" in regfilter, "(" not in regfilter]):
             raise IOError(f"There is a problem with the extraction region syntax in: {inf}")
 
-        
+
     def _check_region_crlf(self,inf):
         """
         ensure the ASCII region file is in Unix compatible line feed format
@@ -534,7 +532,7 @@ class ParDicts(object):
         """
 
         regfilter = fileio.get_filter(inf)
-        
+
         if "=region(" in regfilter:
             regfiles = [s[:s.index(")")].replace("region(","") for s in regfilter.split("=") if s.startswith("region(")]
 
@@ -557,7 +555,7 @@ class ParDicts(object):
                 except UnicodeDecodeError:
                     pass
 
-                    
+
     def _get_region(self,full_filename):
         """
         Pass in the full filename
@@ -586,13 +584,13 @@ class ParDicts(object):
 
         return region
 
-        
+
     def _sort_files(self, file_stack, file_type, key):
         """
         Sort a list of files by the value of a given keyword; e.g., for sorting
         a stack of aspect solution files on TSTART before input to mk_asphist().
         """
-        
+
         file_count = len(file_stack)
 
         keyvals_orig_order = self._get_keyvals(file_stack, key)
@@ -603,16 +601,16 @@ class ParDicts(object):
         keyvals_sorted = sorted(keyvals_orig_order) #be sure numbers are not strings
 
         files_sorted = []
-        
+
         for k in keyvals_sorted:
             sort_ind = keyvals_orig_order.index(k)
             files_sorted.append(file_stack[sort_ind])
-            
+
         #files_sorted = [file_stack[sort_ind] for sort_ind in [keyvals_orig_order.index(k) for k in keyvals_sorted]]
-            
+
         return files_sorted
-    
-    
+
+
     def group_by_obsid(self,file_stack,file_type):
         """
         Read the OBS_ID value from the header of each file in the input stack
@@ -622,9 +620,9 @@ class ParDicts(object):
         by obsid.
         """
 
-        if all([type(file_stack) is str, "," in file_stack]):
+        if all([isinstance(file_stack,str), "," in file_stack]):
             file_stack = file_stack.split(",")
-        
+
         file_count = len(file_stack)
 
         obsids = self._get_keyvals(file_stack, "OBS_ID")
@@ -736,27 +734,30 @@ class ParDicts(object):
                         else:
                             skyx,skyy = dmstat.out_max_loc.split(",")
 
-                    if resp_pos.lower() == "regextent":
-                        ## determine response location using center of region extent ##                    
-                        regext = region.CXCRegion(pcr.read_file(f"{infile}[#row=0]").get_subspace_data(1,"sky").region).extent()
+                    try:
+                        if resp_pos.lower() == "regextent":
+                            ## determine response location using center of region extent ##
+                            regext = region.CXCRegion(pcr.read_file(f"{infile}[#row=0]").get_subspace_data(1,"sky").region).extent()
 
-                        skyx = 0.5*(regext["x0"] + regext["x1"])
-                        skyy = 0.5*(regext["y0"] + regext["y1"])
+                            skyx = 0.5*(regext["x0"] + regext["x1"])
+                            skyy = 0.5*(regext["y0"] + regext["y1"])
 
-                    if resp_pos.lower() == "region":
-                        regcent = region.CXCRegion(pcr.read_file(f"{infile}[#row=0]").get_subspace_data(1,"sky").region)
+                        if resp_pos.lower() == "region":
+                            regcent = region.CXCRegion(pcr.read_file(f"{infile}[#row=0]").get_subspace_data(1,"sky").region)
 
-                        if len(regcent) > 1:
-                            v1("Warning: more than 1 shape found, using the coordinates of the first defined shape")
+                            if len(regcent) > 1:
+                                v1("Warning: more than 1 shape found, using the coordinates of the first defined shape")
 
-                        if regcent.shapes[0].name.lower() in ["polygon","rectangle"]:
-                            skyx = numpy.mean(regcent.shapes[0].xpoints)
-                            skyy = numpy.mean(regcent.shapes[0].ypoints)
-                        else:
-                            skyx = regcent.shapes[0].xpoints[0]
-                            skyy = regcent.shapes[0].ypoints[0]
+                            if regcent.shapes[0].name.lower() in ["polygon","rectangle"]:
+                                skyx = numpy.mean(regcent.shapes[0].xpoints)
+                                skyy = numpy.mean(regcent.shapes[0].ypoints)
+                            else:
+                                skyx = regcent.shapes[0].xpoints[0]
+                                skyy = regcent.shapes[0].ypoints[0]
+
+                    except KeyError as exc:
+                        raise IOError(f"'resp_pos={resp_pos}': The use of pixel masks can only be used when 'resp_pos' is set to 'MAX' or 'CENTROID'.") from exc
                             
-                        
                     #######################################################
                     # ## ... or ...
                     # ## use get_sky_limits instead of region module since it's
@@ -777,17 +778,17 @@ class ParDicts(object):
                     # skyy = 0.5*(y[0]+y[1])
                     #
                     #######################################################
-                    
+
                     # convert to chip coordinates
                     dmcoords.opt = "sky"
                     dmcoords.x = skyx
                     dmcoords.y = skyy
-                    
+
             dmcoords()
 
             skyx = str(dmcoords.x)
             skyy = str(dmcoords.y)
-            
+
             chipx = str(int(dmcoords.chipx))
             chipy = str(int(dmcoords.chipy))
 
@@ -812,14 +813,14 @@ class ParDicts(object):
         # in the FEF file for unweighted responses
         #
         #####################################################################################
-        
+
         v3("Checking detector focal plane temperature\n")
 
         mkrmf_tstop = 65563201
-        
+
         fp_temp = kwdict["FP_TEMP"] - 273.15 # convert from Kelvin to Celsius
         tstart = kwdict["TSTART"]
-        
+
         if fp_temp > -109 and tstart < mkrmf_tstop:
             v3("Checking FEF energy range for warm observation")
 
@@ -856,7 +857,7 @@ class ParDicts(object):
         """
         check if the input file has been merged using its header keywords
         """
-        
+
         merge_key = [kwdict["TITLE"].lower(),
                      kwdict["OBSERVER"].lower(),
                      kwdict["OBJECT"].lower(),
@@ -879,7 +880,7 @@ class ParDicts(object):
         Throw warning or error out as necessary
         """
 
-        v3("Checking for blanksky background files...")        
+        v3("Checking for blanksky background files...")
 
         # check for blank sky files and Maxim's bg files, error out if found:
         with suppress_stdout_stderr():
@@ -892,21 +893,21 @@ class ParDicts(object):
                 mm_blanksky = headerkeys["MMNAME"]
             except (KeyError,AttributeError):
                 mm_blanksky = None
-                
+
         if srcbkg_kw == "background":
             if blanksky is not None:
                 if "blank sky event" in blanksky.lower():
                     if bkgresp == "yes":
                         raise IOError("Cannot create responses for spectra from blanksky background files.\n")
-                    else:
-                        v1("WARNING: Extracting background spectra from blanksky background files.\n")
+
+                    v1("WARNING: Extracting background spectra from blanksky background files.\n")
 
             if mm_blanksky is not None:
                 if all([mm_blanksky.lower().startswith("acis"), "_bg_evt_" in mm_blanksky.lower()]):
                     if bkgresp == "yes":
                         raise IOError("Cannot create responses for spectra from M.M. ACIS blanksky background files.\n")
-                    else:
-                        v1("WARNING: Extracting background spectra from M.M. ACIS blanksky background files.\n")
+
+                    v1("WARNING: Extracting background spectra from M.M. ACIS blanksky background files.\n")
 
         else:
             if blanksky is not None:
@@ -921,35 +922,35 @@ class ParDicts(object):
     def _check_streakspec(self,weight,refcoord,instrument):
         if instrument.upper() != "ACIS":
             raise IOError("Readout streak spectrum extraction can only be done with ACIS TE-mode observations.")
-        
+
         if weight == "yes":
             raise IOError("Readout streak spectrum requires unweighted responses, set 'weight=no'.")
 
         if refcoord == "":
             raise IOError("Readout streak spectrum requires source postion to generate response using the 'refcoord' parameter.")
 
-        
+
     def paralleltests(self,parallelfunc,args,method="map",numcores=None):
         """
         run various parameter test functions in parallel
         """
-        
+
         if method.lower() == "map":
             status = parallel_map(parallelfunc,args,numcores=numcores)
         elif method.lower() == "pool":
             status = parallel_pool(parallelfunc,args,ncores=numcores)
         else:
-            status = [parallelfunc(f) for f in args] # do things serially       
+            status = [parallelfunc(f) for f in args] # do things serially
 
         for stat in status:
             if isinstance(stat,Exception):
                 raise stat
 
-        
+
     def check_input_stacks(self,infile,bkgfile,outroot,weight,bkgresp,refcoord,streakspec,ebin,nproc):
         """
         Build stacks for the file input parameters; make sure they are
-        readable and not empty. 
+        readable and not empty.
         """
 
         ### source stack ###
@@ -966,7 +967,7 @@ class ParDicts(object):
 
         if out_count == 0:
             out_stk = [""]
-        
+
         ### error out if there are spaces in absolute paths of the stacks ###
         fn_dict_stk = [*[{"source" : s} for s in src_stk], *[{"background" : b} for b in bkg_stk]]
 
@@ -987,23 +988,23 @@ class ParDicts(object):
         #####################################################################################
 
         fn_stk = numpy.ravel([[{"filename" : fn, "check" : "regstr"},{"filename" : fn, "check" : "crlf"}] for fn in set(src_stk).union(bkg_stk)])
-        
+
         def parallel_region_check(args):
             fn = args["filename"]
             check = args["check"]
-        
+
             try:
                 if check == "crlf":
                     self._check_region_crlf(fn)
-        
+
                 if check == "regstr":
                     self._valid_regstr(fn)
-        
+
             except Exception as E:
                 return E
 
         self.paralleltests(parallel_region_check,fn_stk,method="pool",numcores=nproc)
-        
+
         # for fn in set(src_stk).union(bkg_stk):
         #     self._valid_regstr(fn)
         #     self._check_region_crlf(fn)
@@ -1011,23 +1012,23 @@ class ParDicts(object):
 
         ### check files in source and background stacks ###
         fn_header_stk = [{k : {**fileio.get_keys_from_file(f"{fileio.get_file(fn)}[#row=0]"), "inf" : fileio.get_file(fn)}} for sd in fn_dict_stk for k,fn in sd.items()]
-                
+
         for d in fn_header_stk:
             for srcbkg_kw,headerkeys in d.items():
 
                 ## check for CTI_APP keyword
                 try:
                     cti_app_val = headerkeys["CTI_APP"]
-                        
+
                     if cti_app_val.upper() == "NONE":
                         raise IOError(f"File {headerkeys['inf']} is missing a CTI_APP header keyword, required by many CIAO tools; an ARF will not be created. Try re-running specextract after reprocessing your data.\n")
 
-                except KeyError:
+                except KeyError as exc:
                     if headerkeys["INSTRUME"] == "HRC":
                         pass
                     else:
                         if srcbkg_kw == "source" or all([srcbkg_kw == "background", bkgresp == "yes"]):
-                            raise IOError(f"File {headerkeys['inf']} is missing a CTI_APP header keyword, required by many CIAO tools; an ARF will not be created. Try re-running specextract after reprocessing your data.\n")
+                            raise IOError(f"File {headerkeys['inf']} is missing a CTI_APP header keyword, required by many CIAO tools; an ARF will not be created. Try re-running specextract after reprocessing your data.\n") from exc
 
                 ## check for CC-mode data and throw warning
                 if headerkeys["INSTRUME"] == "ACIS" and headerkeys["READMODE"].upper() == "CONTINUOUS":
@@ -1045,15 +1046,15 @@ class ParDicts(object):
                     ## verify parameters are valid if trying to extract readout streak spectrum
                     if streakspec == "yes":
                         self._check_streakspec(weight,refcoord,instrument=headerkeys["INSTRUME"])
-                    
+
                 ## check blanksky
                 self._check_blanksky(headerkeys,srcbkg_kw,bkgresp)
 
         ### check ACIS focal-plane temperature ###
         fp_temp_check = [{"srcbkg_kw" : srcbkg_kw, "weight" : weight, "bkgresp" : bkgresp, "ebin" : ebin, "hdr" : headerkeys} for fhs in fn_header_stk for srcbkg_kw,headerkeys in fhs.items() if headerkeys["INSTRUME"]=="ACIS"]
-        
+
         if fp_temp_check != []:
-                    
+
             def parallel_fptemp(args):
                 srcbkg_kw = args["srcbkg_kw"]
                 weight = args["weight"]
@@ -1068,10 +1069,10 @@ class ParDicts(object):
                         return E
 
             self.paralleltests(parallel_fptemp,fp_temp_check,method="map",numcores=nproc)
-            
+
         ### check background files are valid ###
         if bkg_count > 0:
-            ## ensure background stack has the same number of elements as the source stack               
+            ## ensure background stack has the same number of elements as the source stack
             if src_count != bkg_count:
                 raise IOError(f"Source and background stacks must contain the same number of elements.  Source stack={src_count}    Background stack={bkg_count}")
 
@@ -1082,15 +1083,15 @@ class ParDicts(object):
 
             ## Check that source and background ObsIDs match
             src_obsid_stk = [hdrkey["OBS_ID"] for hd in fn_header_stk for srcbkg,hdrkey in hd.items() if srcbkg == "source"]
-                        
+
             bkg_obsid_stk = self._get_keyvals(bkg_stk,"OBS_ID")
             # bkg_obsid_stk = [hdrkey["OBS_ID"] for hd in fn_header_stk for srcbkg,hdrkey in hd.items() if srcbkg == "background"]
-            
+
             if all([None not in src_obsid_stk, None not in bkg_obsid_stk]):
 
                 src_obsid_stk = [int(i) for i in src_obsid_stk]
                 bkg_obsid_stk = [int(i) for i in bkg_obsid_stk]
-                
+
                 ## Check that src & bkg stacks have matching ObsID values
                 ## and also same number of each unique value.
                 if all([src_obsid_stk == bkg_obsid_stk, sorted(src_obsid_stk) == sorted(bkg_obsid_stk)]):
@@ -1138,12 +1139,12 @@ class ParDicts(object):
 
         return src_stk,bkg_stk,out_stk,common_dict
 
-    
+
     def common_args(self,correct,weight,weight_rmf,bkgresp,resp_pos,refcoord,
                     streakspec,ptype,gtype,gspec,bggtype,bggspec,
                     ebin,channel,ewmap,binwmap,bintwmap,binarfcorr,wmap_clip,
                     wmap_threshold,tmpdir,clobber,verbose):
-        
+
         common_dict = {"correct" : correct,
                        "weight" : weight,
                        "weight_rmf" : weight_rmf,
@@ -1174,7 +1175,7 @@ class ParDicts(object):
 
                 ## also check that the binarfcorr parameter is greater than zero
                 if float(binarfcorr) <= 0:
-                    raise ValueError("'binarfcorr' must be greater than zero.")            
+                    raise ValueError("'binarfcorr' must be greater than zero.")
         else:
             if float(bintwmap) <= 0 :
                 raise ValueError("'binarfwmap' must be greater than zero.")
@@ -1197,7 +1198,7 @@ class ParDicts(object):
         common_dict["rmfbin"] = rmfbin
 
         ## determine whether source spectrum should be grouped and
-        ## setup grouping if necessary        
+        ## setup grouping if necessary
         if gtype.upper() == "NONE":
             dogroup = False
 
@@ -1217,7 +1218,7 @@ class ParDicts(object):
         common_dict["dogroup"] = dogroup
 
         ## determine whether background spectrum should be grouped and
-        ## setup grouping if necessary        
+        ## setup grouping if necessary
         if bggtype.upper() == "NONE":
             bgdogroup = False
 
@@ -1230,7 +1231,7 @@ class ParDicts(object):
             else:
                 bgbinspec = ""
                 bggval = bggspec
-                
+
             common_dict["bggval"] = bggval
             common_dict["bgbinspec"] = bgbinspec
 
@@ -1246,7 +1247,7 @@ class ParDicts(object):
 
         ## check counts in input files, and exit if necessary, or produce responses for upper-limits
         src_dict = [{"file" : fn, "refcoord_check" : refcoord, "weights_check" : False, "ewmap_range_check" : None} for fn in src_stk]
-        
+
         ## check if there are counts in energy_wmap range for weighted ARFs/sky2tdet creation
         ewmap_srcbg_stk = []
 
@@ -1257,7 +1258,7 @@ class ParDicts(object):
             ewmap_srcbg_stk.extend(bkg_stk)
 
         ewmap_srcbg_dict = [{"file" : fn, "ewmap_range_check" : ewmap, "refcoord_check" : None, "weights_check" : None} for fn in ewmap_srcbg_stk]
-            
+
         # run the checks in parallel
         def parallel_event_stats(args):
             file = args["file"]
@@ -1268,16 +1269,16 @@ class ParDicts(object):
             try:
                 if not weights_check:
                     self._check_event_stats(file,refcoord_check=refcoord_check,weights_check=False)
-                
+
                 if ewmap_range_check is not None:
                     if fileio.get_keys_from_file(f"{file}[#row=0]")["INSTRUME"] == "ACIS":
                         self._check_event_stats(file,ewmap_range_check=ewmap_range_check)
 
             except Exception as E:
                 return E
-            
+
         self.paralleltests(parallel_event_stats,[*src_dict,*ewmap_srcbg_dict],method="map",numcores=nproc)
-        
+
         ## find ancillary files, if exists, add to stack
         ancil = {"asol" : {"var" : asp,
                            "stk" : [],
@@ -1292,7 +1293,7 @@ class ParDicts(object):
                           "stk" : [],
                           "v1str" : "HRC dead time factor"}}
 
-        for key in ancil.keys():                          
+        for key in ancil.keys():
             if ancil[key]["var"] == "":
                 for obs in src_stk:
                     fobs = obsinfo.ObsInfo(f"{obs}[#row=0]")
@@ -1323,13 +1324,13 @@ class ParDicts(object):
                             vprogress(f"{ancil[key]['v1str']} file {fobs.get_ancillary(key)} found.\n")
 
             else:
-                if type(ancil[key]["var"]) is list:
+                if isinstance(ancil[key]["var"],list):
                     ancil[key]["stk"].append(ancil[key]["var"])
 
                 else:
                     ancil[key]["stk"].extend(stk.build(ancil[key]["var"]))
 
-                    
+
         ### assign stacks to dictionary entires ###
         stk_dict = {"asol" : ancil["asol"]["stk"],
                     "mask" : ancil["mask"]["stk"],
@@ -1343,7 +1344,7 @@ class ParDicts(object):
         src_count = len(src_stk)
 
         for key,fkey in stk_dict.items():
-            if all([type(fkey) is list, "" not in fkey]):
+            if all([isinstance(fkey,list), "" not in fkey]):
                 fkey = ",".join(fkey)
 
             try:
@@ -1353,7 +1354,7 @@ class ParDicts(object):
                     count = len(stk_dict[key])
 
                     if key != "asol":
-                        if count != 1 and src_count != count:
+                        if count not in (1,src_count):
                             raise IOError(f"Error: {key} stack must have either 1 element or the same number of elements as the source stack.  Source stack={src_count}     {key} stack={count}")
 
                         if key == "badpix":
@@ -1385,7 +1386,7 @@ class ParDicts(object):
                     raise IOError(f"The absolute path for the {key} file, '{os.path.abspath(path)}', cannot contain any spaces")
 
         ## Determine if asphist or asol files were input
-        ## to the 'asp' parameter        
+        ## to the 'asp' parameter
         stk_dict["asol"],stk_count["asol"],asolstat,ahiststat = self._asol_asphist(stk_dict["asol"],stk_count["asol"],src_stk)
 
         return stk_dict, stk_count, asolstat, ahiststat, dobpix
@@ -1393,7 +1394,7 @@ class ParDicts(object):
 
     def obs_args(self,src_stk,out_stk,bkg_stk,asp_stk,bpixfile_stk,rmffile,
                  dtffile_stk,mask_stk,dafile_stk,asolstat,ahiststat,dobpix,
-                 common_args,stk_count):        
+                 common_args,stk_count):
 
         weight = common_args.pop("weight",None) # remove keyword from dictionary and copy value
         dobg = common_args["dobg"]
@@ -1444,9 +1445,9 @@ class ParDicts(object):
 
                 if fcount == 1:
                     iteminfostr = "\n"
-                else:        
+                else:
                     iteminfostr = f"[{i+1} of {fcount}]\n"
-                    
+
                 if instrument == "HRC" and weight == "yes":
                     weight = "no"
                     v1("HRC responses will be unweighted.")
@@ -1507,7 +1508,7 @@ class ParDicts(object):
                             v1("Found a Level=3 ahst3.fits file in 'asp' input; the 'asphist' block corresponding to the source region location will be used.\n")
 
                         if stk_count["asol"] != 1:
-                            asphist_arg = f"{stk_dict['asol'][i]}[asphist{self._event_stats(fullfile,'ccd_id')}]"
+                            asphist_arg = f"{asp_stk[i]}[asphist{self._event_stats(fullfile,'ccd_id')}]"
                         else:
                             if asp_stk[i].startswith("@"):
                                 asphist_arg = f"{','.join(stk.build(asp_stk[0]))}[asphist{self._event_stats(fullfile,'ccd_id')}]"
@@ -1535,7 +1536,7 @@ class ParDicts(object):
                             bpix_arg = bpixfile_stk[0]
 
 
-                # Set mask argument passes to create_arf_ext (mkwarf).                          
+                # Set mask argument passes to create_arf_ext (mkwarf).
                 if stk_count["mask"] != 1:
                     msk_arg  = mask_stk[i]
                 else:
@@ -1587,7 +1588,7 @@ class ParDicts(object):
 
 
                 #########################################################
-                #    
+                #
                 # determine coordinates to use to produce responses
                 #
                 #########################################################
@@ -1662,7 +1663,7 @@ class ParDicts(object):
 
                 else:
                     arg_dict["rmffile"] = rmffile
-                    
+
                 # set src/bkg item dictionary
                 specextract_dict[f"{srcbkg}{i+1}"] = {**arg_dict, **common_args}
 
@@ -1680,7 +1681,7 @@ class ParDicts(object):
         #  Test using ~/cxcds_param4/specextract.par:
         #
         #  > import ciao_contrib._tools.specextract as spec
-        #  > params,pars = get_par(["specextract.par"]) 
+        #  > params,pars = get_par(["specextract.par"])
         #  > specdict = spec.ParDicts(params).specextract_dict()
         #
         ###############################################################
@@ -1690,7 +1691,7 @@ class ParDicts(object):
                                        self.bggspec,self.ebin,self.channel,self.ewmap,self.binwmap,
                                        self.bintwmap,self.binarfcorr,self.wmap_clip,self.wmap_threshold,
                                        self.tmpdir,self.clobber,self.verbose)
-        
+
         src_stk, bkg_stk, out_stk, common_dict_append = self.check_input_stacks(self.infile,
                                                                                 self.bkgfile,
                                                                                 self.outroot,
@@ -1700,7 +1701,7 @@ class ParDicts(object):
                                                                                 common_dict["streakspec"],
                                                                                 common_dict["ebin"],
                                                                                 self.nproc)
-        
+
         common_dict = {**common_dict,**common_dict_append}
 
         stk_dict, stk_count, asolstat, ahiststat, dobpix = self.combine_stacks(src_stk,bkg_stk,self.asp,
@@ -1716,9 +1717,9 @@ class ParDicts(object):
                                  stk_dict["badpix"],self.rmffile,stk_dict["dead time factor"],
                                  stk_dict["mask"],stk_dict["dead area"],asolstat,
                                  ahiststat,dobpix,common_dict,stk_count)
-        
+
         return obs_dict
-    
+
 
 
 def _check_filename_set(filename):
@@ -1757,21 +1758,21 @@ def get_region_filter(full_filename):
     # (dmextract won't output an error, but the WMAP doesn't make
     # it into the output spectrum as it should, causing a
     # calquiz error downstream).
-    
+
     if "sky=" in full_filename:
-        filter = True
+        reg_filter = True
         region_temp = full_filename.split("sky=")[1]
 
     elif "(x,y)=" in full_filename:
-        filter = True
+        reg_filter = True
         region_temp = full_filename.split("(x,y)=")[1]
 
     elif "pos=" in full_filename:
-        filter = True
+        reg_filter = True
         region_temp = full_filename.split("pos=")[1]
 
     else:
-        filter = False
+        reg_filter = False
 
         if full_filename.startswith("@"):
             # deal with stacks
@@ -1780,7 +1781,7 @@ def get_region_filter(full_filename):
             region_temp = full_filename
             v1(f"WARNING: A supported spatial region filter was not detected for {full_filename}\n")
 
-    if filter:
+    if reg_filter:
         if ")," in region_temp and ") ," in region_temp:
 
             region_temp2 = region_temp.partition("),")[0]+")"
@@ -1805,6 +1806,5 @@ def get_region_filter(full_filename):
     if not _check_filename_set(region):
         raise IOError(f"Please specify a valid spatial region filter for {full_filename} or use FOV region files.")
 
-    return filter,region
-
+    return reg_filter,region
 
