@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2011, 2013, 2015, 2016, 2018, 2019, 2020, 2022
+#  Copyright (C) 2011, 2013, 2015, 2016, 2018, 2019, 2020, 2022, 2023
 #  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -85,10 +85,10 @@ def strtofloat(val):
         return float(val)
 
     except ValueError:
-        raise ValueError("Unable to convert '{0}' to a float.".format(val))
+        raise ValueError(f"Unable to convert '{val}' to a float.") from None
 
 
-def query_url(name, url, method):
+def query_url(name, url, method, context=None):
     """Wrap up handling of errors for a URL call.
 
     Parameters
@@ -96,6 +96,8 @@ def query_url(name, url, method):
     name : str
     url : str
     method : {"CADC", "Sesame"}
+    context : optional
+       If set, send to urlopen
 
     """
 
@@ -104,8 +106,8 @@ def query_url(name, url, method):
     # different.
     #
     try:
-        v5(f"{method} name query: {url}")
-        return urlopen(url)
+        v5(f"{method} name query: {url}    context is None: {context is None}")
+        return urlopen(url, context=context)
 
     except HTTPError as he:
         # HTTPError is a subclass of URLError so process first
@@ -113,7 +115,7 @@ def query_url(name, url, method):
         v5(f"Error from {method} name resolver - status = {code}")
 
         if method == "CADC" and code == 425:
-            raise ValueError(f"No position found matching the name '{name}'.")
+            raise ValueError(f"No position found matching the name '{name}'.") from he
 
         v5(str(he))
         raise he
@@ -129,24 +131,18 @@ def query_url(name, url, method):
         # there a better one?
         #
         reason = str(ue.reason)
-        if reason.find("CERTIFICATE_VERIFY_FAILED") != -1:
-            # Try with no context
+        if context is None and reason.find("CERTIFICATE_VERIFY_FAILED") != -1:
+            # Try with an unverified context - which we pass back to query_url so
+            # that we do not have to repeat all the try/except work.
             #
             v5("Skipping to an unverified SSL context")
             context = ssl._create_unverified_context()
-            try:
-                return urlopen(url, context=context)
-            except URLError as ue2:
-                v5("Unable to query with no context!")
-                v5(f"Error opening URL: {ue2}")
-                v5(f"error.reason = {ue2.reason}")
-                v5(f"error.reason.errno = {ue2.reason.errno}")
-                raise ue2
+            return query_url(name, url, method, context=context)
 
         if ue.reason.errno == 8:
-            raise IOError(f"Unable to connect to the {method} Name Resolver")
+            raise IOError(f"Unable to connect to the {method} Name Resolver") from ue
 
-        raise
+        raise ue
 
 
 def identify_name_cadc(name):
@@ -196,7 +192,7 @@ def identify_name_cadc(name):
 
         toks = l.split("=", 1)
         if len(toks) != 2:
-            raise IOError("Unable to parse ASCII response from CADC name resolver: {0}".format(l))
+            raise IOError(f"Unable to parse ASCII response from CADC name resolver: {l}")
 
         if toks[0] == "ra":
             out[0] = strtofloat(toks[1])
@@ -210,11 +206,11 @@ def identify_name_cadc(name):
         elif toks[0] == "error":
             return None
 
-    if any([o is None for o in out]):
-        raise IOError("Incomplete response from CADC name resolver: {}".format(out))
+    if any(o is None for o in out):
+        raise IOError(f"Incomplete response from CADC name resolver: {out}")
 
     out = tuple(out)
-    v5("Position = {}".format(out))
+    v5(f"Position = {out}")
     return out
 
 
@@ -266,15 +262,15 @@ def identify_name_sesame(name):
     v4("Parsing response as XML")
     try:
         root = ET.fromstring(data)
-    except ET.ParseError:
-        raise IOError("Unable to parse response from Sesame name server")
+    except ET.ParseError as err:
+        raise IOError("Unable to parse response from Sesame name server") from err
 
     rslvs = root.findall('Target/Resolver')
     if len(rslvs) == 0:
-        raise ValueError("No position found matching the name '{0}'.".format(name))
+        raise ValueError(f"No position found matching the name '{name}'.")
 
     # Pick the first response (there should be only one. but just in case)
-    v4("Found {} Resolver components".format(len(rslvs)))
+    v4(f"Found {len(rslvs)} Resolver components")
     rslv = rslvs[0]
     xra = rslv.find('jradeg')
     xde = rslv.find('jdedeg')
@@ -283,21 +279,21 @@ def identify_name_sesame(name):
     if xde is None:
         raise IOError("Missing Declination of source in respose from Sesame")
 
-    v5("RA=[{}] Dec=[{}]".format(xra.text, xde.text))
+    v5(f"RA=[{xra.text}] Dec=[{xde.text}]")
 
     try:
         ra = float(xra.text)
     except ValueError:
-        raise IOError("Invalid RA response from Sesame ({})".format(xra.text))
+        raise IOError(f"Invalid RA response from Sesame ({xra.text})") from None
 
     try:
         dec = float(xde.text)
     except ValueError:
-        raise IOError("Invalid Declination response from Sesame ({})".format(xde.text))
+        raise IOError(f"Invalid Declination response from Sesame ({xde.text})") from None
 
     # WE ASSUME THE POSITION IS ICRS
     out = (ra, dec, 'ICRS')
-    v5("Position = {}".format(out))
+    v5(f"Position = {out}")
     return out
 
 
