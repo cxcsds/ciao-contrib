@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2009, 2010, 2015, 2016, 2018, 2019
+#  Copyright (C) 2009, 2010, 2015, 2016, 2018, 2019, 2023
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -905,13 +905,13 @@ def prof_data(id=None, model=None,
                                 label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_data_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_model(id=None, model=None,
@@ -937,13 +937,13 @@ def prof_model(id=None, model=None,
                                  label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_model_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_source(id=None, model=None,
@@ -969,13 +969,13 @@ def prof_source(id=None, model=None,
                                   label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_source_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_resid(id=None, model=None,
@@ -1001,13 +1001,13 @@ def prof_resid(id=None, model=None,
                                  label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_resid_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_delchi(id=None, model=None,
@@ -1033,13 +1033,13 @@ def prof_delchi(id=None, model=None,
                                   label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_delchi_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_fit(id=None, model=None,
@@ -1065,13 +1065,13 @@ def prof_fit(id=None, model=None,
                                label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_fit_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_fit_resid(id=None, model=None,
@@ -1102,15 +1102,15 @@ def prof_fit_resid(id=None, model=None,
     rp = _prof_fit_resid_plot["residplot"]
 
     try:
-        plot.begin()
+        plot.backend.begin()
         jp.reset()
         jp.plottop(fp, **kwargs)
         jp.plotbot(rp, **kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_fit_delchi(id=None, model=None,
@@ -1141,15 +1141,15 @@ def prof_fit_delchi(id=None, model=None,
     rp = _prof_fit_delchi_plot["residplot"]
 
     try:
-        plot.begin()
+        plot.backend.begin()
         jp.reset()
         jp.plottop(fp, **kwargs)
         jp.plotbot(rp, **kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 # Plot preferences
