@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2009, 2010, 2015, 2016, 2018, 2019
+#  Copyright (C) 2009, 2010, 2015, 2016, 2018, 2019, 2023
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -53,17 +53,15 @@ how to create the profiles (e.g. the center, ellipticity, bin
 sizes).
 """
 
-from __future__ import absolute_import
+import numpy as np
 
 from sherpa.astro import ui
 
-import sherpa.utils as utils
-import sherpa.plot as plot
+from sherpa import utils
+from sherpa import plot
 
 from sherpa.plot import Histogram, FitPlot, JointPlot
 from sherpa.astro.plot import ModelHistogram
-
-import numpy as np
 
 from . import calculate as c
 
@@ -112,6 +110,8 @@ def get_data_prof_defaults():
                    ('markerfacecolor', 'none'),
                    ('markersize', 4),
                    ('linestyle', '')]
+    else:
+        newopts = []
 
     for n, v in newopts:
         d[n] = v
@@ -159,49 +159,32 @@ class RadialProfile(Histogram):
         Histogram.__init__(self)
 
     def __str__(self):
-        # Be safe and ensure the old print options are restored (e.g.
-        # in-case a user hits control-c)
-        #
-        oldopts = np.get_printoptions()
-        np.set_printoptions(precision=4, threshold=6)
-
-        try:
+        with np.printoptions(precision=4, threshold=6):
             xlo = self.xlo
-            if self.xlo is not None:
+            if xlo is not None:
                 xlo = np.array2string(self.xlo)
 
             xhi = self.xhi
-            if self.xhi is not None:
+            if xhi is not None:
                 xhi = np.array2string(self.xhi)
 
             y = self.y
-            if self.y is not None:
+            if y is not None:
                 y = np.array2string(self.y)
 
             yerr = self.yerr
-            if self.yerr is not None:
+            if yerr is not None:
                 yerr = np.array2string(self.yerr)
 
-            out = ('xlo    = {}\n' +
-                   'xhi    = {}\n' +
-                   'y      = {}\n' +
-                   'yerr   = {}\n' +
-                   'xlabel = {}\n' +
-                   'ylabel = {}\n' +
-                   'labels = {}\n' +
-                   'title  = {}\n' +
-                   'histo_prefs = {}').format(
-                       xlo,
-                       xhi,
-                       y,
-                       yerr,
-                       self.xlabel,
-                       self.ylabel,
-                       self.labels,
-                       self.title,
-                       self.histo_prefs)
-        finally:
-            np.set_printoptions(**oldopts)
+            out = f'xlo    = {xlo}\n' + \
+                f'xhi    = {xhi}\n' + \
+                f'y      = {y}\n' + \
+                f'yerr   = {yerr}\n' + \
+                f'xlabel = {self.xlabel}\n' + \
+                f'ylabel = {self.ylabel}\n' + \
+                f'labels = {self.labels}\n' + \
+                f'title  = {self.title}\n' + \
+                f'histo_prefs = {self.histo_prefs}'
 
         return out
 
@@ -326,10 +309,11 @@ def _process_grouping(counts, snr):
 
     if counts is not None:
         return ("counts", counts)
-    elif snr is not None:
+
+    if snr is not None:
         return ("snr", snr)
-    else:
-        return None
+
+    return None
 
 
 def _prepare_prof_data_plot(id=None, model=None,
@@ -467,7 +451,7 @@ def _prepare_prof_delchi_plot(id=None, model=None,
                               rprof["delchi"], np.ones(rprof["delchi"].size),
                               title=title,
                               xlabel=rprof["xlabel"],
-                              ylabel='Residual ({})'.format(sigma),
+                              ylabel=f'Residual ({sigma})',
                               labels=labels)
 
 
@@ -593,7 +577,7 @@ def _prepare_prof_fit_delchi_plot(id=None, model=None,
                rprof["delchi"], np.ones(rprof["delchi"].size),
                title=rprof["datafile"],
                xlabel=rprof["xlabel"],
-               ylabel='Residual ({})'.format(sigma))
+               ylabel=f'Residual ({sigma})')
 
 
 #
@@ -905,13 +889,13 @@ def prof_data(id=None, model=None,
                                 label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_data_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_model(id=None, model=None,
@@ -937,13 +921,13 @@ def prof_model(id=None, model=None,
                                  label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_model_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_source(id=None, model=None,
@@ -969,13 +953,13 @@ def prof_source(id=None, model=None,
                                   label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_source_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_resid(id=None, model=None,
@@ -1001,13 +985,13 @@ def prof_resid(id=None, model=None,
                                  label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_resid_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_delchi(id=None, model=None,
@@ -1033,13 +1017,13 @@ def prof_delchi(id=None, model=None,
                                   label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_delchi_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_fit(id=None, model=None,
@@ -1065,13 +1049,13 @@ def prof_fit(id=None, model=None,
                                label=label)
 
     try:
-        plot.begin()
+        plot.backend.begin()
         _prof_fit_plot.plot(**kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_fit_resid(id=None, model=None,
@@ -1102,15 +1086,15 @@ def prof_fit_resid(id=None, model=None,
     rp = _prof_fit_resid_plot["residplot"]
 
     try:
-        plot.begin()
+        plot.backend.begin()
         jp.reset()
         jp.plottop(fp, **kwargs)
         jp.plotbot(rp, **kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 def prof_fit_delchi(id=None, model=None,
@@ -1141,15 +1125,15 @@ def prof_fit_delchi(id=None, model=None,
     rp = _prof_fit_delchi_plot["residplot"]
 
     try:
-        plot.begin()
+        plot.backend.begin()
         jp.reset()
         jp.plottop(fp, **kwargs)
         jp.plotbot(rp, **kwargs)
     except Exception:
-        plot.exceptions()
+        plot.backend.exceptions()
         raise
     else:
-        plot.end()
+        plot.backend.end()
 
 
 # Plot preferences
