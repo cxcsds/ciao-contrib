@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2017, 2019 Smithsonian Astrophysical Observatory
+# Copyright (C) 2017, 2019, 2023
+# Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,8 +26,21 @@ given a user supplied ARF and RMF.
 
 """
 
+from os.path import basename
+
 import numpy as np
-import sherpa.astro.ui as ui
+
+import matplotlib.pylab as plt
+
+from pycrates import set_key
+
+from sherpa.astro.data import DataPHA, DataRMF
+from sherpa.astro import ui
+from sherpa.astro.io import read_arf, read_rmf
+from sherpa.astro.utils import calc_data_sum
+from sherpa.utils import poisson_noise
+
+from crates_contrib.utils import make_table_crate
 
 # import sys must follow sherpa (sorry pylint)
 import sys
@@ -49,9 +63,6 @@ def make_acis_diagonal_rmf(arf):
 
     """
 
-    from sherpa.astro.data import DataRMF
-    from sherpa.astro.instrument import RMF1D
-
     acis_gain = 0.0146   # keV per channel
     detchans = 1024
 
@@ -70,11 +81,8 @@ def make_acis_diagonal_rmf(arf):
     eb_hi = eb_lo + acis_gain
     eb_lo[0] = 0.001
 
-    _rmf = DataRMF("diagonal", detchans, elo, ehi, n_grp, f_chan,
+    return DataRMF("diagonal", detchans, elo, ehi, n_grp, f_chan,
                    n_chan, matrix, 0, eb_lo, eb_hi, None)
-
-    rmf = RMF1D(_rmf)
-    return rmf
 
 
 class EnergyBand():
@@ -234,8 +242,7 @@ class HardnessRatioAxis():
 
 
 class ColorColor():
-    """
-    Create a color-color diagram for a given model, parameters, and energies
+    """Create a color-color diagram for a given model, parameters, and energies
 
     So the basic idea is this
 
@@ -276,16 +283,21 @@ class ColorColor():
     >>> soft = EnergyBand(0.5, 1.2, 'S')
     >>> medium = EnergyBand(1.2, 2.0, 'M')
     >>> hard = EnergyBand(2.0, 7.0, 'H')
-    >>> broad = EnergyBand(0.5,7.0, 'B')
+    >>> broad = EnergyBand(0.5, 7.0, 'B')
 
     >>> cc = ColorColor(mymodel, arffile)
     >>> matrix = cc(photon_index, absorption, soft, medium, hard, broad)
     >>> matrix.plot()
+
+    Note that the calculated colors are not deterministic, since the
+    model is evaluated with poisson noise at each step. This means
+    that repeated runs with the same model and bands are not
+    guaranteed to calculate exactly the same result.
+
     """
 
-    _dataset_id = "color_color"
-
-    def __init__(self, model, arffile, rmffile=None, axis_class=HardnessRatioAxis):
+    def __init__(self, model, arffile, rmffile=None,
+                 axis_class=HardnessRatioAxis):
         """Create the ColorColor object
 
         This store the needed data, and creates the sherpa dataset that
@@ -297,8 +309,8 @@ class ColorColor():
         self.model = model
         self.arffile = arffile
         self.rmffile = rmffile
-        self._load()
         self.make_axis = axis_class
+        self._load()
 
     def _load(self):
         """
@@ -316,18 +328,20 @@ class ColorColor():
         table model scaling the rest of the model.
 
         """
-        ui.dataspace1d(1, 1024, id=self._dataset_id, dstype=ui.DataPHA)
-        ui.set_model(self._dataset_id, self.model)
 
-        self.model = ui.get_source(self._dataset_id)
+        chans = np.arange(1, 1025, dtype=np.int16)
+        data = DataPHA("cc", chans, chans * 0)
 
-        ui.load_arf(self._dataset_id, self.arffile)
-        arf = ui.get_arf(self._dataset_id)
-        if self.rmffile is None:
-            rmf = make_acis_diagonal_rmf(arf)
-            ui.set_rmf(self._dataset_id, rmf)
+        arf = read_arf(self.arffile)
+        if self.rmffile is not None:
+            rmf = read_rmf(self.rmffile)
         else:
-            ui.load_rmf(self._dataset_id, self.rmffile)
+            rmf = make_acis_diagonal_rmf(arf)
+
+        data.set_arf(arf)
+        data.set_rmf(rmf)
+        data.units = "energy"
+        self.pha = data
 
     def _setx(self, soft_band, hard_band, total_band):
         """Compute the HR for the X-axis"""
@@ -338,13 +352,17 @@ class ColorColor():
         self.yy = self.make_axis(soft_band, hard_band, total_band, self.sum)
 
     def sum(self, lo, hi):
-        """Wrapper around calc_data_sum to set the right dataset ID"""
-        counts = ui.calc_data_sum(lo, hi, id=self._dataset_id)
-        return counts
+        """Sum up the data in the given range"""
+        return calc_data_sum(self.pha, lo, hi)
 
     def fakeit(self):
-        """Wrapper around fake() to set right ID"""
-        ui.fake(self._dataset_id)
+        """Evaluate the model and use it to set the data."""
+
+        # should we use fake_pha instead? Probably not here.
+        resp = self.pha.get_full_response()
+        model = resp(self.model)
+        ymodel = self.pha.eval_model(model)
+        self.pha.counts = poisson_noise(ymodel)
 
     def iterate(self, pri_obj, sec_obj):
         """Compute the HR for each grid point in the pri_obj grid
@@ -375,7 +393,7 @@ class ColorColor():
         # Loop over values in the primary axis grid
         for aa in pri_obj.grid:
             # Set sherpa model parameter value
-            setattr(pri_obj.obj, "val", aa)
+            pri_obj.obj.val = aa
 
             # Loop over the fine grid on secondary axis
             lx = []
@@ -385,7 +403,7 @@ class ColorColor():
             lmedium = []
             for bb in sec_fine_grid:
                 # Set sherpa model parameter value
-                setattr(sec_obj.obj, "val", bb)
+                sec_obj.obj.val = bb
 
                 # fake the spectrum w/ these model paramters
                 self.fakeit()
@@ -557,7 +575,6 @@ class ColorColorDiagram():
             out_medium.extend(medium[::res])
 
         # Create output crate
-        from crates_contrib.utils import make_table_crate
 
         # Column names
         pri_col_name = self.pri_param.obj.name
@@ -579,8 +596,6 @@ class ColorColorDiagram():
 
     def _write_keywords(self, toolname):
         # Add a bunch of meta-data
-        from pycrates import set_key
-        from os.path import basename
         set_key(self._cr, "SHRPAVER", ui._sherpa_version_string)
         set_key(self._cr, "MODEL", self.cc.model.name)
         set_key(self._cr, "ARFFILE", basename(self.cc.arffile))
@@ -637,7 +652,6 @@ class ColorColorDiagram():
         >>> absorption.set_label_style(color="black")
         >>> matrix.plot()
         """
-        import matplotlib.pylab as plt
 
         # Plot 1st model parameter curves
         for a1 in self.pri_param.grid:
@@ -729,7 +743,6 @@ def test():
     absorption.set_label_style(color="forestgreen")
 
     matrix_09.plot()
-    import matplotlib.pylab as plt
     plt.show()
 
     matrix_09.write('foo.fits')
