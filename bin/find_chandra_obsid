@@ -80,7 +80,7 @@ import coords.format as coords
 from coords import resolver
 
 toolname = "find_chandra_obsid"
-version = "05 January 2023"
+version = "06 January 2023"
 
 lw.initialize_logger(toolname)
 
@@ -97,9 +97,10 @@ def protect_string(s):
     # not convinced it's worth going to the effort of protecting quotes
     if " " in s:
         if '"' in s:
-            return '"{}"'.format(s.replace('"', '\"'))
+            sprot = s.replace('"', '\"')
+            return f'"{sprot}"'
 
-        return '"{}"'.format(s)
+        return f'"{s}"'
 
     return s
 
@@ -117,9 +118,12 @@ def _clean_ra(s):
 
     t = s.split(":")
     if len(t) != 3:
-        raise ValueError("Expected h:m:s but sent '{}'".format(s))
+        raise ValueError(f"Expected h:m:s but sent '{s}'")
 
-    return "{:0>2}:{:0>2}:{:04.1f}".format(t[0], t[1], float(t[2]))
+    h = t[0]
+    m = t[1]
+    s = float(t[2])
+    return f"{h:0>2}:{m:0>2}:{s:04.1f}"
 
 
 def _clean_dec(s):
@@ -128,7 +132,7 @@ def _clean_dec(s):
 
     t = s.split(":")
     if len(t) != 3:
-        raise ValueError("Expected d:m:s but sent '{}'".format(s))
+        raise ValueError(f"Expected d:m:s but sent '{s}'")
 
     if t[0][0] == '-':
         c = '-'
@@ -139,12 +143,15 @@ def _clean_dec(s):
         if t[0][0] == '+':
             t[0] = t[0][1:]
 
-    return "{}{:0>2}:{:0>2}:{:05.2f}".format(c, t[0], t[1], float(t[2]))
+    d = t[0]
+    m = t[1]
+    s = float(t[2])
+    return f"{c}{d:0>2}:{m:0>2}:{s:05.2f}"
 
 
 def max_len(array):
     """Return the max array length in array (assumed to be strings)."""
-    return max([len(s) for s in array])
+    return max(len(s) for s in array)
 
 
 imap = {
@@ -181,18 +188,18 @@ def find_chandra_obsid(ra, dec, size=0.1, instrument="all", grating="all"):
         all, none, leth, hetg, any
     """
 
-    v2("Querying Chandra archive for ra={} dec={} radius={} inst={} grat={}".format(ra, dec, size, instrument, grating))
+    v2(f"Querying Chandra archive for ra={ra} dec={dec} radius={size} inst={instrument} grat={grating}")
     res = search.search_chandra_archive(ra, dec, size=size,
                                         instrument=imap[instrument],
                                         grating=gmap[grating])
     if res is None:
         return None
 
-    v3("Chandra search found {} results".format(len(res)))
+    v3(f"Chandra search found {len(res)} results")
     obsinfo = search.get_chandra_obs(res, ra=ra, dec=dec, fmt=':')
 
     nm = len(obsinfo['obsid'])
-    v3("After removing duplicates, have {} matches".format(nm))
+    v3(f"After removing duplicates, have {nm} matches")
     return obsinfo
 
 
@@ -204,7 +211,7 @@ def display_obsinfo(ra, dec, obsinfo, detail='basic'):
     """
 
     if obsinfo is None:
-        v1("# No observations were found for ra={} dec={}".format(ra, dec))
+        v1(f"# No observations were found for ra={ra} dec={dec}")
         return
 
     # It would be nice if we could just create a TABLECrate and let it
@@ -217,10 +224,8 @@ def display_obsinfo(ra, dec, obsinfo, detail='basic'):
     pilen = max_len(obsinfo['piname'])
     tlen = max_len(obsinfo['target'])
 
-    if pilen < 6:
-        pilen = 6
-    if tlen < 6:
-        tlen = 6
+    pilen = max(pilen, 6)
+    tlen = max(tlen, 6)
 
     if detail == 'obsid':
         fmt = '{}'
@@ -243,8 +248,8 @@ def display_obsinfo(ra, dec, obsinfo, detail='basic'):
         obsinfo['rastr'] = [_clean_ra(r) for r in obsinfo['rastr']]
         obsinfo['decstr'] = [_clean_dec(r) for r in obsinfo['decstr']]
 
-        obsinfo['ra'] = ["{}".format(r) for r in obsinfo['ra']]
-        obsinfo['dec'] = ["{}".format(d) for d in obsinfo['dec']]
+        obsinfo['ra'] = [f"{r}" for r in obsinfo['ra']]
+        obsinfo['dec'] = [f"{d}" for d in obsinfo['dec']]
         ralen = max_len(obsinfo['ra'])
         declen = max_len(obsinfo['dec'])
 
@@ -260,7 +265,7 @@ def display_obsinfo(ra, dec, obsinfo, detail='basic'):
                 'ra', 'dec')
 
     else:
-        raise ValueError("Invalid detail setting '{}'".format(detail))
+        raise ValueError(f"Invalid detail setting '{detail}'")
 
     v1(hdr)
     for i in range(0, nm):
@@ -277,9 +282,9 @@ def print_download_help(nobsid):
     print("    n  - do not download this ObsId")
     if nobsid > 1:
         print("    q  - do not download this or the remaining " +
-              "{} ObsIDs".format(nobsid - 1))
+              f"{nobsid - 1} ObsIDs")
         print("    a  - download this ObsId and the remaining " +
-              "{} ObsIDs".format(nobsid - 1))
+              f"{nobsid - 1} ObsIDs")
 
     print("    h  - display this information")
 
@@ -312,7 +317,7 @@ def ask_download(nobsid):
             return ans
 
         else:
-            print("Unrecognised option: {}".format(resp))
+            print(f"Unrecognised option: {resp}")
 
 
 def ask_obsids(ra, dec, obsinfo):
@@ -341,7 +346,11 @@ def ask_obsids(ra, dec, obsinfo):
                                               obsinfo['piname'][i],
                                               obsinfo['target'][i]))
 
-    print("There were {} matching observations:\n".format(nm))
+    if nm == 1:
+        print("There was 1 matching observation:\n")
+    else:
+        print(f"There were {nm} matching observations:\n")
+
     for i in range(0, nm):
         display_obsid(i)
 
@@ -362,7 +371,7 @@ def ask_obsids(ra, dec, obsinfo):
         opt = ask_download(ntodo)
         if opt == "q":
             if not_last:
-                print("Skipping the remaining {} ObsIDs.".format(ntodo))
+                print(f"Skipping the remaining {ntodo} ObsIDs.")
             break
 
         elif opt == "n":
@@ -373,21 +382,22 @@ def ask_obsids(ra, dec, obsinfo):
 
         elif opt == "a":
             if not_last:
-                print("Downloading the remaining {} ObsIDs.".format(ntodo))
+                print(f"Downloading the remaining {ntodo} ObsIDs.")
             obsids.extend([obsinfo['obsid'][j] for j in range(i, nm)])
             break
 
         else:
-            raise NotImplementedError("Internal error: ask_download() returned '{}'".format(opt))
+            raise NotImplementedError(f"Internal error: ask_download() returned '{opt}'")
 
     print("")
     ndownload = len(obsids)
     if ndownload == 1:
-        print("Selected ObsID: {}".format(obsids[0]))
+        print(f"Selected ObsID: {obsids[0]}")
         print("")
 
     elif ndownload > 1:
-        print("Selected ObsIDs: {}".format(", ".join(map(str, obsids))))
+        obsids_str = ", ".join(map(str, obsids))
+        print(f"Selected ObsIDs: {obsids_str}")
         print("")
 
     return obsids
@@ -407,11 +417,11 @@ def process_command_line(argv):
     if ra == "":
         raise ValueError("A position (RA and Dec), ObsId, or object name " +
                          "must be given, e.g.\n\n" +
-                         "  {} 180.47 -18.88\n".format(toolname) +
-                         "  {} '12 1 53' '-18 52 37'\n".format(toolname) +
-                         "  {} arp244\n".format(toolname) +
-                         "  {} 'arp 244'\n".format(toolname) +
-                         "  {} 8043\n".format(toolname))
+                         f"  {toolname} 180.47 -18.88\n" +
+                         f"  {toolname} '12 1 53' '-18 52 37'\n" +
+                         f"  {toolname} arp244\n" +
+                         f"  {toolname} 'arp 244'\n" +
+                         f"  {toolname} 8043\n")
 
     dec = pio.pget(fp, "dec").strip()
 
@@ -476,10 +486,10 @@ def find_obsid_position(obsid):
     TODO: move into library code.
     """
 
-    v3("Trying to identify obsid={}".format(obsid))
+    v3(f"Trying to identify obsid={obsid}")
 
     # assuming no need to protect or sanitize the input
-    url = 'https://cda.harvard.edu/srservices/ocatDetails.do?obsid={}&format=text'.format(obsid)
+    url = f'https://cda.harvard.edu/srservices/ocatDetails.do?obsid={obsid}&format=text'
 
     # This used to be decoding using utf-8 but that failed for ObsID
     # 27566 so try this. Is there a difference between "iso8859" and
@@ -487,7 +497,7 @@ def find_obsid_position(obsid):
     #
     ans = retrieve_url(url).read().decode('iso8859')
 
-    v3("==> Response from CDA query for ObsId={} is:".format(obsid))
+    v3(f"==> Response from CDA query for ObsId={obsid} is:")
     v3(ans)
     v3("<== end response")
 
@@ -500,8 +510,9 @@ def find_obsid_position(obsid):
     lines = [l for l in ans.split('\n') if not (l.startswith('#') or l.strip() == '')]
     if len(lines) < 3:
         return None
-    elif len(lines) > 3:
-        raise IOError("Unexpected response for ObsId {} from the Chandra Data Archive.".format(obsid))
+
+    if len(lines) > 3:
+        raise IOError(f"Unexpected response for ObsId {obsid} from the Chandra Data Archive.")
 
     hdrs = lines[0].split('\t')
     dlines = lines[-1].split('\t')
@@ -516,9 +527,9 @@ def run_fco(opts):
     args = opts["args"]
     nargs = len(args)
     if nargs == 2:
-        v2("Converting {} and {} to decimal degrees.".format(args[0], args[1]))
+        v2(f"Converting {args[0]} and {args[1]} to decimal degrees.")
         (ra, dec) = coords.sex2deg(args[0], args[1])
-        v2("-> {} {}".format(ra, dec))
+        v2(f"-> {ra} {dec}")
 
     else:
         # Special case 5-or-less character integer values as
@@ -530,7 +541,7 @@ def run_fco(opts):
         #
         name = args[0]
         if isobsid(name):
-            v2("Looking for position of ObsId {}".format(name))
+            v2(f"Looking for position of ObsId {name}")
             pos = find_obsid_position(name)
         else:
             pos = None
@@ -539,14 +550,15 @@ def run_fco(opts):
             (ra, dec) = pos
 
         else:
-            v2("Querying name resolvers for name={0}".format(name))
+            v2(f"Querying name resolvers for name={name}")
             (ra, dec, csys) = resolver.identify_name(name)
             if csys != 'ICRS':
-                raise ValueError("Unsupported format '{}' returned by the name resolver. Please contact the CXC HelpDesk.".format(csys))
+                raise ValueError(f"Unsupported format '{csys}' returned by the name resolver. Please contact the CXC HelpDesk.")
 
-        v2("Found ra={} dec={}".format(ra, dec))
-        v2("    = {} {}".format(coords.deg2ra(ra, 'hms'),
-                                coords.deg2dec(dec, 'dms')))
+        v2(f"Found ra={ra} dec={dec}".format(ra, dec))
+        rastr = coords.deg2ra(ra, 'hms')
+        decstr = coords.deg2dec(dec, 'dms')
+        v2(f"    = {rastr} {decstr}")
 
     obsinfo = find_chandra_obsid(ra, dec,
                                  size=opts["radius"] / 60.0,
@@ -557,7 +569,7 @@ def run_fco(opts):
         display_obsinfo(ra, dec, obsinfo, detail=opts["detail"])
 
     elif obsinfo is None:
-        v1("No observations were found for ra={} dec={}".format(ra, dec))
+        v1(f"No observations were found for ra={ra} dec={dec}")
 
     else:
         if opts["download"] == "all":
@@ -569,7 +581,7 @@ def run_fco(opts):
         if obsids == []:
             v1("No data has been selected for download.")
         else:
-            v2("Going to download ObsIDs: {}".format(obsids))
+            v2(f"Going to download ObsIDs: {obsids}")
             mirror = data.get_mirror_location(opts["mirror"])
             data.download_chandra_obsids(obsids, mirror=mirror)
 
@@ -579,8 +591,8 @@ def fco(args):
     """Run the script"""
 
     opts = process_command_line(args)
-    v3("Running: {}".format(toolname))
-    v3("  version: {}".format(version))
+    v3(f"Running: {toolname}")
+    v3(f"  version: {version}")
     run_fco(opts)
 
 
