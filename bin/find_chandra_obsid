@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2022
+#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2022, 2023
 #  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -80,7 +80,7 @@ import coords.format as coords
 from coords import resolver
 
 toolname = "find_chandra_obsid"
-version = "27 January 2022"
+version = "05 January 2023"
 
 lw.initialize_logger(toolname)
 
@@ -476,11 +476,16 @@ def find_obsid_position(obsid):
     TODO: move into library code.
     """
 
+    v3("Trying to identify obsid={}".format(obsid))
+
     # assuming no need to protect or sanitize the input
     url = 'https://cda.harvard.edu/srservices/ocatDetails.do?obsid={}&format=text'.format(obsid)
 
-    v3("Trying to identify obsid={}".format(obsid))
-    ans = retrieve_url(url).read().decode('utf8')
+    # This used to be decoding using utf-8 but that failed for ObsID
+    # 27566 so try this. Is there a difference between "iso8859" and
+    # "iso-8859-1" ("iso-8859" causes an error).
+    #
+    ans = retrieve_url(url).read().decode('iso8859')
 
     v3("==> Response from CDA query for ObsId={} is:".format(obsid))
     v3(ans)
