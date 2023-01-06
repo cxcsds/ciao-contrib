@@ -43,27 +43,40 @@ from multiprocessing import cpu_count
 from sherpa.utils import parallel_map
 from ciao_contrib.parallel_wrapper import parallel_pool, _check_tty
 
-toolname = "_tools.specextract"
+__modulename__ = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "22 November 2022"
+__revision__ = "5 January 2023"
 
 # Set up the logging/verbose code
-initialize_logger(toolname)
+initialize_logger(__modulename__)
 
 # Use v<n> to display messages at the given verbose level.
-v0 = make_verbose_level(toolname, 0)
-v1 = make_verbose_level(toolname, 1)
-v2 = make_verbose_level(toolname, 2)
-v3 = make_verbose_level(toolname, 3)
-v4 = make_verbose_level(toolname, 4)
-v5 = make_verbose_level(toolname, 5)
+v0 = make_verbose_level(__modulename__, 0)
+v1 = make_verbose_level(__modulename__, 1)
+v2 = make_verbose_level(__modulename__, 2)
+v3 = make_verbose_level(__modulename__, 3)
+v4 = make_verbose_level(__modulename__, 4)
+v5 = make_verbose_level(__modulename__, 5)
 
-if not _check_tty():
-    vprogress = make_verbose_level(toolname, 1)
-elif paramio.pgetstr(open_param_file(sys.argv, toolname=__toolname__)["fp"],"parallel").lower() == "no" and paramio.pgeti(open_param_file(sys.argv, toolname=__toolname__)["fp"], "verbose") == 1:
-    vprogress = make_verbose_level(toolname, 2)
-else:
-    vprogress = make_verbose_level(toolname, 2)
+def _set_verbose_progressbar(args,toolname,modulename=None):
+    pfile = open_param_file(args, toolname=toolname)["fp"]
+
+    if modulename is None:
+        modulename = toolname
+
+    if not _check_tty():
+        verb = make_verbose_level(modulename, 1)
+    elif paramio.pgetstr(pfile,"parallel").lower() == "no" and paramio.pgeti(pfile, "verbose") == 1:
+        verb = make_verbose_level(modulename, 2)
+    else:
+        verb = make_verbose_level(modulename, 2)
+
+    paramio.paramclose(pfile)
+
+    return verb
+
+vprogress = _set_verbose_progressbar(sys.argv,toolname=__toolname__,modulename=__modulename__)
+
 
 
 class suppress_stdout_stderr(object):
@@ -1003,7 +1016,8 @@ class ParDicts(object):
             except Exception as E:
                 return E
 
-        self.paralleltests(parallel_region_check,fn_stk,method="pool",numcores=nproc)
+        #self.paralleltests(parallel_region_check,fn_stk,method="pool",numcores=nproc)
+        self.paralleltests(parallel_region_check,fn_stk,method="map",numcores=nproc)
 
         # for fn in set(src_stk).union(bkg_stk):
         #     self._valid_regstr(fn)
@@ -1672,7 +1686,7 @@ class ParDicts(object):
 
     def specextract_dict(self):
         """
-        return dictionary of parameter arguments to run specextract 
+        return dictionary of parameter arguments to run specextract
         for each src/bkg independently
         """
 
@@ -1807,4 +1821,3 @@ def get_region_filter(full_filename):
         raise IOError(f"Please specify a valid spatial region filter for {full_filename} or use FOV region files.")
 
     return reg_filter,region
-
