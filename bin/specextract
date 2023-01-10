@@ -723,16 +723,16 @@ def set_badpix(evtfile, bpixfile, instrument, verbose):
             raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.") from exc
 
     else:
-        detnam = fileio.get_keys_from_file(evtfile)["DETNAM"]
+        detnam = fileio.get_keys_from_file(evtfile)["DETNAM"].replace("-","_")
         bpixpar = f"AXAF_{detnam}_BADPIX_FILE"
         bpix = f"{bpixfile}[BADPIX]"
 
         try:
-            setattr(ardlib,bpixpar.replace("-","_"),bpix)
+            setattr(ardlib,bpixpar,bpix)
             ardlib.write_params()
 
         finally:
-            if not os.path.isfile(bpixfile) or getattr(ardlib,bpixpar.replace("-","_")).replace("[BADPIX]","") != bpixfile:
+            if not os.path.isfile(bpixfile) or getattr(ardlib,bpixpar).replace("[BADPIX]","") != bpixfile:
                 raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.")
 
 
