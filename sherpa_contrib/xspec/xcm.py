@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2020  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2020, 2023  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -29,7 +29,6 @@ analysis in Sherpa.
 
 from collections import defaultdict
 from enum import Enum
-import os
 
 import numpy as np
 
@@ -577,7 +576,7 @@ def parse_dataid(token):
     try:
         toks = [int(t) for t in toks]
     except ValueError:
-        raise ValueError(emsg)
+        raise ValueError(emsg) from None
 
     if ntoks == 2:
         return toks[0], toks[1]
@@ -800,7 +799,7 @@ class ModelExpression:
                 try:
                     mdl = self.session.create_model_component(name, gname)
                 except ArgumentErr:
-                    raise ValueError(f"Unrecognized XSPEC model '{basename}' in {expr}") from None
+                    raise ValueError(f"Unrecognized XSPEC model '{basename}' in {self.expr}") from None
 
                 outlist.append((mdl.name.split('.'), mdl))
             else:
@@ -819,16 +818,19 @@ class ModelExpression:
                     # start a new entry to track the bracket depth
                     self.depth.append(0)
                     outlist.append(("(", None))
+                    continue
 
-                elif isinstance(mdl, xspec.XSMultiplicativeModel):
+                if isinstance(mdl, xspec.XSMultiplicativeModel):
                     v2(" - it's a multiplicative model")
                     self.lastterm[-1].append(Term.MUL)
+                    continue
 
-                elif isinstance(mdl, xspec.XSAdditiveModel):
+                if isinstance(mdl, xspec.XSAdditiveModel):
                     v2(" - it's an additive model")
                     self.lastterm[-1].append(Term.ADD)
+                    continue
 
-                elif isinstance(mdl, xspec.XSTableModel):
+                if isinstance(mdl, xspec.XSTableModel):
                     if mdl.addmodel:
                         v2(" - it's an additive table model")
                         lterm = Term.ADD
@@ -837,9 +839,9 @@ class ModelExpression:
                         lterm = Term.MUL
 
                     self.lastterm[-1].append(lterm)
+                    continue
 
-                else:
-                    raise RuntimeError(f"Unrecognized XSPEC model: {mdl.__class__}")
+                raise RuntimeError(f"Unrecognized XSPEC model: {mdl.__class__}")
 
         return ctr + 1
 
@@ -967,7 +969,8 @@ class ModelExpression:
                     if token == (')', None):
                         count += 1
                         continue
-                    elif token != ('(', None):
+
+                    if token != ('(', None):
                         continue
 
                     if count == 0:
@@ -1189,9 +1192,9 @@ def convert_model(expr, postfix, groups, names):
 
     out = process.out
     v2(f"Found {len(out)} expressions")
-    for i, expr in enumerate(out):
+    for i, eterm in enumerate(out):
         v2(f"Expression: {i + 1}")
-        for token in expr:
+        for token in eterm:
             v2(f"  {token}")
 
     return out
@@ -1236,7 +1239,8 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
     try:
         intext = infile.readlines()
     except AttributeError:
-        intext = open(infile, 'r').readlines()
+        with open(infile, "r", encoding="utf-8") as fh:
+            intext = fh.readlines()
 
     # TODO: convert the output routines (*add*) to a class.
     #
@@ -1741,8 +1745,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
                 #
                 snums = []
 
-            cpts = [conv(t) for t in expr]
-            sexpr = "".join(cpts)
+            sexpr = create_source_expression(expr)
 
             if snums == []:
                 # Easy
@@ -1767,8 +1770,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
                     if xid != did:
                         continue
 
-                    cpts = [conv(t) for t in xexpr]
-                    sexpr = "".join(cpts)
+                    sexpr = create_source_expression(xexpr)
                     found = True
 
                     add_import('from sherpa_contrib.xspec import xcm')
