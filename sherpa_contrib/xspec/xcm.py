@@ -721,7 +721,12 @@ class ModelExpression:
         self.ngroups = len(groups)
         self.postfix = postfix
         self.names = names
-        self.out = [[]] * len(groups)
+
+        # I would like to say
+        #    [[]] * self.ngroups
+        # but this aliases the lists so they are all the same.
+        #
+        self.out = [[] for i in range(self.ngroups)]
 
         # Record the number of brackets at the current "convolution level".
         # When a convolution is started we add an entry to the end of the
@@ -805,7 +810,10 @@ class ModelExpression:
             else:
                 outlist.append(store)
 
-            # This only needs to be checked for the first group.
+            # This only needs to be checked for the first group,
+            # **but** we change outlist, which makes me think we need
+            # to do something got all groups, but it is unclear what
+            # is going on.
             #
             if i == 1:
                 if isinstance(mdl, xspec.XSConvolutionKernel):
@@ -1016,6 +1024,7 @@ class ModelExpression:
 def create_source_expression(expr):
     "create a readable source expression"
 
+    v3(f"Processing an expression of {len(expr)} terms")
     def conv(t):
         if t[1] is None:
             return t[0]
@@ -1023,13 +1032,17 @@ def create_source_expression(expr):
         return t[0][1]
 
     cpts = [conv(t) for t in expr]
-    return "".join(cpts)
+    out = "".join(cpts)
+    v3(f" -> {out}")
+    return out
 
 
 def convert_model(expr, postfix, groups, names):
     """Extract the model components.
+
     Model names go from m1 to mn (when groups is empty) or
     m1g1 to mng1 and then m1g2 to mng<ngrops>.
+
     Parameters
     ----------
     expr : str
@@ -1042,6 +1055,7 @@ def convert_model(expr, postfix, groups, names):
     names : set of str
         The names we have created (will be updated). This is just
         for testing.
+
     Returns
     -------
     exprs : list of lists
@@ -1051,9 +1065,11 @@ def convert_model(expr, postfix, groups, names):
         case the two names are the model type and the instance name,
         unless we have a table model in which it stores
         ('tablemodel', name, filename, tabletype).
+
     Notes
     -----
     We require the Sherpa XSPEC module here.
+
     This routine does not take advantage of the knowledge that a
     model "sub expression" ends in an additive model - e.g. m1*m2*m3.
     So, for instance, we would know we don't have to deal with
@@ -1696,9 +1712,10 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
     # The easy case:
     #
     exprs = state['exprs']
-    v3(f"Number of extra sources: {len(state['sourcenum'])}")
+    nsource = len(state['sourcenum'])
+    v3(f"Number of extra sources: {nsource}")
     v3(f"Keys in exprs: {exprs.keys()}")
-    if len(state['sourcenum']) == 0:
+    if nsource == 0:
         if list(exprs.keys()) != [None]:
             raise RuntimeError("Unexpected state when processing the model expressions in the XCM file!")
 
