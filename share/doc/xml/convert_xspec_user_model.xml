@@ -11,7 +11,7 @@
   <ENTRY key="convert_xspec_user_model" context="Tools::Utilities"
 	 refkeywords="xspec x-spec user model compile build
 		      initpackage lmodel.dat model.dat
-		      f2py udmget lmod cfitsio no-xspec noxspec
+		      f2py udmget udmget64 lmod cfitsio no-xspec noxspec
 		      sherpa_contrib.xspec.local xspec.local
 		      local lmod
 		      "
@@ -29,6 +29,8 @@
       <LINE/>
       <LINE>The supported command-line flags can be found using -h/--help:</LINE>
       <LINE/>
+      <LINE>--udmget        build with the udmget package (FORTRAN only)</LINE>
+      <LINE>--udmget64      build with the udmget64 package (FORTRAN only)</LINE>
       <LINE>-l / --local    build the package locally rather than globally?</LINE>
       <LINE>-p / --prefix   flags are used to control the user model names</LINE>
       <LINE>--pyver         set the version number of the Python module</LINE>
@@ -52,8 +54,6 @@
 	section below for more information and contact the
 	<HREF link="https://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
 	if you find problems or models that it will not compile.
-	At present any model requiring access to the udmget
-	&xspec; routine is not supported.
       </PARA>
 
       <PARA>
@@ -353,11 +353,6 @@ setenv CONDA_BUILD_SYSROOT /opt/MacOSX10.9.sdk
 	as the compiler is compatible with that used
 	to compile the &xspec; models in CIAO (see below).
       </PARA>
-      <PARA title="No support for udmget">
-	Those models that require the --udmget flag
-	to the &xspec; initpackage are not supported
-	at this time.
-      </PARA>
       <PARA title="Model types">
 	Sherpa only supports the additive, multiplicative,
 	and convolution models; other models will be ignored.
@@ -536,11 +531,11 @@ undefined symbol: _gfortran_copy_string
       </PARA>
 
       <PARA>
-	The selected files are compiled via the Python Extension
-	class (details are in the setup.py file), although
-	there is some extra work to compile FORTRAN files
-	using this iinterface. Any improvements to this
-	code would be gratefully received!
+	The selected files are compiled via the Python Extension class
+	(details are in the setup.py file), although there is some
+	extra work to compile FORTRAN files using this interface,
+	including support the the udmget interface. Any improvements
+	to this code would be gratefully received!
       </PARA>
 
       <PARA title="Creating the python code">
@@ -564,6 +559,14 @@ undefined symbol: _gfortran_copy_string
 	that did not include any C++ files. The script will now also
 	refuse to create a module that matches any of the model names,
 	as that would cause confusion.
+      </PARA>
+      <PARA title="Initial support for FORTRAN models requiring udmget">
+	If the XSPEC compilation includes the -udmget or -udmget64 flag
+	in the initpackage call then the --udmget or --udmget64 flag should
+	be used when calling convert_xspec_user_model. This is not
+	guaranteed to work, so please contact the
+	<HREF link="https://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
+	if there are any issues.
       </PARA>
     </ADESC>
 
