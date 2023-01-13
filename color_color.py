@@ -306,6 +306,8 @@ class ColorColor():
         You can define you own "HardnessRatio" metric by providing a
         different HardnessRatioAxis class.
         """
+
+        # This is assumed to be a model instance and not a string
         self.model = model
         self.arffile = arffile
         self.rmffile = rmffile

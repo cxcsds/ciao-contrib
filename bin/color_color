@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2017, 2019, 2022
-#  Smithsonian Astrophysical Observatory
+# Copyright (C) 2017, 2019, 2022, 2023
+# Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,18 +23,29 @@
 
 import sys
 
-import ciao_contrib.logger_wrapper as lw
-from color_color import *
 import numpy as np
 
+import stk
+
+from ciao_contrib.param_soaker import get_params
+from ciao_contrib._tools.fileio import outfile_clobber_checks
+import ciao_contrib.logger_wrapper as lw
+
+# Ensure the XSPEC models are loaded
+from sherpa.astro.ui import *
+
+from color_color import ColorColor, EnergyBand, ModelParameter
+
+
 toolname = "color_color"
-__revision__ = "04 March 2022"
+__revision__ = "13 January 2023"
 
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
 verb0 = lgr.verbose0
 verb1 = lgr.verbose1
 verb2 = lgr.verbose2
+verb3 = lgr.verbose3
 
 
 # Setup the energy bands
@@ -63,7 +74,6 @@ def make_energy(band, token):
 def make_model(param, grid, sample):
     'Setup model from parameters and grid'
 
-    import stk as stk
     p = eval(param)
     p_grid = [float(x) for x in stk.build(grid)]
     mp = ModelParameter(p, p_grid, fine_grid_resolution=int(sample))
@@ -74,11 +84,9 @@ def make_model(param, grid, sample):
 def tool():
     'Main routine'
 
-    from ciao_contrib.param_soaker import get_params
     pars = get_params(toolname, "rw", sys.argv,
                       verbose={"set": lw.set_verbosity, "cmd": verb2})
 
-    from ciao_contrib._tools.fileio import outfile_clobber_checks
     clobber = (pars["clobber"] == "yes")
     outfile_clobber_checks(clobber, pars["outfile"])
     outfile_clobber_checks(clobber, pars["outplot"])
@@ -94,7 +102,10 @@ def tool():
     rmffile = pars["rmffile"]
     if 0 == len(rmffile) or 'none' == rmffile.lower():
         rmffile = None
-    cc = ColorColor(pars["model"], pars["infile"], rmffile=rmffile)
+
+    verb3(f"Using model expression {pars['model']}")
+    model = eval(pars["model"])
+    cc = ColorColor(model, pars["infile"], rmffile=rmffile)
 
     # Create the two model parameters to be varied
     mp1 = make_model(pars["param1"], pars["grid1"], pars["plot_oversample"])
