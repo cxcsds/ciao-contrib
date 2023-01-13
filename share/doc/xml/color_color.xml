@@ -1,0 +1,403 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY context="tools"
+         key="color_color"
+         refkeywords="color hardness ratio hr sherpa counts model"
+         seealsogroups="sh.calc"
+         >
+    <SYNOPSIS>
+      Creates a Color-Color diagram
+    </SYNOPSIS>
+    <DESC>
+      <PARA>
+In X-ray astronomy, we often use the term "color" to mean the
+"hardness ratio", <!-- &#8461; -->H
+</PARA>
+<PARA>
+<EQUATION><!-- &#8461; -->H = (h-s)/(h+s)</EQUATION>
+</PARA>
+<PARA>
+where 'h' and 's' are the counts in two independent energy bands
+(hard and soft).  This ratio is restricted to the range
+[-1,1]. Values less than 0 indicate a "soft" source,
+values greater than 0 indicate a "hard" source.
+      </PARA>
+
+<PARA>
+One common use of hardness ratios is when there are
+too few counts to obtain a statistically meaningful spectral fit.
+Users can construct a "Color-Color" diagram  to estimate
+the model parameters.
+</PARA>
+
+<PARA>
+A color-color diagrams starts with an assumed spectral model,
+for example an absorbed power-law.  The color-color diagram is
+constructed by varying two of the independent model parameters,
+for example the slope of the power-law model component and
+the neutral Hydrogen density in the absorption model component.
+The parameter values are varied over a few discrete values.
+By including the instrument response, we can then simulate the
+observed spectra.  We compute the total number of simulated counts
+in 3 independent energy bands: soft, medium, hard; and then use those
+counts to construct a pair hardness ratios:  hard-to-medium and
+medium-to-soft.
+
+</PARA>
+<PARA>
+<EQUATION><!-- &#8461; -->H<!-- &#120132; -->M = (h-m)/(h+m)</EQUATION>
+<EQUATION><!-- &#120132; -->M<!-- &#120138; -->S = (m-s)/(m+s)</EQUATION>
+
+</PARA>
+<PARA>
+The color-color diagram then is constructed by plotting the
+<!-- &#8461; -->H<!-- &#120132; -->M and 
+<!-- &#120132; -->M<!-- &#120138; -->S values and connecting the points
+that represent fixed values for each of the two model parameters.
+Users can then compute the hardness ratios for the sources in their
+observations and use the color-color plot to look-up what spectral
+model parameters yield the colors they computed.
+</PARA>
+
+<PARA>
+The color_color script computes these hardness ratios by simulating the
+spectrum and folding it through the instrument response file (ARF).  It
+does this using the sherpa fake() command to generate the simulated
+spectrum and the calc_data_sum() command to compute the counts in
+each of the 3 user specified energy bands.
+</PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>pset color_color model="xswabs.abs1*xspowerlaw.pwrlaw"</LINE>
+          <LINE>pset color_color param1=pwrlaw.PhoIndex</LINE>
+          <LINE>pset color_color grid1=1,2,3,4</LINE>
+          <LINE>pset color_color param2=abs1.nH</LINE>          
+          <LINE>pset color_color grid2=0.01,0.1,0.2,0.5,1,10</LINE>
+          <LINE>pset color_color soft=csc medium=csc hard=csc</LINE>
+          <LINE>color_color acis.arf clr.fits mode=h showplot=yes outplot=clr.png clob+</LINE>
+        </SYNTAX>
+        <DESC>
+            <PARA>
+        In this example we create a color-color diagram assuming
+        the spectrum is an absorbed power-law.  The power-law photon
+        index is varied over 4 values (1,2,3,4), and the 
+        absorption's nH is varied over 6 values (0.01,0.1,0.2,0.5,1,10).
+        The 3 energy bands: soft, medium, and hard, are set to "csc"
+        which means to use the same energy band definitions as the 
+        Chandra Source Catalog, ie soft=0.5:1.2keV, medium=1.2:2.0keV, 
+        and hard=2.0:7.0keV.  An ACIS ARF, acis.arf,  is used to model the
+        detector response.  Since no RMF was supplied, a diagonal RMF
+        was used (which is OK as long as the energy bands are 
+        considerably wider than the spectral resolution).            
+            </PARA>
+            <PARA>
+            With showplot=yes, the color-color diagram will be 
+            displayed on the screen and the plot will be saved 
+            to output=clr.png file.
+            </PARA>
+            <PARA>
+            The individual hardness ratio values are stored in a
+            table in the outfile.
+            </PARA>
+            <PARA>
+            Using the tool, all the other model parameters are left
+            at their default values.  If users need to adjust 
+            other model parameters then they can use the 
+            Python module directly.            
+            </PARA>
+
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+<DESC>
+
+<PARA>
+Below is an example Python script which uses the color_color module
+to do the same thing as the tool does in the previous example.
+With the Python module, users can adjust the plot properties and
+alter the model expression: in this example the solar abundances are
+modified to use the Anders &amp; Grevesse values.
+</PARA>
+
+<VERBATIM>
+from color_color import *
+import sherpa.astro.ui as ui
+soft = EnergyBand( 0.5, 1.2, 'S')
+medium = EnergyBand(1.2, 2.0, 'M')
+hard = EnergyBand(2.0, 7.0, 'H')
+mymodel = ui.xswabs.abs1 * ui.xspowerlaw.pwrlaw
+arffile = "acis.arf"
+
+ui.set_xsabund("angr")
+
+clr_model = ColorColor( mymodel, arffile )
+
+pho_grid = [ 1., 2., 3., 4. ]
+photon_index = ModelParameter( pwrlaw.PhoIndex, pho_grid, fine_grid_resolution=20)
+
+sg = [ 1.e20, 1.e21, 2.e21, 5.e21, 1.e22, 1e23] 
+nh_grid = [x/1e22 for x in sg ]
+absorption = ModelParameter( abs1.nH, nh_grid, fine_grid_resolution=20)
+
+clr_out = clr_model( photon_index, absorption, soft, medium, hard)
+
+photon_index.set_curve_style(marker="", linestyle="-", linewidth=2, color="black")
+photon_index.set_label_style(color="black")
+absorption.set_curve_style(marker="", linestyle="-", linewidth=2, color="forestgreen")
+absorption.set_label_style(color="forestgreen")
+
+clr_out.plot()
+</VERBATIM>
+
+<PARA>
+The fine_grid_resolution parameter is used to over-sample the model parameters 
+when drawing the curves.  So for nH=0.01, the photon index is evaluated
+on 20 linearly spaced values between 0 and 1, 20 values between 2 and 3, 
+and so on.  This provides a smoother curve.
+</PARA>
+
+</DESC>        
+
+      </QEXAMPLE>
+
+
+
+    </QEXAMPLELIST>
+
+
+
+   <PARAMLIST>
+      <PARAM filetype="input" name="infile" reqd="yes" type="file">
+        <SYNOPSIS>
+        The input ARF file name.
+        </SYNOPSIS>
+       <DESC>
+        <PARA>
+        The instrument is modeled by the ARF file which gives the
+        effective area vs. energy.
+        </PARA>
+
+       </DESC>
+      </PARAM>
+
+      <PARAM filetype="output" name="outfile" reqd="yes" type="file">
+        <SYNOPSIS>
+        Output file name.
+        </SYNOPSIS>
+       <DESC>
+        <PARA>
+        The output file is a table with 4 columns: The two model parameters
+        and the two hardness ratios.
+        </PARA>
+        <PARA>
+        Note: the same pair of model parameter values may show up in the
+        output file multiple times, and with slightly different
+        values for the hardness ratios.  This is because the 
+        HRs are computed from simulated spectra (using sherpa's fake()
+        command) and as such are subject to randomization.        
+        </PARA>
+
+
+       </DESC>
+      </PARAM>
+
+      <PARAM  name="model" reqd="yes" type="string">
+        <SYNOPSIS>
+            The sherpa model expression.
+        </SYNOPSIS>
+       <DESC>
+          <PARA>
+          The sherpa model expression to use to compute the 
+          simulated spectra.  For example xswabs.abs1*xspowerlaw.pwrlaw;
+          which defines a simple powerlaw model and gives it the name
+          "pwrlaw" multiplied by an absorption model given the name "abs1".
+          </PARA>
+
+       </DESC>
+      </PARAM>
+
+      <PARAM  name="param1" reqd="yes" type="string">
+        <SYNOPSIS>
+            The first parameter that will be varied to compute the
+            color color plot.
+        </SYNOPSIS>
+       <DESC>
+          <PARA>
+            This is the name of the model parameter, eg. pwrlaw.PhoIndex,
+            that will be used to compute the color-color plot.          
+          </PARA>
+       </DESC>
+      </PARAM>
+      <PARAM  name="grid1" reqd="yes" type="string">
+        <SYNOPSIS>
+          The grid of values for the 1st model parameter
+        </SYNOPSIS>
+       <DESC>
+           <PARA>
+           The hardness ratios are compute with the param1 model parameter 
+           set to each of the values listed in the grid1 parameter.
+           </PARA>
+       </DESC>
+      </PARAM>
+      <PARAM  name="param2" reqd="yes" type="string">
+        <SYNOPSIS>
+            The second parameter that will be varied to compute the
+            color-color plot.
+        </SYNOPSIS>
+       <DESC>
+            <PARA>
+            Same as the param1 parameter, eg abs1.nH.
+            </PARA>
+
+       </DESC>
+      </PARAM>
+      <PARAM name="grid2" reqd="yes" type="string">
+        <SYNOPSIS>
+            The grid of values for the 2nd model parameter        
+        </SYNOPSIS>
+       <DESC>
+           <PARA>
+           The hardness ratios are compute with the param2 model parameter 
+           set to each of the values listed in the grid2 parameter.
+           </PARA>
+       </DESC>
+      </PARAM>
+
+      <PARAM name="soft" reqd="yes" type="string" def="csc">
+        <SYNOPSIS>
+            The energy range, in keV, to use for the soft-band in the form
+            low:high
+        </SYNOPSIS>
+       <DESC>
+          <PARA>
+            Users can specify "csc" to use the default CSC soft band of 0.5:1.2 keV.
+          </PARA>
+
+       </DESC>
+      </PARAM>
+      <PARAM name="medium" reqd="yes" type="string" def="csc">
+        <SYNOPSIS>
+            The energy range, in keV, to use for the medium-band in the form
+            low:high
+        </SYNOPSIS>
+       <DESC>
+          <PARA>
+            Users can specify "csc" to use the default CSC medium band of 1.2:2.0 keV.
+          </PARA>
+
+       </DESC>
+      </PARAM>
+      <PARAM name="hard" reqd="yes" type="string" def="csc">
+        <SYNOPSIS>
+            The energy range, in keV, to use for the hard-band in the form
+            low:high
+        </SYNOPSIS>
+       <DESC>
+          <PARA>
+            Users can specify "csc" to use the default CSC hard band of 2.0:7.0 keV.
+          </PARA>
+
+       </DESC>
+      </PARAM>
+      <PARAM filetype="input" name="rmffile" type="file">
+        <SYNOPSIS>
+         An optional response matrix file (RMF).
+        </SYNOPSIS>
+       <DESC>
+            <PARA>
+            If specified then the RMF will be used when simulating the 
+            spectrum.  If no RMF file is provided then an ideal, diagonal
+            RMF is used.
+            </PARA>
+            <PARA>
+            The effects of the RMF will be small as long as the energy
+            bands are wide compared to the spectral resolution.
+            </PARA>
+       </DESC>
+      </PARAM>
+      <PARAM  name="plot_oversample"  type="integer" def="20">
+        <SYNOPSIS>
+        How fine to sub-sample the user supplied grids.
+        </SYNOPSIS>
+       <DESC>
+        <PARA>
+        To improve the quality of the plots, the grids are over-sampled
+        by the plot_oversample amount.  So for example with the default of 
+        20, there will be 20 linearly space data points compute between 
+        each parameter value in each of the grids.  A value of '1' means
+        no over-sampling and only the exact grid values are used; this
+        generally results in a poor plot.        
+        </PARA>
+       </DESC>
+      </PARAM>
+      <PARAM filetype="output" name="outplot" type="file">
+        <SYNOPSIS>
+        The output filename for the plot (should end in .png, .jpg, .eps, etc).
+        </SYNOPSIS>
+       <DESC>
+        <PARA>
+        The plot can be saved by matplotlib in any of the formats it
+        supports.  The file type is taken from file name extension.
+        </PARA>
+       </DESC>
+      </PARAM>
+      <PARAM  name="showplot" def="yes" type="boolean">
+        <SYNOPSIS>
+        Should the plot be displayed?
+        </SYNOPSIS>
+       <DESC>
+        <PARA>
+        If the plot is displayed, then the user must close the plot
+        for the tool to complete.
+        </PARA>
+       </DESC>
+      </PARAM>
+
+     <PARAM name="random_seed" type="integer" def="-1" min="-1">
+        <SYNOPSIS>
+          The seed value used to initialize the random number generator.
+        </SYNOPSIS>
+       <DESC>
+        <PARA>
+            Setting the value to -1 will use a randomly selected random
+            seed.
+        </PARA>
+       </DESC>
+     </PARAM>
+
+      <PARAM def="no" name="clobber" type="boolean">
+        <SYNOPSIS>
+            Overwrite output files if they already exist?
+        </SYNOPSIS>
+      </PARAM>
+
+      <PARAM def="1" max="5" min="0" name="verbose" type="integer">
+        <SYNOPSIS>
+        Amount of tool chatter level.
+       </SYNOPSIS>
+      </PARAM>
+
+   </PARAMLIST>
+
+
+   <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+
+    <LASTMODIFIED>January 2023</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>
+
