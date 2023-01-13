@@ -40,6 +40,7 @@ scripts = list_files("bin/*")
 
 data_files = [("param", list_files("param/*.par")),
               ("share/doc/xml", list_files("share/doc/xml/*.xml")),
+              ("share/xspec/install", list_files("share/xspec/install/*cxx")),
               ("config", list_files("config/*")),
               ("data", list_files("data/*")),
               (".", ["Changes.CIAO_scripts", "README_CIAO_scripts"])

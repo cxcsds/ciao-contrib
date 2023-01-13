@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "06 January 2023"
+toolver  = "13 January 2023"
 
 import sys
 import os
@@ -236,8 +236,39 @@ def save(outfile, txt):
     """
 
     v3(f"Creating {outfile}")
-    with open(outfile, 'w') as fh:
+    with open(outfile, 'w', encoding="utf-8") as fh:
         fh.write(txt)
+
+
+def find_share_xspecdir():
+    """Return the location of the share/xspec directory.
+
+   The script returns the first match to the directory
+
+      <script location>/../share/xspec
+      <$ASCDS_INSTALL>/contrib/share/xspec
+
+    or None.
+
+    """
+
+    # At present there's only one path looked for
+    #
+    v3("Looking for share/xspec/ in:")
+    thisdir = os.path.dirname(__file__)
+    for dname in ["../share/xspec"]:
+        path = os.path.normpath(os.path.join(thisdir, dname))
+        v3("  - {}".format(path))
+        if os.path.isdir(path):
+            return path
+
+    path = os.path.join(ASCDS_INSTALL, "contrib/share/xspec")
+    path = os.path.normpath(path)
+    v3("  - {}".format(path))
+    if os.path.isdir(path):
+        return path
+
+    return None
 
 
 def find_xspec_basedir():
@@ -497,8 +528,59 @@ def count_nfiles(label, fileinfo):
     return ntot
 
 
+def create_xspec_init(outdir, clobber):
+    """Create the xspec.inc file needed for using udmget.
+
+    How often does this file change?
+
+    """
+
+    # For now we over-write the file as the assumption is that it
+    # will be from a previous build.
+    #
+    outname = os.path.join(outdir, "xspec.inc")
+    if not clobber:
+        check_clobber(outname)
+
+    save(outname, """
+
+c Taken from XSPEC 12.13.0
+c Common block for dynamic memory using udmget
+
+      LOGICAL          MEMB(1)
+      INTEGER*2        MEMS(1)
+      INTEGER*4        MEMI(1)
+      INTEGER*4        MEML(1)
+      REAL             MEMR(1)
+      DOUBLE PRECISION MEMD(1)
+      COMPLEX          MEMX(1)
+      CHARACTER(1)     MEMC(1)
+      EQUIVALENCE (MEMB, MEMS, MEMI, MEML, MEMR, MEMD, MEMX, MEMC)
+      COMMON /MEM/ MEMD
+""")
+
+
+def create_xspec_udmget(indir, outdir, name, clobber):
+    """Copy over the code implemeting udmget.
+
+    We also return the file name
+    """
+
+    udmfile = os.path.join(indir, "install", name)
+    if not os.path.exists(udmfile):
+        raise OSError(f"Internal error - unable to find {udmfile}")
+
+    outname = os.path.join(outdir, name)
+    if not clobber:
+        check_clobber(outname)
+
+    shutil.copy(udmfile, outname)
+    return outname
+
+
 def build_setup(modname, sources, fortransources, extrafiles,
                 version,
+                udmget=False, udmget64=False,
                 clobber=False,
                 license='License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication'):
     """Create the setup.py file.
@@ -520,6 +602,9 @@ def build_setup(modname, sources, fortransources, extrafiles,
         Extra files. What are we to do with these?
     version : str
         The version number (dotted values).
+    udmget, udmget64 : bool, optional
+        Is the udmget code to be included? At this point only one will
+        be set (FORTRAN only).
     clobber : bool, optional
         Do we over-write existing files or error out if they exist.
     license : str, optional
@@ -597,6 +682,38 @@ def build_setup(modname, sources, fortransources, extrafiles,
     if len(srcnames) == 0 and len(fortnames) == 0:
         raise ValueError("Should not have got here as no source/FORTRAN files to process")
 
+    # Copy over the udmget code, if needed.
+    #
+    if udmget or udmget64:
+
+        v2(f"  udmget:           {udmget}")
+        v2(f"  udmget64:         {udmget64}")
+
+        # Create the xspec.inc file.
+        create_xspec_init(outdir, clobber)
+
+        xpath = find_share_xspecdir()
+        if xpath is None:
+            raise OSError("Internal error - unable to find xsudmget directory")
+
+        # Copy over the udmget code.
+        #
+        if udmget:
+            name = "xsudmget.cxx"
+        else:
+            name = "xsudmget64.cxx"
+
+        outfile = create_xspec_udmget(xpath, outdir, name, clobber)
+        udmfiles = [outfile]
+
+        # In setup.py we assume this, so just check we haven't done
+        # anything interesting...
+        #
+        assert outfile.endswith(".cxx")
+
+    else:
+        udmfiles = []
+
     # Where are the XSPEC include files we may need? These are
     # included in the contrib code.
     #
@@ -650,6 +767,7 @@ def build_setup(modname, sources, fortransources, extrafiles,
 # Date: {date}
 
 import os
+import subprocess as sbp
 
 import setuptools
 
@@ -713,6 +831,7 @@ libnames = ["XSModel", "XSFunctions", "XSUtil", "XS",
 # What FORTRAN code needs compiling?
 #
 FORTRANFILES = {fortnames}
+UDMFILES = {udmfiles}
 
 # Seems to be needed on macOS, otherwise link time creates this
 # message:
@@ -740,8 +859,51 @@ mod = Extension('{modname}._models',
                         +
                         {srcnames},
                 extra_link_args=cargs,
-                depends=FORTRANFILES
+                depends=FORTRANFILES + UDMFILES
                 )
+
+
+def compile_xsudmget():
+    '''Do we have to compile the xsudmget file?
+
+    We just compile this manually, picking up the compiler
+    with the CXX enviroment variable.
+
+    Relies on the UDMFILES global variable. We know what the
+    value is, so could have this set up at the time the file
+    is written out, but leave as is for now (for testing).
+
+    '''
+
+    if len(UDMFILES) == 0:
+        return []
+
+    if len(UDMFILES) != 1:
+        raise ValueError(f"Expected 1 file, sent {udmfiles}")
+
+    udmfile = UDMFILES[0]
+
+    # Should this be OS dependent?
+    #
+    cxx = os.getenv("CXX")
+    if cxx is None:
+        cxx = "g++"
+
+    # It would be better to place this in the build directory but
+    # do we know where this is?
+    #
+    outfile = udmfile[:-4] + ".o"
+
+    # Taken from a initpackage run with XSPEC 12.13.0
+    #
+    args = [cxx, "-c", "-o", outfile, "-O2", "-g", "-fPIC", udmfile]
+    print(f"Compiling xsudmget with: {{' '.join(args)}}")
+    rval = sbp.call(args)
+    if rval != 0:
+        raise ValueError(f"Unable to run {{args}}")
+
+    return [outfile]
+
 
 # TODO:
 #
@@ -776,12 +938,18 @@ class ExtBuild(build_ext):
                               output_dir=self.build_temp,
                               debug=self.debug)
 
+        # Do we need to compile the UDMGET code. This is C++ code,
+        # to add an extra wrinkle. We expect only a single file but
+        # for reasons we leave this as a list.
+        #
+        extra_fobjs = compile_xsudmget()
+
         # Could just append if set, but for now expect not to be
         # set, so error out if this changes
         #
         assert self.link_objects is None, \\
             f'unexpected: link_objects={{self.link_objects}}'
-        self.link_objects = fobjs
+        self.link_objects = fobjs + extra_fobjs
 
         super().run()
 
@@ -809,9 +977,9 @@ description = XSPEC user models in Sherpa
 classifiers =
     {license}
     Intended Audience :: Science/Research
-    Programming Language :: Python :: 3.7
     Programming Language :: Python :: 3.8
     Programming Language :: Python :: 3.9
+    Programming Language :: Python :: 3.10
     Programming Language :: Python :: Implementation :: CPython
     Topic :: Scientific/Engineering :: Astronomy
     Topic :: Scientific/Engineering :: Physics
@@ -977,7 +1145,9 @@ def build_module_init(modname, pycode, mdls,
     #
     system_name = os.path.join(ASCDS_INSTALL, "ciao-type")
     try:
-        system_info = open(system_name, "r").read()
+        with open(system_name, "r", encoding="ascii") as stype:
+            system_info = stype.read()
+
     except IOError:
         system_info = "unknown"
 
@@ -1352,6 +1522,7 @@ def compile_module(local=False, verbose=False):
 
 @lw.handle_ciao_errors(toolname, toolver)
 def convert_xspec_user_model(modulename, modelfile,
+                             udmget=False, udmget64=False,
                              extrafiles=None,
                              clobber=False,
                              local=False,
@@ -1385,6 +1556,9 @@ def convert_xspec_user_model(modulename, modelfile,
         term but it can include "." such as "xspec.galactic".
     modelfile : str
         The name of the XSPEC model file (e.g. "lmodel.dat").
+    udmget, udmget64 : bool, optional
+        Should the udmget or udmget64 code be included. This is only
+        used if FORTRAN models are included and only one can be set.
     extrafiles : list of str or None, optional
         At the moment this is unused. The idea is to be able to send in
         extra files, but for the moment we require them to be in the
@@ -1618,11 +1792,23 @@ def convert_xspec_user_model(modulename, modelfile,
         for vs in d.values():
             fortfiles.extend(vs)
 
+    # Validate the udmget settings. The actual logic gets handled later.
+    #
+    if len(fortfiles) > 0:
+        if udmget and udmget64:
+            raise ValueError("Only one of --udmget and --udmget64 can be used, not both.")
+
+    elif udmget or udmget64:
+        v1("The --udmget/--udmget64 option is ignored as there are no FORTRAN files")
+        udmget = False
+        udmget64 = False
+
     build_setup(modulename,
                 srcfiles,
                 fortfiles,
                 extrafiles,
                 version,
+                udmget=udmget, udmget64=udmget64,
                 clobber=clobber)
     build_module(modulename, mdls, modelfile, allfiles, extrafiles,
                  version,
@@ -1700,6 +1886,13 @@ if __name__ == "__main__":
     # parser.add_argument("extrafiles", nargs='*',
     #                     help="Additional files")
 
+    parser.add_argument("--udmget", dest="udmget", action="store_true",
+                        default=False,
+                        help="Use the udmget routine (needed by some FORTRAN models)")
+    parser.add_argument("--udmget64", dest="udmget64", action="store_true",
+                        default=False,
+                        help="Use the udmget64 routine (needed by some FORTRAN models)")
+
     parser.add_argument("--local", "-l", dest="local", action="store_true",
                         default=False,
                         help="Build the package locally rather than globally?; default is %(default)s")
@@ -1760,6 +1953,8 @@ if __name__ == "__main__":
 
     convert_xspec_user_model(args.name,
                              args.modelfile,
+                             udmget=args.udmget,
+                             udmget64=args.udmget64,
                              # extrafiles=args.extrafiles,
                              extrafiles=None,
                              clobber=args.clobber,
