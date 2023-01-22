@@ -1188,7 +1188,7 @@ def get_imap_nbins(maxsize, npixels):
     If maxsize < 1, which is valid, then return npixels.
     """
 
-    ms = np.ceil(maxsize).astype(np.int)
+    ms = np.ceil(maxsize).astype(int)
     xs = [i for i in range(ms, 0, -1) if npixels % i == 0]
     if xs == []:
         # We should not be able to get here and hit this situation, but
