@@ -61,7 +61,7 @@ def mk_gauss(sigma, hwidth):
     if hwidth <= 0:
         raise ValueError("Gaussian hwidth parameter must be > 0, sent {0}".format(hwidth))
 
-    hw = np.int(np.ceil(hwidth * sigma))
+    hw = int(np.ceil(hwidth * sigma))
     if hw == 0:
         kernel = np.ones((1, 1))
 
@@ -86,7 +86,7 @@ def mk_tophat(radius):
     if radius < 0:
         raise ValueError("Top-hat radius parameter must be >= 0, sent {0}".format(radius))
 
-    hw = np.int(np.ceil(radius))
+    hw = int(np.ceil(radius))
     if hw == 0:
         kernel = np.ones((1, 1))
 
