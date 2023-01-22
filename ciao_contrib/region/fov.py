@@ -48,7 +48,7 @@ __all__ = (
 # not very robust
 def _is_int(ival):
     "Are we near enough an integer for display purposes?"
-    return np.int(ival) == ival
+    return int(ival) == ival
 
 
 class AxisRange:
@@ -98,7 +98,7 @@ class AxisRange:
 
         # Use an integer if we can
         if _is_int(size):
-            w = np.int(size)
+            w = int(size)
         else:
             w = size
 
