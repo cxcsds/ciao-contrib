@@ -1663,7 +1663,7 @@ def list_observations(instrume, ranom, decnom, obsinfos):
     """
 
     nobs = len(obsinfos)
-    nchar = np.floor(np.log10(nobs)).astype(np.int) + 1
+    nchar = np.floor(np.log10(nobs)).astype(int) + 1
 
     if nobs == 1:
         suffix = ''
