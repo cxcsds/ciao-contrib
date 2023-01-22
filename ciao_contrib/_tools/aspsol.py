@@ -120,13 +120,13 @@ class AspectSolution(object):
         n_dec = (declim[1] - declim[0]) * 3600.0 / xy
         n_roll = (rollim[1] - rollim[0]) * 3600.0 / roll
 
-        nbins = np.ceil(n_ra * n_dec * n_roll).astype(np.int)
+        nbins = np.ceil(n_ra * n_dec * n_roll).astype(int)
         if nbins <= 10000:
             return 10000
 
         else:
             # would base 2 be better than base 10 here?
-            # l = np.ceil(np.log10(nbins)).astype(np.int)
+            # l = np.ceil(np.log10(nbins)).astype(int)
             # return 10 ** l
-            l = np.ceil(np.log2(nbins)).astype(np.int)
+            l = np.ceil(np.log2(nbins)).astype(int)
             return 2 ** l
