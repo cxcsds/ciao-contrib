@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021
+# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2022, 2023
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -2699,6 +2699,13 @@ parinfo['chandra_repro'] = {
     'istool': True,
     'req': [ParValue("indir","f","Input directory",'./'),ParValue("outdir","f","Output directory (default = $indir/repro)",None)],
     'opt': [ParValue("root","s","Root for output filenames",None),ParValue("badpixel","b","Create a new bad pixel file?",True),ParValue("process_events","b","Create a new level=2 event file?",True),ParValue("destreak","b","Destreak the ACIS-8 chip?",True),ParValue("set_ardlib","b","Set ardlib.par with the bad pixel file?",True),ParValue("check_vf_pha","b","Clean ACIS background in VFAINT data?",False),ParSet("pix_adj","s","Pixel randomization: default|edser|none|randomize",'default',["default","edser","none","randomize","centroid"]),ParValue("tg_zo_position","s","Method to determine gratings 0th order location: evt2|detect|R.A. & Dec.",'evt2'),ParValue("asol_update","b","If necessary, apply boresight correction to aspect solution file?",True),ParValue("pi_filter","b","Apply PI background filter to HRC-S+LETG data?",True),ParValue("cleanup","b","Cleanup intermediate files on exit",True),ParValue("clobber","b","Clobber existing file",False),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
+    }
+
+
+parinfo['color_color'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input ARF file",None),ParValue("outfile","f","Output file name",None),ParValue("model","s","Sherpa model expression",'xsphabs.abs1*xspowerlaw.pwrlaw'),ParValue("param1","s","Model parameter for 1st axis",'pwrlaw.PhoIndex'),ParValue("grid1","s","Model parameter grid for 1st axis",'1,2,3,4'),ParValue("param2","s","Model parameter for 2nd axis",'abs1.nH'),ParValue("grid2","s","Model grid for 2nd axis",'0.01,0.1,0.2,0.5,1,10'),ParValue("soft","s","Soft energy band LO:HI or csc (0.5:1.2)",'csc'),ParValue("medium","s","Medium energy band LO:HI or csc (1.2:2.0)",'csc'),ParValue("hard","s","Hard energy band LO:HI or csc (2.0:7.0)",'csc')],
+    'opt': [ParValue("rmffile","f","Input RMF file (use diagnonal if blank or none)",None),ParRange("plot_oversample","i","Over sample grid when plotting",20,0,None),ParValue("outplot","f","Output file name for plot",'clr.png'),ParValue("showplot","b","Display plot? (close to continue)",True),ParRange("random_seed","i","Random seed (-1 = randomly select)",-1,-1,None),ParValue("clobber","b","Remove outfile and outplot files if they already exist?",True),ParRange("verbose","i","Tool chatter level",1,0,5)],
     }
 
 
