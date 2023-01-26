@@ -25,27 +25,32 @@ Routines to support the specextract tool.
 
 """
 
-import os, sys, numpy, cxcdm, paramio, stk, region
+__modulename__ = "_tools.specextract"
+__toolname__ = "specextract"
+__revision__ = "18 January 2023"
+
+import os
+import sys
+
+from multiprocessing import cpu_count
+import numpy
+
+import cxcdm
+import paramio
+import stk
+import region
 import pycrates as pcr
 
-from ciao_contrib.runtool import dmstat, dmcoords, dmlist, acis_fef_lookup, get_sky_limits, new_pfiles_environment
-
+from ciao_contrib._tools import fileio, utils, obsinfo
+from ciao_contrib.runtool import make_tool, new_pfiles_environment
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level
 from ciao_contrib.cxcdm_wrapper import get_block_info_from_file
 from ciao_contrib.param_wrapper import open_param_file
-
-import ciao_contrib._tools.fileio as fileio
-import ciao_contrib._tools.utils as utils
-import ciao_contrib._tools.obsinfo as obsinfo
 from ciao_contrib.proptools import colden
 
-from multiprocessing import cpu_count
 from sherpa.utils import parallel_map
 from ciao_contrib.parallel_wrapper import parallel_pool, _check_tty
 
-__modulename__ = "_tools.specextract"
-__toolname__ = "specextract"
-__revision__ = "5 January 2023"
 
 # Set up the logging/verbose code
 initialize_logger(__modulename__)
@@ -59,7 +64,10 @@ v4 = make_verbose_level(__modulename__, 4)
 v5 = make_verbose_level(__modulename__, 5)
 
 def _set_verbose_progressbar(args,toolname,modulename=None):
-    pfile = open_param_file(args, toolname=toolname)["fp"]
+    try:
+        pfile = open_param_file(args, toolname=toolname)["fp"]
+    except Exception:
+        sys.exit(1)
 
     if modulename is None:
         modulename = toolname
@@ -406,6 +414,8 @@ class ParDicts(object):
         """
 
         with new_pfiles_environment(ardlib=False,copyuser=False):
+            dmlist = make_tool("dmlist")
+
             dmlist.punlearn()
 
             if ewmap_range_check is None:
@@ -438,7 +448,7 @@ class ParDicts(object):
 
         return True
 
-    
+
     def _event_stats(self,file,colname,args=None):
         """
         Use dmstat to determine the event statistics: source chipx,
@@ -471,6 +481,8 @@ class ParDicts(object):
 
 
             with new_pfiles_environment(ardlib=False,copyuser=False):
+                dmstat = make_tool("dmstat")
+
                 dmstat.punlearn()
                 dmstat.verbose = 0
 
@@ -702,13 +714,15 @@ class ParDicts(object):
             return asol_dict
 
 
-    def get_resp_pos(self,infile,asol,resp_pos,refcoord,binimg=2):
+    def get_resp_pos(self,infile,asol,srcbkg,dobkgresp,resp_pos,refcoord,binimg=2):
         """
         determine coordinates to use to produce responses
         """
 
         with new_pfiles_environment(ardlib=False,copyuser=False):
             ## infile = "full filename"
+            dmcoords = make_tool("dmcoords")
+
             dmcoords.punlearn()
             dmcoords.infile = infile
             dmcoords.asolfile = asol
@@ -729,6 +743,8 @@ class ParDicts(object):
 
                 else:
                     if resp_pos.lower() in ["centroid","max"]:
+                        dmstat = make_tool("dmstat")
+
                         dmstat.punlearn()
                         dmstat.infile = f"{infile}[bin sky={binimg}]"
                         dmstat.verbose = 0
@@ -758,7 +774,7 @@ class ParDicts(object):
                         if resp_pos.lower() == "region":
                             regcent = region.CXCRegion(pcr.read_file(f"{infile}[#row=0]").get_subspace_data(1,"sky").region)
 
-                            if len(regcent) > 1:
+                            if len(regcent) > 1 and not all([srcbkg == "bkg", not dobkgresp]):
                                 v1("Warning: more than 1 shape found, using the coordinates of the first defined shape")
 
                             if regcent.shapes[0].name.lower() in ["polygon","rectangle"]:
@@ -770,11 +786,13 @@ class ParDicts(object):
 
                     except KeyError as exc:
                         raise IOError(f"'resp_pos={resp_pos}': The use of pixel masks can only be used when 'resp_pos' is set to 'MAX' or 'CENTROID'.") from exc
-                            
+
                     #######################################################
                     # ## ... or ...
                     # ## use get_sky_limits instead of region module since it's
                     # ## agnostic on coordinates used for extraction region
+                    #
+                    # get_sky_limits = make_tool("get_sky_limits")
                     #
                     # get_sky_limits.punlearn()
                     #
@@ -838,6 +856,8 @@ class ParDicts(object):
             v3("Checking FEF energy range for warm observation")
 
             with new_pfiles_environment(ardlib=False,copyuser=False):
+                acis_fef_lookup = make_tool("acis_fef_lookup")
+
                 acis_fef_lookup.punlearn()
                 acis_fef_lookup.infile = inf
                 acis_fef_lookup.chipid = "none"
@@ -1412,6 +1432,7 @@ class ParDicts(object):
 
         weight = common_args.pop("weight",None) # remove keyword from dictionary and copy value
         dobg = common_args["dobg"]
+        dobkgresp = common_args["dobkgresp"]
         resp_pos = common_args["resp_pos"]
         refcoord = common_args["refcoord"]
         binarfcorr = common_args["binarfcorr"]
@@ -1608,9 +1629,15 @@ class ParDicts(object):
                 #########################################################
 
                 if weight == "no" and common_args["correct"] == "yes":
-                    ra,dec,skyx,skyy,chipx,chipy,chip_id = self.get_resp_pos(fullfile,asol_arg,resp_pos,refcoord,binimg=binarfcorr)
+                    ra,dec,skyx,skyy,chipx,chipy,chip_id = self.get_resp_pos(fullfile,asol_arg,
+                                                                             srcbkg,dobkgresp,
+                                                                             resp_pos,refcoord,
+                                                                             binimg=binarfcorr)
                 else:
-                    ra,dec,skyx,skyy,chipx,chipy,chip_id = self.get_resp_pos(fullfile,asol_arg,resp_pos,refcoord,binimg=2)
+                    ra,dec,skyx,skyy,chipx,chipy,chip_id = self.get_resp_pos(fullfile,asol_arg,
+                                                                             srcbkg,dobkgresp,
+                                                                             resp_pos,refcoord,
+                                                                             binimg=2)
 
                 arg_dict["skyx"] = skyx
                 arg_dict["skyy"] = skyy
@@ -1801,23 +1828,23 @@ def get_region_filter(full_filename):
             region_temp2 = region_temp.partition("),")[0]+")"
 
             if ") ," in region_temp2:
-                region = region_temp2.partition(") ,")[0]+")"
+                reg = region_temp2.partition(") ,")[0]+")"
             else:
-                region = region_temp2
+                reg = region_temp2
 
         elif ")," in region_temp:
-            region = region_temp.partition("),")[0]+")"
+            reg = region_temp.partition("),")[0]+")"
 
         elif ") ," in region_temp:
-            region = region_temp.partition(") ,")[0]+")"
+            reg = region_temp.partition(") ,")[0]+")"
 
         else:
-            region = region_temp.rpartition("]")[0]
+            reg = region_temp.rpartition("]")[0]
 
     else:
-        region = full_filename
+        reg = full_filename
 
-    if not _check_filename_set(region):
+    if not _check_filename_set(reg):
         raise IOError(f"Please specify a valid spatial region filter for {full_filename} or use FOV region files.")
 
-    return reg_filter,region
+    return reg_filter,reg
