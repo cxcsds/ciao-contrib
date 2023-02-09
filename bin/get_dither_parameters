@@ -98,12 +98,6 @@ def fold_vals(tmpfile, colname):
 
     max_idx = np.argmax(sig_vals)
 
-    # ~ from crates_contrib.utils import write_columns
-    # ~ write_columns("fold.dat",
-    # ~ _periods, mean_vals, sig_vals,
-    # ~ colnames=["period", "mean", "sigma"],
-    # ~ clobber=True, format="fits")
-
     return range_vals[max_idx]/2.0, _periods[max_idx]
 
 
@@ -185,7 +179,7 @@ def make_dy_dz(infile, tmpdir):
     the mean value and rotate by ROLL.
     """
 
-    def _rotate(ra_vals, dec_vals, dec_pnt, roll_pnt):
+    def _rotate(ra_vals, dec_vals, roll_vals):
         'Rotate ra/dec to dety, detz'
 
         # Subtract off the mean (center around 0)
@@ -193,31 +187,22 @@ def make_dy_dz(infile, tmpdir):
         dec_off = dec_vals - np.mean(dec_vals)
 
         # Scale ra by cos(dec)
-        cos_dec = np.cos(np.deg2rad(dec_pnt))
+        cos_dec = np.cos(np.deg2rad(dec_vals))
         ra_off *= cos_dec
 
         # Rotate ra/dec into dety,detz coordinates
-        cos_roll = np.cos(np.deg2rad(90+roll_pnt))
-        sin_roll = np.sin(np.deg2rad(90+roll_pnt))
+        cos_roll = np.cos(np.deg2rad(90+roll_vals))
+        sin_roll = np.sin(np.deg2rad(90+roll_vals))
         det_z = ra_off * cos_roll + dec_off * sin_roll
         det_y = -ra_off * sin_roll + dec_off * cos_roll
 
         return det_y, det_z
 
-    tab = read_file(infile+"[cols time,ra,dec]")
+    tab = read_file(infile+"[cols time,ra,dec,roll]")
 
     ra_vals = tab.get_column("ra").values
     dec_vals = tab.get_column("dec").values
-
-    roll_pnt = tab.get_key_value("roll_pnt")
-    if roll_pnt == 0.0:
-        # If older asol files, then _pnt are 0.0
-        roll_pnt = tab.get_key_value("roll_nom")
-
-    dec_pnt = tab.get_key_value("dec_pnt")
-    if dec_pnt == 0.0:
-        # If older asol files, then _pnt are 0.0
-        dec_pnt = tab.get_key_value("dec_nom")
+    roll_vals = tab.get_column("roll").values
 
     ontime = tab.get_key_value("TSTOP") - tab.get_key_value("TSTART")
     if ontime < 2000.0:
@@ -226,7 +211,7 @@ def make_dy_dz(infile, tmpdir):
               " 2.0 ksec which may lead to inaccurate dither " +
               "parameter estimates.")
 
-    det_y, det_z = _rotate(ra_vals, dec_vals, dec_pnt, roll_pnt)
+    det_y, det_z = _rotate(ra_vals, dec_vals, roll_vals)
 
     # We go ahead an get amplitude since we have the dety and detz values
     det_y_amp = get_amplitude(det_y)
@@ -235,7 +220,7 @@ def make_dy_dz(infile, tmpdir):
     if det_y_amp > 1.0 or det_z_amp > 1.0:
         # If amplitude it too big, then we've wrapped in ra so fix it.
         ra_vals[ra_vals < 180.0] += 360.0
-        det_y, det_z = _rotate(ra_vals, dec_vals, dec_pnt, roll_pnt)
+        det_y, det_z = _rotate(ra_vals, dec_vals, roll_vals)
 
         det_y_amp = get_amplitude(det_y)
         det_z_amp = get_amplitude(det_z)
@@ -283,11 +268,6 @@ def fft_vals(infile, column, tmpdir):
 
     period = np.zeros_like(freq)
     period[1:] = 1.0/freq[1:]
-
-    # ~ import matplotlib.pylab as plt
-    # ~ plt.plot(period,power)
-    # ~ plt.title(f"{column} plot")
-    # ~ plt.savefig(f"{column}.png")
 
     max_idx = np.argmax(power)
     return period[max_idx]
