@@ -29,7 +29,7 @@ import ciao_contrib.logger_wrapper as lw
 from pycrates import read_file
 
 __toolname__ = "get_dither_parameters"
-__revision__ = "22 February 2023"
+__revision__ = "24 February 2023"
 
 lw.initialize_logger(__toolname__)
 verb0 = lw.get_logger(__toolname__).verbose0
@@ -296,6 +296,9 @@ def doit():
     else:
         raise ValueError(f"Unknown value for method={pars['method']}")
 
+    det_y_amp *= 3600.0   # convert to arcsec
+    det_z_amp *= 3600.0
+
     os.unlink(tmpfile)
 
     from ciao_contrib.param_wrapper import open_param_file as opf
@@ -309,9 +312,10 @@ def doit():
     pio.paramclose(pfile)
 
     verb1("Results:")
-    verb1("\tAmplitude [deg]\tPeriod [cycle/sec]")
-    verb1(f"DETY\t{det_y_amp:.6g}\t{dety_period:.3f}")
-    verb1(f"DETZ\t{det_z_amp:.6g}\t{detz_period:.3f}")
+    verb1("\tAmplitude\tPeriod")
+    verb1("\t[arcsec]\t[sec]")
+    verb1(f"DETY\t{det_y_amp:.3f}\t\t{dety_period:.3f}")
+    verb1(f"DETZ\t{det_z_amp:.3f}\t\t{detz_period:.3f}")
 
 
 if __name__ == '__main__':
