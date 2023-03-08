@@ -3204,10 +3204,20 @@ def obi_main(pars):
 @lw.handle_ciao_errors( toolname, __revision__)
 def main():
 
+    __must_have = ("infile", "pos", "outroot", "bands", "srcreg", 
+                   "bkgreg", "bkgresp", "psfmethod", "psffile", "conf",
+                   "binsize", "rmffile", "arffile", "model", 
+                   "paramvals", "absmodel", "absparams", "abund", 
+                   "pluginfile", "fovfile", "asolfile", "mskfile", 
+                   "bpixfile", "dtffile", "ecffile", "parallel", 
+                   "nproc", "tmpdir", "random_seed", "clobber", 
+                   "verbose")
+
     # Load parameters
     from ciao_contrib.param_soaker import get_params
     pars = get_params(toolname, "rw", sys.argv,
-        verbose={"set":lw.set_verbosity, "cmd":verb1} )
+                      verbose={"set":lw.set_verbosity, "cmd":verb1},
+                      musthave = __must_have)
     set_nproc(pars)
 
     if not os.path.isdir( pars["outroot"] ):
