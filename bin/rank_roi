@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2020 Smithsonian Astrophysical Observatory
+# Copyright (C) 2022-2023 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@ import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "rank_roi"
-__revision__ = "10 June 2020"
+__revision__ = "09 March 2023"
 
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
@@ -109,6 +109,12 @@ class ROIFile():
         # skip if other is bigger
         if other.metric > self.metric:
             return
+
+        # if metric is equal then only keep one (either)
+        if other.metric == self.metric:
+            myidx = other.region.index(~self.roi)
+            if any([x in other.del_other for x in myidx]):
+                return
 
         # remove all instances of other from self.  With fov files
         # the roi file may have multiple instances of other.roi, be
@@ -219,14 +225,28 @@ def clobber_outfiles(pars, rois_reg):
         outfile_clobber_checks(pars["clobber"], r.outfile)
 
 
+def get_binning(rois_reg):
+    'Get bounding box around all regions and create binning command'
+
+    extents = [x.roi.extent() for x in rois_reg]
+
+    x0 = int(min([x['x0'] for x in extents]))-1.5
+    y0 = int(min([x['y0'] for x in extents]))-1.5
+    x1 = int(max([x['x1'] for x in extents]))+1.5
+    y1 = int(max([x['y1'] for x in extents]))+1.5
+
+    return f'[bin x={x0}:{x1}:1,y={y0}:{y1}:1]'
+
+
 def compute_metric(pars, rois_reg):
     'Compute roi metric'
     verb1("Checking infile (image v. table)")
     infile = pars["infile"]
     oo = read_file(infile)
     if isinstance(oo, IMAGECrate) is not True:
-        infile = infile+"[bin sky]"
         verb1("Infile is a table, will bin into an image")
+        sky_bin = get_binning(rois_reg)
+        infile = infile+sky_bin
     verb1("Computing metric for all ROIs")
     for r in rois_reg:
         r.compute_metric(infile)
