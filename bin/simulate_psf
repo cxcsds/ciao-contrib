@@ -776,11 +776,13 @@ def run_marx2fits( pars, obi_info, output_dir ):
     dev_null = open("/dev/null", "wb")
 
     if "yes" == pars["pileup"]:
-        cmd = "marxpileup MarxOutputDir={0} > /dev/null".format(output_dir)
+        cmd = "marxpileup MarxOutputDir={0} FrameTime={1} > /dev/null".format(output_dir, obi_info["exptime"])
         verb3(">>> "+cmd)
 
         try:
-            subprocess.check_call( ['marxpileup', 'MarxOutputDir='+output_dir], stdout=dev_null)
+            subprocess.check_call( ['marxpileup', 'MarxOutputDir='+output_dir,
+                                    'FrameTime={}'.format(obi_info["exptime"])],
+                                    stdout=dev_null)
         except:
             raise Exception("Problem running {0}".format(cmd))
 
