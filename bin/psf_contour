@@ -4,7 +4,7 @@
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -32,7 +32,7 @@ MIN_FRACTION = 0.6
 FRACTION_STEP = 0.1
 
 toolname = "psf_contour"
-__revision__ = "09 March 2023"
+__revision__ = "27 March 2023"
 
 lw.initialize_logger(toolname)
 verb0 = lw.get_logger(toolname).verbose0
@@ -407,21 +407,14 @@ def get_cli():
 
 def get_positions(params):
     'Get the list of input positions'
+    from ciao_contrib.parse_pos import get_radec_from_pos
 
     try:
-        tab = read_file(params['pos'])
-        if tab is None:
-            raise IOError("problem with pos")
-        ra = tab.get_column("ra").values
-        dec = tab.get_column("dec").values
-    except Exception as try_again:
-        from ciao_contrib.parse_pos import get_radec_from_pos
-        try:
-            ra, dec = get_radec_from_pos(params['pos'])
-            ra = np.array(ra)
-            dec = np.array(dec)
-        except Exception as bad_parse:
-            raise ValueError("Could not parse coordinates: "+str(params['pos']))
+        ra, dec = get_radec_from_pos(params['pos'])
+        ra = np.array(ra)
+        dec = np.array(dec)
+    except Exception as bad_parse:
+        raise ValueError(f"Could not parse coordinates: {params['pos']}") from bad_parse
 
     return (ra, dec)
 
