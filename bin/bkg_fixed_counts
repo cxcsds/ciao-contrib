@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2022 Smithsonian Astrophysical Observatory
+# Copyright (C) 2022, 2023 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@ import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "bkg_fixed_counts"
-__revision__ = "09 November 2022"
+__revision__ = "27 March 2023"
 
 lw.initialize_logger(toolname)
 verb0 = lw.get_logger(toolname).verbose0
@@ -36,22 +36,15 @@ verb2 = lw.get_logger(toolname).verbose2
 
 def load_positions(pos):
     "Get the RA/Dec of all sources"
-    verb1("Loading source positions")
+    from ciao_contrib.parse_pos import get_radec_from_pos
 
+    verb1("Loading source positions")
     try:
-        tab = read_file(pos)
-        if tab is None:
-            raise IOError("problem with pos")
-        ra = tab.get_column("ra").values
-        dec = tab.get_column("dec").values
-    except Exception as try_again:
-        from ciao_contrib.parse_pos import get_radec_from_pos
-        try:
-            ra, dec = get_radec_from_pos(pos)
-            ra = np.array(ra)
-            dec = np.array(dec)
-        except Exception as bad_parse:
-            raise ValueError(f"Could not parse coordinates: {pos}")
+        ra, dec = get_radec_from_pos(pos)
+        ra = np.array(ra)
+        dec = np.array(dec)
+    except Exception as bad_parse:
+        raise ValueError(f"Could not parse coordinates: {pos}") from bad_parse
 
     return ra, dec
 
