@@ -26,11 +26,13 @@ given a user supplied ARF and RMF.
 
 """
 
+import os
 from os.path import basename
 
 import numpy as np
 
 import matplotlib.pylab as plt
+import matplotlib
 
 from pycrates import set_key
 
@@ -640,10 +642,35 @@ class ColorColorDiagram():
         self._cr.write(outfile, clobber=True)
 
     def plot(self, outfile=None):
+        """"Plot the color-color diagram -- now using matplotlib
+
+        Since this object contains a reference to the primary and
+        secondary parameters, you can set/change the curve and
+        label properties before plotting:
+
+        >>> matrix = cc(photon_index, absorption, soft, medium, hard, broad)
+        >>> photon_index.set_curve_style(marker="", color="green", linestyle="-", linewidth=2)
+        >>> photon_index.set_label_style(color="green")
+        >>> absorption.set_curve_style(marker="", color="black", linestyle="-.")
+        >>> absorption.set_label_style(color="black")
+        >>> matrix.plot()
+        """
+
+        current_backend = matplotlib.get_backend()
+        if 'DISPLAY' not in os.environ or os.environ['DISPLAY'] == "":
+            matplotlib.use('Agg')
+
+        try:
+            self.__plot(outfile)
+        finally:
+            matplotlib.use(current_backend)
+
+
+    def __plot(self, outfile=None):
         """
         Plot the color-color diagram -- now using matplotlib
 
-        Since this object contains a refernce to the primary and
+        Since this object contains a reference to the primary and
         secondary parameters, you can set/change the curve and
         label properties before plotting:
 
