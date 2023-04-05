@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2008, 2009, 2010, 2011, 2014, 2015, 2016, 2017, 2018, 2019, 2021
+#  Copyright (C) 2008, 2009, 2010, 2011, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2023
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -56,7 +56,7 @@ import matplotlib.pyplot as plt
 # __all__ = ("lc_sigma_clip", "lc_sigma_uclip", "lc_clean")
 __all__ = ("lc_sigma_clip", "lc_clean")
 
-__revision = "09 November 2021"
+__revision = "05 April 2023"
 
 
 def _write_gti_text(outfile, tstart, tend):
@@ -645,7 +645,7 @@ class LightCurve:
                 axs[0].axhline(y=self.clean_mean_rate, linestyle="dotted")
                 axs[0].set_ylabel(ratelabel, fontsize=10)
                 axs[0].set_xlabel(r"$\Delta$ Time [ks]", fontsize=10)
-                
+
             else:
                 axs[0].axvline(x=self.clean_mean_rate, linestyle="dotted")
                 axs[0].tick_params(labelbottom=False)
@@ -755,7 +755,7 @@ class LightCurve:
 
             axs[1].set_ylabel("Number", fontsize=10)
             axs[1].set_xlabel(ratelabel, fontsize=10)
-            
+
         except Exception:
             plt.close()
             raise
