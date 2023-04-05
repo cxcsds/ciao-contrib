@@ -571,17 +571,20 @@ class LightCurve:
         # setup figure
 
         if rateaxis == "y":
-            from matplotlib import tight_layout
+            # from matplotlib import tight_layout # deprecated in Matplotlib 3.5, breaking in 3.6
+            #
+            # fig, axs = plt.subplots(2, 1, tight_layout=False)
+            # hpad = tight_layout.get_tight_layout_figure(fig,
+            #                                             axs,
+            #                                             tight_layout.get_subplotspec_list(axs),
+            #                                             tight_layout.get_renderer(fig))["hspace"]
+            # fig.subplots_adjust(hspace=2*hpad)
 
-            fig, axs = plt.subplots(2, 1, tight_layout=False)
-            hpad = tight_layout.get_tight_layout_figure(fig,
-                                                        axs,
-                                                        tight_layout.get_subplotspec_list(axs),
-                                                        tight_layout.get_renderer(fig))["hspace"]
-
-            #fig.set_figheight(fig.get_figheight()+2*hpad)
-            fig.subplots_adjust(hspace=2*hpad)
-
+            fig, axs = plt.subplots(2, 1, squeeze=True)
+            
+            hpad = axs[0].get_position().y0 - axs[1].get_position().y1
+            fig.subplots_adjust(hspace=6*hpad)
+            
         else:
             fig, axs = plt.subplots(2, 1, sharex=True)
             fig.subplots_adjust(hspace=0)
@@ -642,7 +645,7 @@ class LightCurve:
                 axs[0].axhline(y=self.clean_mean_rate, linestyle="dotted")
                 axs[0].set_ylabel(ratelabel, fontsize=10)
                 axs[0].set_xlabel(r"$\Delta$ Time [ks]", fontsize=10)
-
+                
             else:
                 axs[0].axvline(x=self.clean_mean_rate, linestyle="dotted")
                 axs[0].tick_params(labelbottom=False)
@@ -752,7 +755,7 @@ class LightCurve:
 
             axs[1].set_ylabel("Number", fontsize=10)
             axs[1].set_xlabel(ratelabel, fontsize=10)
-
+            
         except Exception:
             plt.close()
             raise
