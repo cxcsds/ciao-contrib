@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
 #
-#  Copyright (C) 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021
+#  Copyright (C) 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2023
 #                Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -40,7 +40,10 @@ import os
 import sys
 
 import matplotlib
-matplotlib.interactive(True)
+if 'DISPLAY' in os.environ and os.environ['DISPLAY'] != "":
+    matplotlib.interactive(True)
+else:
+    matplotlib.use('Agg')
 
 import paramio
 
@@ -52,7 +55,7 @@ from ciao_contrib.param_wrapper import open_param_file
 
 
 toolname = "deflare"
-__revision__ = "09 November 2021"
+__revision__ = "28 March 2023"
 
 initialize_logger(toolname)
 
@@ -124,6 +127,9 @@ def pause():
 
 def wrapup(params, plot_stat):
     "Let the user know what has happened."
+    from ciao_contrib.runtool import add_tool_history
+    add_tool_history(params["outfile"], toolname, params,
+                     toolversion=__revision__)
 
     labels = {"clean": "lc_clean", "sigma": "lc_sigma_clip",
               "usigma": "lc_sigma_uclip"}

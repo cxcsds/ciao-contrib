@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010, 2016, 2019, 2020  Smithsonian Astrophysical Observatory
-#
-#
+# Copyright (C) 2010, 2016, 2019, 2020, 2023
+# Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -45,7 +44,7 @@ from sherpa import plot
 
 
 TOOLNAME = "correct_periscope_drift"
-VERSION = "2 Feb 2021"
+VERSION = "28 March 2023"
 
 # Set up the logging/verbose code
 initialize_logger(TOOLNAME)
@@ -527,6 +526,11 @@ def main(opt):
     ax_data['yag'], ax_data['zag'] = get_event_yag_zag(evt_ra, evt_dec,
                                                        evt_ra_pnt, evt_dec_pnt, evt_roll_pnt)
 
+    if 'DISPLAY' not in os.environ or os.environ['DISPLAY'] == "":
+        if plot.backend.name == 'pylab':
+            import matplotlib as mpl
+            mpl.use('Agg')
+        
     # Store comments to print in block after all of the sherpa fit output
     fit_comments = []
     plot_list = []

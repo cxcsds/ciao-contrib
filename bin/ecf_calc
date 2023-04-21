@@ -19,7 +19,7 @@ Usage:
 """
 
 toolname = "ecf_calc"
-__revision__ = "13 November 2019"
+__revision__ = "28 March 2023"
 
 import numpy, tempfile, sys, os, paramio
 
@@ -69,7 +69,7 @@ def radii_set(radius,bin):
 
 
 def pause():
-    input("Press ENTER to close the ChIPS window and exit:")
+    input("Press ENTER to close the plot window and exit:")
 
 
 def get_par(argv):
@@ -357,8 +357,11 @@ def doit():
      add_tool_history(outfile,toolname,params)
 
      if plot:
-         plot_ecf(outfile)
-         pause()
+        if 'DISPLAY' not in os.environ or os.environ['DISPLAY'] == "":
+            sys.stderr.write("DISPLAY not set, skipping plot.\n")
+        else:
+             plot_ecf(outfile)
+             pause()
 
 
 if __name__ == "__main__":
