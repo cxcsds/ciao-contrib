@@ -129,7 +129,8 @@ def get_block_info(bl):
         nc = tableGetNoCols(bl)
         if nc == 0:
             blinfo["type"] = "EMPTY-TABLE"
-
+            blinfo["nrows"] = 0
+            blinfo["columns"] = {}
         else:
             blinfo["type"] = "TABLE"
             blinfo["nrows"] = tableGetNoRows(bl)
