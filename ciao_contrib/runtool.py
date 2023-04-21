@@ -3199,6 +3199,13 @@ parinfo['geom'] = {
     }
 
 
+parinfo['get_dither_parameters'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input aspect solution file",None)],
+    'opt': [ParSet("method","s","Method to estimate dither parameters",'fold',["fold","fit","fft"]),ParValue("dety_amplitude","r","Amplitude in DETY direction [arcsec]",None),ParValue("detz_amplitude","r","Amplitude in the DETZ direction [arcsec]",None),ParValue("dety_period","r","Period in DETY direction [sec]",None),ParValue("detz_period","r","Period in DETZ direction [sec]",None),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
+    }
+
+
 parinfo['get_fov_limits'] = {
     'istool': True,
     'req': [ParValue("infile","f","The FOV file to use",None)],

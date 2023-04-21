@@ -1,0 +1,529 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY context="Tools::Aspect" 
+    key="get_dither_parameters" 
+    refkeywords="dither aspect solution asol amplitude frequency period" 
+    seealsogroups="aspecttools timingtools">
+    <SYNOPSIS>
+        Determine the approximate dither period and amplitude used during an observation.
+    </SYNOPSIS>
+    <DESC>
+      <PARA>
+          `get_dither_parameters' uses the aspect solution file to 
+          determine the approximate dither parameters: period and
+          amplitude, used during an observation.  The actual values
+          are not computed and the planned values are not
+          stored in the data products; the planned values are
+          only available from the 
+          <HREF link="https://cda.harvard.edu/chaser/">Chaser</HREF>
+          Details page.          
+          Users doing timing analysis 
+          may need to know the dither parameters to understand if the 
+          timing signature they detect is instrumental or intrinsic to
+          the source.
+      </PARA>
+      <PARA>
+        Most observations use the default dither parameters.  Prior to
+        October 2022, the defaults were
+      </PARA>
+      <TABLE>
+        <CAPTION>Default dither parameter prior to October 2022</CAPTION>
+        <ROW>
+            <DATA>Instrument</DATA>
+            <DATA>DET_Y Amp [deg]</DATA>
+            <DATA>DET_Z Amp [deg]</DATA>
+            <DATA>DET_Y Period [sec]</DATA>
+            <DATA>DET_Z Period [sec]</DATA>
+        </ROW>
+        <ROW>
+          <DATA>ACIS</DATA>
+          <DATA>0.0022</DATA>
+          <DATA>0.0022</DATA>
+          <DATA>1000</DATA>
+          <DATA>707.1</DATA>
+        </ROW>
+        <ROW>
+          <DATA>HRC</DATA>
+          <DATA>0.00556</DATA>
+          <DATA>0.00556</DATA>
+          <DATA>1087</DATA>
+          <DATA>768.6</DATA>
+        </ROW>      
+      </TABLE>
+  <PARA>
+  As of October 2022, the default amplitude and dither for ACIS were
+  doubled to allow for improved star tracking by the aspect camera.
+  </PARA>
+      <TABLE>
+        <CAPTION>Default dither parameter as of October 2022</CAPTION>
+        <ROW>
+            <DATA>Instrument</DATA>
+            <DATA>DET_Y Amp [deg]</DATA>
+            <DATA>DET_Z Amp [deg]</DATA>
+            <DATA>DET_Y Period [sec]</DATA>
+            <DATA>DET_Z Period [sec]</DATA>
+        </ROW>
+        <ROW>
+          <DATA>ACIS</DATA>
+          <DATA>0.0044</DATA>
+          <DATA>0.0044</DATA>
+          <DATA>2000</DATA>
+          <DATA>1414</DATA>
+        </ROW>
+        <ROW>
+          <DATA>HRC</DATA>
+          <DATA>0.00556</DATA>
+          <DATA>0.00556</DATA>
+          <DATA>1087</DATA>
+          <DATA>768.6</DATA>
+        </ROW>      
+      </TABLE>
+
+    <PARA>
+    However observers can request custom dither parameters.  This was done most notably
+    for the various of Crab observations.  In addition some calibration 
+    observations use non-standard dither patterns to improve 
+    detector coverage.  There are also some anomalies where dither
+    was mistaken not enabled during a small number of observations.
+    </PARA>
+
+    <PARA>
+    The estimated dither parameter values are stored in the tool's own 
+    parameter file. In addition, at verbose=1 and higher the estimated 
+    dither parameters are printed to the terminal.  
+    </PARA>
+    
+    <PARA title="Note on detector coordinates">
+      Dither is defined in spacecraft, ie detector coordinates.
+      DET_Z is in the direction of the SIM motion; that is the axis 
+      upon which the SIM moves to select the different instruments.
+      DET_Y is moving side-to-side in the detector plane.  DET_X is 
+      in the direction of the mirrors.    
+    </PARA>
+
+
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+% get_dither_parameters pcadf04425_000N001_asol1.fits.gz method=fold
+        </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+              This is an example of an ACIS observations that used
+              the default, standard dither parameters.  The results are
+              printed to the screen:  
+          </PARA>
+<VERBATIM>
+get_dither_parameters
+          infile = pcadf04425_000N001_asol1.fits.gz
+          method = fold
+  dety_amplitude = 0
+  detz_amplitude = 0
+     dety_period = 0
+     detz_period = 0
+          tmpdir = /tmp
+         verbose = 1
+            mode = ql
+
+Results:
+        Amplitude       Period
+        [arcsec]        [sec]
+DETY    8.004           1000.000
+DETZ    7.899           708.000
+</VERBATIM>
+
+<PARA>
+The tool also stores the outputs back into its own parameter file.  These
+can be retrieved using any of the standard parameter file tools such
+as plist, pget, or pdump:
+</PARA>
+
+<VERBATIM>
+% plist get_dither_parameters
+
+Parameters for /home/user/cxcds_param4/get_dither_parameters.par
+
+        infile = pcadf04425_000N001_asol1.fits.gz Input aspect solution file
+       (method = fft)             Method to estimate dither parameters
+(dety_amplitude = 8.00398436876533) Amplitude in DETY direction [arcsec]
+(detz_amplitude = 7.899064790088977) Amplitude in the DETZ direction [arcsec]
+  (dety_period = 1000)            Period in DETY direction [sec]
+  (detz_period = 708)             Period in DETZ direction [sec]
+       (tmpdir = ${ASCDS_WORK_PATH} -> /tmp) Directory for temporary files
+      (verbose = 1)               Amount of tool chatter
+         (mode = ql)              
+</VERBATIM>
+
+        </DESC>
+      </QEXAMPLE>
+
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+% get_dither_parameters pcadf08908_000N001_asol1.fits.gz meth=fold
+        </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+This is an example of an HRC observation that used the standard dither
+parameters.  The terminal output looks like:
+          </PARA>
+<VERBATIM>
+get_dither_parameters
+          infile = pcadf08908_000N001_asol1.fits.gz
+          method = fold
+  dety_amplitude = 0
+  detz_amplitude = 0
+     dety_period = 0
+     detz_period = 0
+          tmpdir = /tmp
+         verbose = 1
+            mode = ql
+
+Results:
+        Amplitude       Period
+        [arcsec]        [sec]
+DETY    18.957          1087.000
+DETZ    19.594          768.000
+</VERBATIM>
+        </DESC>
+      </QEXAMPLE>
+
+
+
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+% get_dither_parameters pcadf05555_001N001_asol1.fits.gz meth=fold
+        </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+              This is an observation of the Crab nebula.  The 
+              observer chose to reduce the size of the dither pattern;
+              they also used a sub-array and a custom window to reduce
+              the size of the field of view (to reduce readout time
+              and lessen telemetry saturation).  The output for this 
+              observation looks like
+          </PARA>
+<VERBATIM>
+get_dither_parameters
+          infile = pcadf05555_001N001_asol1.fits.gz
+          method = fold
+  dety_amplitude = 0
+  detz_amplitude = 0
+     dety_period = 0
+     detz_period = 0
+          tmpdir = /tmp
+         verbose = 1
+            mode = ql
+
+Results:
+        Amplitude       Period
+        [arcsec]        [sec]
+DETY    3.935           1001.000
+DETZ    3.754           708.000
+</VERBATIM>
+
+<PARA>
+  In this case the dither period remained the same as the default values
+  but the amplitudes where reduced to 5% of the default values.
+</PARA>
+
+        </DESC>
+      </QEXAMPLE>
+
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+% get_dither_parameters pcadf03832_002N001_asol1.fits.gz me=fold
+        </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+This observation was planned to use the standard dither parameters, however
+there was an error in planning/commanding that actually disabled dither.
+The output looks like:              
+          </PARA>
+<VERBATIM>
+get_dither_parameters
+          infile = pcadf03832_002N001_asol1.fits.gz
+          method = fold
+  dety_amplitude = 0
+  detz_amplitude = 0
+     dety_period = 0
+     detz_period = 0
+          tmpdir = /tmp
+         verbose = 1
+            mode = ql
+
+Results:
+        Amplitude       Period
+        [arcsec]        [sec]
+DETY    0.015           2054.000
+DETZ    0.021           2769.000
+</VERBATIM>
+
+<PARA>
+The amplitude values are tiny (typical values are on the order of 10 arcsec)
+and the periods are much longer than what is shown as planned in
+Chaser.
+</PARA>
+<PARA>
+Consulting the V&amp;V report we read that in fact dither had been 
+disabled and the values reported here are essentially noise.
+</PARA>
+
+        </DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+% get_dither_parameters pcadf18840_000N001_asol1.fits.gz met=fold
+        </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+The calibration team will sometimes plan observations with non-standard
+dither patterns to maximize exposure of the calibration source over
+a large part of the detector to optimize the amount of calibration
+data they acquire.  This is a grating observation using the so-called "Big Dither"
+pattern; typical dither parameters have equal amplitude in DET_Y and DET_Z
+directions, thus making a square Lissajous pattern; these observations
+have a much larger dither amplitude in one-direction resulting in a
+rectangular pattern.
+          </PARA>
+<VERBATIM>
+get_dither_parameters
+          infile = pcadf18840_000N001_asol1.fits.gz
+          method = fold
+  dety_amplitude = 0
+  detz_amplitude = 0
+     dety_period = 0
+     detz_period = 0
+          tmpdir = /tmp
+         verbose = 1
+            mode = ql
+
+Results:
+        Amplitude       Period
+        [arcsec]        [sec]
+DETY    7.852           1000.000
+DETZ    62.290          2653.000
+</VERBATIM>
+
+<PARA>
+Here the DET_Z axis is much larger than DETY.  
+</PARA>
+
+        </DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+% get_dither_parameters pcadf04425_000N001_asol1.fits.gz method=fold
+         </LINE>
+          <LINE>
+% get_dither_parameters pcadf04425_000N001_asol1.fits.gz method=fit
+         </LINE>
+          <LINE>
+% get_dither_parameters pcadf04425_000N001_asol1.fits.gz method=ffft
+         </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+              Here we have examples of the three different 
+              estimation methods.  The results are summarized below
+          </PARA>
+
+<TABLE>
+  <CAPTION>Example of different estimation methods</CAPTION>
+  <ROW>
+    <DATA>method</DATA>
+    <DATA>DET_Y_Amp [arcsec]</DATA>
+    <DATA>DET_Z Amp [arcsec]</DATA>
+    <DATA>DET_Y Period [sec]</DATA>
+    <DATA>DET_Z Period [sec]</DATA>
+    <DATA>Run time [sec]</DATA>
+  </ROW>
+  <ROW>
+    <DATA>fold</DATA>
+    <DATA>8.004</DATA>
+    <DATA>7.899</DATA>
+    <DATA>1000</DATA>
+    <DATA>708</DATA>
+    <DATA>25.26</DATA>
+  </ROW>
+  <ROW>
+    <DATA>fit</DATA>
+    <DATA>8.136</DATA>
+    <DATA>8.009</DATA>
+    <DATA>1000.13</DATA>
+    <DATA>707.66</DATA>
+    <DATA>31.91</DATA>
+  </ROW>
+  <ROW>
+    <DATA>fft</DATA>
+    <DATA>8.405</DATA>
+    <DATA>8.530</DATA>
+    <DATA>1004.35</DATA>
+    <DATA>704.80</DATA>
+    <DATA>1.83</DATA>
+  </ROW>
+</TABLE>
+
+<PARA>
+The default method=fold option is the most robust with the middle 
+amount of time to compute.  method=fit is more accurate for this case but
+is slower and can have problems converging to reliable estimates.
+Finally, method=fft is by far the fastest method, but also the less precise.
+</PARA>
+        </DESC>
+      </QEXAMPLE>
+
+
+     </QEXAMPLELIST>
+    <PARAMLIST>
+      <PARAM filetype="input" name="infile" reqd="yes" type="file">
+        <SYNOPSIS>
+        Aspect solution file, pcadf*asol1.fits
+       </SYNOPSIS>
+        <DESC>
+          <PARA>
+            This tool takes as input the aspect solution file for the
+            observation.  These are usually located in the primary
+            or repro directories and have file names that look like
+            pcadf{obs_id}_{obi_num}N{version}_asol1.fits or
+            pcadf{obs_id}_repro_asol1.fits.  For some very early
+            observations that have not been through Repro-5, there
+            may be one or more aspect solution files that have names
+            that look like pcadf{tstart}N{version}_asol1.fits.
+          </PARA>
+          <PARA>
+             This tool does not accept stacks of aspect solution files.
+             If there is more than one asol file, then they should be
+             merged using dmmerge.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="method" reqd="no" type="string" def="fold">
+        <SYNOPSIS>Choice of algorithm to estimate dither parameters: fold, fit, fft</SYNOPSIS>
+        <DESC>
+        
+      <LIST>
+        <CAPTION>method options:</CAPTION>
+        <ITEM>fold : period folding algorithm</ITEM>
+        <ITEM>fit : least-squares fit </ITEM>
+        <ITEM>fft : powerspectrum (fft) search for maximum power.</ITEM>
+      </LIST>
+      
+      <PARA>
+      The details of each algorithm are discussed below.
+      </PARA>
+        </DESC>
+      
+      </PARAM>
+
+      <PARAM name="dety_amplitude" type="real" def="" units="arcsec">
+        <SYNOPSIS>The estimated amplitude in the DET_Y direction in units of arcseconds</SYNOPSIS>
+      </PARAM>
+      <PARAM name="detz_amplitude" type="real" def="" units="arcsec">
+        <SYNOPSIS>The estimated amplitude in the DET_Z direction in units of arcseconds</SYNOPSIS>
+      </PARAM>
+      <PARAM name="dety_period" type="real" def="" units="sec">
+        <SYNOPSIS>The estimated period in the DET_Y direction in units of seconds</SYNOPSIS>
+      </PARAM>
+      <PARAM name="detz_period" type="real" def="" units="sec">
+        <SYNOPSIS>The estimated period in the DET_Z direction in units of seconds</SYNOPSIS>
+      </PARAM>
+
+     <PARAM name="tmpdir" filetype="output" type="file" reqd="no" def="${ASCDS_WORK_PATH}">
+        <SYNOPSIS>Temporary working directory</SYNOPSIS>
+        <DESC>
+          <PARA>
+                Directory used to store temporary file created by the script.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+     <PARAM name="verbose" min="0" max="5" def="1" type="integer" reqd="no">
+        <SYNOPSIS>Controls the amount of information printed to the terminal</SYNOPSIS>
+      </PARAM>
+      <PARAM name="clobber" def="no" type="boolean" reqd="no">
+        <SYNOPSIS>Delete the output outfile if it already exists?</SYNOPSIS>
+      </PARAM>
+
+
+
+    </PARAMLIST>
+
+    <ADESC title="Description of Algorithms"> 
+    <PARA>
+      The get_dither_parameters tool estimates the dither parameters by
+      examining the RA and Dec values in the aspect solution file.
+      The RA and Dec values are rotated by the spacecraft ROLL to
+      convert them into detector coordinates: DET_Y and DET_Z.  
+      From there three algorithms are available to estimate the 
+      dither parameters.
+    </PARA>
+
+    <PARA title="method=fold">
+      The default method=fold algorithm works by period-folding the
+      TIME values over the range from 200 to 3500 second periods.  
+      For each period, the DET_Y and DET_Z values are split up into
+      10 phase bins and the mean DET_Y and DET_Z values is computed.
+      The period with the maximum standard deviation of the phase bins
+      is the estimated period in each direction.  The amplitude is
+      one-half of the peak-to-peak min/max in the phase bins at that
+      period.  The period search is skipped if the aspect solution file
+      is less than 200 seconds.  If the aspect solution is less than 3500 
+      seconds, then the period search is limited to the duration
+      of the aspect solution file.  Testing has shown this to be
+      the most robust algorithm with moderate run-time.
+    </PARA>
+    <PARA title="method=fit">
+      This method uses sherpa to model the DET_Y and separately the DET_Z
+      values as a constant plus a cosine function.  The data are fit
+      using the least-squares statistic; error estimates are not used.
+      The data are fit using the neldermead optimization algorithm.
+      In the event of a poor fit (as derived from abnormally small
+      amplitudes) the fit is repeated with different intial guesses 
+      and then finally with the most robust but slowest moncar optimization
+      method.  Generally this is the most precise algorithm but it 
+      is significantly slower than the other methods and can sometimes
+      converge on poor estimates.
+    </PARA>
+    <PARA title="method=fft">
+      This method uses the apowerspectrum tool to compute the 
+      power spectrum of the DET_Y and DET_Z values.  The 
+      period is taken to be the period bin with the maximum power.
+      The amplitude is estimated by sorting the values and 
+      computing the range of the values in the 1% and 99% quantiles;
+      this is to avoid the "tail" that can be seen at the start or
+      end of some aspect solution files.  The powerspectrum is
+      the fastest algorithm but is less precise and is not robust for
+      aspect solution files with short duration.
+    </PARA>
+    </ADESC>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+    <LASTMODIFIED>February 2023</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
