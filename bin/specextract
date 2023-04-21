@@ -32,10 +32,8 @@ Script:
 """
 
 __version__ = "CIAO 4.15"
-
 __toolname__ = "specextract"
-__revision__ = "9 January 2023"
-
+__revision__ = "18 January 2023"
 
 ##########################################################################
 #
@@ -47,25 +45,30 @@ __revision__ = "9 January 2023"
 
 # Load the necessary libraries.
 
-import paramio, os, sys, shutil, numpy, stk, tempfile, caldb4, region
+import os
+import sys
+import shutil
+import tempfile
+
+from multiprocessing import cpu_count
+import numpy
+
+import paramio
+import caldb4
+import stk
+import region
 import pycrates as pcr
 
-from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors, get_verbosity
-
+import ciao_contrib._tools.specextract as spec
+from ciao_contrib._tools import fileio, utils
 from ciao_contrib.param_wrapper import open_param_file
 from ciao_contrib.cxcdm_wrapper import get_info_from_file
+from ciao_contrib.runtool import make_tool, new_pfiles_environment, add_tool_history
+from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors, get_verbosity
 
-from ciao_contrib.runtool import dmextract, mkrmf, mkacisrmf, mkarf, mkwarf, arfcorr, dmgroup, dmhedit, dmcopy, acis_fef_lookup, sky2tdet, combine_spectra, ardlib, acis_set_ardlib, dmmakereg, add_tool_history, dmhistory, dmimgthresh
-from ciao_contrib.runtool import asphist as asphist_tool
-
-import ciao_contrib._tools.fileio as fileio
-import ciao_contrib._tools.utils as utils
-import ciao_contrib._tools.specextract as spec
-
-from ciao_contrib.runtool import new_pfiles_environment
 from sherpa.utils import parallel_map
 from ciao_contrib.parallel_wrapper import parallel_pool, parallel_pool_futures, progressbar_iter, _use_unicode, _check_tty
-from multiprocessing import cpu_count
+
 
 # Set up the logging/verbose code
 initialize_logger(__toolname__)
@@ -116,6 +119,8 @@ def extract_spectra(full_outroot, infile, ptype, channel,
     specfile = f"{full_outroot}.{ptype.lower()}"
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
+        dmextract = make_tool("dmextract")
+
         dmextract.punlearn()
 
         dmextract.outfile = specfile
@@ -288,6 +293,8 @@ def create_arf_ps(full_outroot, evt_filename, asp_param, ebin,
     unweighted RMFs.  Return the name of the ARF and FEF file.
     """
 
+    mkarf = make_tool("mkarf")
+
     # generate mkarf 'detsubsys' keyword
     ccdid_mode_val = int(ccd_id)
 
@@ -343,6 +350,8 @@ def create_arf_ext(full_outroot, ebin, verbose, dafile, mskfile,
     if verbose == 2:
         verbose = 1
 
+    mkwarf = make_tool("mkwarf")
+
     try:
         # ARF output file
         arffile = f"{full_outroot}.arf"
@@ -393,7 +402,6 @@ def correct_arf(full_outroot, infile, evt_filename, orig_arf,
     guz_input = os.path.exists(evt_filename)
 
     if not infile.endswith(".gz") and not guz_input:
-
         if gz_input:
             evt_filename_gz = f"{evt_filename}.gz"
 
@@ -406,6 +414,8 @@ def correct_arf(full_outroot, infile, evt_filename, orig_arf,
 
     # ARF output file
     carffile = f"{full_outroot}.corr.arf"
+
+    arfcorr = make_tool("arfcorr")
 
     arfcorr.punlearn()
     arfcorr.infile = reg_image
@@ -480,6 +490,8 @@ def run_mkrmf(infile=None,outfile=None,weights=None,
     if verbose == 2:
         verbose = 1
 
+    mkrmf = make_tool("mkrmf")
+
     mkrmf.punlearn()
 
     mkrmf.infile = infile
@@ -501,6 +513,8 @@ def run_mkacisrmf(infile=None,outfile=None,energy=None,channel=None,chantype=Non
 
     if verbose == 2:
         verbose = 1
+
+    mkacisrmf = make_tool("mkacisrmf")
 
     mkacisrmf.punlearn()
 
@@ -672,6 +686,8 @@ def create_hrc_resp(specfile,rmf_file,full_outroot,
         if verbose == 2:
             verbose = 1
 
+        mkarf = make_tool("mkarf")
+
         arffile = f"{full_outroot}.arf"
 
         mkarf.punlearn()
@@ -702,6 +718,9 @@ def set_badpix(evtfile, bpixfile, instrument, verbose):
 
     if verbose == 2:
         verbose = 1
+
+    ardlib = make_tool("ardlib")
+    acis_set_ardlib = make_tool("acis_set_ardlib")
 
     ardlib.read_params()
 
@@ -751,6 +770,8 @@ def convert_region(infile, evt_filename, outfile, clobber, verbose):
         verbose = 1
 
     with new_pfiles_environment(ardlib=False,copyuser=False):
+        dmmakereg = make_tool("dmmakereg")
+
         dmmakereg.punlearn()
 
         dmmakereg.region  = spec.get_region_filter(infile)[1]
@@ -781,23 +802,25 @@ def mk_asphist(asol_param, asp_out, evt_filename_filter,
         verbose = 1
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
-        asphist_tool.punlearn()
+        asphist = make_tool("asphist")
 
-        asphist_tool.infile = asol_param # single file, @files.lis, or
+        asphist.punlearn()
+
+        asphist.infile = asol_param # single file, @files.lis, or
                                     # comma-separated list of files
 
         if instrument == "ACIS":
-            asphist_tool.evtfile = f"{evt_filename_filter}[ccd_id={chip_id}]"
-            asphist_tool.dtffile = ""
+            asphist.evtfile = f"{evt_filename_filter}[ccd_id={chip_id}]"
+            asphist.dtffile = ""
         else:
-            asphist_tool.evtfile = f"{evt_filename_filter}[chip_id={chip_id}]"
-            asphist_tool.dtffile = dtffile
+            asphist.evtfile = f"{evt_filename_filter}[chip_id={chip_id}]"
+            asphist.dtffile = dtffile
 
-        asphist_tool.outfile = asp_out
-        asphist_tool.verbose = verbose
-        asphist_tool.clobber = True
+        asphist.outfile = asp_out
+        asphist.verbose = verbose
+        asphist.clobber = True
 
-        asphist_tool()
+        asphist()
 
     return asp_out
 
@@ -858,6 +881,8 @@ def clip_wmap(wmapfile,threshold,tmpdir):
     ## Run dmimgthresh with 'cutoff'
 
     with tempfile.NamedTemporaryFile(dir=tmpdir) as threshfile:
+        dmcopy = make_tool("dmcopy")
+        dmimgthresh = make_tool("dmimgthresh")
 
         dmcopy.punlearn()
         dmcopy.infile = wmapfile
@@ -902,6 +927,8 @@ def group_spectrum(ptype, full_outroot, val, spec, gtype,
         verbose = 1
 
     with new_pfiles_environment(ardlib=False,copyuser=False):
+        dmgroup = make_tool("dmgroup")
+
         dmgroup.punlearn()
 
         dmgroup.infile = f"{phafile}[SPECTRUM]"
@@ -931,6 +958,8 @@ def edit_headers(verbose, infile, key, val, *args, **kwargs):
 
     if verbose == 2:
         verbose = 1
+
+    dmhedit = make_tool("dmhedit")
 
     dmhedit.punlearn()
 
@@ -977,6 +1006,9 @@ def resp_setup(args,asphist,rmftool):
     tdetwmap = args["tdetwmap"]
 
     with new_pfiles_environment(ardlib=False,copyuser=False):
+        acis_fef_lookup = make_tool("acis_fef_lookup")
+        sky2tdet = make_tool("sky2tdet")
+
         if all([srcbkg == "src", weight == "yes"]) or all([srcbkg == "bkg", dobkgresp]):
             try:
                 if verbose == 2:
@@ -1347,6 +1379,8 @@ def spectra(args):
         ############################################################
 
         if srcbkg == "bkg":
+            dmhistory = make_tool("dmhistory")
+
             dmhistory.punlearn()
             dmhistory.infile = fullfile
 
@@ -1904,6 +1938,8 @@ def coadd(outroot,spec_src_stk,spec_bkg_stk,
 
     if verbose == 2:
         verbose = 1
+
+    combine_spectra = make_tool("combine_spectra")
 
     combine_spectra.punlearn()
     combine_spectra.outroot = f"{outroot}_combined"
