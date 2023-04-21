@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "13 January 2023"
+toolver  = "20 March 2023"
 
 import sys
 import os
@@ -734,9 +734,12 @@ def build_setup(modname, sources, fortransources, extrafiles,
     #
     # How clever should we be here?
     #
-    suffix = sysconfig.get_config_var("SHLIB_SUFFIX")
-    if suffix is None:
-        suffix = ".so"
+    if os.uname().sysname == 'Darwin':
+        suffix = ".dylib"
+    else:
+        suffix = sysconfig.get_config_var("SHLIB_SUFFIX")
+        if suffix is None:
+            suffix = ".so"
 
     def find_libname(head):
         libdir = Path(xspec_basedir) / 'lib'
