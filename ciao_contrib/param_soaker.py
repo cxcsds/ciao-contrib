@@ -1,9 +1,9 @@
 # 
-# Copyright (C) 2013 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013, 2023 Smithsonian Astrophysical Observatory
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 # 
 # This program is distributed in the hope that it will be useful,
@@ -39,7 +39,7 @@ def __check_musthave( pars, musthave, fname ):
         raise RuntimeError("ERROR: The parameter file '{1}' is missing the following parameters: {0}".format( ", ".join(missing), fname ))
 
 
-def get_params( tool, mode="rw", args=None, verbose=None, musthave=None ):
+def get_params(tool, mode="rw", args=None, verbose=None, musthave=None, revision=None):
     """
     Load all the parameters from a .par file.
     
@@ -66,13 +66,11 @@ def get_params( tool, mode="rw", args=None, verbose=None, musthave=None ):
     musthave is a list (iterable) of parameter values that
         must exist.  A parameter file may have more parameters
         than are actually needed (eg dmcoords, dmimgfilt, etc)
+        
+    revision is a string to add to the verbose output.
     """
 
-    import paramio as pio
-
-    if not hasattr( pio, "plist" ):
-        raise Exception( "This script requires CIAO 4.5" )
-    
+    import paramio as pio    
     from ciao_contrib.param_wrapper import open_param_file as opf
     
     # open param file using contrib wrappers (tracebackdebug)
@@ -91,15 +89,19 @@ def get_params( tool, mode="rw", args=None, verbose=None, musthave=None ):
     # create dictionary 
     all_pars = dict(zip(pars,values))
 
-    if verbose:
-        verbstr="\n"
-        for pp in pars:
-            verbstr += "{0:>16s} = {1}\n".format( pp,all_pars[pp] )
+    if verbose:        
+        verbstr = "".join([f"{pp:>16s} = {all_pars[pp]}\n" for pp in pars])
+        
         # set verbose
         if "verbose" in all_pars:
             verbose["set"]( int(all_pars["verbose"]))
         else:
             verbose["set"](0)
-        verbose["cmd"]( tool + verbstr)
+
+        header = tool
+        if revision:
+            header += f" ({revision})"
+
+        verbose["cmd"](header + "\n" + verbstr)
         
     return all_pars
