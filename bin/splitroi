@@ -1,20 +1,19 @@
 #!/usr/bin/env python
 
-# 
-# Copyright (C) 2011, 2012, 2018  Smithsonian Astrophysical Observatory
-# 
-# 
-# 
+#
+# Copyright (C) 2011, 2012, 2018, 2023
+# Smithsonian Astrophysical Observatory
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -36,42 +35,40 @@ gives the head/stem of the output files created:
 """
 
 toolname = "splitroi"
-version = "29 November 2018"
+version = "30 January 2023"
 
 import sys
 
-import pycrates
-import region
+from region import CXCRegion
 import stk
-
 import ciao_contrib.logger_wrapper as lw
 
 def rparse(fname):
     """Parse region from file name, raising a more user-friendly
-    error than region.regParse.
+    error than regParse.
     """
 
     try:
-        retval = region.regParse("region({})".format(fname))
+        retval = CXCRegion(fname)
 
         # In CIAO 4.10, FITS regions with 0 rows are now returning
-        # a region with 0 shapes to which regRegionString() 
+        # a region with 0 shapes to which regRegionString()
         # returns a blank string.  stk_expand on blank lines
         # are lost (multiple-stack separators are collapsed into 1)
         # this may produce different number of regions in the src
         # and bg outputs.
         #
         # This workaround restores the point(0,0) which was what
-        # the DM/regionlib did before CIAO 4.10. 
+        # the DM/regionlib did before CIAO 4.10.
         #
-        if region.regGetNoShapes(retval) == 0:
-            retval = region.regParse("point(0,0)")
-        
+        if len(retval) == 0:
+            retval = CXCRegion("point(0,0)")
+
         return retval
 
     except ValueError as ve:
-        if str(ve) == "regParse() Could not parse region string":
-            raise ValueError("{} is not a region file".format(fname))
+        if str(ve) == "regParse() Could not parse region string or file":
+            raise ValueError(f"{fname} is not a region file")
         else:
             raise ve
 
@@ -88,8 +85,8 @@ def extract_regions(fname):
 
     s = rparse(fname + "[SRCREG]")
     b = rparse(fname + "[BKGREG]")
-    return (region.regRegionString(s),
-            region.regRegionString(b))
+    return (str(s),str(b))
+
 
 def collect_regions(fnames):
     """Given a set of file names, return
@@ -102,7 +99,7 @@ def collect_regions(fnames):
     s, b = zip(*out)
     return ("\n".join(s), "\n".join(b))
 
-@lw.handle_ciao_errors(toolname, version)
+
 def create_region_files(fnames, srcfile, bkgfile):
     """Write ASCII region files to srcfile and bkgfile containing
     the contents of the SRCREG and BKGREG blocks of the list
@@ -111,18 +108,20 @@ def create_region_files(fnames, srcfile, bkgfile):
     The output files will over-write existing files if they
     exist.
     """
-    
+
     (s, b) = collect_regions(fnames)
-    
+
     with open(srcfile, 'w') as fh:
         fh.write(s)
         fh.write("\n")
-        
+
     with open(bkgfile, 'w') as fh:
         fh.write(b)
         fh.write("\n")
-        
-if __name__ == "__main__":
+
+
+@lw.handle_ciao_errors(toolname, version)
+def main():
 
     arglist = lw.preprocess_arglist(sys.argv)
 
@@ -137,8 +136,8 @@ if __name__ == "__main__":
     infiles = stk.build(arglist[1])
     outhead = arglist[2]
 
-    create_region_files(infiles,
-                        "{}.src.reg".format(outhead),
-                        "{}.bg.reg".format(outhead))
-    
-    
+    create_region_files(infiles, f"{outhead}.src.reg", f"{outhead}.bg.reg")
+
+
+if __name__ == "__main__":
+    main()
