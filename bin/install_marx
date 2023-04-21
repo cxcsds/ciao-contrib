@@ -1,10 +1,10 @@
-#! /bin/bash
-#  Copyright (C) 2014,2017-2019, 2021  Smithsonian Astrophysical Observatory
-#
+#!/bin/bash
+#  Copyright (C) 2014,2017-2019, 2021, 2023
+#  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -19,7 +19,7 @@
 
 
 tool="install_marx"
-ver="20 April 2021"
+ver="24 March 2024"
 
 #
 # Version setup, paths, filenames
@@ -43,7 +43,7 @@ fi
 
 read -d '' pythonscript << EOF
 from ftplib import FTP
-from distutils.version import LooseVersion
+from packaging import version
 import re
 
 pattern = re.compile('marx-dist-[0-9.]+\.tar\.gz$')
@@ -51,17 +51,12 @@ pattern = re.compile('marx-dist-[0-9.]+\.tar\.gz$')
 ftp = FTP('space.mit.edu')
 ftp.login()
 ftp.cwd('pub/cxc/marx')
-marxdir = max([LooseVersion(n) for n in ftp.nlst() if n[0]=='v'])
-
-ftp.cwd(str(marxdir))
-
-marxfile = max([LooseVersion(n) for n in ftp.nlst() if pattern.match(n)])
-
+marxdir = max([version.parse(n) for n in ftp.nlst() if n.startswith('v')])
+ftp.cwd('v'+str(marxdir))
 pattern = re.compile('marx-dist-(?P<marxver>[0-9.]+)\.tar\.gz$')
-
-marxver = pattern.match(str(marxfile)).group('marxver')
-
-print("{} {}".format(marxdir, marxver))
+ll = [pattern.match(n).group('marxver') for n in ftp.nlst() if pattern.match(n)]
+marxver = max([version.parse(n) for n in ll])
+print("v{} {}".format(marxdir, marxver))
 EOF
 
 marxdirversion=(`python -c "$pythonscript"`)
