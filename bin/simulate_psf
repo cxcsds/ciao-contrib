@@ -2,7 +2,7 @@
 #
 #
 #
-# Copyright (C) 2012, 2014, 2016, 2018, 2020, 2021, 2022
+# Copyright (C) 2012, 2014, 2016, 2018, 2020-2023
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -26,7 +26,7 @@ import sys
 import subprocess
 
 toolname = "simulate_psf"
-__revision__ = "07 March 2022"
+__revision__ = "09 March 2023"
 
 
 from cxcdm import *
@@ -94,6 +94,11 @@ def check_setup( pars ):
         if is_none( pars["_saotrace_install"] ):
             raise Exception("SAOTrace path not provided in parameter saotrace_install")
 
+        if not os.path.exists(os.path.join(pars["_saotrace_install"],"lib","perl5")):
+            raise Exception("Missing SAOTrace perl libraries")
+        os.environ["PERL5LIB"] = os.path.join(pars["_saotrace_install"],"lib","perl5")
+
+        
     if "marx" in [pars["simulator"], pars["projector"]]:
         if is_none( pars["marx_root"]):
             raise Exception("MARX_ROOT is not provided in parameter marx_root")
@@ -771,11 +776,13 @@ def run_marx2fits( pars, obi_info, output_dir ):
     dev_null = open("/dev/null", "wb")
 
     if "yes" == pars["pileup"]:
-        cmd = "marxpileup MarxOutputDir={0} > /dev/null".format(output_dir)
+        cmd = "marxpileup MarxOutputDir={0} FrameTime={1} > /dev/null".format(output_dir, obi_info["exptime"])
         verb3(">>> "+cmd)
 
         try:
-            subprocess.check_call( ['marxpileup', 'MarxOutputDir='+output_dir], stdout=dev_null)
+            subprocess.check_call( ['marxpileup', 'MarxOutputDir='+output_dir,
+                                    'FrameTime={}'.format(obi_info["exptime"])],
+                                    stdout=dev_null)
         except:
             raise Exception("Problem running {0}".format(cmd))
 
