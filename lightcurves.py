@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2008, 2009, 2010, 2011, 2014, 2015, 2016, 2017, 2018, 2019, 2021
+#  Copyright (C) 2008, 2009, 2010, 2011, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2023
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -56,7 +56,7 @@ import matplotlib.pyplot as plt
 # __all__ = ("lc_sigma_clip", "lc_sigma_uclip", "lc_clean")
 __all__ = ("lc_sigma_clip", "lc_clean")
 
-__revision = "09 November 2021"
+__revision = "05 April 2023"
 
 
 def _write_gti_text(outfile, tstart, tend):
@@ -571,17 +571,20 @@ class LightCurve:
         # setup figure
 
         if rateaxis == "y":
-            from matplotlib import tight_layout
+            # from matplotlib import tight_layout # deprecated in Matplotlib 3.5, breaking in 3.6
+            #
+            # fig, axs = plt.subplots(2, 1, tight_layout=False)
+            # hpad = tight_layout.get_tight_layout_figure(fig,
+            #                                             axs,
+            #                                             tight_layout.get_subplotspec_list(axs),
+            #                                             tight_layout.get_renderer(fig))["hspace"]
+            # fig.subplots_adjust(hspace=2*hpad)
 
-            fig, axs = plt.subplots(2, 1, tight_layout=False)
-            hpad = tight_layout.get_tight_layout_figure(fig,
-                                                        axs,
-                                                        tight_layout.get_subplotspec_list(axs),
-                                                        tight_layout.get_renderer(fig))["hspace"]
-
-            #fig.set_figheight(fig.get_figheight()+2*hpad)
-            fig.subplots_adjust(hspace=2*hpad)
-
+            fig, axs = plt.subplots(2, 1, squeeze=True)
+            
+            hpad = axs[0].get_position().y0 - axs[1].get_position().y1
+            fig.subplots_adjust(hspace=6*hpad)
+            
         else:
             fig, axs = plt.subplots(2, 1, sharex=True)
             fig.subplots_adjust(hspace=0)
