@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2022 Smithsonian Astrophysical Observatory
+# Copyright (C) 2022-2023 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -24,7 +24,7 @@ import os
 import numpy as np
 from pycrates import read_file, CrateKey
 from ciao_contrib.runtool import make_tool
-from region import CXCRegion, ellipse
+from region import CXCRegion, ellipse, circle
 import ciao_contrib.logger_wrapper as lw
 
 
@@ -32,7 +32,7 @@ MIN_FRACTION = 0.6
 FRACTION_STEP = 0.1
 
 toolname = "psf_contour"
-__revision__ = "06 November 2022"
+__revision__ = "27 March 2023"
 
 lw.initialize_logger(toolname)
 verb0 = lw.get_logger(toolname).verbose0
@@ -332,6 +332,7 @@ class EllipseFitToPolygon(PolygonContour):
             ell = ellipse(xc+x_0, yc+y_0, mjr, mnr, angle)
             self.outfile = f"{self.params['outroot']}{self.out_suffix}"
             ell.write(self.outfile, fits=True, clobber=True)
+
         except LinAlgError as bad_fit:
             verb0("Bad fit, trying again")
             if numiter < 5:
@@ -340,8 +341,11 @@ class EllipseFitToPolygon(PolygonContour):
                 self.make_contour()
                 self.fit_contour(numiter+1)
             else:
-                msg = "Problem fitting polygon data"
-                raise RuntimeError(msg) from bad_fit
+                verb0("Problem fitting polygon data with an ellipse, using a circle instead")
+                radius = np.mean(np.hypot(_x, _y))
+                ell = circle(x_0, y_0, radius)
+                self.outfile = f"{self.params['outroot']}{self.out_suffix}"
+                ell.write(self.outfile, fits=True, clobber=True)
 
 
 class ConvexHull(EllipseFitToPolygon):
@@ -403,21 +407,14 @@ def get_cli():
 
 def get_positions(params):
     'Get the list of input positions'
+    from ciao_contrib.parse_pos import get_radec_from_pos
 
     try:
-        tab = read_file(params['pos'])
-        if tab is None:
-            raise IOError("problem with pos")
-        ra = tab.get_column("ra").values
-        dec = tab.get_column("dec").values
-    except Exception as try_again:
-        from ciao_contrib.parse_pos import get_radec_from_pos
-        try:
-            ra, dec = get_radec_from_pos(params['pos'])
-            ra = np.array(ra)
-            dec = np.array(dec)
-        except Exception as bad_parse:
-            raise ValueError("Could not parse coordinates: "+str(params['pos']))
+        ra, dec = get_radec_from_pos(params['pos'])
+        ra = np.array(ra)
+        dec = np.array(dec)
+    except Exception as bad_parse:
+        raise ValueError(f"Could not parse coordinates: {params['pos']}") from bad_parse
 
     return (ra, dec)
 
