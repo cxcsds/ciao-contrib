@@ -1,10 +1,10 @@
 #
-# Copyright (C) 2013, 2016, 2019
+# Copyright (C) 2013, 2016, 2019, 2023
 #               Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -1330,7 +1330,7 @@ def append_cols_check_conflict( retval, val ):
 
     ## TODO: replace dups in likely stack, detect stack, ...
 
-    if vv[0] == 'o':
+    if vv[0] == 'o' and len(vv) == 2:
         if "m.{}".format(vv[1]) in retval:
             verb2( "OBI column {} has same name as master column and has been renamed obi_{}".format(vv[1],vv[1]))
             val = val + " as obi_{}".format(vv[1])
@@ -1338,14 +1338,14 @@ def append_cols_check_conflict( retval, val ):
             verb2( "OBI column {} has same name as stack column and has been renamed obi_{}".format(vv[1],vv[1]))
             val = val + " as obi_{}".format(vv[1])
 
-    elif vv[0] == 'm':
+    elif vv[0] == 'm' and len(vv) == 2:
         if "o.{}".format(vv[1]) in retval:
             verb2( "Master column {} has same name as obi column and has been rename mstr_{}".format(vv[1],vv[1]))
             val = val + " as mstr_{}".format(vv[1])
         if "s.{}".format(vv[1]) in retval:
             verb2( "Master column {} has same name as stack column and has been rename mstr_{}".format(vv[1],vv[1]))
             val = val + " as mstr_{}".format(vv[1])
-    elif vv[0] == 's':
+    elif vv[0] == 's' and len(vv) == 2:
         if "o.{}".format(vv[1]) in retval:
             verb2( "Stack column {} has same name as obi column and has been rename stk_{}".format(vv[1],vv[1]))
             val = val + " as stk_{}".format(vv[1])
@@ -1405,7 +1405,7 @@ def check_required_names( cols, cat_version=None ):
     """
     c2 = expand_standard_cols( cols, cat_version )
 
-    if "csc2" == cat_version and 's.detect_stack_id' not in required_cols:
+    if cat_version in ['current','csc2'] and 's.detect_stack_id' not in required_cols:
         required_cols.append( 's.detect_stack_id' )
 
     required_cols.reverse()
