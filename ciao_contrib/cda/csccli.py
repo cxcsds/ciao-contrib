@@ -1,10 +1,10 @@
 #
-# Copyright (C) 2013, 2016, 2019
+# Copyright (C) 2013, 2016, 2019, 2023
 #               Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -1405,7 +1405,7 @@ def check_required_names( cols, cat_version=None ):
     """
     c2 = expand_standard_cols( cols, cat_version )
 
-    if "csc2" == cat_version and 's.detect_stack_id' not in required_cols:
+    if cat_version in ['current','csc2'] and 's.detect_stack_id' not in required_cols:
         required_cols.append( 's.detect_stack_id' )
 
     required_cols.reverse()
