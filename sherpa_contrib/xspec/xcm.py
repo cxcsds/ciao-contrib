@@ -1,5 +1,6 @@
 #
-#  Copyright (C) 2020, 2023  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2020, 2023
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -28,19 +29,21 @@ analysis in Sherpa.
 """
 
 from collections import defaultdict
+from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
-from sherpa.astro import ui
-from sherpa.astro.ui.utils import Session
-from sherpa.astro import xspec
-from sherpa.utils.err import ArgumentErr, DataErr
+from sherpa.astro import ui  # type: ignore
+from sherpa.astro.ui.utils import Session  # type: ignore
+from sherpa.astro import xspec  # type: ignore
+from sherpa.utils.err import ArgumentErr, DataErr  # type: ignore
 
-import sherpa.astro.instrument
-import sherpa.models.parameter
+import sherpa.astro.instrument  # type: ignore
+import sherpa.models.parameter  # type: ignore
 
-import ciao_contrib.logger_wrapper as lw
+import ciao_contrib.logger_wrapper as lw  # type: ignore
 
 
 __all__ = ("convert", )
@@ -391,8 +394,8 @@ def parse_tie(pars, add_import, add, par, pline):
         Add an import
     add : function reference
         Add a command to the record
-    par : Parameter instance
-        The parameter being linked
+    par : str
+        The full parameter name (e.g. foo.xpos) being linked
     pline : str
         The tie line.
 
@@ -436,7 +439,7 @@ def parse_tie(pars, add_import, add, par, pline):
         #
         if fchar in "()+*/-^":
             if token != '':
-                token = expand_token(add_import, pars, par.fullname, token)
+                token = expand_token(add_import, pars, par, token)
                 expr += token
                 token = ''
 
@@ -459,10 +462,10 @@ def parse_tie(pars, add_import, add, par, pline):
         raise ValueError(f"Unable to parse {pline}")
 
     if token != '':
-        token = expand_token(add_import, pars, par.fullname, token)
+        token = expand_token(add_import, pars, par, token)
         expr += token
 
-    add('link', f"{par.fullname}", expr)
+    add('link', par, expr)
 
 
 def expand_token(add_import, pars, pname, token):
@@ -712,15 +715,55 @@ class Term(Enum):
     CON = 3
 
 
+MODEL_TYPES = {t.name: t for t in list(Term)}
+
+
+@dataclass
+class MDefine:
+    name: str
+    params: List[str]
+    expr: str
+    mtype: Term
+    erange: Optional[List[float]]  # how do I enforce only 2 values
+
+
+def is_model_convolution(mdl: Union[xspec.XSModel, MDefine]) -> bool:
+    """Is this a convolution model"""
+
+    if isinstance(mdl, MDefine):
+        return mdl.mtype == Term.CON
+
+    return isinstance(mdl, xspec.XSConvolutionKernel)
+
+
+def is_model_multiplicative(mdl: Union[xspec.XSModel, MDefine]) -> bool:
+    """Is this a multiplicative model"""
+
+    if isinstance(mdl, MDefine):
+        return mdl.mtype == Term.MUL
+
+    return isinstance(mdl, xspec.XSMultiplicativeModel)
+
+
+def is_model_additive(mdl: Union[xspec.XSModel, MDefine]) -> bool:
+    """Is this an additive model"""
+
+    if isinstance(mdl, MDefine):
+        return mdl.mtype == Term.ADD
+
+    return isinstance(mdl, xspec.XSAdditiveModel)
+
+
 class ModelExpression:
     """Construct a model expression."""
 
-    def __init__(self, expr, groups, postfix, names):
+    def __init__(self, expr, groups, postfix, names, mdefines):
         self.expr = expr
         self.groups = groups
         self.ngroups = len(groups)
         self.postfix = postfix
         self.names = names
+        self.mdefines = mdefines
 
         # I would like to say
         #    [[]] * self.ngroups
@@ -785,6 +828,18 @@ class ModelExpression:
         mdl = self.session.get_model_component(gname)
         return mdl, (['tablemodel', gname, tbl, basename[:6]], mdl)
 
+    def try_mdefine(self, basename: str, gname: str) -> Optional[MDefine]:
+        """Is this a mdefine model?"""
+
+        for mdefine in self.mdefines:
+            if mdefine.name != basename:
+                continue
+
+            v2(f"Handling MDEFINE model: {basename} for {gname}")
+            return mdefine
+
+        return None
+
     def add_term(self, start, end, ctr):
 
         # It's not ideal we need this
@@ -799,16 +854,25 @@ class ModelExpression:
             outlist = self.out[i - 1]
             gname = self.mkname(ctr, grp)
 
-            mdl, store = self.try_tablemodel(basename, gname)
-            if mdl is None:
-                try:
-                    mdl = self.session.create_model_component(name, gname)
-                except ArgumentErr:
-                    raise ValueError(f"Unrecognized XSPEC model '{basename}' in {self.expr}") from None
+            # TODO: need a structured datatype for outlist
+            mdl = self.try_mdefine(basename, gname)
+            if mdl is not None:
+                outlist.append({"type": "MDEFINE",
+                                "args": (mdl, basename, gname)})
 
-                outlist.append((mdl.name.split('.'), mdl))
-            else:
-                outlist.append(store)
+            elif mdl is None:
+                mdl, store = self.try_tablemodel(basename, gname)
+                if mdl is not None:
+                    outlist.append({"type": "TABLEMODEL",
+                                    "args": store})
+                else:
+                    try:
+                        mdl = self.session.create_model_component(name, gname)
+                    except ArgumentErr:
+                        raise ValueError(f"Unrecognized XSPEC model '{basename}' in {self.expr}") from None
+
+                    outlist.append({"type": "XSPEC",
+                                    "args": (mdl.name.split('.'), mdl)})
 
             # This only needs to be checked for the first group,
             # **but** we change outlist, which makes me think we need
@@ -816,7 +880,7 @@ class ModelExpression:
             # is going on.
             #
             if i == 1:
-                if isinstance(mdl, xspec.XSConvolutionKernel):
+                if is_model_convolution(mdl):
                     v2(" - it's a convolution model")
 
                     # Track a new convolution term
@@ -825,19 +889,22 @@ class ModelExpression:
 
                     # start a new entry to track the bracket depth
                     self.depth.append(0)
-                    outlist.append(("(", None))
+                    outlist.append({"type": "TOKEN",
+                                    "args": "("})
                     continue
 
-                if isinstance(mdl, xspec.XSMultiplicativeModel):
+                if is_model_multiplicative(mdl):
                     v2(" - it's a multiplicative model")
                     self.lastterm[-1].append(Term.MUL)
                     continue
 
-                if isinstance(mdl, xspec.XSAdditiveModel):
+                if is_model_additive(mdl):
                     v2(" - it's an additive model")
                     self.lastterm[-1].append(Term.ADD)
                     continue
 
+                # At this point mdl can not be a MDefine object.
+                #
                 if isinstance(mdl, xspec.XSTableModel):
                     if mdl.addmodel:
                         v2(" - it's an additive table model")
@@ -857,7 +924,8 @@ class ModelExpression:
         "Not sure about this"
         v2(f"Adding token [{token}]")
         for outlist in self.out:
-            outlist.append((token, None))
+            outlist.append({"type": "TOKEN",
+                            "args": token})
 
     def open_sep(self, prefix=None):
 
@@ -866,8 +934,10 @@ class ModelExpression:
 
         for outlist in self.out:
             if prefix is not None:
-                outlist.append((prefix, None))
-            outlist.append(('(', None))
+                outlist.append({"type": "TOKEN",
+                                "args": prefix})
+            outlist.append({"type": "TOKEN",
+                            "args": '('})
 
         # We have a new context for the token list
         #
@@ -880,10 +950,12 @@ class ModelExpression:
         assert self.depth[-1] >= 0, self.depth
 
         for outlist in self.out:
-            outlist.append((')', None))
+            outlist.append({"type": "TOKEN",
+                            "args": '('})
 
             if postfix is not None:
-                outlist.append((postfix, None))
+                outlist.append({"type": "TOKEN",
+                                "args": postfix})
 
         tokens = self.lastterm.pop()
         v2(f" - closing out sub-expression {tokens}")
@@ -910,7 +982,8 @@ class ModelExpression:
         v2("Ending convolution")
 
         for outlist in self.out:
-            outlist.append((")", None))
+            outlist.append({"type": "TOKEN",
+                            "args": ")"})
 
         self.depth.pop()
         self.lastterm.pop()
@@ -974,11 +1047,11 @@ class ModelExpression:
                 while True:
                     token = outlist[idx]
                     idx -= 1
-                    if token == (')', None):
+                    if token == {"type": "TOKEN", "args": ')'}:
                         count += 1
                         continue
 
-                    if token != ('(', None):
+                    if token != {"type": "TOKEN", "args": '('}:
                         continue
 
                     if count == 0:
@@ -1025,11 +1098,23 @@ def create_source_expression(expr):
     "create a readable source expression"
 
     v3(f"Processing an expression of {len(expr)} terms")
-    def conv(t):
-        if t[1] is None:
-            return t[0]
+    v3(f"Expression: {expr}")
 
-        return t[0][1]
+    def conv(t):
+        args = t["args"]
+        if t["type"] == "TOKEN":
+            return args
+
+        if t["type"] == "XSPEC":
+            return args[0][1]
+
+        if t["type"] == "TABLEMODEL":
+            return args[0][1]
+
+        if t["type"] == "MDEFINE":
+            return args[2]
+
+        raise ValueError(f"Unexpected expression '{t}'")
 
     cpts = [conv(t) for t in expr]
     out = "".join(cpts)
@@ -1037,7 +1122,7 @@ def create_source_expression(expr):
     return out
 
 
-def convert_model(expr, postfix, groups, names):
+def convert_model(expr, postfix, groups, names, mdefines):
     """Extract the model components.
 
     Model names go from m1 to mn (when groups is empty) or
@@ -1055,6 +1140,7 @@ def convert_model(expr, postfix, groups, names):
     names : set of str
         The names we have created (will be updated). This is just
         for testing.
+    mdefines : list of MDefine
 
     Returns
     -------
@@ -1088,7 +1174,8 @@ def convert_model(expr, postfix, groups, names):
     end = 0
     mnum = 1
 
-    process = ModelExpression(expr, groups, postfix, names)
+    process = ModelExpression(expr, groups, postfix, names,
+                              mdefines=mdefines)
 
     # Scan through each character and when we have identified a term
     # "seperator" then process the preceeding token. We assume the
@@ -1132,6 +1219,7 @@ def convert_model(expr, postfix, groups, names):
             if end == 0:
                 process.open_sep()
             else:
+                v3(f"Processing ?")
                 mnum = process.add_term(start, end, mnum)
 
                 if process.in_convolution() and len(process.lastterm[-1]) == 0:
@@ -1216,10 +1304,249 @@ def convert_model(expr, postfix, groups, names):
     return out
 
 
+UNOP_TOKENS = ["EXP",
+               "SIN",
+               "SIND",
+               "COS",
+               "COSD",
+               "TAN",
+               "TAND",
+               "SINH",
+               "SINHD",
+               "COSH",
+               "COSHD",
+               "TANH",
+               "TANHD",
+               "LOG",
+               "LN",
+               "SQRT",
+               "ABS",
+               "INT",
+               "ASIN",
+               "ACOS",
+               "ATAN",
+               "ASINH",
+               "ACOSH",
+               "ATANH",
+               "ERF",
+               "ERFC",
+               "GAMMA",
+               "SIGN",
+               "HEAVISIDE",
+               "BOXCAR",
+               "MEAN",
+               "DIM",
+               "SMIN",
+               "SMAX"]
+
+BINOP_TOKENS = ["ATAN2", "MAX", "MIN"]
+
+
+def parse_mdefine_expr(expr: str, mdefines: List[MDefine]) -> List[str]:
+    """Parse the model expression.
+
+    This is incomplete, as all we do is find what appear to be
+    the model parameters.
+
+    Parameters
+    ----------
+    expr : str
+        The model expression
+    mdefines : list of MDefine
+        The existing model definitions.
+
+    Returns
+    -------
+    pars : list of str
+        The parameter names found in the model.
+
+    """
+
+    if not expr:
+        raise ValueError(f"Model expression can not be empty")
+
+    KNOWN_MODELS = [n[2:].upper() for n in ui.list_models("xspec")] + \
+        [m.name.upper() for m in mdefines]
+
+    seen = set()
+    pnames = []
+
+    def known(symbol: str) -> bool:
+        # Not going for efficiency here
+        if symbol in ["E", ".E"]:
+            return True
+
+        if symbol in UNOP_TOKENS:
+            return True
+
+        if symbol in BINOP_TOKENS:
+            return True
+
+        if symbol in KNOWN_MODELS:
+            return True
+
+        # Maybe it's a number
+        try:
+            float(symbol)
+            return True
+        except:
+            return False
+
+    stack = list(expr)
+    current = ""
+    while stack:
+        c = stack.pop(0)
+
+        # To do this properly we'd do a look-ahead to check
+        # for '**', but for now we just treat "**" as two
+        # separate elements, and so we have to allow current
+        # to be empty.
+        #
+        if c in " ()+-*/^,":
+            if not current:
+                continue
+
+            # Is this a token we can ignore
+            #  - known unop: exp, sin, ..., smax
+            #  - known binop: atan2, max, min
+            #  - previous mdefine model
+            #  - xspec model name
+            #  - e or E or .e or .E
+            #
+            ucurrent = current.upper()
+            if known(ucurrent):
+                current = ""
+                continue
+
+            # Assume this is a parameter
+            #
+            if ucurrent not in seen:
+                pnames.append(current)
+                seen.add(ucurrent)
+
+            current = ""
+            continue
+
+        current += c
+
+    # There may be a trailing word
+    if current and not known(current.upper()):
+        pnames.append(current)
+
+    return pnames
+
+
+def process_mdefine(xline: str, mdefines: List[MDefine]) -> MDefine:
+    """Parse a mdefine line.
+
+    Parameters
+    ----------
+    xline : str
+        The line to process.
+    mdefines : list of MDefine
+        The already-processed mdefines (in case the model expression
+        makes use of one).
+
+    Returns
+    -------
+    mdefine : MDefine
+        A representation of the model.
+
+    Notes
+    -----
+    Tries to follow
+    https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSmdefine.html
+
+    The returned model may redfine an existing element in mdefines,
+    although I'm not sure that's likely in a XCM file.
+
+    """
+
+    # For the moment we require that the line start with 'mdefine '
+    xline = xline[7:].strip()
+
+    if not xline:
+        raise ValueError(f"No name or expression in '{xline}'")
+
+    # Strip off any options. We assume that : can only exist once,
+    # if given (the documentation is unclear)
+    #
+    toks = xline.split(":")
+    if len(toks) > 2:
+        raise ValueError(f"Expected only one : in '{xline}'")
+
+    name, expr = toks[0].strip().split(" ", 1)
+
+    # For now we do not parse the expression other than to try
+    # and grab the parameter names.
+    #
+    params = parse_mdefine_expr(expr, mdefines)
+
+    mtype = Term.ADD
+    erange = None
+    if len(toks) == 2:
+
+        stoks = toks[1].strip().split(" ")
+        nstoks = len(stoks)
+        if nstoks > 3:
+            raise ValueError(f"Expected ': <type> <emin> <emax>' in '{xline}'")
+
+        # It looks like can have 1, 2, or 3 values
+        #   - 1: type
+        #   - 2: emin emax
+        #   - 3: type emin emax
+        #
+        if nstoks != 2:
+            mtok = stoks.pop(0).upper()
+            try:
+                mtype = MODEL_TYPES[mtok]
+            except KeyError:
+                raise ValueError(f"Unknown model type '{mtok}' in '{xline}'") from None
+
+        if nstoks > 1:
+            emin = float(stoks[0])
+            emax = float(stoks[1])
+            erange = [emin, emax]
+
+    return MDefine(name=name,
+                   params=params,
+                   expr=expr,
+                   mtype=mtype,
+                   erange=erange)
+
+
+def get_model_from_token(t):
+    """Pulled out of convert"""
+
+    args = t["args"]
+    if t["type"] == "XSPEC":
+        return args[1]
+
+    if t["type"] == "TABLEMODEL":
+        return args[1]
+
+    if t["type"] == "MDEFINE":
+        # Send the definiton and the name of the model component
+        return (args[0], args[2])
+
+    raise ValueError(f"Unsupported type: {t}")
+
+
+def get_models_from_expr(expr):
+    """Pulled out of convert"""
+
+    return [get_model_from_token(t)
+            for t in expr
+            if t["type"] != "TOKEN"]
+
+
 # The conversion routine. The functionality needs to be split out
 # of this.
 #
-def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
+def convert(infile: Any,  # to hard to type this
+            chisq: str = "chi2datavar",
+            clean: bool = False,
+            explicit: Optional[str] = None) -> str:
     """Convert a XSPEC xcm file into Sherpa commands.
 
     The XSPEC save command will create an ASCII representation of the
@@ -1269,7 +1596,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
 
         out_imports.append(expr)
 
-    out = []
+    out: List[str] = []
 
     def add_spacer(always=True):
         if not always and len(out) > 0 and out[-1] == '':
@@ -1321,28 +1648,41 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
 
     # Store information about datasets, responses, and models.
     #
-    state = {'nodata': True,  # set once a data command is found
+    state: Dict[str, Any] = {
+        'nodata': True,  # set once a data command is found
 
-             'statistic': 'chi',
-             'subtracted': False,
-             'nobackgrounds': [], # contains dataset with no background
+        'statistic': 'chi',
+        'subtracted': False,
+        'nobackgrounds': [], # contains dataset with no background
 
-             # I still don't have a good grasp on the internal structures
-             # used by XSPEC, so I have both 'group' and 'sourcenum'.
-             #
-             'group': defaultdict(list),
-             'datasets': [],
+        # I still don't have a good grasp on the internal structures
+        # used by XSPEC, so I have both 'group' and 'sourcenum'.
+        #
+        'group': defaultdict(list),
+        'datasets': [],
 
-             # Map of those datasets with extra sourcenum values,
-             # and then the map of what sourcenum values are
-             # associated with each dataset.
-             #
-             'sourcenum': defaultdict(list),
-             'datanum': defaultdict(list),
-             'exprs': {},
-             'allpars': {},
-             'names': set()
+        # Map of those datasets with extra sourcenum values,
+        # and then the map of what sourcenum values are
+        # associated with each dataset.
+        #
+        'sourcenum': defaultdict(list),
+        'datanum': defaultdict(list),
+        'exprs': {},
+        'allpars': {},
+        'names': set(),
+
+        # The known user-models created by mdefine.
+        # At the moment we do not handle them (i.e.
+        # create usable usermodels).
+        #
+        'mdefines': [],
     }
+
+    # A warning message is displayed if a MDEFINE command is processed
+    # since we do not fully support it. We only need to report it
+    # once.
+    #
+    REPORTED_MDEFINE = False
 
     # Processing is just a hard-coded set of rules.
     #
@@ -1529,6 +1869,45 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
             parse_notice_range(add_import, add, state['datasets'], command, toks[1:])
             continue
 
+        if command == 'mdefine':
+            if not REPORTED_MDEFINE:
+                v1("Found MDEFINE command: please consult 'ahelp convert_xspec_script'")
+                REPORTED_MDEFINE = True
+
+            mdefine = process_mdefine(xline, state["mdefines"])
+
+            # We may over-write an existing model, but I am not
+            # convinced this will result in a usable XCM file if it
+            # happens.
+            #
+            for idx, m in state["mdefines"]:
+                if m.name != mdefine.name:
+                    continue
+
+                # There should only be a single value
+                del state["mdefines"][idx]
+                break
+
+            state["mdefines"].append(mdefine)
+
+            # We have to define the model function here, as the MODEL
+            # command will cause the model function to be converted
+            # into a user model.
+            #
+            madd("")
+            madd(f"# mdefine {mdefine.name} {mdefine.expr} : {mdefine.mtype}")
+            madd(f"def model_{mdefine.name}(pars, elo, ehi):")
+            for idx, par in enumerate(mdefine.params):
+                madd(f"    {par} = args[{idx}]")
+
+            madd("    emid = (elo + ehi) / 2")
+            if mdefine.mtype == Term.ADD:
+                madd("    de = ehi - elo")
+
+            madd(f"    raise RuntimeError('model to write: {mdefine.expr}')")
+            madd("\n")  # want two bare lines
+            continue
+
         if command == 'model':
             # Need some place to set up subtract calls, so pick here
             #
@@ -1594,7 +1973,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
             if len(groups) == 0:
                 raise RuntimeError("The script is currently unable to handle the input file")
 
-            exprs = convert_model(rest, postfix, groups, state['names'])
+            exprs = convert_model(rest, postfix, groups, state['names'], state['mdefines'])
 
             assert sourcenum not in state['exprs'], sourcenum
             state['exprs'][sourcenum] = exprs
@@ -1606,29 +1985,43 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
             # This is complicated by the need to support table models.
             for expr in exprs:
                 for cpt in expr:
-                    if cpt[1] is None:
+                    if cpt["type"] == "TOKEN":
                         continue
 
-                    if cpt[0][0] == 'tablemodel':
-                        assert len(cpt[0]) == 4, cpt
-                        mname = cpt[0][1]
-                        tfile = cpt[0][2]
-                        ttype = cpt[0][3]
+                    args = cpt["args"]
+                    if cpt["type"] == 'TABLEMODEL':
+                        assert len(args[0]) == 4, cpt
+                        mname = args[0][1]
+                        tfile = args[0][2]
+                        ttype = args[0][3]
                         if ttype == 'etable':
-                            madd(f"XXload_xstable_model('{mname}', '{tfile}', etable=True)",
-                                 expand=True)
+                            kwargs = {"etable": True}
                         else:
-                            madd(f"XXload_xstable_model('{mname}', '{tfile}')",
-                                 expand=True)
+                            kwargs = {}
+
+                        add("load_xstable_model", f"'{mname}'", f"'{tfile}'",
+                            expand=True, **kwargs)
 
                         # Not really needed but just in case
                         madd(f"{mname} = XXget_model_component('{mname}')",
                              expand=True)
+                        continue
 
-                    else:
-                        mtype, mname = cpt[0]
+                    if cpt["type"] == 'XSPEC':
+                        mtype, mname = args[0]
                         madd(f"{mname} = XXcreate_model_component('{mtype}', '{mname}')",
                              expand=True)
+                        continue
+
+                    if cpt["type"] == 'MDEFINE':
+                        mdefine, mname, gname = args
+                        add("load_user_model", f"'model_{mname}'", f"'{gname}'",
+                            expand=True)
+                        add("add_user_pars", f"'{gname}'", str(mdefine.params),
+                            expand=True)
+                        continue
+
+                    raise ValueError(f"Unexpected token: {cpt}")
 
             # Create the list of all parameters, so we can set up links.
             # Note that we store these with the label, not sourcenumber,
@@ -1637,12 +2030,24 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
             assert label not in state['allpars'], label
             state['allpars'][label] = []
             for expr in exprs:
-                for mdl in [t[1] for t in expr if t[1] is not None]:
-                    for par in mdl.pars:
-                        if par.hidden:
-                            continue
+                # This is tricky to do as we need to support mdefine
+                # models, which are hard to query.
+                #
+                mdls = get_models_from_expr(expr)
+                for mdl in mdls:
+                    try:
+                        for par in mdl.pars:
+                            if par.hidden:
+                                continue
 
-                        state['allpars'][label].append(par)
+                            state['allpars'][label].append(par)
+
+                    except AttributeError:
+                        # Assume a MDefine
+                        mdef, cname = mdl
+                        for pname in mdef.params:
+                            # CHECK: does this need a parameter object?
+                            state["allpars"][label].append(f"{cname}.{pname}")
 
             # Process all the parameter values for each data group.
             #
@@ -1651,24 +2056,36 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
                 if escape:
                     break
 
-                for mdl in [t[1] for t in expr if t[1] is not None]:
+                mdls = get_models_from_expr(expr)
+                for mdl in mdls:
                     if escape:
                         break
 
-                    for par in mdl.pars:
-                        if par.hidden:
-                            continue
+                    pars = []
+                    try:
+                        for par in mdl.pars:
+                            if par.hidden:
+                                continue
 
+                            # need par.name / par.fullname
+                            pars.append((par.fullname, par.min, par.max))
+
+                    except AttributeError:
+                        mdef, cname = mdl
+                        pars = [(f"{cname}.{pname}", None, None)
+                                for pname in mdef.params]
+
+                    for par in pars:
                         # Grab the parameter line
                         try:
                             pline = intext.pop(0).strip()
                         except IndexError:
-                            v1(f"Unable to find parameter value for {par.name} - skipping other parameters")
+                            v1(f"Unable to find parameter value for {par[0]} - skipping other parameters")
                             escape = True
                             break
 
                         if pline.startswith('='):
-                            parse_tie(state['allpars'], add_import, add, par, pline)
+                            parse_tie(state['allpars'], add_import, add, par[0], pline)
                             continue
 
                         toks = pline.split()
@@ -1682,13 +2099,13 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
                         lmin = float(toks[3])
                         lmax = float(toks[4])
 
-                        args = [par.fullname, toks[0]]
+                        args = [par[0], toks[0]]
                         kwargs = {}
 
-                        if lmin != par.min:
+                        if par[1] is None or lmin != par[1]:
                             kwargs['min'] = toks[3]
 
-                        if lmax != par.max:
+                        if par[2] is None or lmax != par[2]:
                             kwargs['max'] = toks[4]
 
                         if toks[1].startswith('-'):
