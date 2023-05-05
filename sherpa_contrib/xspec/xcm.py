@@ -31,7 +31,7 @@ analysis in Sherpa.
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 import numpy as np
 
@@ -757,7 +757,12 @@ def is_model_additive(mdl: Union[xspec.XSModel, MDefine]) -> bool:
 class ModelExpression:
     """Construct a model expression."""
 
-    def __init__(self, expr, groups, postfix, names, mdefines):
+    def __init__(self,
+                 expr: str,
+                 groups: List[Any],
+                 postfix: str,
+                 names: Set[str],
+                 mdefines: List[MDefine]) -> None:
         self.expr = expr
         self.groups = groups
         self.ngroups = len(groups)
@@ -769,7 +774,8 @@ class ModelExpression:
         #    [[]] * self.ngroups
         # but this aliases the lists so they are all the same.
         #
-        self.out = [[] for i in range(self.ngroups)]
+        # ToDo: store a structure here
+        self.out: List[List[Any]] = [[] for i in range(self.ngroups)]
 
         # Record the number of brackets at the current "convolution level".
         # When a convolution is started we add an entry to the end of the
@@ -783,7 +789,7 @@ class ModelExpression:
         # Term enumeration. Note that this tracks a combination of
         # paranthesis and convolution depth.
         #
-        self.lastterm = [[]]  # treat as a stack
+        self.lastterm: List[List[Term]] = [[]]  # treat as a stack
 
         # Create our own session object to make it easy to
         # find out XSPEC models and the correct naming scheme.
@@ -951,7 +957,7 @@ class ModelExpression:
 
         for outlist in self.out:
             outlist.append({"type": "TOKEN",
-                            "args": '('})
+                            "args": ')'})
 
             if postfix is not None:
                 outlist.append({"type": "TOKEN",
@@ -2037,6 +2043,7 @@ def convert(infile: Any,  # to hard to type this
                 for mdl in mdls:
                     try:
                         for par in mdl.pars:
+                            assert isinstance(par, xspec.XSModel)  # for mypy
                             if par.hidden:
                                 continue
 
@@ -2064,6 +2071,7 @@ def convert(infile: Any,  # to hard to type this
                     pars = []
                     try:
                         for par in mdl.pars:
+                            assert isinstance(par, xspec.XSModel)  # for mypy
                             if par.hidden:
                                 continue
 
@@ -2075,17 +2083,17 @@ def convert(infile: Any,  # to hard to type this
                         pars = [(f"{cname}.{pname}", None, None)
                                 for pname in mdef.params]
 
-                    for par in pars:
+                    for pname, pmin, pmax in pars:
                         # Grab the parameter line
                         try:
                             pline = intext.pop(0).strip()
                         except IndexError:
-                            v1(f"Unable to find parameter value for {par[0]} - skipping other parameters")
+                            v1(f"Unable to find parameter value for {pname} - skipping other parameters")
                             escape = True
                             break
 
                         if pline.startswith('='):
-                            parse_tie(state['allpars'], add_import, add, par[0], pline)
+                            parse_tie(state['allpars'], add_import, add, pname, pline)
                             continue
 
                         toks = pline.split()
@@ -2102,10 +2110,10 @@ def convert(infile: Any,  # to hard to type this
                         args = [par[0], toks[0]]
                         kwargs = {}
 
-                        if par[1] is None or lmin != par[1]:
+                        if pmin is None or lmin != pmin:
                             kwargs['min'] = toks[3]
 
-                        if par[2] is None or lmax != par[2]:
+                        if pmax is None or lmax != pmax:
                             kwargs['max'] = toks[4]
 
                         if toks[1].startswith('-'):
