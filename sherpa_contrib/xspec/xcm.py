@@ -1442,6 +1442,10 @@ def parse_mdefine_expr(expr: str, mdefines: List[MDefine]) -> List[str]:
     return pnames
 
 
+# TODO: ModelExpression creates it's own session with the XSPEC models
+# loaded. Perhaps this session should be used here and then sent to
+# ModelExpression?
+#
 def process_mdefine(xline: str, mdefines: List[MDefine]) -> MDefine:
     """Parse a mdefine line.
 
@@ -2043,7 +2047,7 @@ def convert(infile: Any,  # to hard to type this
                 for mdl in mdls:
                     try:
                         for par in mdl.pars:
-                            assert isinstance(par, xspec.XSModel)  # for mypy
+                            assert isinstance(par, sherpa.models.parameter.Parameter)  # for mypy
                             if par.hidden:
                                 continue
 
@@ -2071,7 +2075,7 @@ def convert(infile: Any,  # to hard to type this
                     pars = []
                     try:
                         for par in mdl.pars:
-                            assert isinstance(par, xspec.XSModel)  # for mypy
+                            assert isinstance(par, sherpa.models.parameter.Parameter)  # for mypy
                             if par.hidden:
                                 continue
 
@@ -2107,19 +2111,19 @@ def convert(infile: Any,  # to hard to type this
                         lmin = float(toks[3])
                         lmax = float(toks[4])
 
-                        args = [par[0], toks[0]]
-                        kwargs = {}
+                        pargs = [pname, toks[0]]
+                        pkwargs = {}
 
                         if pmin is None or lmin != pmin:
-                            kwargs['min'] = toks[3]
+                            pkwargs['min'] = toks[3]
 
                         if pmax is None or lmax != pmax:
-                            kwargs['max'] = toks[4]
+                            pkwargs['max'] = toks[4]
 
                         if toks[1].startswith('-'):
-                            kwargs['frozen'] = True
+                            pkwargs['frozen'] = True
 
-                        add('set_par', *args, **kwargs)
+                        add('set_par', *pargs, **pkwargs)
 
             continue
 
