@@ -31,7 +31,7 @@ analysis in Sherpa.
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
@@ -360,7 +360,7 @@ def xmax(x, y):
 
 # Routines used in converting a script.
 #
-def set_subtract(add_import, add_spacer, add, state):
+def set_subtract(add_import, add_spacer, add, state) -> None:
     """Ensure the data is subtracted (as much as we can tell)."""
 
     if state['nodata'] or state['subtracted'] or not state['statistic'].startswith('chi'):
@@ -379,7 +379,7 @@ def set_subtract(add_import, add_spacer, add, state):
     state['subtracted'] = True
 
 
-def parse_tie(pars, add_import, add, par, pline):
+def parse_tie(pars, add_import, add, par, pline) -> None:
     """Parse a tie line.
 
     The idea is to convert p<integer> or <integer> to the
@@ -468,7 +468,7 @@ def parse_tie(pars, add_import, add, par, pline):
     add('link', par, expr)
 
 
-def expand_token(add_import, pars, pname, token):
+def expand_token(add_import, pars, pname, token) -> str:
     """Is this a reference to a parameter?
 
     Ideally we'd add a '.val' to the parameter value when we
@@ -558,7 +558,7 @@ def expand_token(add_import, pars, pname, token):
     return tpar.fullname
 
 
-def parse_dataid(token):
+def parse_dataid(token: str) -> Tuple[Optional[int], int]:
     """Convert '[<data group #>:] <spectrum #>' to values.
 
     Parameters
@@ -577,17 +577,17 @@ def parse_dataid(token):
         raise ValueError(emsg)
 
     try:
-        toks = [int(t) for t in toks]
+        itoks = [int(t) for t in toks]
     except ValueError:
         raise ValueError(emsg) from None
 
     if ntoks == 2:
-        return toks[0], toks[1]
+        return itoks[0], itoks[1]
 
-    return None, toks[0]
+    return None, itoks[0]
 
 
-def parse_ranges(ranges):
+def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[int], Optional[int]]]]:
     """Convert a-b,... to a set of ranges.
 
     Parameters
@@ -648,7 +648,11 @@ def parse_ranges(ranges):
     return chantype, out
 
 
-def parse_notice_range(add_import, add, datasets, command, tokens):
+def parse_notice_range(add_import: Callable,
+                       add: Callable,
+                       datasets: List[int],
+                       command: str,
+                       tokens: List[str]) -> None:
     """Handle the notice range.
 
     Parameters
@@ -754,6 +758,36 @@ def is_model_additive(mdl: Union[xspec.XSModel, MDefine]) -> bool:
     return isinstance(mdl, xspec.XSAdditiveModel)
 
 
+@dataclass
+class Tokenized:
+    """A general token"""
+
+    value: str  # the token to display
+
+
+@dataclass
+class XSPECModelToken(Tokenized):
+    """Represent an XSPEC model"""
+
+    xspec_model: xspec.XSModel
+
+
+@dataclass
+class XSPECTableModelToken(Tokenized):
+    """Represent an XSPEC table model"""
+
+    table_model: xspec.XSTableModel
+    table: str
+
+
+@dataclass
+class MDefineToken(Tokenized):
+    """Represent a MDEFINE model"""
+
+    mdef_model: MDefine
+
+
+
 class ModelExpression:
     """Construct a model expression."""
 
@@ -774,8 +808,7 @@ class ModelExpression:
         #    [[]] * self.ngroups
         # but this aliases the lists so they are all the same.
         #
-        # ToDo: store a structure here
-        self.out: List[List[Any]] = [[] for i in range(self.ngroups)]
+        self.out: List[List[Tokenized]] = [[] for i in range(self.ngroups)]
 
         # Record the number of brackets at the current "convolution level".
         # When a convolution is started we add an entry to the end of the
@@ -800,7 +833,7 @@ class ModelExpression:
                                        xspec.XSMultiplicativeModel,
                                        xspec.XSConvolutionKernel))
 
-    def mkname(self, ctr, grp):
+    def mkname(self, ctr: int, grp: str) -> str:
         n = f"m{ctr}{self.postfix}"
         if self.ngroups > 1:
             n += f"g{grp}"
@@ -811,11 +844,12 @@ class ModelExpression:
         self.names.add(n)
         return n
 
-    def try_tablemodel(self, basename, gname):
+    # TODO: what does try_tablemodel need to return?
+    def try_tablemodel(self, basename: str, gname: str) -> Optional[Tuple[xspec.XSTableModel, Tuple[str, str]]]:
         if not basename.startswith('etable{') and \
            not basename.startswith('mtable{') and \
            not basename.startswith('atable{'):
-            return None, None
+            return None
 
         if not basename.endswith('}'):
             raise ValueError(f"No }} in {basename}")
@@ -832,7 +866,7 @@ class ModelExpression:
             raise ValueError(f"Unable to find XSPEC table model: {basename}") from None
 
         mdl = self.session.get_model_component(gname)
-        return mdl, (['tablemodel', gname, tbl, basename[:6]], mdl)
+        return mdl, (gname, tbl)
 
     def try_mdefine(self, basename: str, gname: str) -> Optional[MDefine]:
         """Is this a mdefine model?"""
@@ -846,7 +880,7 @@ class ModelExpression:
 
         return None
 
-    def add_term(self, start, end, ctr):
+    def add_term(self, start: int, end: int, ctr: int) -> int:
 
         # It's not ideal we need this
         if start == end:
@@ -860,25 +894,23 @@ class ModelExpression:
             outlist = self.out[i - 1]
             gname = self.mkname(ctr, grp)
 
-            # TODO: need a structured datatype for outlist
             mdl = self.try_mdefine(basename, gname)
             if mdl is not None:
-                outlist.append({"type": "MDEFINE",
-                                "args": (mdl, basename, gname)})
+                outlist.append(MDefineToken(gname, mdef_model=mdl))
 
             elif mdl is None:
-                mdl, store = self.try_tablemodel(basename, gname)
-                if mdl is not None:
-                    outlist.append({"type": "TABLEMODEL",
-                                    "args": store})
+                answer = self.try_tablemodel(basename, gname)
+                if answer is not None:
+                    mdl, store = answer
+                    outlist.append(XSPECTableModelToken(store[0], table_model=mdl,
+                                                        table=store[1]))
                 else:
                     try:
                         mdl = self.session.create_model_component(name, gname)
                     except ArgumentErr:
                         raise ValueError(f"Unrecognized XSPEC model '{basename}' in {self.expr}") from None
 
-                    outlist.append({"type": "XSPEC",
-                                    "args": (mdl.name.split('.'), mdl)})
+                    outlist.append(XSPECModelToken(gname, xspec_model=mdl))
 
             # This only needs to be checked for the first group,
             # **but** we change outlist, which makes me think we need
@@ -895,8 +927,7 @@ class ModelExpression:
 
                     # start a new entry to track the bracket depth
                     self.depth.append(0)
-                    outlist.append({"type": "TOKEN",
-                                    "args": "("})
+                    outlist.append(Tokenized("("))
                     continue
 
                 if is_model_multiplicative(mdl):
@@ -926,47 +957,43 @@ class ModelExpression:
 
         return ctr + 1
 
-    def add_token(self, token):
+    def add_token(self, token: str) -> None:
         "Not sure about this"
         v2(f"Adding token [{token}]")
         for outlist in self.out:
-            outlist.append({"type": "TOKEN",
-                            "args": token})
+            outlist.append(Tokenized(token))
 
-    def open_sep(self, prefix=None):
+    def open_sep(self, prefix: Optional[str] = None) -> None:
 
         self.depth[-1] += 1
         v2(f"Adding token (   depth={self.depth}")
 
         for outlist in self.out:
             if prefix is not None:
-                outlist.append({"type": "TOKEN",
-                                "args": prefix})
-            outlist.append({"type": "TOKEN",
-                            "args": '('})
+                outlist.append(Tokenized(prefix))
+
+            outlist.append(Tokenized("("))
 
         # We have a new context for the token list
         #
         self.lastterm.append([])
 
-    def close_sep(self, postfix=None):
+    def close_sep(self, postfix: Optional[str] = None) -> None:
 
         v2(f"Adding token )   depth={self.depth}")
         self.depth[-1] -= 1
         assert self.depth[-1] >= 0, self.depth
 
         for outlist in self.out:
-            outlist.append({"type": "TOKEN",
-                            "args": ')'})
+            outlist.append(Tokenized(")"))
 
             if postfix is not None:
-                outlist.append({"type": "TOKEN",
-                                "args": postfix})
+                outlist.append(Tokenized(postfix))
 
         tokens = self.lastterm.pop()
         v2(f" - closing out sub-expression {tokens}")
 
-    def check_end_convolution(self):
+    def check_end_convolution(self) -> bool:
         """Returns True is this ends the convolution, False otherwise"""
 
         # We track the convolution "depth" with the depth field as the
@@ -988,24 +1015,23 @@ class ModelExpression:
         v2("Ending convolution")
 
         for outlist in self.out:
-            outlist.append({"type": "TOKEN",
-                            "args": ")"})
+            outlist.append(Tokenized(")"))
 
         self.depth.pop()
         self.lastterm.pop()
         return True
 
-    def in_convolution(self):
+    def in_convolution(self) -> bool:
         """Are we in a convolution expression?"""
 
         # return len(self.lastterm) > 1 and self.lastterm[1][0] == Term.CON
         return len(self.depth) > 1
 
-    def lastterm_is_openbracket(self):
+    def lastterm_is_openbracket(self) -> bool:
         last = self.out[0][-1]
-        return last[1] is None and last[0] == "("
+        return last.value == "("
 
-    def remove_unneeded_open_bracket(self):
+    def remove_unneeded_open_bracket(self) -> bool:
 
         # We currently skip this optimization
         #
@@ -1053,11 +1079,11 @@ class ModelExpression:
                 while True:
                     token = outlist[idx]
                     idx -= 1
-                    if token == {"type": "TOKEN", "args": ')'}:
+                    if token.value == ")":
                         count += 1
                         continue
 
-                    if token != {"type": "TOKEN", "args": '('}:
+                    if token.value != ")":
                         continue
 
                     if count == 0:
@@ -1100,29 +1126,17 @@ class ModelExpression:
         return True
 
 
-def create_source_expression(expr):
+def create_source_expression(expr: List[Tokenized]) -> str:
     "create a readable source expression"
 
     v3(f"Processing an expression of {len(expr)} terms")
     v3(f"Expression: {expr}")
 
-    def conv(t):
-        args = t["args"]
-        if t["type"] == "TOKEN":
-            return args
+    # DEBUG
+    if any(not isinstance(t, Tokenized) for t in expr):
+        raise ValueError("Internal error: not tokenized {expr}")
 
-        if t["type"] == "XSPEC":
-            return args[0][1]
-
-        if t["type"] == "TABLEMODEL":
-            return args[0][1]
-
-        if t["type"] == "MDEFINE":
-            return args[2]
-
-        raise ValueError(f"Unexpected expression '{t}'")
-
-    cpts = [conv(t) for t in expr]
+    cpts = [t.value for t in expr]
     out = "".join(cpts)
     v3(f" -> {out}")
     return out
@@ -1525,29 +1539,33 @@ def process_mdefine(xline: str, mdefines: List[MDefine]) -> MDefine:
                    erange=erange)
 
 
-def get_model_from_token(t):
+def get_model_from_token(t: Tokenized) -> Optional[Union[xspec.XSModel, Tuple[MDefine, str]]]:
     """Pulled out of convert"""
 
-    args = t["args"]
-    if t["type"] == "XSPEC":
-        return args[1]
+    if isinstance(t, XSPECModelToken):
+        return t.xspec_model
 
-    if t["type"] == "TABLEMODEL":
-        return args[1]
+    if isinstance(t, XSPECTableModelToken):
+        return t.table_model
 
-    if t["type"] == "MDEFINE":
-        # Send the definiton and the name of the model component
-        return (args[0], args[2])
+    if isinstance(t, MDefineToken):
+        return (t.mdef_model, t.value)
 
-    raise ValueError(f"Unsupported type: {t}")
+    return None
 
 
 def get_models_from_expr(expr):
     """Pulled out of convert"""
 
-    return [get_model_from_token(t)
-            for t in expr
-            if t["type"] != "TOKEN"]
+    out = []
+    for t in expr:
+        mdl = get_model_from_token(t)
+        if mdl is None:
+            continue
+
+        out.append(mdl)
+
+    return out
 
 
 # The conversion routine. The functionality needs to be split out
@@ -1995,21 +2013,20 @@ def convert(infile: Any,  # to hard to type this
             # This is complicated by the need to support table models.
             for expr in exprs:
                 for cpt in expr:
-                    if cpt["type"] == "TOKEN":
-                        continue
+                    # safety check
+                    if not isinstance(cpt, Tokenized):
+                        raise RuntimeError(f"Internal error: not a token {cpt}")
 
-                    args = cpt["args"]
-                    if cpt["type"] == 'TABLEMODEL':
-                        assert len(args[0]) == 4, cpt
-                        mname = args[0][1]
-                        tfile = args[0][2]
-                        ttype = args[0][3]
-                        if ttype == 'etable':
+                    if isinstance(cpt, XSPECTableModelToken):
+                        mname = cpt.value
+                        mdl = cpt.table_model
+                        tablename = cpt.table
+                        if mdl.etable:
                             kwargs = {"etable": True}
                         else:
                             kwargs = {}
 
-                        add("load_xstable_model", f"'{mname}'", f"'{tfile}'",
+                        add("load_xstable_model", f"'{mname}'", f"'{tablename}'",
                             expand=True, **kwargs)
 
                         # Not really needed but just in case
@@ -2017,21 +2034,24 @@ def convert(infile: Any,  # to hard to type this
                              expand=True)
                         continue
 
-                    if cpt["type"] == 'XSPEC':
-                        mtype, mname = args[0]
+                    if isinstance(cpt, XSPECModelToken):
+                        mname = cpt.value
+                        mtype = cpt.xspec_model.type
                         madd(f"{mname} = XXcreate_model_component('{mtype}', '{mname}')",
                              expand=True)
                         continue
 
-                    if cpt["type"] == 'MDEFINE':
-                        mdefine, mname, gname = args
+                    if isinstance(cpt, MDefineToken):
+                        gname = cpt.value
+                        mname = cpt.mdef_model.name
+                        params = cpt.mdef_model.params
                         add("load_user_model", f"'model_{mname}'", f"'{gname}'",
                             expand=True)
-                        add("add_user_pars", f"'{gname}'", str(mdefine.params),
+                        add("add_user_pars", f"'{gname}'", str(params),
                             expand=True)
                         continue
 
-                    raise ValueError(f"Unexpected token: {cpt}")
+                    continue
 
             # Create the list of all parameters, so we can set up links.
             # Note that we store these with the label, not sourcenumber,
