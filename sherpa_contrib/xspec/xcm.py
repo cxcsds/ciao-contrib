@@ -98,7 +98,7 @@ class Response1D(sherpa.astro.instrument.Response1D):
         raise DataErr('norsp', pha.name)
 
 
-def notice(spectrum, lo, hi, ignore=False):
+def notice(spectrum: int, lo: int, hi: int, ignore: bool = False) -> None:
     """Apply XSPEC channel numbering to notice or ignore a range.
 
     Parameters
@@ -149,7 +149,7 @@ def notice(spectrum, lo, hi, ignore=False):
     d.notice(clo, chi, ignore=ignore)
 
 
-def ignore(spectrum, lo, hi):
+def ignore(spectrum: int, lo: int, hi: int) -> None:
     """Apply XSPEC channel numbering to ignore a range.
 
     Parameters
@@ -169,7 +169,7 @@ def ignore(spectrum, lo, hi):
     notice(spectrum, lo, hi, ignore=True)
 
 
-def subtract(spectrum):
+def subtract(spectrum: int) -> None:
     """Subtract the background (a no-op if there is no background).
 
     Parameters
@@ -184,7 +184,7 @@ def subtract(spectrum):
         v1(f"Dataset {spectrum} has no background data!")
 
 
-def _mklabel(func):
+def _mklabel(func: Callable) -> str:
     """Create a 'nice' symbol for the function.
 
     Is this worth it over just using __name__?
@@ -360,7 +360,10 @@ def xmax(x, y):
 
 # Routines used in converting a script.
 #
-def set_subtract(add_import, add_spacer, add, state) -> None:
+def set_subtract(add_import: Callable[[str], None],
+                 add_spacer: Callable[[], None],
+                 add: Callable[..., None],
+                 state: Dict[str, Any]) -> None:
     """Ensure the data is subtracted (as much as we can tell)."""
 
     if state['nodata'] or state['subtracted'] or not state['statistic'].startswith('chi'):
@@ -648,8 +651,8 @@ def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[int], Optional[i
     return chantype, out
 
 
-def parse_notice_range(add_import: Callable,
-                       add: Callable,
+def parse_notice_range(add_import: Callable[[str], None],
+                       add: Callable[..., None],
                        datasets: List[int],
                        command: str,
                        tokens: List[str]) -> None:
@@ -793,7 +796,7 @@ class ModelExpression:
 
     def __init__(self,
                  expr: str,
-                 groups: List[Any],
+                 groups: List[str],
                  postfix: str,
                  names: Set[str],
                  mdefines: List[MDefine]) -> None:
@@ -1233,7 +1236,8 @@ def convert_model(expr, postfix, groups, names, mdefines):
 
         # What does an open-bracket mean?
         # It can imply multiplication, wrapping a term in
-        # a convolution model, or an actual bracket.
+        # a convolution model, or an actual bracket (which may
+        # or may not be needed).
         #
         if char == "(":
             if end == 0:
@@ -1760,8 +1764,8 @@ def convert(infile: Any,  # to hard to type this
             continue
 
         if command in ['abund', 'xsect']:
-            if ntoks == 1:
-                raise ValueError(f"Missing {command.upper()} option: '{xline}'")
+            if ntoks != 2:
+                raise ValueError(f"Expected 1 argument for {command.upper()}: '{xline}'")
 
             add(f'set_xs{command}', f"'{toks[1]}'")
             continue
