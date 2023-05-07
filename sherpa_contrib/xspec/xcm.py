@@ -1255,8 +1255,14 @@ def convert_model(expr, postfix, groups, names, mdefines):
                     # Assume this is an "actual" model evaluation
                     process.open_sep(" ")
 
+                elif len(process.lastterm[-1]) > 0:
+                    # We don't add a * if it's a "((" situation
+                    process.open_sep(" * ")  # TODO: could this be "*"?
+
                 else:
-                    process.open_sep(" * ")
+                    # We do not know at this point whether this
+                    # bracket can be dropped.
+                    process.open_sep()
 
             start = end + 1
             continue
