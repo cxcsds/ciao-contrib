@@ -1933,7 +1933,7 @@ def convert(infile: Any,  # to hard to type this
             # into a user model.
             #
             madd("")
-            madd(f"# mdefine {mdefine.name} {mdefine.expr} : {mdefine.mtype}")
+            madd(f"# mdefine {mdefine.name} {mdefine.expr} : {mdefine.mtype.name}")
             madd(f"def model_{mdefine.name}(pars, elo, ehi):")
             for idx, par in enumerate(mdefine.params):
                 madd(f"    {par} = args[{idx}]")
