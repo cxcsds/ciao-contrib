@@ -790,11 +790,28 @@ class MDefineToken(Tokenized):
     mdef_model: MDefine
 
 
+def create_session() -> Session:
+    """Create a Sherpa session into which XSPEC models have been loaded.
+
+    TODO: how do we import user models into this session?
+    """
+
+    # Create our own session object to make it easy to
+    # find out XSPEC models and the correct naming scheme.
+    #
+    session = Session()
+    session._add_model_types(xspec,
+                             (xspec.XSAdditiveModel,
+                              xspec.XSMultiplicativeModel,
+                              xspec.XSConvolutionKernel))
+    return session
+
 
 class ModelExpression:
     """Construct a model expression."""
 
     def __init__(self,
+                 session: Session,
                  expr: str,
                  groups: List[int],
                  postfix: str,
@@ -827,14 +844,7 @@ class ModelExpression:
         #
         self.lastterm: List[List[Term]] = [[]]  # treat as a stack
 
-        # Create our own session object to make it easy to
-        # find out XSPEC models and the correct naming scheme.
-        #
-        self.session = Session()
-        self.session._add_model_types(xspec,
-                                      (xspec.XSAdditiveModel,
-                                       xspec.XSMultiplicativeModel,
-                                       xspec.XSConvolutionKernel))
+        self.session = session
 
     def mkname(self, ctr: int, grp: int) -> str:
         n = f"m{ctr}{self.postfix}"
@@ -1146,7 +1156,15 @@ def create_source_expression(expr: List[Tokenized]) -> str:
     return out
 
 
-def convert_model(expr, postfix, groups, names, mdefines):
+# The return vaue is not typed as this causes mypy no end of problems
+# that I don't want to deal with just yet.
+#
+def convert_model(session: Session,
+                  expr: str,
+                  postfix: str,
+                  groups: List[int],
+                  names: Set[str],
+                  mdefines: List[MDefine]):
     """Extract the model components.
 
     Model names go from m1 to mn (when groups is empty) or
@@ -1154,6 +1172,8 @@ def convert_model(expr, postfix, groups, names, mdefines):
 
     Parameters
     ----------
+    session : Session
+        The Sherpa session used to define/create models.
     expr : str
         The XSPEC model expression.
     postfix : str
@@ -1200,7 +1220,7 @@ def convert_model(expr, postfix, groups, names, mdefines):
     end = 0
     mnum = 1
 
-    process = ModelExpression(expr, groups, postfix, names,
+    process = ModelExpression(session, expr, groups, postfix, names,
                               mdefines=mdefines)
 
     # Scan through each character and when we have identified a term
@@ -1375,7 +1395,9 @@ UNOP_TOKENS = ["EXP",
 BINOP_TOKENS = ["ATAN2", "MAX", "MIN"]
 
 
-def parse_mdefine_expr(expr: str, mdefines: List[MDefine]) -> List[str]:
+def parse_mdefine_expr(session: Session,
+                       expr: str,
+                       mdefines: List[MDefine]) -> List[str]:
     """Parse the model expression.
 
     This is incomplete, as all we do is find what appear to be
@@ -1383,6 +1405,8 @@ def parse_mdefine_expr(expr: str, mdefines: List[MDefine]) -> List[str]:
 
     Parameters
     ----------
+    session : Session
+        The Sherpa session to use to find models.
     expr : str
         The model expression
     mdefines : list of MDefine
@@ -1398,7 +1422,7 @@ def parse_mdefine_expr(expr: str, mdefines: List[MDefine]) -> List[str]:
     if not expr:
         raise ValueError(f"Model expression can not be empty")
 
-    KNOWN_MODELS = [n[2:].upper() for n in ui.list_models("xspec")] + \
+    KNOWN_MODELS = [n[2:].upper() for n in session.list_models("xspec")] + \
         [m.name.upper() for m in mdefines]
 
     seen = set()
@@ -1473,11 +1497,15 @@ def parse_mdefine_expr(expr: str, mdefines: List[MDefine]) -> List[str]:
 # loaded. Perhaps this session should be used here and then sent to
 # ModelExpression?
 #
-def process_mdefine(xline: str, mdefines: List[MDefine]) -> MDefine:
+def process_mdefine(session: Session,
+                    xline: str,
+                    mdefines: List[MDefine]) -> MDefine:
     """Parse a mdefine line.
 
     Parameters
     ----------
+    session : Session
+        The Sherpa session.
     xline : str
         The line to process.
     mdefines : list of MDefine
@@ -1517,7 +1545,7 @@ def process_mdefine(xline: str, mdefines: List[MDefine]) -> MDefine:
     # For now we do not parse the expression other than to try
     # and grab the parameter names.
     #
-    params = parse_mdefine_expr(expr, mdefines)
+    params = parse_mdefine_expr(session, expr, mdefines)
 
     mtype = Term.ADD
     erange = None
@@ -1719,6 +1747,8 @@ def convert(infile: Any,  # to hard to type this
         'mdefines': [],
     }
 
+    session = create_session()
+
     # A warning message is displayed if a MDEFINE command is processed
     # since we do not fully support it. We only need to report it
     # once.
@@ -1915,7 +1945,7 @@ def convert(infile: Any,  # to hard to type this
                 v1("Found MDEFINE command: please consult 'ahelp convert_xspec_script'")
                 REPORTED_MDEFINE = True
 
-            mdefine = process_mdefine(xline, state["mdefines"])
+            mdefine = process_mdefine(session, xline, state["mdefines"])
 
             # We may over-write an existing model, but I am not
             # convinced this will result in a usable XCM file if it
@@ -2015,7 +2045,7 @@ def convert(infile: Any,  # to hard to type this
             if len(groups) == 0:
                 raise RuntimeError("The script is currently unable to handle the input file")
 
-            exprs = convert_model(rest, postfix, groups, state['names'], state['mdefines'])
+            exprs = convert_model(session, rest, postfix, groups, state['names'], state['mdefines'])
 
             assert sourcenum not in state['exprs'], sourcenum
             state['exprs'][sourcenum] = exprs
