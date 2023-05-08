@@ -271,7 +271,7 @@ class Function2Parameter(sherpa.models.parameter.CompositeParameter):
                                                             (self.arg1, self.arg2))
 
     def eval(self):
-        return self.func(self.arg1.valm, self.arg2.val)
+        return self.func(self.arg1.val, self.arg2.val)
 
 
 def exp(x):
@@ -284,14 +284,42 @@ def sin(x):
     return FunctionParameter(x, np.sin)
 
 
+def sind(x):
+    """sin where x is in degrees."""
+    # could use np.deg2rad but would need to wrap that
+    return FunctionParameter(x * np.pi / 180, np.sin)
+
+
 def cos(x):
     """cos where x is in radians."""
     return FunctionParameter(x, np.cos)
 
 
+def cosd(x):
+    """cos where x is in degrees."""
+    # could use np.deg2rad but would need to wrap that
+    return FunctionParameter(x * np.pi / 180, np.cos)
+
+
 def tan(x):
     """tan where x is in radians."""
     return FunctionParameter(x, np.tan)
+
+
+def tand(x):
+    """tan where x is in degrees."""
+    # could use np.deg2rad but would need to wrap that
+    return FunctionParameter(x * np.pi / 180, np.tan)
+
+
+def log(x):
+    """logarithm base 10"""
+    return FunctionParameter(x, np.log10)
+
+
+def ln(x):
+    """natural logarithm"""
+    return FunctionParameter(x, np.log)
 
 
 def sqrt(x):
@@ -304,24 +332,6 @@ def abs(x):
     return FunctionParameter(x, np.abs)
 
 
-def sind(x):
-    """sin where x is in degrees."""
-    # could use np.deg2rad but would need to wrap that
-    return FunctionParameter(x * np.pi / 180, np.sin)
-
-
-def cosd(x):
-    """cos where x is in degrees."""
-    # could use np.deg2rad but would need to wrap that
-    return FunctionParameter(x * np.pi / 180, np.cos)
-
-
-def tand(x):
-    """tan where x is in degrees."""
-    # could use np.deg2rad but would need to wrap that
-    return FunctionParameter(x * np.pi / 180, np.tan)
-
-
 def asin(x):
     """arcsin where x is in radians."""
     return FunctionParameter(x, np.arcsin)
@@ -330,16 +340,6 @@ def asin(x):
 def acos(x):
     """arccos where x is in radians."""
     return FunctionParameter(x, np.arccos)
-
-
-def ln(x):
-    """natural logarithm"""
-    return FunctionParameter(x, np.log)
-
-
-def log(x):
-    """logarithm base 10"""
-    return FunctionParameter(x, np.log10)
 
 
 # It's not entirely clear that int maps to floor
@@ -728,8 +728,10 @@ MODEL_TYPES = {t.name: t for t in list(Term)}
 @dataclass
 class MDefine:
     name: str
+    expr: str        # the original expression
     params: List[str]
-    expr: str
+    models: List[str]
+    converted: str   # the Python version of the model (likely needs reworking)
     mtype: Term
     erange: Optional[Tuple[float, float]]
 
@@ -1397,7 +1399,7 @@ BINOP_TOKENS = ["ATAN2", "MAX", "MIN"]
 
 def parse_mdefine_expr(session: Session,
                        expr: str,
-                       mdefines: List[MDefine]) -> List[str]:
+                       mdefines: List[MDefine]) -> Tuple[str, List[str], List[str]]:
     """Parse the model expression.
 
     This is incomplete, as all we do is find what appear to be
@@ -1414,8 +1416,9 @@ def parse_mdefine_expr(session: Session,
 
     Returns
     -------
-    pars : list of str
-        The parameter names found in the model.
+    converted, pars : str, list of str, list of str
+        The converted expression, parameter names found in the
+        model, and any models used in the expression.
 
     """
 
@@ -1425,72 +1428,101 @@ def parse_mdefine_expr(session: Session,
     KNOWN_MODELS = [n[2:].upper() for n in session.list_models("xspec")] + \
         [m.name.upper() for m in mdefines]
 
-    seen = set()
-    pnames = []
+    pnames: List[str] = []
+    models: List[str] = []
+    seen: Set[str] = set()
+    out: List[str] = []
 
-    def known(symbol: str) -> bool:
-        # Not going for efficiency here
-        if symbol in ["E", ".E"]:
-            return True
+    def add_current(symbol: str) -> None:
+        """Add the current symbol to the output."""
 
-        if symbol in UNOP_TOKENS:
-            return True
+        if not symbol:
+            return
 
-        if symbol in BINOP_TOKENS:
-            return True
+        usymbol = symbol.upper()
+        if usymbol in ["E", ".E"]:
+            # For now we do not support convolution models so just punt here
+            out.append(usymbol)
+            return
 
-        if symbol in KNOWN_MODELS:
-            return True
+        if usymbol in UNOP_TOKENS:
+            out.append(f"xcm.{usymbol}")
+            return
+
+        if usymbol in BINOP_TOKENS:
+            out.append(f"xcm.{usymbol}")
+            return
+
+        if usymbol in KNOWN_MODELS:
+            # This is currently unsupported
+            out.append(symbol)
+            if symbol not in models:
+                models.append(symbol)
+            return
 
         # Maybe it's a number
         try:
             float(symbol)
-            return True
+            out.append(symbol)
+            return
         except ValueError:
-            return False
+            pass
 
-    stack = list(expr)
-    current = ""
-    while stack:
-        c = stack.pop(0)
-
-        # To do this properly we'd do a look-ahead to check
-        # for '**', but for now we just treat "**" as two
-        # separate elements, and so we have to allow current
-        # to be empty.
+        # XSPEC allows syntax like "(1+E)normVal" so check if
+        # we need to add "*". This is not particularly efficient.
         #
-        if c in " ()+-*/^,":
-            if not current:
-                continue
+        if out and "".join(out).rstrip()[-1] == ")":
+            out.append("*")
 
-            # Is this a token we can ignore
-            #  - known unop: exp, sin, ..., smax
-            #  - known binop: atan2, max, min
-            #  - previous mdefine model
-            #  - xspec model name
-            #  - e or E or .e or .E
+        out.append(symbol)
+
+        # Assume it's a parameter name
+        #
+        if usymbol in seen:
+            return
+
+        pnames.append(symbol)
+        seen.add(usymbol)
+
+    # This code is not designed for efficiency!
+    #
+    instack = list(expr)
+    current = ""
+    while instack:
+        c = instack.pop(0)
+
+        # If it's a space, an operator, or bracket we can push the
+        # current symbol. The '*' case is handled
+        # separately.
+        #
+        if c in " ()+-/^,":
+            add_current(current)
+            out.append(c)
+            current = ""
+            continue
+
+        # Is this multiply or exponent?
+        #
+        if c == "*":
+            # A valid MDEFINE expression will not end in * so assume
+            # that there is another token to check.
             #
-            ucurrent = current.upper()
-            if known(ucurrent):
-                current = ""
-                continue
+            if instack[0] == "*":
+                instack.pop(0)
+                c = "^"
 
-            # Assume this is a parameter
-            #
-            if ucurrent not in seen:
-                pnames.append(current)
-                seen.add(ucurrent)
-
+            add_current(current)
+            out.append(c)
             current = ""
             continue
 
         current += c
 
-    # There may be a trailing word
-    if current and not known(current.upper()):
-        pnames.append(current)
+    # There may be a trailing term
+    add_current(current)
 
-    return pnames
+    converted = "".join(out)
+    return converted, pnames, models
 
 
 # TODO: ModelExpression creates it's own session with the XSPEC models
@@ -1545,7 +1577,7 @@ def process_mdefine(session: Session,
     # For now we do not parse the expression other than to try
     # and grab the parameter names.
     #
-    params = parse_mdefine_expr(session, expr, mdefines)
+    converted, params, models = parse_mdefine_expr(session, expr, mdefines)
 
     mtype = Term.ADD
     erange = None
@@ -1574,8 +1606,10 @@ def process_mdefine(session: Session,
             erange = (emin, emax)
 
     return MDefine(name=name,
-                   params=params,
                    expr=expr,
+                   params=params,
+                   models=models,
+                   converted=converted,
                    mtype=mtype,
                    erange=erange)
 
@@ -1748,12 +1782,6 @@ def convert(infile: Any,  # to hard to type this
     }
 
     session = create_session()
-
-    # A warning message is displayed if a MDEFINE command is processed
-    # since we do not fully support it. We only need to report it
-    # once.
-    #
-    REPORTED_MDEFINE = False
 
     # Processing is just a hard-coded set of rules.
     #
@@ -1941,10 +1969,6 @@ def convert(infile: Any,  # to hard to type this
             continue
 
         if command == 'mdefine':
-            if not REPORTED_MDEFINE:
-                v1("Found MDEFINE command: please consult 'ahelp convert_xspec_script'")
-                REPORTED_MDEFINE = True
-
             mdefine = process_mdefine(session, xline, state["mdefines"])
 
             # We may over-write an existing model, but I am not
@@ -1975,8 +1999,12 @@ def convert(infile: Any,  # to hard to type this
             madd("    E = (elo + ehi) / 2")
             if mdefine.mtype == Term.ADD:
                 madd("    de = ehi - elo")
+                madd(f"    return {mdefine.converted} * de")
+            elif mdefine.mtype == Term.MUL:
+                madd(f"    return {mdefine.converted}")
+            else:
+                madd(f"    raise RuntimeError('convolution model to write: {mdefine.expr}')")
 
-            madd(f"    raise RuntimeError('model to write: {mdefine.expr}')")
             madd("\n")  # want two bare lines
             continue
 
@@ -2192,6 +2220,19 @@ def convert(infile: Any,  # to hard to type this
             continue
 
         v1(f"SKIPPING '{xline}'")
+
+
+    # Warn the user if MDEFINE was used
+    #
+    if state["mdefines"]:
+        v1("Found MDEFINE command: please consult 'ahelp convert_xspec_script'")
+        for mdefine in state["mdefines"]:
+            if mdefine.mtype == Term.CON or mdefine.models:
+                status = "will not work"
+            else:
+                status = f"check model_{mdefine.name}()"
+
+            v1(f"  - {mdefine.name}  {mdefine.mtype.name} : {status}")
 
     # We need to create the source models. This is left till here because
     # Sherpa handles "multiple specnums" differently to XSPEC.
