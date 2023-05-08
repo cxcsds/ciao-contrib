@@ -31,6 +31,7 @@ analysis in Sherpa.
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
+import importlib
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
@@ -792,21 +793,89 @@ class MDefineToken(Tokenized):
     mdef_model: MDefine
 
 
-def create_session() -> Session:
+def create_session(models: Optional[List[str]]) -> Tuple[Session, List[str]]:
     """Create a Sherpa session into which XSPEC models have been loaded.
 
-    TODO: how do we import user models into this session?
+    Parameters
+    ----------
+    models : list of str or None
+        The models created by convert_xspec_user_model to
+        import.
+
+    Returns
+    -------
+    session, extras : Session, list of str
+        The Sherpa session object and the list of any "extra"
+        models that have been loaded from the models arguments.
+
     """
+
+    MODTYPES = (xspec.XSAdditiveModel,
+                xspec.XSMultiplicativeModel,
+                xspec.XSConvolutionKernel)
 
     # Create our own session object to make it easy to
     # find out XSPEC models and the correct naming scheme.
     #
     session = Session()
-    session._add_model_types(xspec,
-                             (xspec.XSAdditiveModel,
-                              xspec.XSMultiplicativeModel,
-                              xspec.XSConvolutionKernel))
-    return session
+    session._add_model_types(xspec, MODTYPES)
+
+    extras: List[str] = []
+    if models is None:
+        return session, extras
+
+    # Need to register the XSPEC user models.
+    #
+    for model in models:
+        lmod = importlib.import_module(model)
+        session._add_model_types(lmod, MODTYPES)
+
+        for symbol in lmod.__all__:
+            cls = getattr(lmod, symbol)
+            if issubclass(cls, MODTYPES):
+                extras.append(symbol.lower())
+
+    return session, extras
+
+
+def make_model(session: Session, expr: str, model: str, cpt: str) -> xspec.XSModel:
+    """Create a model instance for an XSPEC model.
+
+    Parameters
+    ----------
+    session : Session
+        The session to query/add to.
+    expr : str
+        The full expression (for a nicer error message).
+    model : str
+        The model name (e.g. phabs). It should not begin with xs as it's
+        the name from the XCM script.
+    cpt : str
+        The component name for the model.
+
+    Notes
+    -----
+
+    To support XSPEC user models, which could have arbitrary prefixes,
+    we try several options. It may turn out that we need to get the
+    user to report the prefix, or to grab it from the module metadata
+    (unfortunately we do not store it yet), bit for now just try the
+    "obvious" options:
+
+        prefix = xs    - the standard XSPEC models or --prefix xs
+        prefix = xsum  - default for convert_xspec_user_script
+        prifix =       - User used --prefix
+
+    """
+
+    for prefix in ["xs", "xsum", ""]:
+        try:
+            v3("Looking for XSPEC model '{model}' with prefix {prefix}'")
+            return session.create_model_component(f"{prefix}{model}", cpt)
+        except ArgumentErr:
+            pass
+
+    raise ValueError(f"Unrecognized XSPEC model '{model}' in {expr}")
 
 
 class ModelExpression:
@@ -905,7 +974,6 @@ class ModelExpression:
         basename = self.expr[start:end]
         v2(f"Identified model expression '{basename}'")
 
-        name = f"xs{basename}"
         for i, grp in enumerate(self.groups, 1):
             outlist = self.out[i - 1]
             gname = self.mkname(ctr, grp)
@@ -921,11 +989,7 @@ class ModelExpression:
                     outlist.append(XSPECTableModelToken(store[0], table_model=mdl,
                                                         table=store[1]))
                 else:
-                    try:
-                        mdl = self.session.create_model_component(name, gname)
-                    except ArgumentErr:
-                        raise ValueError(f"Unrecognized XSPEC model '{basename}' in {self.expr}") from None
-
+                    mdl = make_model(self.session, self.expr, basename, gname)
                     outlist.append(XSPECModelToken(gname, xspec_model=mdl))
 
             # This only needs to be checked for the first group,
@@ -1398,6 +1462,7 @@ BINOP_TOKENS = ["ATAN2", "MAX", "MIN"]
 
 
 def parse_mdefine_expr(session: Session,
+                       extra_models: List[str],
                        expr: str,
                        mdefines: List[MDefine]) -> Tuple[str, List[str], List[str]]:
     """Parse the model expression.
@@ -1409,6 +1474,8 @@ def parse_mdefine_expr(session: Session,
     ----------
     session : Session
         The Sherpa session to use to find models.
+    extra_models : list of str
+        XSPEC user models created with convert_xspec_user_model.
     expr : str
         The model expression
     mdefines : list of MDefine
@@ -1426,6 +1493,7 @@ def parse_mdefine_expr(session: Session,
         raise ValueError(f"Model expression can not be empty")
 
     KNOWN_MODELS = [n[2:].upper() for n in session.list_models("xspec")] + \
+        [m.upper() for m in extra_models] + \
         [m.name.upper() for m in mdefines]
 
     pnames: List[str] = []
@@ -1525,11 +1593,8 @@ def parse_mdefine_expr(session: Session,
     return converted, pnames, models
 
 
-# TODO: ModelExpression creates it's own session with the XSPEC models
-# loaded. Perhaps this session should be used here and then sent to
-# ModelExpression?
-#
 def process_mdefine(session: Session,
+                    extra_models: List[str],
                     xline: str,
                     mdefines: List[MDefine]) -> MDefine:
     """Parse a mdefine line.
@@ -1538,6 +1603,8 @@ def process_mdefine(session: Session,
     ----------
     session : Session
         The Sherpa session.
+    extra_models : Session
+        XSPEC user models.
     xline : str
         The line to process.
     mdefines : list of MDefine
@@ -1577,7 +1644,7 @@ def process_mdefine(session: Session,
     # For now we do not parse the expression other than to try
     # and grab the parameter names.
     #
-    converted, params, models = parse_mdefine_expr(session, expr, mdefines)
+    converted, params, models = parse_mdefine_expr(session, extra_models, expr, mdefines)
 
     mtype = Term.ADD
     erange = None
@@ -1647,6 +1714,7 @@ def get_models_from_expr(expr: List[Tokenized]) -> List[Union[xspec.XSModel, Tup
 # of this.
 #
 def convert(infile: Any,  # to hard to type this
+            models: Optional[List[str]] = None,
             chisq: str = "chi2datavar",
             clean: bool = False,
             explicit: Optional[str] = None) -> str:
@@ -1661,10 +1729,14 @@ def convert(infile: Any,  # to hard to type this
         The file containing the XCM files. It can be a file name or a
         file handle, in which case the read method is used to access
         the data.
+    models : List of str or None
+        What XSPEC user models should be loaded. Each entry should be
+        the module name sent to convert_xspec_user_script (i.e. is the
+        name used in the "import name" or "import name.ui" line). For
+        the moment it requires that convert_xspec_user_script were
+        called with the empty --prefix argument.
     chisq : str, optional
         The Sherpa chi-square statistic to use for "statistic chi".
-        Unfortunately 'chi2xspecvar' is known to not match XSPEC
-        in CIAO 4.13.
     clean : bool, optional
         Should the commands start with a call to clean()? This should
         only be used when the XCM file loads in data.
@@ -1746,6 +1818,12 @@ def convert(infile: Any,  # to hard to type this
     else:
         add_import(f"import sherpa.astro.ui as {explicit}")
 
+    # Are there any XSPEC user models to load?
+    #
+    if models is not None:
+        for mexpr in models:
+            add_import(f"import {mexpr}")
+
     if clean:
         add("clean")
 
@@ -1781,7 +1859,7 @@ def convert(infile: Any,  # to hard to type this
         'mdefines': [],
     }
 
-    session = create_session()
+    session, extra_models = create_session(models)
 
     # Processing is just a hard-coded set of rules.
     #
@@ -1969,7 +2047,7 @@ def convert(infile: Any,  # to hard to type this
             continue
 
         if command == 'mdefine':
-            mdefine = process_mdefine(session, xline, state["mdefines"])
+            mdefine = process_mdefine(session, extra_models, xline, state["mdefines"])
 
             # We may over-write an existing model, but I am not
             # convinced this will result in a usable XCM file if it

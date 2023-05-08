@@ -9,7 +9,8 @@
 ]>
 <cxchelptopics>
   <ENTRY key="convert_xspec_script" context="Tools::Utilities"
-	 refkeywords="xspec x-spec xcm script save
+	 refkeywords="xspec x-spec xcm script save mdefine mdef
+		      user usermodel model
 		      "
          seealsogroups=""
 	 >
@@ -27,6 +28,7 @@
       <LINE/>
       <LINE>The supported command-line flags can be found using -h/--help:</LINE>
       <LINE/>
+      <LINE>--models    to include models created by convert_xspec_user_script</LINE>
       <LINE>--clean     if the script should start with a call to clean</LINE>
       <LINE>--clobber   will overwrite existing files</LINE>
       <LINE>--verbose   will change the amount of screen output</LINE>
@@ -39,16 +41,17 @@
 	The &tool; tool will attempt to convert a XSPEC save file
 	(often ending in .xcm) into Sherpa commands. The resulting
 	file can then be run from sherpa or modified for further
-	analysis.
+	analysis. The results should be considered as the start of a
+	Sherpa analysis, as further work may be needed.
       </PARA>
 
       <PARA>
 	This script is *experimental* and will not work for all XSPEC
-	commands or datasets. The results should be considered as
-	the start of a Sherpa analysis, as further work may be needed.
+	commands or datasets.
 	Please contact the
 	<HREF link="https://cxc.harvard.edu/helpdesk/">CXC HelpDesk</HREF>
-	if you find there are scripts which this tool will not convert.
+	if you find there are scripts which this script will not convert,
+	or where the results do not appear to match XSPEC.
       </PARA>
     </DESC>
 
@@ -258,6 +261,31 @@ set_source(1, m1(m2 * m3))
 
     </QEXAMPLELIST>
 
+    <ADESC title="Using XSPEC user models">
+      <PARA>
+	If the MODEL or MDEFINE definitions include XSPEC user models
+	then:
+      </PARA>
+      <LIST>
+	<ITEM>
+	  the model must be converted to Sherpa with the script
+	  convert_xspec_user_model,
+	</ITEM>
+	<ITEM>
+	  and the --models option is used to tell the script what
+	  module, or modules, to be loaded.
+	</ITEM>
+      </LIST>
+      <PARA>
+	For any model that was created by convert_xspec_user_model
+	with the call
+	<EQUATION>convert_xspec_user_model modname lmodel.dat</EQUATION>
+	add a
+	<EQUATION>--models modname</EQUATION>
+	option to the call to xspec_user_script.
+      </PARA>
+    </ADESC>
+
     <ADESC title="Known Problems">
       <PARA>
 	This script is intended to simplify analysis in Sherpa,
@@ -305,6 +333,12 @@ set_source(1, m1(m2 * m3))
     </ADESC>
 
     <ADESC title="Changes in the scripts 4.15.2 (May 2023) release">
+      <PARA title="Allow files that reference user models">
+	If the XCM file references one or XSPEC user models, then the
+	--models argument can be used to tell the script about
+	these models (this assumes that convert_xspec_user_script
+	was used to convert them).
+      </PARA>
       <PARA title="Initial support of the MDEFINE command">
 	XSPEC allows user models to be created with the <HREF
 	link="https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSmdefine.html">MDEFINE

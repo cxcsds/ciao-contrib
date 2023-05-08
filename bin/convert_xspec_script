@@ -95,7 +95,7 @@ def check_clobber(fname):
 
 
 @lw.handle_ciao_errors(TOOLNAME, TOOLVER)
-def convert(infile, outfile, clean=False, clobber=False):
+def convert(infile, outfile, models=None, clean=False, clobber=False):
 
     if outfile != '-' and not clobber:
         check_clobber(outfile)
@@ -108,7 +108,7 @@ def convert(infile, outfile, clean=False, clobber=False):
         except OSError as oe:
             raise OSError(f"Unable to read from '{infile}'") from oe
 
-    out = xcm.convert(cts, clean=clean)
+    out = xcm.convert(cts, models=models, clean=clean)
     if outfile == '-':
         sys.stdout.write(out)
     else:
@@ -123,6 +123,9 @@ if __name__ == "__main__":
 
     parser.add_argument("infile", help="XCM file to convert (- for stdin)")
     parser.add_argument("outfile", help="Sherpa file to create (- for stdout)")
+
+    parser.add_argument("--models", action="append",
+                        help="Add models created by convert_xspec_user_model: modulename")
 
     parser.add_argument("--clean", dest="clean", action="store_true",
                         default=False,
@@ -161,5 +164,6 @@ if __name__ == "__main__":
         sys.exit(0)
 
     convert(args.infile, args.outfile,
+            models=args.models,
             clean=args.clean,
             clobber=args.clobber)
