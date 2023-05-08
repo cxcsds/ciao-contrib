@@ -796,7 +796,7 @@ class ModelExpression:
 
     def __init__(self,
                  expr: str,
-                 groups: List[str],
+                 groups: List[int],
                  postfix: str,
                  names: Set[str],
                  mdefines: List[MDefine]) -> None:
@@ -836,7 +836,7 @@ class ModelExpression:
                                        xspec.XSMultiplicativeModel,
                                        xspec.XSConvolutionKernel))
 
-    def mkname(self, ctr: int, grp: str) -> str:
+    def mkname(self, ctr: int, grp: int) -> str:
         n = f"m{ctr}{self.postfix}"
         if self.ngroups > 1:
             n += f"g{grp}"
@@ -883,9 +883,10 @@ class ModelExpression:
 
         return None
 
-    def add_term(self, start: int, end: int, ctr: int) -> int:
+    def add_term(self, start: int, end: Optional[int], ctr: int) -> int:
 
         # It's not ideal we need this
+        # Is end being optional (which we currently use) handled well?
         if start == end:
             return ctr
 
@@ -1190,6 +1191,8 @@ def convert_model(expr, postfix, groups, names, mdefines):
     expr = expr.translate({32: None})
 
     if len(groups) == 1:
+        # TODO: mypy complains about this as groups: List[int]; this
+        # should be redesigned.
         groups = [None]
 
     maxchar = len(expr) - 1
@@ -1419,7 +1422,7 @@ def parse_mdefine_expr(expr: str, mdefines: List[MDefine]) -> List[str]:
         try:
             float(symbol)
             return True
-        except:
+        except ValueError:
             return False
 
     stack = list(expr)
@@ -1564,7 +1567,7 @@ def get_model_from_token(t: Tokenized) -> Optional[Union[xspec.XSModel, Tuple[MD
     return None
 
 
-def get_models_from_expr(expr):
+def get_models_from_expr(expr: List[Tokenized]) -> List[Union[xspec.XSModel, Tuple[MDefine, str]]]:
     """Pulled out of convert"""
 
     out = []
@@ -1938,7 +1941,8 @@ def convert(infile: Any,  # to hard to type this
             for idx, par in enumerate(mdefine.params):
                 madd(f"    {par} = args[{idx}]")
 
-            madd("    emid = (elo + ehi) / 2")
+            # Use the name E to match the XSPEC code
+            madd("    E = (elo + ehi) / 2")
             if mdefine.mtype == Term.ADD:
                 madd("    de = ehi - elo")
 
