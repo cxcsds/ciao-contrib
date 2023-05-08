@@ -731,7 +731,7 @@ class MDefine:
     params: List[str]
     expr: str
     mtype: Term
-    erange: Optional[List[float]]  # how do I enforce only 2 values
+    erange: Optional[Tuple[float, float]]
 
 
 def is_model_convolution(mdl: Union[xspec.XSModel, MDefine]) -> bool:
@@ -1540,7 +1540,7 @@ def process_mdefine(xline: str, mdefines: List[MDefine]) -> MDefine:
         if nstoks > 1:
             emin = float(stoks[0])
             emax = float(stoks[1])
-            erange = [emin, emax]
+            erange = (emin, emax)
 
     return MDefine(name=name,
                    params=params,
