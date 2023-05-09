@@ -39,6 +39,8 @@ import numpy as np
 from sherpa.astro import ui  # type: ignore
 from sherpa.astro.ui.utils import Session  # type: ignore
 from sherpa.astro import xspec  # type: ignore
+from sherpa.models.basic import ArithmeticModel, UserModel  # type: ignore
+from sherpa.models.parameter import Parameter, CompositeParameter, ConstantParameter  # type: ignore
 from sherpa.utils.err import ArgumentErr, DataErr  # type: ignore
 
 import sherpa.astro.instrument  # type: ignore
@@ -214,7 +216,7 @@ def _mklabel(func: Callable) -> str:
     return lbl
 
 
-class FunctionParameter(sherpa.models.parameter.CompositeParameter):
+class FunctionParameter(CompositeParameter):
     """Store a function of a single argument.
 
     We need to only evalate the function when required.
@@ -222,9 +224,9 @@ class FunctionParameter(sherpa.models.parameter.CompositeParameter):
 
     @staticmethod
     def wrapobj(obj):
-        if isinstance(obj, sherpa.models.parameter.Parameter):
+        if isinstance(obj, Parameter):
             return obj
-        return sherpa.models.parameter.ConstantParameter(obj)
+        return ConstantParameter(obj)
 
     def __init__(self, arg, func):
 
@@ -237,14 +239,13 @@ class FunctionParameter(sherpa.models.parameter.CompositeParameter):
         # Would like to be able to add the correct import symbol here
         lbl = _mklabel(func)
         lbl += f'{func.__name__}({self.arg.fullname})'
-        sherpa.models.parameter.CompositeParameter.__init__(self, lbl,
-                                                            (self.arg,))
+        CompositeParameter.__init__(self, lbl, (self.arg,))
 
     def eval(self):
         return self.func(self.arg.val)
 
 
-class Function2Parameter(sherpa.models.parameter.CompositeParameter):
+class Function2Parameter(CompositeParameter):
     """Store a function of two arguments.
 
     We need to only evalate the function when required.
@@ -252,9 +253,9 @@ class Function2Parameter(sherpa.models.parameter.CompositeParameter):
 
     @staticmethod
     def wrapobj(obj):
-        if isinstance(obj, sherpa.models.parameter.Parameter):
+        if isinstance(obj, Parameter):
             return obj
-        return sherpa.models.parameter.ConstantParameter(obj)
+        return ConstantParameter(obj)
 
     def __init__(self, arg1, arg2, func):
 
@@ -268,8 +269,7 @@ class Function2Parameter(sherpa.models.parameter.CompositeParameter):
         # Would like to be able to add the correct import symbol here
         lbl = _mklabel(func)
         lbl += f'{func.__name__}({self.arg1.fullname}, {self.arg2.fullname})'
-        sherpa.models.parameter.CompositeParameter.__init__(self, lbl,
-                                                            (self.arg1, self.arg2))
+        CompositeParameter.__init__(self, lbl, (self.arg1, self.arg2))
 
     def eval(self):
         return self.func(self.arg1.val, self.arg2.val)
@@ -591,7 +591,9 @@ def parse_dataid(token: str) -> Tuple[Optional[int], int]:
     return None, itoks[0]
 
 
-def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[int], Optional[int]]]]:
+RangeValue = Union[int, float]
+
+def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[RangeValue], Optional[RangeValue]]]]:
     """Convert a-b,... to a set of ranges.
 
     Parameters
@@ -612,14 +614,14 @@ def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[int], Optional[i
     validate this.
     """
 
-    chantype = "channel"
+    store = {"chantype": "channel"}
 
-    def lconvert(val):
-        global chantype
+    def lconvert(val: str) -> Optional[RangeValue]:
         if '.' in val:
-            chantype = "other"
             try:
-                return float(val)
+                out = float(val)
+                store["chantype"] = "other"
+                return out
             except ValueError:
                 raise ValueError(f"Expected **, integer, or float: sent '{val}'") from None
 
@@ -649,7 +651,7 @@ def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[int], Optional[i
 
         out.append((start, end))
 
-    return chantype, out
+    return store["chantype"], out
 
 
 def parse_notice_range(add_import: Callable[[str], None],
@@ -715,6 +717,9 @@ def parse_notice_range(add_import: Callable[[str], None],
                 add(f"xcm.{command}", d, lo, hi, expand=False)
 
 
+SimpleToken = Union[str, ArithmeticModel]
+
+
 class Term(Enum):
     """The "type" of an XSPEC model."""
 
@@ -764,35 +769,6 @@ def is_model_additive(mdl: Union[xspec.XSModel, MDefine]) -> bool:
     return isinstance(mdl, xspec.XSAdditiveModel)
 
 
-@dataclass
-class Tokenized:
-    """A general token"""
-
-    value: str  # the token to display
-
-
-@dataclass
-class XSPECModelToken(Tokenized):
-    """Represent an XSPEC model"""
-
-    xspec_model: xspec.XSModel
-
-
-@dataclass
-class XSPECTableModelToken(Tokenized):
-    """Represent an XSPEC table model"""
-
-    table_model: xspec.XSTableModel
-    table: str
-
-
-@dataclass
-class MDefineToken(Tokenized):
-    """Represent a MDEFINE model"""
-
-    mdef_model: MDefine
-
-
 def create_session(models: Optional[List[str]]) -> Tuple[Session, List[str]]:
     """Create a Sherpa session into which XSPEC models have been loaded.
 
@@ -838,20 +814,23 @@ def create_session(models: Optional[List[str]]) -> Tuple[Session, List[str]]:
     return session, extras
 
 
-def make_model(session: Session, expr: str, model: str, cpt: str) -> xspec.XSModel:
+def handle_xspecmodel(session: Session,
+                      model: str,
+                      cpt: str,
+                      madd: Callable[..., None]) -> Optional[tuple[xspec.XSModel, Term]]:
     """Create a model instance for an XSPEC model.
 
     Parameters
     ----------
     session : Session
         The session to query/add to.
-    expr : str
-        The full expression (for a nicer error message).
     model : str
         The model name (e.g. phabs). It should not begin with xs as it's
         the name from the XCM script.
     cpt : str
         The component name for the model.
+    add, madd : callable
+        Create the model text
 
     Notes
     -----
@@ -870,367 +849,149 @@ def make_model(session: Session, expr: str, model: str, cpt: str) -> xspec.XSMod
 
     for prefix in ["xs", "xsum", ""]:
         try:
-            v3("Looking for XSPEC model '{model}' with prefix {prefix}'")
-            return session.create_model_component(f"{prefix}{model}", cpt)
+            v3(f"Looking for XSPEC model '{model}' with prefix '{prefix}'")
+            mname = f"{prefix}{model}"
+            mdl = session.create_model_component(mname, cpt)
+            madd(f"{cpt} = XXcreate_model_component('{mname}', '{cpt}')",
+                 expand=True)
+
+            if isinstance(mdl, xspec.XSAdditiveModel):
+                mtype = MODEL_TYPES["ADD"]
+            elif isinstance(mdl, xspec.XSMultiplicativeModel):
+                mtype = MODEL_TYPES["MUL"]
+            elif isinstance(mdl, xspec.XSConvolutionKernel):
+                mtype = MODEL_TYPES["CON"]
+            else:
+                raise ValueError(f"Unable to recognize XSPEC model {mname}: {mdl}")
+
+            return mdl, mtype
+
         except ArgumentErr:
             pass
 
-    raise ValueError(f"Unrecognized XSPEC model '{model}' in {expr}")
+    return None
 
 
-class ModelExpression:
-    """Construct a model expression."""
-
-    def __init__(self,
-                 session: Session,
-                 expr: str,
-                 groups: List[int],
-                 postfix: str,
-                 names: Set[str],
-                 mdefines: List[MDefine]) -> None:
-        self.expr = expr
-        self.groups = groups
-        self.ngroups = len(groups)
-        self.postfix = postfix
-        self.names = names
-        self.mdefines = mdefines
-
-        # I would like to say
-        #    [[]] * self.ngroups
-        # but this aliases the lists so they are all the same.
-        #
-        self.out: List[List[Tokenized]] = [[] for i in range(self.ngroups)]
-
-        # Record the number of brackets at the current "convolution level".
-        # When a convolution is started we add an entry to the end of the
-        # list and track from that point, then when the convolution ends we
-        # pop the value off. So the number of convolution terms currently
-        # in use is len(self.depth) - 1.
-        #
-        self.depth = [0]  # treat as a stack
-
-        # What was the last term we added. When set it should be a
-        # Term enumeration. Note that this tracks a combination of
-        # paranthesis and convolution depth.
-        #
-        self.lastterm: List[List[Term]] = [[]]  # treat as a stack
-
-        self.session = session
-
-    def mkname(self, ctr: int, grp: int) -> str:
-        n = f"m{ctr}{self.postfix}"
-        if self.ngroups > 1:
-            n += f"g{grp}"
-
-        if n in self.names:
-            raise RuntimeError("Unable to handle model names with this input script")
-
-        self.names.add(n)
-        return n
-
-    # TODO: what does try_tablemodel need to return?
-    def try_tablemodel(self, basename: str, gname: str) -> Optional[Tuple[xspec.XSTableModel, Tuple[str, str]]]:
-        if not basename.startswith('etable{') and \
-           not basename.startswith('mtable{') and \
-           not basename.startswith('atable{'):
-            return None
-
-        if not basename.endswith('}'):
-            raise ValueError(f"No }} in {basename}")
-
-        v2(f"Handling TABLE model: {basename} for {gname}")
-        tbl = basename[7:-1]
-        kwargs = {}
-        if basename[0] == 'e':
-            kwargs['etable'] = True
-
-        try:
-            self.session.load_xstable_model(gname, tbl, **kwargs)
-        except FileNotFoundError:
-            raise ValueError(f"Unable to find XSPEC table model: {basename}") from None
-
-        mdl = self.session.get_model_component(gname)
-        return mdl, (gname, tbl)
-
-    def try_mdefine(self, basename: str, gname: str) -> Optional[MDefine]:
-        """Is this a mdefine model?"""
-
-        for mdefine in self.mdefines:
-            if mdefine.name != basename:
-                continue
-
-            v2(f"Handling MDEFINE model: {basename} for {gname}")
-            return mdefine
-
-        return None
-
-    def add_term(self, start: int, end: Optional[int], ctr: int) -> int:
-
-        # It's not ideal we need this
-        # Is end being optional (which we currently use) handled well?
-        if start == end:
-            return ctr
-
-        basename = self.expr[start:end]
-        v2(f"Identified model expression '{basename}'")
-
-        for i, grp in enumerate(self.groups, 1):
-            outlist = self.out[i - 1]
-            gname = self.mkname(ctr, grp)
-
-            mdl = self.try_mdefine(basename, gname)
-            if mdl is not None:
-                outlist.append(MDefineToken(gname, mdef_model=mdl))
-
-            elif mdl is None:
-                answer = self.try_tablemodel(basename, gname)
-                if answer is not None:
-                    mdl, store = answer
-                    outlist.append(XSPECTableModelToken(store[0], table_model=mdl,
-                                                        table=store[1]))
-                else:
-                    mdl = make_model(self.session, self.expr, basename, gname)
-                    outlist.append(XSPECModelToken(gname, xspec_model=mdl))
-
-            # This only needs to be checked for the first group,
-            # **but** we change outlist, which makes me think we need
-            # to do something got all groups, but it is unclear what
-            # is going on.
-            #
-            if i == 1:
-                if is_model_convolution(mdl):
-                    v2(" - it's a convolution model")
-
-                    # Track a new convolution term
-                    self.lastterm[-1].append(Term.CON)
-                    self.lastterm.append([])
-
-                    # start a new entry to track the bracket depth
-                    self.depth.append(0)
-                    outlist.append(Tokenized("("))
-                    continue
-
-                if is_model_multiplicative(mdl):
-                    v2(" - it's a multiplicative model")
-                    self.lastterm[-1].append(Term.MUL)
-                    continue
-
-                if is_model_additive(mdl):
-                    v2(" - it's an additive model")
-                    self.lastterm[-1].append(Term.ADD)
-                    continue
-
-                # At this point mdl can not be a MDefine object.
-                #
-                if isinstance(mdl, xspec.XSTableModel):
-                    if mdl.addmodel:
-                        v2(" - it's an additive table model")
-                        lterm = Term.ADD
-                    else:
-                        v2(" - it's a multiplicative table model")
-                        lterm = Term.MUL
-
-                    self.lastterm[-1].append(lterm)
-                    continue
-
-                raise RuntimeError(f"Unrecognized XSPEC model: {mdl.__class__}")
-
-        return ctr + 1
-
-    def add_token(self, token: str) -> None:
-        "Not sure about this"
-        v2(f"Adding token [{token}]")
-        for outlist in self.out:
-            outlist.append(Tokenized(token))
-
-    def open_sep(self, prefix: Optional[str] = None) -> None:
-
-        self.depth[-1] += 1
-        v2(f"Adding token (   depth={self.depth}")
-
-        for outlist in self.out:
-            if prefix is not None:
-                outlist.append(Tokenized(prefix))
-
-            outlist.append(Tokenized("("))
-
-        # We have a new context for the token list
-        #
-        self.lastterm.append([])
-
-    def close_sep(self, postfix: Optional[str] = None) -> None:
-
-        v2(f"Adding token )   depth={self.depth}")
-        self.depth[-1] -= 1
-        assert self.depth[-1] >= 0, self.depth
-
-        for outlist in self.out:
-            outlist.append(Tokenized(")"))
-
-            if postfix is not None:
-                outlist.append(Tokenized(postfix))
-
-        tokens = self.lastterm.pop()
-        v2(f" - closing out sub-expression {tokens}")
-
-    def check_end_convolution(self) -> bool:
-        """Returns True is this ends the convolution, False otherwise"""
-
-        # We track the convolution "depth" with the depth field as the
-        # lastterm tracks the number of brackets.
-        #
-        if len(self.depth) == 1:
-            return False
-
-        v2("Checking end of convolution")
-        v2(f"depth: {self.depth}")
-        v2(f"lastterm: {self.lastterm}")
-
-        # Assume the convolution has come to an end when
-        # the current depth is 0.
-        if self.depth[-1] > 0:
-            v2("--> still in convolution")
-            return False
-
-        v2("Ending convolution")
-
-        for outlist in self.out:
-            outlist.append(Tokenized(")"))
-
-        self.depth.pop()
-        self.lastterm.pop()
-        return True
-
-    def in_convolution(self) -> bool:
-        """Are we in a convolution expression?"""
-
-        # return len(self.lastterm) > 1 and self.lastterm[1][0] == Term.CON
-        return len(self.depth) > 1
-
-    def lastterm_is_openbracket(self) -> bool:
-        last = self.out[0][-1]
-        return last.value == "("
-
-    def remove_unneeded_open_bracket(self) -> bool:
-
-        # We currently skip this optimization
-        #
-        return False
-
-
-        # We need to decide whether to add the bracket or not. It is
-        # tricky since in a situation like 'phabs(powerlaw)' we want
-        # to output 'phabs * powerlaw' and not 'phabs *
-        # (powerlaw)'. Complications are 'cflux(powerlaw)' when we
-        # want to keep the brackets and 'clux(phabs(powerlaw))' when
-        # we want to keep the cflux brackets but not the phabs
-        # brackets.
-        #
-        # Only bother with this optimisation if there's one model
-        # being applied to a previous model (we could only do this for
-        # an additive model but does this help?).
-        #
-        if len(self.lastterm) == 1 or len(self.lastterm[-1]) > 1:
-            return False
-
-        v2("Found a potential case for removing )")
-        v2(self.lastterm)
-
-        # If the previous term is not a multiplicative model
-        # then assume we should keep the bracket.
-        #
-        if self.lastterm[-2][-1] != Term.MUL:
-            return False
-
-        orig = create_source_expression(self.out[0])
-
-        for outlist in self.out:
-
-            # We need to loop back to find the first unmatched (.
-            # If we'd stored the depth in the token stream this
-            # would be easier.
-            #
-            # It should also be the same in all outlist but
-            # treat separately.
-            #
-            idx = -1
-            count = 0
-            try:
-                while True:
-                    token = outlist[idx]
-                    idx -= 1
-                    if token.value == ")":
-                        count += 1
-                        continue
-
-                    if token.value != ")":
-                        continue
-
-                    if count == 0:
-                        # need to add 1 back to idx
-                        idx += 1
-                        break
-
-                    count -= 1
-
-            except IndexError:
-                v2("Unable to find unmatched ( in outlist")
-                v2(outlist)
-                return False
-
-            outlist.pop(idx)
-
-
-        v2("Removing excess )")
-        v2(orig)
-        v2(" -> ")
-        v2(create_source_expression(self.out[0]))
-
-        # Note that we've removed a bracket and remove the
-        # convolution term.
-        #
-        # Something has gone wrong with my beautiful code
-        # as the check on self.lastterm shouldn't be needed
-        #
-
-        v2(f"Testing: lastterm = {self.lastterm}")
-        # assert self.lastterm[-1] == [Term.CON], self.lastterm
-        if self.lastterm[-1] == [Term.CON]:
-            self.depth[-1] -= 1
-            self.lastterm.pop()
-        else:
-            print("Internal issue:")
-            print(self.depth)
-            print(self.lastterm)
-
-        return True
-
-
-def create_source_expression(expr: List[Tokenized]) -> str:
+def create_source_expression(expr: List[SimpleToken]) -> str:
     "create a readable source expression"
 
     v3(f"Processing an expression of {len(expr)} terms")
     v3(f"Expression: {expr}")
 
-    # DEBUG
-    if any(not isinstance(t, Tokenized) for t in expr):
-        raise ValueError("Internal error: not tokenized {expr}")
+    def tokenize(t: SimpleToken) -> str:
+        if isinstance(t, ArithmeticModel):
+            # want the "name", so "gal" in "xsphabs.gal"
+            toks = t.name.split(".")
+            return toks[-1]
 
-    cpts = [t.value for t in expr]
+        return t
+
+    cpts = [tokenize(t) for t in expr]
     out = "".join(cpts)
     v3(f" -> {out}")
     return out
+
+
+def make_component_name(postfix: str, ngroups: int, ctr: int, grp: int) -> str:
+    name = f"m{ctr}{postfix}"
+    if ngroups > 1:
+        name += f"g{grp}"
+
+    return name
+
+
+def handle_tablemodel(session: Session,
+                      expr: str,
+                      gname: str,
+                      add: Callable[..., None],
+                      madd: Callable[..., None]) -> Tuple[xspec.XSTableModel, Term]:
+    """Create a tablemodel (it the file can be found)"""
+
+    if expr.startswith("atable{"):
+        mtype = MODEL_TYPES["ADD"]
+    elif expr.startswith("mtable{"):
+        mtype = MODEL_TYPES["MUL"]
+    elif expr.startswith("etable{"):
+        mtype = MODEL_TYPES["MUL"]
+    else:
+        raise ValueError(f"Expected a tablemodel, found '{expr}'")
+
+    if not expr.endswith('}'):
+        raise ValueError(f"No }} in {expr}")
+
+    v2(f"Handling TABLE model: {expr} for {gname}")
+    tbl = expr[7:-1]
+    kwargs = {}
+    if expr.startswith("etable"):
+        kwargs['etable'] = True
+
+    try:
+        session.load_xstable_model(gname, tbl, **kwargs)
+    except FileNotFoundError:
+        raise ValueError(f"Unable to find XSPEC table model: {tbl}") from None
+
+    mdl = session.get_model_component(gname)
+
+    if mdl.etable:
+        kwargs = {"etable": True}
+    else:
+        kwargs = {}
+
+    add("load_xstable_model", f"'{gname}'", f"'{tbl}'",
+        expand=True, **kwargs)
+
+    # Not really needed but just in case
+    madd(f"{gname} = XXget_model_component('{gname}')",
+         expand=True)
+
+    return mdl, mtype
+
+
+def dummy_model(pars, elo, ehi=None):
+    raise NotImplementedError()
+
+
+def handle_mdefine(session: Session,
+                   mdefines: List[MDefine],
+                   basename: str,
+                   gname: str,
+                   add: Callable[..., None]) -> Optional[Tuple[UserModel, Term]]:
+    """Is this a mdefine model?
+
+    Note we actually create a model (with a dummy function)
+    as it makes downstream processing easier to handle.
+    """
+
+    for mdefine in mdefines:
+        if mdefine.name != basename:
+            continue
+
+        v2(f"Handling MDEFINE model: {basename} for {gname}")
+
+        add("load_user_model", f"model_{basename}", f"'{gname}'",
+            expand=True)
+        add("add_user_pars", f"'{gname}'", str(mdefine.params),
+            expand=True)
+
+        session.load_user_model(dummy_model, gname)
+        session.add_user_pars(gname, mdefine.params)
+        mdl = session.get_model_component(gname)
+        return mdl, mdefine.mtype
+
+    return None
 
 
 # The return vaue is not typed as this causes mypy no end of problems
 # that I don't want to deal with just yet.
 #
 def convert_model(session: Session,
+                  extra_models: List[str],
                   expr: str,
                   postfix: str,
                   groups: List[int],
-                  names: Set[str],
-                  mdefines: List[MDefine]):
+                  mdefines: List[MDefine],
+                  add: Callable[..., None],
+                  madd: Callable[..., None]):  # mypy falls over if use -> List[List[SimpleToken]]:
     """Extract the model components.
 
     Model names go from m1 to mn (when groups is empty) or
@@ -1240,6 +1001,8 @@ def convert_model(session: Session,
     ----------
     session : Session
         The Sherpa session used to define/create models.
+    extra_models : list of str
+        The XSPEC user models to search from.
     expr : str
         The XSPEC model expression.
     postfix : str
@@ -1247,20 +1010,15 @@ def convert_model(session: Session,
     groups : list of int
         The groups to create. It must not be empty. We special case a
         single group, as there's no need to add an identifier.
-    names : set of str
-        The names we have created (will be updated). This is just
-        for testing.
     mdefines : list of MDefine
+    add, madd : callable
+        Create the output.
 
     Returns
     -------
-    exprs : list of lists
+    exprs : list of list of tokens
         The model expression for each group (if groups was None then
-        for a single group). Each list contains a pair of
-        (str, None) or ((str, str), Model), where for the Model
-        case the two names are the model type and the instance name,
-        unless we have a table model in which it stores
-        ('tablemodel', name, filename, tabletype).
+        for a single group).
 
     Notes
     -----
@@ -1272,153 +1030,174 @@ def convert_model(session: Session,
     closing brackets when processing a multiplcative model.
     """
 
-    # Let's remove the spaces
     v2(f"Processing model expression: {expr}")
-    expr = expr.translate({32: None})
 
-    if len(groups) == 1:
+    # First tokenize. Note that we assume this is a valid XSPEC
+    # expression, so we can make a number of assumptions about the
+    # input.
+    #
+    toks = tokenize_model_expr(session, extra_models, expr,
+                               mdefines=mdefines)
+
+    ngroups = len(groups)
+    if ngroups == 1:
         # TODO: mypy complains about this as groups: List[int]; this
         # should be redesigned.
         groups = [None]
 
-    maxchar = len(expr) - 1
-    start = 0
-    end = 0
-    mnum = 1
+    # Need an output list for each group
+    out: List[List[SimpleToken]] = [[] for g in groups]
 
-    process = ModelExpression(session, expr, groups, postfix, names,
-                              mdefines=mdefines)
-
-    # Scan through each character and when we have identified a term
-    # "seperator" then process the preceeding token. We assume the
-    # text is valid XSPEC - i.e. there's little to no support for
-    # invalid commands.
+    # We need to address differences in the XSPEC and Sherpa
+    # model language:
     #
-    # Note that we switch mode when { is found as we have to
-    # then find the matching } and not any of the other normal
-    # tokens.
+    # - need to add multiplication for cases like "(...)model"
+    # - need to handle mdl1(mdl2) for multiplicative models
+    # - convert cmdl*amdl[*...] to cmdl(amdl[*...]) for
+    #   convolution models
     #
-    in_curly_bracket = False
-    for end, char in enumerate(expr):
+    v2(f"Found {len(toks)} tokens in the model expression")
+    v3(f"expression: {toks}")
+    in_convolution = False
+    fake_bracket = False
+    ctr = 1
 
-        if char == '{':
-            if in_curly_bracket:
-                raise ValueError("Unable to parse '{expr}'")
+    # What was the previous model type (add, mul, con)? This is
+    # separate to the in_convolution check.
+    #
+    prev_model_type = None
 
-            in_curly_bracket = True
-            continue
+    for i, tok in enumerate(toks, 1):
+        v2(f"  token {i} = '{tok}'")
+        v3(f"    bracket={fake_bracket} convolution={in_convolution}")
 
-        if in_curly_bracket:
-            if char == '}':
-                in_curly_bracket = False
-            continue
+        if tok == "(":
 
-        # Not completely sure of the supported language.
-        #
-        if char not in "*+-/()":
-            continue
-
-        # Report the current processing state
-        #
-        # v2(f"output: {process.out[0]}")
-        v2(f"output: {create_source_expression(process.out[0])}")
-
-        # What does an open-bracket mean?
-        # It can imply multiplication, wrapping a term in
-        # a convolution model, or an actual bracket (which may
-        # or may not be needed).
-        #
-        if char == "(":
-            if end == 0:
-                process.open_sep()
-            else:
-                v3(f"Processing ?")
-                mnum = process.add_term(start, end, mnum)
-
-                if process.in_convolution() and len(process.lastterm[-1]) == 0:
-                    # We've just started a convolution which has added a bracket
-                    # so we don't need to do anything
-                    pass
-
-                elif expr[end - 1] in "+*-/":
-                    # Assume this is an "actual" model evaluation
-                    process.open_sep(" ")
-
-                elif len(process.lastterm[-1]) > 0:
-                    # We don't add a * if it's a "((" situation
-                    process.open_sep(" * ")  # TODO: could this be "*"?
-
-                else:
-                    # We do not know at this point whether this
-                    # bracket can be dropped.
-                    process.open_sep()
-
-            start = end + 1
-            continue
-
-        if char == ")":
-            mnum = process.add_term(start, end, mnum)
-
-            flag = process.remove_unneeded_open_bracket()
-            cflag = process.check_end_convolution()
-
-            if not flag and not cflag:
-                if end == maxchar or expr[end + 1] == ")":
-                    process.close_sep()
-                elif expr[end + 1] in "+*-/":
-                    process.close_sep(" ")
-                else:
-                    process.close_sep(" * ")
-
-            start = end + 1
-            continue
-
-        mnum = process.add_term(start, end, mnum)
-
-        # conv*a1+a2 is conv(s1) + a2
-        if char == '+':
-            process.check_end_convolution()
-
-        # If we had conv*mdl then we want to drop the *
-        # but conv*m1*a1 is conv(m1*a1). I am not convinced this
-        # is correct but the XSPEC docs are opaque as to this
-        # meaning.
-        #
-        if not(char == '*' and process.in_convolution() and process.lastterm_is_openbracket()):
-            # Add space characters to separate out the expression,
-            # even if start==end.
+            # If the previous term was a multiplicative model
+            # then add in a * term.
             #
-            process.add_token(f" {char} ")
+            if prev_model_type is not None and \
+               prev_model_type == Term.MUL:
+                tok = " * ("
 
-        start = end + 1
+            for outlist in out:
+                outlist.append(tok)
 
-    # Last name, which is not always present.
+            prev_model_type = None
+            continue
+
+        if tok == ")":
+            if fake_bracket:
+                for outlist in out:
+                    outlist.append(")")
+
+                fake_bracket = False
+
+            for outlist in out:
+                outlist.append(tok)
+
+            in_convolution = False
+            prev_model_type = None
+            continue
+
+        if tok == "+":
+            if fake_bracket:
+                for outlist in out:
+                    outlist.append(")")
+
+                fake_bracket = False
+
+            for outlist in out:
+                outlist.append(" + ")
+
+            in_convolution = False
+            prev_model_type = None
+            continue
+
+        # We need to worry about cmdl*amdl when cmdl is a convolution
+        # model.
+        #
+        if tok == "*":
+            # If the previous term as a convolution model then
+            # drop the multiplication.
+            #
+            if prev_model_type is not None and \
+               prev_model_type == Term.CON:
+                # At this point we expect to have [..., model, "("]
+                # thanks to the fake_bracket handling.
+                #
+                v3(f"  - found 'cmdl * ..' so dropping * for {outlist[-2].name}")
+
+                # Should we clear prev_model_type?
+                # prev_model_type = None
+                continue
+
+            for outlist in out:
+                outlist.append(" * ")
+
+            prev_model_type = None
+            continue
+
+        # This must be a model.
+        #
+        for i, grp in enumerate(groups, 1):
+            outlist = out[i - 1]
+            gname = make_component_name(postfix, ngroups, ctr, grp)
+
+            if "{" in tok:
+                mdl, mtype = handle_tablemodel(session, tok, gname, add, madd)
+            else:
+                answer = handle_xspecmodel(session, tok, gname, madd)
+                if answer is None:
+                    answer = handle_mdefine(session, mdefines, tok, gname, add)
+                    if answer is None:
+                        raise ValueError(f"Unable to convert {tok} to a model")
+
+                mdl, mtype = answer
+
+            outlist.append(mdl)
+
+            # This is annoying to check as we need to loop over the
+            # groups here, so can not change in_convolution or
+            # fake_bracket until after the loop.
+            #
+            if mtype == Term.CON and not in_convolution:
+                # Adding a bracket is needed to support con*m1*m2 syntax.
+                # This a simple solution which can be improved upon.
+                #
+                outlist.append("(")
+
+        v3(f" - found model token: {tok} - type: {mtype.name}")
+
+        # Adjust in_convolution / fake_bracket if needed
+        #
+        if mtype == Term.CON:
+            if in_convolution:
+                print("WARNING: found a convolution term within a convolution")
+            else:
+                in_convolution = True
+                fake_bracket = True
+
+        prev_model_type = mtype
+
+        # Update the counter for the next model
+        ctr += 1
+
+    # If the expression was just 'con*m1*m2' then need to add a
+    # trailing bracket.
     #
-    if start < end:
-        process.add_term(start, None, mnum)
+    if fake_bracket:
+        for outlist in out:
+            outlist.append(")")
 
-    # I'm not sure whether this should only be done if start < end.
-    # I am concerned we may have a case where this is needed.
-    #
-    process.check_end_convolution()
-
-    if process.in_convolution():
-        print("WARNING: convolution model may not be handled correctly.")
-
-    if len(process.depth) != 1 or process.depth != [0]:
-        print("WARNING: unexpected issues handling brackets in the model")
-        v2(f"depth = {process.depth}")
-
-    if len(process.lastterm) != 1:
-        print("WARNING: unexpected issues in the model")
-        v2(f"lastterm = {process.lastterm}")
-
-    out = process.out
     v2(f"Found {len(out)} expressions")
     for i, eterm in enumerate(out):
         v2(f"Expression: {i + 1}")
         for token in eterm:
-            v2(f"  {token}")
+            if isinstance(token, ArithmeticModel):
+                v2(f"  '{token.name}'")
+            else:
+                v2(f"  '{token}'")
 
     return out
 
@@ -1465,7 +1244,7 @@ def parse_mdefine_expr(session: Session,
                        extra_models: List[str],
                        expr: str,
                        mdefines: List[MDefine]) -> Tuple[str, List[str], List[str]]:
-    """Parse the model expression.
+    """Parse the model expression in a MDEFINE line.
 
     This is incomplete, as all we do is find what appear to be
     the model parameters.
@@ -1490,7 +1269,7 @@ def parse_mdefine_expr(session: Session,
     """
 
     if not expr:
-        raise ValueError(f"Model expression can not be empty")
+        raise ValueError("Model expression can not be empty")
 
     KNOWN_MODELS = [n[2:].upper() for n in session.list_models("xspec")] + \
         [m.upper() for m in extra_models] + \
@@ -1560,16 +1339,21 @@ def parse_mdefine_expr(session: Session,
         c = instack.pop(0)
 
         # If it's a space, an operator, or bracket we can push the
-        # current symbol. The '*' case is handled
-        # separately.
+        # current symbol. The '^' and '*' cases are handled separately.
         #
-        if c in " ()+-/^,":
+        if c in " ()+-/,":
             add_current(current)
             out.append(c)
             current = ""
             continue
 
-        # Is this multiply or exponent?
+        if c == "^":
+            add_current(current)
+            out.append("**")
+            current = ""
+            continue
+
+        # Is this multiply or exponent? Not really needed just yet.
         #
         if c == "*":
             # A valid MDEFINE expression will not end in * so assume
@@ -1577,7 +1361,7 @@ def parse_mdefine_expr(session: Session,
             #
             if instack[0] == "*":
                 instack.pop(0)
-                c = "^"
+                c = "**"
 
             add_current(current)
             out.append(c)
@@ -1591,6 +1375,89 @@ def parse_mdefine_expr(session: Session,
 
     converted = "".join(out)
     return converted, pnames, models
+
+
+def tokenize_model_expr(session: Session,
+                        extra_models: List[str],
+                        expr: str,
+                        mdefines: List[MDefine]) -> List[str]:
+    """Parse the model expression.
+
+    This is simpler than parse_mdefine_expr as do not have to
+    deal with parameters or functions.
+
+    Parameters
+    ----------
+    session : Session
+        The Sherpa session to use to find models.
+    extra_models : list of str
+        Any XSPEC user models.
+    extra_models : list of str
+        XSPEC user models created with convert_xspec_user_model.
+    expr : str
+        The model expression
+    mdefines : list of MDefine
+        The existing model definitions.
+
+    Returns
+    -------
+    tokens : list of terms
+
+    """
+
+    if not expr:
+        raise ValueError("Model expression can not be empty")
+
+    KNOWN_MODELS = [n[2:].upper() for n in session.list_models("xspec")] + \
+        [m.upper() for m in extra_models] + \
+        [m.name.upper() for m in mdefines]
+
+    out: List[str] = []
+
+    def add_current(symbol: str) -> None:
+        """Add the current symbol to the output."""
+
+        if not symbol:
+            return
+
+        # Check to see if we need to add a "*" symbol. This is assumed to
+        # not need to be efficient.
+        #
+        if out and out[-1] == ")":
+            out.append("*")
+
+        usymbol = symbol.upper()
+        if usymbol not in KNOWN_MODELS:
+            raise ValueError(f"Unrecognized model '{symbol}' in '{expr}'")
+
+        out.append(symbol.lower())
+
+    # This code is not designed for efficiency!
+    #
+    # We strip out spaces as we assume there are none that will
+    # be relevant (it may be needed for table names?).
+    #
+    instack = list(expr.translate({32: None}))
+    current = ""
+    while instack:
+        c = instack.pop(0)
+
+        # If it's aan operator or bracket we can push the current
+        # symbol. We only have to deal with brackets () and operators
+        # + and *. We do not parse the table names here for table
+        # models.
+        #
+        if c in "()+*":
+            add_current(current)
+            out.append(c)
+            current = ""
+            continue
+
+        current += c
+
+    # There may be a trailing term
+    add_current(current)
+    return out
 
 
 def process_mdefine(session: Session,
@@ -1640,6 +1507,7 @@ def process_mdefine(session: Session,
         raise ValueError(f"Expected only one : in '{xline}'")
 
     name, expr = toks[0].strip().split(" ", 1)
+    expr = expr.strip()
 
     # For now we do not parse the expression other than to try
     # and grab the parameter names.
@@ -1672,6 +1540,9 @@ def process_mdefine(session: Session,
             emax = float(stoks[1])
             erange = (emin, emax)
 
+    if mtype == Term.ADD:
+        params.append("norm")
+
     return MDefine(name=name,
                    expr=expr,
                    params=params,
@@ -1681,34 +1552,21 @@ def process_mdefine(session: Session,
                    erange=erange)
 
 
-def get_model_from_token(t: Tokenized) -> Optional[Union[xspec.XSModel, Tuple[MDefine, str]]]:
-    """Pulled out of convert"""
-
-    if isinstance(t, XSPECModelToken):
-        return t.xspec_model
-
-    if isinstance(t, XSPECTableModelToken):
-        return t.table_model
-
-    if isinstance(t, MDefineToken):
-        return (t.mdef_model, t.value)
-
-    return None
-
-
-def get_models_from_expr(expr: List[Tokenized]) -> List[Union[xspec.XSModel, Tuple[MDefine, str]]]:
-    """Pulled out of convert"""
+def get_pars_from_expr(expr: List[SimpleToken]) -> List[Parameter]:
+    """Find all the parameters."""
 
     out = []
     for t in expr:
-        mdl = get_model_from_token(t)
-        if mdl is None:
+        if not isinstance(t, ArithmeticModel):
             continue
 
-        out.append(mdl)
+        for par in t.pars:
+            if par.hidden:
+                continue
+
+            out.append(par)
 
     return out
-
 
 # The conversion routine. The functionality needs to be split out
 # of this.
@@ -1822,7 +1680,7 @@ def convert(infile: Any,  # to hard to type this
     #
     if models is not None:
         for mexpr in models:
-            add_import(f"import {mexpr}")
+            add_import(f"import {mexpr}.ui")
 
     if clean:
         add("clean")
@@ -1850,7 +1708,6 @@ def convert(infile: Any,  # to hard to type this
         'datanum': defaultdict(list),
         'exprs': {},
         'allpars': {},
-        'names': set(),
 
         # The known user-models created by mdefine.
         # At the moment we do not handle them (i.e.
@@ -1874,8 +1731,18 @@ def convert(infile: Any,  # to hard to type this
         command = toks[0].lower()
         v2(f"[{command}] - {xline}")
 
-        if command in ['bayes', 'systematic']:
+        if command == 'bayes':
             v2(f"Skipping: {command}")
+            # No need to mention this
+            # madd(f"print('skipped \"{xline}\"')")
+            continue
+
+        if command == 'systematic':
+            v2(f"Skipping: {command}")
+            # Only report if not "systematic 0"
+            if toks[1] != "0":
+                madd(f"print('skipped \"{xline}\"')")
+
             continue
 
         if command == 'method':
@@ -2071,13 +1938,22 @@ def convert(infile: Any,  # to hard to type this
             madd(f"# mdefine {mdefine.name} {mdefine.expr} : {mdefine.mtype.name}")
             madd(f"def model_{mdefine.name}(pars, elo, ehi):")
             for idx, par in enumerate(mdefine.params):
-                madd(f"    {par} = args[{idx}]")
+                madd(f"    {par} = pars[{idx}]")
+
+            # If there are any models then note this will not work.
+            #
+            if mdefine.models:
+                madd("")
+                madd(f"    # models: {', '.join(mdefine.models)}")
+                madd("    print('This model will not work as it calls XSPEC models')")
+                madd("    print('which is currently unsupported.')")
+                madd("")
 
             # Use the name E to match the XSPEC code
             madd("    E = (elo + ehi) / 2")
             if mdefine.mtype == Term.ADD:
                 madd("    de = ehi - elo")
-                madd(f"    return {mdefine.converted} * de")
+                madd(f"    return norm * ({mdefine.converted}) * de")
             elif mdefine.mtype == Term.MUL:
                 madd(f"    return {mdefine.converted}")
             else:
@@ -2151,57 +2027,12 @@ def convert(infile: Any,  # to hard to type this
             if len(groups) == 0:
                 raise RuntimeError("The script is currently unable to handle the input file")
 
-            exprs = convert_model(session, rest, postfix, groups, state['names'], state['mdefines'])
+            exprs = convert_model(session, extra_models, rest, postfix, groups,
+                                  state['mdefines'],
+                                  add=add, madd=madd)
 
             assert sourcenum not in state['exprs'], sourcenum
             state['exprs'][sourcenum] = exprs
-
-            # We create the model components here, but do not create the
-            # full source model until the end of the script, since
-            # we may need to handle multiple source "spectra".
-            #
-            # This is complicated by the need to support table models.
-            for expr in exprs:
-                for cpt in expr:
-                    # safety check
-                    if not isinstance(cpt, Tokenized):
-                        raise RuntimeError(f"Internal error: not a token {cpt}")
-
-                    if isinstance(cpt, XSPECTableModelToken):
-                        mname = cpt.value
-                        mdl = cpt.table_model
-                        tablename = cpt.table
-                        if mdl.etable:
-                            kwargs = {"etable": True}
-                        else:
-                            kwargs = {}
-
-                        add("load_xstable_model", f"'{mname}'", f"'{tablename}'",
-                            expand=True, **kwargs)
-
-                        # Not really needed but just in case
-                        madd(f"{mname} = XXget_model_component('{mname}')",
-                             expand=True)
-                        continue
-
-                    if isinstance(cpt, XSPECModelToken):
-                        mname = cpt.value
-                        mtype = cpt.xspec_model.type
-                        madd(f"{mname} = XXcreate_model_component('{mtype}', '{mname}')",
-                             expand=True)
-                        continue
-
-                    if isinstance(cpt, MDefineToken):
-                        gname = cpt.value
-                        mname = cpt.mdef_model.name
-                        params = cpt.mdef_model.params
-                        add("load_user_model", f"'model_{mname}'", f"'{gname}'",
-                            expand=True)
-                        add("add_user_pars", f"'{gname}'", str(params),
-                            expand=True)
-                        continue
-
-                    continue
 
             # Create the list of all parameters, so we can set up links.
             # Note that we store these with the label, not sourcenumber,
@@ -2210,25 +2041,14 @@ def convert(infile: Any,  # to hard to type this
             assert label not in state['allpars'], label
             state['allpars'][label] = []
             for expr in exprs:
-                # This is tricky to do as we need to support mdefine
-                # models, which are hard to query.
-                #
-                mdls = get_models_from_expr(expr)
-                for mdl in mdls:
-                    try:
-                        for par in mdl.pars:
-                            assert isinstance(par, sherpa.models.parameter.Parameter)  # for mypy
-                            if par.hidden:
-                                continue
+                pars = get_pars_from_expr(expr)
+                for par in pars:
+                    state['allpars'][label].append(par)
 
-                            state['allpars'][label].append(par)
-
-                    except AttributeError:
-                        # Assume a MDefine
-                        mdef, cname = mdl
-                        for pname in mdef.params:
-                            # CHECK: does this need a parameter object?
-                            state["allpars"][label].append(f"{cname}.{pname}")
+            # Separate the model definition from the parameters
+            madd("")
+            if state['allpars'][label]:
+                madd("# Parameter settings")
 
             # Process all the parameter values for each data group.
             #
@@ -2237,68 +2057,57 @@ def convert(infile: Any,  # to hard to type this
                 if escape:
                     break
 
-                mdls = get_models_from_expr(expr)
-                for mdl in mdls:
+                pars = get_pars_from_expr(expr)
+                for par in pars:
                     if escape:
                         break
 
-                    pars = []
+                    assert isinstance(par, Parameter)  # for mypy
+                    pname = par.fullname
+                    pmin = par.min
+                    pmax = par.max
+
+                    # Grab the parameter line
                     try:
-                        for par in mdl.pars:
-                            assert isinstance(par, sherpa.models.parameter.Parameter)  # for mypy
-                            if par.hidden:
-                                continue
+                        pline = intext.pop(0).strip()
+                    except IndexError:
+                        v1(f"Unable to find parameter value for {pname} - skipping other parameters")
+                        escape = True
+                        break
 
-                            # need par.name / par.fullname
-                            pars.append((par.fullname, par.min, par.max))
+                    if pline.startswith('='):
+                        parse_tie(state['allpars'], add_import, add, pname, pline)
+                        continue
 
-                    except AttributeError:
-                        mdef, cname = mdl
-                        pars = [(f"{cname}.{pname}", None, None)
-                                for pname in mdef.params]
+                    toks = pline.split()
+                    if len(toks) != 6:
+                        raise ValueError(f"Unexpected parameter line '{pline}'")
 
-                    for pname, pmin, pmax in pars:
-                        # Grab the parameter line
-                        try:
-                            pline = intext.pop(0).strip()
-                        except IndexError:
-                            v1(f"Unable to find parameter value for {pname} - skipping other parameters")
-                            escape = True
-                            break
+                    # We always set the parameter value, but only change the
+                    # limits if they are different. We only look at the "soft"
+                    # limits.
+                    #
+                    lmin = float(toks[3])
+                    lmax = float(toks[4])
 
-                        if pline.startswith('='):
-                            parse_tie(state['allpars'], add_import, add, pname, pline)
-                            continue
+                    pargs = [pname, toks[0]]
+                    pkwargs = {}
 
-                        toks = pline.split()
-                        if len(toks) != 6:
-                            raise ValueError(f"Unexpected parameter line '{pline}'")
+                    if pmin is None or lmin != pmin:
+                        pkwargs['min'] = toks[3]
 
-                        # We always set the parameter value, but only change the
-                        # limits if they are different. We only look at the "soft"
-                        # limits.
-                        #
-                        lmin = float(toks[3])
-                        lmax = float(toks[4])
+                    if pmax is None or lmax != pmax:
+                        pkwargs['max'] = toks[4]
 
-                        pargs = [pname, toks[0]]
-                        pkwargs = {}
+                    if toks[1].startswith('-'):
+                        pkwargs['frozen'] = True
 
-                        if pmin is None or lmin != pmin:
-                            pkwargs['min'] = toks[3]
-
-                        if pmax is None or lmax != pmax:
-                            pkwargs['max'] = toks[4]
-
-                        if toks[1].startswith('-'):
-                            pkwargs['frozen'] = True
-
-                        add('set_par', *pargs, **pkwargs)
+                    add('set_par', *pargs, **pkwargs)
 
             continue
 
         v1(f"SKIPPING '{xline}'")
-
+        madd(f"print('WARNING: skipped {xline}')")
 
     # Warn the user if MDEFINE was used
     #
@@ -2327,7 +2136,10 @@ def convert(infile: Any,  # to hard to type this
     nsource = len(state['sourcenum'])
     v3(f"Number of extra sources: {nsource}")
     v3(f"Keys in exprs: {exprs.keys()}")
-    if nsource == 0:
+    if list(exprs.keys()) == []:
+        v3("Appear to have no model expression")
+
+    elif nsource == 0:
         if list(exprs.keys()) != [None]:
             raise RuntimeError("Unexpected state when processing the model expressions in the XCM file!")
 
