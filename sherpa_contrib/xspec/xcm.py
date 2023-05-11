@@ -45,6 +45,7 @@ from sherpa.utils.err import ArgumentErr, DataErr  # type: ignore
 
 import sherpa.astro.instrument  # type: ignore
 import sherpa.models.parameter  # type: ignore
+import sherpa.utils             # type: ignore
 
 import ciao_contrib.logger_wrapper as lw  # type: ignore
 
@@ -817,7 +818,7 @@ def create_session(models: Optional[List[str]]) -> Tuple[Session, List[str]]:
 def handle_xspecmodel(session: Session,
                       model: str,
                       cpt: str,
-                      madd: Callable[..., None]) -> Optional[tuple[xspec.XSModel, Term]]:
+                      madd: Optional[Callable[..., None]] = None) -> Optional[tuple[xspec.XSModel, Term]]:
     """Create a model instance for an XSPEC model.
 
     Parameters
@@ -829,8 +830,8 @@ def handle_xspecmodel(session: Session,
         the name from the XCM script.
     cpt : str
         The component name for the model.
-    add, madd : callable
-        Create the model text
+    madd : callable, optional
+        Create the model text (if wanted)
 
     Notes
     -----
@@ -852,8 +853,9 @@ def handle_xspecmodel(session: Session,
             v3(f"Looking for XSPEC model '{model}' with prefix '{prefix}'")
             mname = f"{prefix}{model}"
             mdl = session.create_model_component(mname, cpt)
-            madd(f"{cpt} = XXcreate_model_component('{mname}', '{cpt}')",
-                 expand=True)
+            if madd is not None:
+                madd(f"{cpt} = XXcreate_model_component('{mname}', '{cpt}')",
+                     expand=True)
 
             if isinstance(mdl, xspec.XSAdditiveModel):
                 mtype = MODEL_TYPES["ADD"]
@@ -1202,42 +1204,110 @@ def convert_model(session: Session,
     return out
 
 
-UNOP_TOKENS = ["EXP",
-               "SIN",
-               "SIND",
-               "COS",
-               "COSD",
-               "TAN",
-               "TAND",
-               "SINH",
-               "SINHD",
-               "COSH",
-               "COSHD",
-               "TANH",
-               "TANHD",
-               "LOG",
-               "LN",
-               "SQRT",
-               "ABS",
-               "INT",
-               "ASIN",
-               "ACOS",
-               "ATAN",
-               "ASINH",
-               "ACOSH",
-               "ATANH",
-               "ERF",
-               "ERFC",
-               "GAMMA",
-               "SIGN",
-               "HEAVISIDE",
-               "BOXCAR",
-               "MEAN",
-               "DIM",
-               "SMIN",
-               "SMAX"]
+FunctionDict = Dict[str, Optional[str]]
 
-BINOP_TOKENS = ["ATAN2", "MAX", "MIN"]
+
+UNOP_TOKENS: FunctionDict = {
+    "EXP": "np.exp",
+    "SIN": "np.sin",
+    "SIND": None,
+    "COS": "np.cos",
+    "COSD": None,
+    "TAN": "np.tan",
+    "TAND": None,
+    "SINH": "np.sinh",
+    "SINHD": None,
+    "COSH": "np.cosh",
+    "COSHD": None,
+    "TANH": "np.tanh",
+    "TANHD": "np.tanhd",
+    "LOG": "np.log10",
+    "LN": "np.log",
+    "SQRT": "np.sqrt",
+    "ABS": "np.abs",
+    "INT": None,
+    "ASIN": "np.arcsin",
+    "ACOS": "np.arccos",
+    "ATAN": "np.arctan",
+    "ASINH": "np.arcsinh",
+    "ACOSH": "np.aarccosh",
+    "ATANH": "np.aarctanh",
+    "ERF": "sherpa.utils.erf",
+    "ERFC": None,
+    "GAMMA": "sherpa.utils.gamma",
+    "SIGN": None,
+    "HEAVISIDE": None,
+    "BOXCAR": None,
+    "MEAN": "np.mean",
+    "DIM": "np.size",  # is this correct?
+    "SMIN": "np.min",
+    "SMAX": "np.max"
+}
+
+
+BINOP_TOKENS: FunctionDict = {
+    "ATAN2": "np.arctan2",  # does this match XSPEC?
+    "MAX": None,
+    "MIN": None
+}
+
+
+# Add helper functions to handle the UNOP and BINOP models which we
+# can not just handle with numpy routines. As we do not actually parse
+# the expressions, we can't easily add extra closing brackets to allow
+# the <trigonometric>D forms to be inlined.
+#
+def SIND(x):
+    return np.sin(np.deg2rad(x))
+
+def COSD(x):
+    return np.cos(np.deg2rad(x))
+
+def TAND(x):
+    return np.tan(np.deg2rad(x))
+
+def SINHD(x):
+    return np.sinh(np.deg2rad(x))
+
+def COSHD(x):
+    return np.cosh(np.deg2rad(x))
+
+def TANHD(x):
+    return np.tanh(np.deg2rad(x))
+
+def SIGN(x):
+    """-1 if negative, 1 if positive; assume 0 is positive"""
+    return -1 + (np.asarray(x) >= 0) * 2
+
+def HEAVISIDE(x):
+    """0 if negative, 1 if positive; assume 0 is positive"""
+    return (np.asarray(x) >= 0) * 1
+
+def BOXCAR(x):
+    """1 if 0 <= x <= 1, 0 elsewhere"""
+    xx = np.asarray(x)
+    return ((xx >= 0) & (xx <= 1)) * 1
+
+def INT(x):
+    """Can we assume everything is an array?"""
+    if np.isscalar(x):
+        return np.int(x)
+    return np.asarray([np.int(xi) for xi in x])
+
+def ERFC(x):
+    return 1 - sherpa.utils.erf(x)
+
+def MAX(x, y):
+    """Is this a per-element max or are x and y only scalars?"""
+    if np.isscalar(x) and np.isscalar(y):
+        return np.max([x, y])
+    raise RuntimeError("Unclear from documentation what MAX is meant to do here")
+
+def MIN(x, y):
+    """Is this a per-element min or are x and y only scalars?"""
+    if np.isscalar(x) and np.isscalar(y):
+        return np.min([x, y])
+    raise RuntimeError("Unclear from documentation what MIN is meant to do here")
 
 
 def parse_mdefine_expr(session: Session,
@@ -1292,13 +1362,25 @@ def parse_mdefine_expr(session: Session,
             out.append(usymbol)
             return
 
-        if usymbol in UNOP_TOKENS:
-            out.append(f"xcm.{usymbol}")
+        try:
+            answer = UNOP_TOKENS[usymbol]
+            if answer is None:
+                out.append(f"xcm.{usymbol}")
+            else:
+                out.append(answer)
             return
+        except KeyError:
+            pass
 
-        if usymbol in BINOP_TOKENS:
-            out.append(f"xcm.{usymbol}")
+        try:
+            answer = BINOP_TOKENS[usymbol]
+            if answer is None:
+                out.append(f"xcm.{usymbol}")
+            else:
+                out.append(answer)
             return
+        except KeyError:
+            pass
 
         if usymbol in KNOWN_MODELS:
             # This is currently unsupported
@@ -1920,7 +2002,7 @@ def convert(infile: Any,  # to hard to type this
             # convinced this will result in a usable XCM file if it
             # happens.
             #
-            for idx, m in state["mdefines"]:
+            for idx, m in enumerate(state["mdefines"]):
                 if m.name != mdefine.name:
                     continue
 
@@ -1936,18 +2018,53 @@ def convert(infile: Any,  # to hard to type this
             #
             madd("")
             madd(f"# mdefine {mdefine.name} {mdefine.expr} : {mdefine.mtype.name}")
+            madd(f"# parameters: {', '.join(mdefine.params)}")
             madd(f"def model_{mdefine.name}(pars, elo, ehi):")
             for idx, par in enumerate(mdefine.params):
                 madd(f"    {par} = pars[{idx}]")
 
-            # If there are any models then note this will not work.
-            #
+            madd("    elo = np.asarray(elo)")
+            madd("    ehi = np.asarray(ehi)")
+
             if mdefine.models:
                 madd("")
-                madd(f"    # models: {', '.join(mdefine.models)}")
-                madd("    print('This model will not work as it calls XSPEC models')")
-                madd("    print('which is currently unsupported.')")
-                madd("")
+                for model in mdefine.models:
+
+                    # Is this a mdefine/user model or a compiled model?
+                    #
+                    matches = [md for md in state["mdefines"] if md.name == model]
+                    if matches:
+                        # assume there's only one match by construction
+                        match = matches[0]
+
+                        # We should be able to call the model function
+                        # we created directly.
+                        #
+                        callfunc = f"model_{match.name}"
+                        temp_mtype = match.mtype
+                    else:
+                        answer = handle_xspecmodel(session, model, "temp_cpt")
+                        if answer is None:
+                            print(f"Unable to find model '{model}' for MDEFINE {mdefine.name}")
+                            madd(f"    print('Unable to identify model={model}')")
+                            continue
+
+                        temp_cpt = answer[0]
+                        # Hopefully the class is available
+                        madd(f"    {model}_cpt = {temp_cpt.__class__.__name__}()")
+                        callfunc = f"{model}_cpt.calc"
+                        temp_mtype = answer[1]
+
+                    madd("")
+                    madd(f"    def {model}(*args):")
+                    madd("        pars = list(args)")
+                    if temp_mtype == Term.ADD:
+                        madd("        pars.append(1.0)  # model is additive")
+                    madd(f"        out = {callfunc}(pars, elo, ehi)")
+                    if temp_mtype == Term.ADD:
+                        madd("        out /= de  # model is additive")
+                    madd("        return out")
+                    madd("")
 
             # Use the name E to match the XSPEC code
             madd("    E = (elo + ehi) / 2")
@@ -2075,6 +2192,12 @@ def convert(infile: Any,  # to hard to type this
                         escape = True
                         break
 
+                    # This may only be possible with hand-edited files.
+                    if not pline:
+                        v1(f"Found a blank line when expecting paramter {pname} - skipping other parameters")
+                        excape = True
+                        break
+
                     if pline.startswith('='):
                         parse_tie(state['allpars'], add_import, add, pname, pline)
                         continue
@@ -2114,10 +2237,10 @@ def convert(infile: Any,  # to hard to type this
     if state["mdefines"]:
         v1("Found MDEFINE command: please consult 'ahelp convert_xspec_script'")
         for mdefine in state["mdefines"]:
-            if mdefine.mtype == Term.CON or mdefine.models:
-                status = "will not work"
+            if mdefine.mtype == Term.CON:
+                status = "convolution models are not currently supported"
             else:
-                status = f"check model_{mdefine.name}()"
+                status = f"check definition of model_{mdefine.name}()"
 
             v1(f"  - {mdefine.name}  {mdefine.mtype.name} : {status}")
 

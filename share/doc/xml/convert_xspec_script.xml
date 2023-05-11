@@ -28,7 +28,7 @@
       <LINE/>
       <LINE>The supported command-line flags can be found using -h/--help:</LINE>
       <LINE/>
-      <LINE>--models    to include models created by convert_xspec_user_script</LINE>
+      <LINE>--models    to include models created by convert_xspec_user_script (can be used multiple times)</LINE>
       <LINE>--clean     if the script should start with a call to clean</LINE>
       <LINE>--clobber   will overwrite existing files</LINE>
       <LINE>--verbose   will change the amount of screen output</LINE>
@@ -237,9 +237,7 @@ set_source(1, m1(m2 * m3))
 
       <QEXAMPLE>
 	<SYNTAX>
-	  <LINE>&upr; echo "model phabs(apec)" | &tool; - -</LINE>
-	  <LINE>model phabs(apec)</LINE>
-	  <LINE>Unable to find parameter value for nH - skipping other parameters</LINE>
+	  <LINE>&upr; echo "model phabs(apec)" | &tool; - - --verbose 0</LINE>
 	  <LINE>from sherpa.astro.ui import *</LINE>
 	  <LINE/>
 	  <LINE/>
@@ -254,8 +252,56 @@ set_source(1, m1(m2 * m3))
 	<DESC>
 	  <PARA>
 	    Convert the input from stdin - in this case the string "model phabs(apec)" -
-	    and write the output to stdin.
+	    and write the output to stdin. Using the "--verbose 0" option means that
+	    messages from the script are not included in the screen output.
 	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<DESC>
+	  <PARA>
+	    Added in 4.15.2 is support for the MDEFINE command. Here we show the
+	    output from a simple additive model of two power laws:
+	  </PARA>
+<VERBATIM>
+mdefine dplaw E**p1 + f*E**p2
+
+model dplaw
+</VERBATIM>
+<PARA>
+  Converting this file will create the following Python script:
+</PARA>
+<VERBATIM>
+from sherpa.astro.ui import *
+
+
+# mdefine dplaw E**p1 + f*E**p2 : ADD
+# parameters: p1, f, p2, norm
+def model_dplaw(pars, elo, ehi):
+    p1 = pars[0]
+    f = pars[1]
+    p2 = pars[2]
+    norm = pars[3]
+    elo = np.asarray(elo)
+    ehi = np.asarray(ehi)
+    E = (elo + ehi) / 2
+    de = ehi - elo
+    return norm * (E**p1 + f*E**p2) * de
+
+
+
+# model dplaw
+load_user_model(model_dplaw, 'm1')
+add_user_pars('m1', ['p1', 'f', 'p2', 'norm'])
+
+# Parameter settings
+
+# Set up the model expressions
+#
+set_source(1, m1)
+</VERBATIM>
+
 	</DESC>
       </QEXAMPLE>
 
@@ -282,8 +328,120 @@ set_source(1, m1(m2 * m3))
 	<EQUATION>convert_xspec_user_model modname lmodel.dat</EQUATION>
 	add a
 	<EQUATION>--models modname</EQUATION>
-	option to the call to xspec_user_script.
+	option to the call to xspec_user_script. This argument can be
+	repeated if several sets of models are needed; for example
+	<EQUATION>--models mod1 --models mod2</EQUATION>.
       </PARA>
+    </ADESC>
+
+    <ADESC title="MDEFINE">
+      <PARA>
+	Support for the MDEFINE command has been added in the 4.15.2
+	release. The results should be reviewed carefully as there has
+	been limited testing, in particular differences between the
+	various XSPEC language features and Python.
+      </PARA>
+      <PARA title="Calling XSPEC functions">
+	MDEFINE expressions can call various unary and binary
+	functions, such as ATAN2, EXP, HEAVISIDE, and SMAX. Although
+	support is provided for these models, they are not guaranteed
+	to behave as they do in XSPEC, so please check the results
+	carefully!
+      </PARA>
+      <PARA title="Example">
+	With the following XCM script, based on the
+	<HREF link="https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSmdefine.html">XSPEC MDEFINE examples</HREF>,
+      </PARA>
+<VERBATIM>
+mdefine junk a*e+b*log(e)/sin(e)
+mdefine junk3  0.2+B*e : mul
+mdefine mymod junk3(p1)*junk(p2,p3)
+
+model mymod
+</VERBATIM>
+<PARA>
+  running convert_xspec_script will display
+</PARA>
+<VERBATIM>
+  model mymod
+Unable to find parameter value for m1.p1 - skipping other parameters
+Found MDEFINE command: please consult 'ahelp convert_xspec_script'
+  - junk  ADD : check definition of model_junk()
+  - junk3  MUL : check definition of model_junk3()
+  - mymod  ADD : check definition of model_mymod()
+</VERBATIM>
+<PARA>
+  and create the output file
+</PARA>
+<VERBATIM>
+from sherpa.astro.ui import *
+
+
+# mdefine junk a*e+b*log(e)/sin(e) : ADD
+# parameters: a, b, norm
+def model_junk(pars, elo, ehi):
+    a = pars[0]
+    b = pars[1]
+    norm = pars[2]
+    elo = np.asarray(elo)
+    ehi = np.asarray(ehi)
+    E = (elo + ehi) / 2
+    de = ehi - elo
+    return norm * (a*E+b*np.log10(E)/np.sin(E)) * de
+
+
+
+# mdefine junk3 0.2+B*e : MUL
+# parameters: B
+def model_junk3(pars, elo, ehi):
+    B = pars[0]
+    elo = np.asarray(elo)
+    ehi = np.asarray(ehi)
+    E = (elo + ehi) / 2
+    return 0.2+B*E
+
+
+
+# mdefine mymod junk3(p1)*junk(p2,p3) : ADD
+# parameters: p1, p2, p3, norm
+def model_mymod(pars, elo, ehi):
+    p1 = pars[0]
+    p2 = pars[1]
+    p3 = pars[2]
+    norm = pars[3]
+    elo = np.asarray(elo)
+    ehi = np.asarray(ehi)
+
+
+    def junk3(*args):
+        pars = list(args)
+        out = model_junk3(pars, elo, ehi)
+        return out
+
+
+    def junk(*args):
+        pars = list(args)
+        pars.append(1.0)  # model is additive
+        out = model_junk(pars, elo, ehi)
+        out /= de  # model is additive
+        return out
+
+    E = (elo + ehi) / 2
+    de = ehi - elo
+    return norm * (junk3(p1)*junk(p2,p3)) * de
+
+
+
+# model mymod
+load_user_model(model_mymod, 'm1')
+add_user_pars('m1', ['p1', 'p2', 'p3', 'norm'])
+
+# Parameter settings
+
+# Set up the model expressions
+#
+set_source(1, m1)
+</VERBATIM>
     </ADESC>
 
     <ADESC title="Known Problems">
@@ -294,6 +452,8 @@ set_source(1, m1(m2 * m3))
 	include
       </PARA>
       <LIST>
+	<ITEM>not all parts of the various XSPEC expression languages - such
+	as MODEL and MDEFINE - are suppoted,</ITEM>
 	<ITEM>differences in how Sherpa and XSPEC work,</ITEM>
 	<ITEM>possible differences in your ~/.xspec/Xspec.init file
 	(as of CIAO 4.12 Sherpa now uses this file),</ITEM>
@@ -303,7 +463,12 @@ set_source(1, m1(m2 * m3))
       <PARA>
 	The script is also designed to parse the output of the
 	SAVE command from XSPEC. It can handle hand-edited files but
-	it is more likely to fail or work incorrectly.
+	it is more likely to fail or work incorrectly. For instance,
+	XSPEC commands must be included in full, so a line like
+	<EQUATION>mo (phabs)apec</EQUATION>
+	will not work, but
+	<EQUATION>model (phabs)apec</EQUATION>
+	will.
       </PARA>
       <PARA title="Tied parameters">
 	Comlplicated tie expressions, in particular those involving
@@ -312,7 +477,9 @@ set_source(1, m1(m2 * m3))
       <PARA title="Unsupported models">
 	Only additive, multiplicative, and convolution models are
 	recognized. Only models included in XSPEC 12.12.1c (used in
-	CIAO 4.15) are available.
+	CIAO 4.15) are available, although the --models argument,
+	added in the 4.15.2 release, can be used to add XSPEC
+	user models that have been converted with convert_xspec_user_model.
       </PARA>
       <PARA title="Unsupported commands">
 	Some commands are ignored by the script, but others will
@@ -343,21 +510,19 @@ set_source(1, m1(m2 * m3))
 	<EQUATION>--models javier</EQUATION> to the call to
 	convert_xspec_script.
       </PARA>
-
       <PARA title="Initial support of the MDEFINE command">
 	XSPEC allows user models to be created with the <HREF
 	link="https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSmdefine.html">MDEFINE
 	command</HREF>. The Sherpa approach to creating user models is
 	somewhat different, which requires converting from the XSPEC
-	expression into one supported by Sherpa. This release does not
-	fully handle this, but it should allow scripts to be converted
-	with place-holders inserted for the model. Please contact the
-	CXC HelpDesk for help in finishing off the conversion.
-      </PARA>
-      <PARA>
-	There is currently support for simple multiplicative or
-	additive models that do not call other models, and do not call
-	either the unary or binary functions.
+	expression into one supported by Sherpa. This is the attempt
+	at supporting such models, and so the results should be
+	checked against XSPEC. Convolution models are currently
+	unsupported and models that call functions (such as ATAN2,
+	DIM, or HEAVISIDE) may not work as expected because of
+	differences between XSPEC and Python. Please contact the CXC
+	HelpDesk if there appear to be problems or differences to
+	XSPEC when using the output of this script.
       </PARA>
       <PARA title="Improvements in model parsing">
 	The XSPEC model language is different to Sherpa, for example
