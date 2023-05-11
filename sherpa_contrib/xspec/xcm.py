@@ -32,7 +32,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 import importlib
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, \
+    TypedDict, Tuple, Union
 
 import numpy as np
 
@@ -362,10 +363,53 @@ def xmax(x, y):
 
 # Routines used in converting a script.
 #
+class Term(Enum):
+    """The "type" of an XSPEC model."""
+
+    ADD = 1
+    MUL = 2
+    CON = 3
+
+
+MODEL_TYPES = {t.name: t for t in list(Term)}
+
+
+@dataclass
+class MDefine:
+    name: str
+    expr: str        # the original expression
+    params: List[str]
+    models: List[str]
+    converted: str   # the Python version of the model (likely needs reworking)
+    mtype: Term
+    erange: Optional[Tuple[float, float]]
+
+
+SimpleToken = Union[str, ArithmeticModel]
+Expression = List[SimpleToken]
+
+
+class StateDict(TypedDict):
+    nodata: bool
+    statistic: str
+    subtracted: bool
+    nobackgrounds: List[int]
+    group: Dict[int, List[int]]
+    datasets: List[int]
+    sourcenum: Dict[int, List[int]]
+    datanum: Dict[int, List[int]]
+    exprs: Dict[int, List[Expression]]
+    allpars: Dict[str, Parameter]
+    mdefines: List[MDefine]
+
+
+RangeValue = Union[int, float]
+
+
 def set_subtract(add_import: Callable[[str], None],
                  add_spacer: Callable[[], None],
                  add: Callable[..., None],
-                 state: Dict[str, Any]) -> None:
+                 state: StateDict) -> None:
     """Ensure the data is subtracted (as much as we can tell)."""
 
     if state['nodata'] or state['subtracted'] or not state['statistic'].startswith('chi'):
@@ -384,7 +428,11 @@ def set_subtract(add_import: Callable[[str], None],
     state['subtracted'] = True
 
 
-def parse_tie(pars, add_import, add, par, pline) -> None:
+def parse_tie(pars: Dict[str, Parameter],
+              add_import: Callable[..., None],
+              add: Callable[..., None],
+              par: str,
+              pline: str) -> None:
     """Parse a tie line.
 
     The idea is to convert p<integer> or <integer> to the
@@ -473,7 +521,10 @@ def parse_tie(pars, add_import, add, par, pline) -> None:
     add('link', par, expr)
 
 
-def expand_token(add_import, pars, pname, token) -> str:
+def expand_token(add_import: Callable[...,None],
+                 pars: Dict[str, Parameter],
+                 pname: str,
+                 token: str) -> str:
     """Is this a reference to a parameter?
 
     Ideally we'd add a '.val' to the parameter value when we
@@ -535,16 +586,16 @@ def expand_token(add_import, pars, pname, token) -> str:
 
         return tpar.fullname
 
-    # See if we can convert the token to an integer (beginnnig with
+    # See if we can convert the token to an integer (beginning with
     # p or not). If we can't we just return the token.
     #
     if token.startswith('p'):
-        tie = token[1:]
+        tieval = token[1:]
     else:
-        tie = token
+        tieval = token
 
     try:
-        tie = int(tie)
+        tie = int(tieval)
     except ValueError:
         return token
 
@@ -553,7 +604,7 @@ def expand_token(add_import, pars, pname, token) -> str:
     try:
         plist = pars['unnamed']
     except KeyError:
-        raise RuntimeError("Internal error accessing parameter names") from None
+        raise RuntimeError(f"Internal error accessing parameter names: pars={pars}") from None
 
     try:
         tpar = plist[tie - 1]
@@ -566,13 +617,19 @@ def expand_token(add_import, pars, pname, token) -> str:
 def parse_dataid(token: str) -> Tuple[Optional[int], int]:
     """Convert '[<data group #>:] <spectrum #>' to values.
 
+    This is used for both the DATA command, and the ARF/RESPONSE
+    commands, which have subtly-different meanings but the syntax is
+    the same. It is not used for MODEL as the second element is a
+    string in that case.
+
     Parameters
     ----------
     token : str
 
     Returns
     -------
-    groupnum, datanum : None or int, int
+    othernum, datanum : None or int, int
+
     """
 
     emsg = f"Unsupported data identifier: '{token}'"
@@ -591,8 +648,6 @@ def parse_dataid(token: str) -> Tuple[Optional[int], int]:
 
     return None, itoks[0]
 
-
-RangeValue = Union[int, float]
 
 def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[RangeValue], Optional[RangeValue]]]]:
     """Convert a-b,... to a set of ranges.
@@ -653,6 +708,109 @@ def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[RangeValue], Opt
         out.append((start, end))
 
     return store["chantype"], out
+
+
+def parse_data(state: Session,
+               add: Callable[..., None],
+               toks: List[str]) -> None:
+    """Parse the DATA line
+
+    https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSdata.html
+
+    """
+
+    state['nodata'] = False
+
+    ntoks = len(toks)
+    if ntoks == 1:
+        assert len(state['datasets']) == 0
+        groupnum = 1
+        datanum = 1
+        args = [f"'{toks[0]}'"]
+    else:
+        igroupnum, datanum = parse_dataid(toks[0])
+        if igroupnum is None:
+            groupnum = 1
+        else:
+            groupnum = igroupnum
+
+        args = [str(datanum), f"'{toks[1]}'"]
+
+    state['group'][groupnum].append(datanum)
+    state['datasets'].append(datanum)
+    add('load_pha', *args, use_errors=True)
+
+
+def parse_backgrnd(state: StateDict,
+                   add: Callable[..., None],
+                   xline: str,
+                   toks: List[str]) -> None:
+    """Parse the BACKGRND line
+
+    https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSbackgrnd.html
+
+    """
+
+    ntoks = len(toks)
+    if ntoks == 1:
+        if toks[0] == 'none':
+            state['nobackgrounds'].append(1)
+        else:
+            add('load_background', f"'{toks[0]}'")
+
+        return
+
+    groupnum, datanum = parse_dataid(toks[0])
+    if groupnum is not None:
+        raise ValueError(f"Unsupported BACKGRND syntax: '{xline}'")
+
+    if toks[1] == 'none':
+        state['nobackgrounds'].append(datanum)
+    else:
+        add('load_background', f"'{toks[1]}'")
+
+
+def parse_response(state: StateDict,
+                   add: Callable[..., None],
+                   command: str,
+                   toks: List[str]) -> None:
+    """Parse a arf or response line
+
+    From
+
+    https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSarf.html
+    https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSresponse.html
+
+    Syntax:  arf       [<filespec>...]
+    Syntax:  response  [<filespec>...]
+             response  [<source num>:]<spectrum num> none
+
+    where <filespec> ::= [[<source num>:]<spectrum num>] <file name>...,
+    """
+
+    if command == 'arf':
+        xcommand = 'load_arf'
+    elif command == 'response':
+        xcommand = 'load_rmf'
+    else:
+        raise NotImplementedError(f"Internal error: command={command}")
+
+    ntoks = len(toks)
+    if ntoks == 1:
+        add(xcommand, f"'{toks[0]}'")
+        return
+
+    sourcenum, datanum = parse_dataid(toks[0])
+
+    kwargs = {}
+    if sourcenum is not None and sourcenum != 1:
+        kwargs['resp_id'] = sourcenum
+
+        # TODO: Shouldn't we always record these?
+        state['sourcenum'][sourcenum].append(datanum)
+        state['datanum'][datanum].append(sourcenum)
+
+    add(xcommand, datanum, f"'{toks[1]}'", **kwargs)
 
 
 def parse_notice_range(add_import: Callable[[str], None],
@@ -718,29 +876,295 @@ def parse_notice_range(add_import: Callable[[str], None],
                 add(f"xcm.{command}", d, lo, hi, expand=False)
 
 
-SimpleToken = Union[str, ArithmeticModel]
+def add_mdefine_model(state: StateDict,
+                      session: Session,
+                      madd: Callable[..., None],
+                      mdefine: MDefine
+                      ) -> None:
+    """Set up the MDEFINE model"""
+
+    # We may over-write an existing model, but I am not
+    # convinced this will result in a usable XCM file if it
+    # happens.
+    #
+    for idx, m in enumerate(state["mdefines"]):
+        if m.name != mdefine.name:
+            continue
+
+        # There should only be a single value
+        del state["mdefines"][idx]
+        break
+
+    state["mdefines"].append(mdefine)
+
+    # We have to define the model function here, as the MODEL
+    # command will cause the model function to be converted
+    # into a user model.
+    #
+    madd("")
+    madd(f"# mdefine {mdefine.name} {mdefine.expr} : {mdefine.mtype.name}")
+    madd(f"# parameters: {', '.join(mdefine.params)}")
+    madd(f"def model_{mdefine.name}(pars, elo, ehi):")
+    for idx, par in enumerate(mdefine.params):
+        madd(f"    {par} = pars[{idx}]")
+
+    madd("    elo = np.asarray(elo)")
+    madd("    ehi = np.asarray(ehi)")
+
+    if mdefine.models:
+        madd("")
+        for model in mdefine.models:
+
+            # Is this a mdefine/user model or a compiled model?
+            #
+            matches = [md for md in state["mdefines"] if md.name == model]
+            if matches:
+                # assume there's only one match by construction
+                match = matches[0]
+
+                # We should be able to call the model function
+                # we created directly.
+                #
+                callfunc = f"model_{match.name}"
+                temp_mtype = match.mtype
+            else:
+                answer = handle_xspecmodel(session, model, "temp_cpt")
+                if answer is None:
+                    print(f"Unable to find model '{model}' for MDEFINE {mdefine.name}")
+                    madd(f"    print('Unable to identify model={model}')")
+                    continue
+
+                temp_cpt = answer[0]
+                # Hopefully the class is available
+                madd(f"    {model}_cpt = {temp_cpt.__class__.__name__}()")
+                callfunc = f"{model}_cpt.calc"
+                temp_mtype = answer[1]
+
+            madd("")
+            madd(f"    def {model}(*args):")
+            madd("        pars = list(args)")
+            if temp_mtype == Term.ADD:
+                madd("        pars.append(1.0)  # model is additive")
+            madd(f"        out = {callfunc}(pars, elo, ehi)")
+            if temp_mtype == Term.ADD:
+                madd("        out /= de  # model is additive")
+            madd("        return out")
+            madd("")
+
+    # Use the name E to match the XSPEC code
+    madd("    E = (elo + ehi) / 2")
+    if mdefine.mtype == Term.ADD:
+        madd("    de = ehi - elo")
+        madd(f"    return norm * ({mdefine.converted}) * de")
+    elif mdefine.mtype == Term.MUL:
+        madd(f"    return {mdefine.converted}")
+    else:
+        madd(f"    raise RuntimeError('convolution model to write: {mdefine.expr}')")
+
+    madd("\n")  # want two bare lines
 
 
-class Term(Enum):
-    """The "type" of an XSPEC model."""
+def parse_model(state: StateDict,
+                session: Session,
+                extra_models: List[str],
+                add_spacer: Callable[...,None],
+                add_import: Callable[...,None],
+                add: Callable[...,None],
+                madd: Callable[...,None],
+                xline: str) -> List[Expression]:
+    """Handle the model line
 
-    ADD = 1
-    MUL = 2
-    CON = 3
+    Can we assume that if the model has no dataset/label then it's
+    used for all datasets, otherwise we have separate models, or
+    is that too simple? Too simple, as I have an example with
+
+    model  gaussian + gaussian + constant*constant(apec + (apec + apec + powerlaw)wabs + apec*wabs)
+    model  2:pbg1 powerlaw
+    model  3:pbg2 powerlaw
+    model  4:pbg3 powerlaw
+
+    From https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSmodel.html
+
+    Syntax: model[<source num>:<name>] [<delimiter>] <component1> <delimiter><component2><delimiter>...<componentN> [<delimiter>]
+
+    """
+
+    # Need some place to set up subtract calls, so pick here
+    #
+    add_spacer(always=False)
+
+    set_subtract(add_import, add_spacer, add, state)
+
+    # Now, the XCM file may not contain any data statements,
+    # so if so we assume a single dataset only. This is done
+    # after the set_subtract call.
+    #
+    if state['nodata']:
+        state['datasets'] = [1]
+        state['group'][1] = [1]
+
+    # I find it useful to point out the models being processed
+    #
+    v1(xline)
+    madd(f"# {xline}")
+
+    # Do we have a group or source number? At the moment the code is unclear
+    # about the labelling for the two concepts.
+    #
+    rest = xline[5:]
+    tok = rest.split()[0]
+    ilabel: Optional[str] = None  # added for mypy
+    if ':' in tok:
+
+        toks = tok.split(':')
+        emsg = f"Unable to parse spectrum number of MODEL: '{xline}'"
+        if len(toks) != 2:
+            raise ValueError(emsg)
+
+        try:
+            sourcenum = int(toks[0])
+        except ValueError:
+            raise ValueError(emsg) from None
+
+        # It looks like this is allowed, but maybe not going to happen
+        # in a XCM file created by XSPEC.
+        #
+        ilabel = toks[1].strip()
+        if not ilabel:
+            ilabel = None
+
+        rest = rest.strip()[len(tok) + 1:]
+
+    else:
+        sourcenum = 0
+        ilabel = None
+
+    # If there's no spectrum number then we want an expression
+    # for each group. It there is a spectrum number then
+    # we only want those spectra with a response for that
+    # spectrum number.
+    #
+    # I really shouldn't use the term "groups" here as it
+    # muddies the water.
+    #
+    if ilabel is None:
+        label = "unnamed"
+        postfix = ''
+        groups = sorted(list(state['group'].keys()))
+    else:
+        label = ilabel
+
+        # at this point sourcenum is expected to be > 0
+        postfix = f"s{sourcenum}"
+        groups = sorted(state['sourcenum'][sourcenum])
+
+    if len(groups) == 0:
+        raise RuntimeError("The script is currently unable to handle the input file")
+
+    exprs = convert_model(session, extra_models, rest, postfix, groups,
+                          state['mdefines'],
+                          add=add, madd=madd)
+
+    # TODO: convert_model returns List[Expression] but
+    # state['exprs'][sourcenum] expects Expression.
+    #
+    # This needs fixing
+    assert sourcenum not in state['exprs'], sourcenum
+    state['exprs'][sourcenum] = exprs
+
+    # Create the list of all parameters, so we can set up links.
+    # Note that we store these with the label, not sourcenumber,
+    # since this is how they are referenced.
+    #
+    assert label not in state['allpars'], label
+    state['allpars'][label] = []
+    for expr in exprs:
+        pars = get_pars_from_expr(expr)
+        for par in pars:
+            state['allpars'][label].append(par)
+
+    madd("")
+
+    # Separate the model definition from the parameters.  We could
+    # wait to add this until we fnid any parameter definition.
+    #
+    if state['allpars'][label]:
+        madd("# Parameter settings")
+
+    return exprs
 
 
-MODEL_TYPES = {t.name: t for t in list(Term)}
+def parse_possible_parameters(state: StateDict,
+                              intext: List[str],
+                              exprs: List[Expression],
+                              add_import: Callable[...,None],
+                              add: Callable[...,None]) -> None:
+    """Do we have any parameter lines to deconstruct?
 
+    This mutates the intext argument
+    """
 
-@dataclass
-class MDefine:
-    name: str
-    expr: str        # the original expression
-    params: List[str]
-    models: List[str]
-    converted: str   # the Python version of the model (likely needs reworking)
-    mtype: Term
-    erange: Optional[Tuple[float, float]]
+    # Process all the parameter values for each data group.
+    #
+    escape = False  # NEED TO REFACTOR THIS CODE!
+    for expr in exprs:
+        if escape:
+            break
+
+        pars = get_pars_from_expr(expr)
+        for par in pars:
+            if escape:
+                break
+
+            assert isinstance(par, Parameter)  # for mypy
+            pname = par.fullname
+            pmin = par.min
+            pmax = par.max
+
+            # Grab the parameter line
+            try:
+                pline = intext.pop(0).strip()
+            except IndexError:
+                v1(f"Unable to find parameter value for {pname} - skipping other parameters")
+                escape = True
+                break
+
+            # This may only be possible with hand-edited files.
+            if not pline:
+                v1(f"Found a blank line when expecting paramter {pname} - skipping other parameters")
+                escape = True
+                break
+
+            if pline.startswith('='):
+                parse_tie(state['allpars'], add_import, add, pname, pline)
+                continue
+
+            toks = pline.split()
+            if len(toks) != 6:
+                raise ValueError(f"Unexpected parameter line '{pline}'")
+
+            # We always set the parameter value, but only change the
+            # limits if they are different. We only look at the "soft"
+            # limits.
+            #
+            lmin = float(toks[3])
+            lmax = float(toks[4])
+
+            pargs = [pname, toks[0]]
+
+            KWargs = TypedDict('KWargs', {"min": str, "max": str, "frozen": bool}, total=False)
+            pkwargs: KWargs = {}
+
+            if pmin is None or lmin != pmin:
+                pkwargs['min'] = toks[3]
+
+            if pmax is None or lmax != pmax:
+                pkwargs['max'] = toks[4]
+
+            if toks[1].startswith('-'):
+                pkwargs['frozen'] = True
+
+            add('set_par', *pargs, **pkwargs)
 
 
 def is_model_convolution(mdl: Union[xspec.XSModel, MDefine]) -> bool:
@@ -874,7 +1298,7 @@ def handle_xspecmodel(session: Session,
     return None
 
 
-def create_source_expression(expr: List[SimpleToken]) -> str:
+def create_source_expression(expr: Expression) -> str:
     "create a readable source expression"
 
     v3(f"Processing an expression of {len(expr)} terms")
@@ -983,9 +1407,6 @@ def handle_mdefine(session: Session,
     return None
 
 
-# The return vaue is not typed as this causes mypy no end of problems
-# that I don't want to deal with just yet.
-#
 def convert_model(session: Session,
                   extra_models: List[str],
                   expr: str,
@@ -993,7 +1414,7 @@ def convert_model(session: Session,
                   groups: List[int],
                   mdefines: List[MDefine],
                   add: Callable[..., None],
-                  madd: Callable[..., None]):  # mypy falls over if use -> List[List[SimpleToken]]:
+                  madd: Callable[..., None]) -> List[Expression]:
     """Extract the model components.
 
     Model names go from m1 to mn (when groups is empty) or
@@ -1019,8 +1440,8 @@ def convert_model(session: Session,
     Returns
     -------
     exprs : list of list of tokens
-        The model expression for each group (if groups was None then
-        for a single group).
+        The model expression for each group (if len(groups) == 1 then
+        for a single un-named group).
 
     Notes
     -----
@@ -1042,13 +1463,13 @@ def convert_model(session: Session,
                                mdefines=mdefines)
 
     ngroups = len(groups)
-    if ngroups == 1:
-        # TODO: mypy complains about this as groups: List[int]; this
-        # should be redesigned.
-        groups = [None]
 
     # Need an output list for each group
-    out: List[List[SimpleToken]] = [[] for g in groups]
+    out: List[Expression] = [[] for g in groups]
+
+    def add_token(tkn):
+        for outlist in out:
+            outlist.append(tkn)
 
     # We need to address differences in the XSPEC and Sherpa
     # model language:
@@ -1082,36 +1503,26 @@ def convert_model(session: Session,
                prev_model_type == Term.MUL:
                 tok = " * ("
 
-            for outlist in out:
-                outlist.append(tok)
-
+            add_token(tok)
             prev_model_type = None
             continue
 
         if tok == ")":
             if fake_bracket:
-                for outlist in out:
-                    outlist.append(")")
-
+                add_token(")")
                 fake_bracket = False
 
-            for outlist in out:
-                outlist.append(tok)
-
+            add_token(tok)
             in_convolution = False
             prev_model_type = None
             continue
 
         if tok == "+":
             if fake_bracket:
-                for outlist in out:
-                    outlist.append(")")
-
+                add_token(")")
                 fake_bracket = False
 
-            for outlist in out:
-                outlist.append(" + ")
-
+            add_token(" + ")
             in_convolution = False
             prev_model_type = None
             continue
@@ -1128,22 +1539,19 @@ def convert_model(session: Session,
                 # At this point we expect to have [..., model, "("]
                 # thanks to the fake_bracket handling.
                 #
-                v3(f"  - found 'cmdl * ..' so dropping * for {outlist[-2].name}")
+                v3(f"  - found 'cmdl * ..' so dropping * for {out[0][-2].name}")
 
                 # Should we clear prev_model_type?
                 # prev_model_type = None
                 continue
 
-            for outlist in out:
-                outlist.append(" * ")
-
+            add_token(" * ")
             prev_model_type = None
             continue
 
         # This must be a model.
         #
-        for i, grp in enumerate(groups, 1):
-            outlist = out[i - 1]
+        for grp, outlist in zip(groups, out):
             gname = make_component_name(postfix, ngroups, ctr, grp)
 
             if "{" in tok:
@@ -1189,17 +1597,16 @@ def convert_model(session: Session,
     # trailing bracket.
     #
     if fake_bracket:
-        for outlist in out:
-            outlist.append(")")
+        add_token(")")
 
     v2(f"Found {len(out)} expressions")
-    for i, eterm in enumerate(out):
-        v2(f"Expression: {i + 1}")
-        for token in eterm:
+    for grp, eterm in zip(groups, out):
+        v2(f"Expression: {grp}  #tokens={len(eterm)}")
+        for j, token in enumerate(eterm, 1):
             if isinstance(token, ArithmeticModel):
-                v2(f"  '{token.name}'")
+                v2(f"  {j:2d} '{token.name}'")
             else:
-                v2(f"  '{token}'")
+                v2(f"  {j:2d} '{token}'")
 
     return out
 
@@ -1645,7 +2052,7 @@ def process_mdefine(session: Session,
                    erange=erange)
 
 
-def get_pars_from_expr(expr: List[SimpleToken]) -> List[Parameter]:
+def get_pars_from_expr(expr: Expression) -> List[Parameter]:
     """Find all the parameters."""
 
     out = []
@@ -1660,6 +2067,143 @@ def get_pars_from_expr(expr: List[SimpleToken]) -> List[Parameter]:
             out.append(par)
 
     return out
+
+
+def create_model_expressions(state: StateDict,
+                             add_import: Callable[..., None],
+                             add: Callable[..., None],
+                             madd: Callable[..., None]) -> None:
+
+    # We need to create the source models. This is left till here because
+    # Sherpa handles "multiple specnums" differently to XSPEC.
+    #
+    # Technically we could have no model expression, but assume that is unlikely
+    madd("")
+    madd("# Set up the model expressions")
+    madd("#")
+
+    # The easy case:
+    #
+    exprs = state['exprs']
+    nsource = len(state['sourcenum'])
+    v2(f"Number of extra sources: {nsource}")
+    v2(f"Keys in exprs: {exprs.keys()}")
+    if not list(exprs.keys()):
+        v3("Appear to have no model expression")
+        return
+
+    # In current testing we require exprs[0] to exist. Is this always true?
+    if 0 not in exprs.keys():
+        madd("")
+        madd("print('Unexpected state when processing models')")
+        print(f"UNEXPECTED: no expression for default model {list(exprs.keys())}")
+        return
+
+    exprs0 = exprs[0]
+
+    if nsource == 0:
+        if list(exprs.keys()) != [0]:
+            madd("")
+            madd("print('Unexpected state when processing models')")
+            print(f"UNEXPECTED: expected [0] but found {list(exprs.keys())}")
+            return
+
+        # Do we use the same model or separate models?
+        #
+        if len(exprs0) == 1:
+            v2("Single source expression for all data sets")
+            sexpr = create_source_expression(exprs0[0])
+            for did in state['datasets']:
+                add('set_source', did, sexpr)
+
+        else:
+            v2("Separate source expressions for the data sets")
+            if len(state['datasets']) != len(exprs0):
+                madd("")
+                madd("print('Unexpected state when processing models')")
+                print(f"UNEXPECTED: expected {len(state['datasets'])} items but found {len(exprs0)}")
+                return
+
+            for did, expr in zip(state['datasets'], exprs0):
+                sexpr = create_source_expression(expr)
+                add('set_source', did, sexpr)
+
+        return
+
+    # What "specnums" do we have to deal with?
+    #   'unnamed' + <numbers>
+    #
+    # We need to check each dataset to see what specnums we care about.
+    #
+    if len(exprs0) != len(state['datasets']):
+        # I am not convinced this is a requirement
+        madd("")
+        madd("print('Unexpected state when processing models')")
+        print(f"UNEXPECTED: expected {len(state['datasets'])} items but found {len(exprs0)}")
+        return
+
+    # Response1D only seems to use the default response id.
+    #
+    add_import('from sherpa.astro.instrument import Response1D')
+
+    for did, expr in zip(state['datasets'], exprs0):
+
+        madd(f"# source model for dataset {did}")
+
+        try:
+            snums = state['datanum'][did]
+        except KeyError:
+            # I should probably add a mapping to unnamed when we have the
+            # first data or model command.
+            #
+            snums = []
+
+        sexpr = create_source_expression(expr)
+
+        if snums == []:
+            # Easy
+            add('set_source', did, sexpr)
+            continue
+
+        madd(f"d = get_data({did})")
+        madd(f"m = {sexpr}")
+        madd("fmdl = Response1D(d)(m)")
+
+        # Identifying the source expression is more-awkward than it needs
+        # to be!
+        #
+        for snum in snums:
+
+            xs = state['sourcenum'][snum]
+            if len(exprs[snum]) != len(xs):
+                madd("")
+                madd("print('Unexpected state when processing multiple models')")
+                print(f"UNEXPECTED: expected {len(exprs[snum])} items but found {len(xs)}")
+                return
+
+            found = False
+            for xid, xexpr in zip(xs, exprs[snum]):
+                if xid != did:
+                    continue
+
+                sexpr = create_source_expression(xexpr)
+                found = True
+
+                add_import('from sherpa_contrib.xspec import xcm')
+                madd(f"m = {sexpr}")
+                madd(f"fmdl += xcm.Response1D(d, {snum})(m)")
+                break
+
+            if not found:
+                madd("")
+                emsg = f"Unable to find model for sourcenum={snum} and dataset {did}"
+                madd(f"print('{emsg}')")
+                print(f"UNEXPECTED: {emsg}")
+                return
+
+        add('set_full_model', did, 'fmdl')
+        madd("")
+
 
 # The conversion routine. The functionality needs to be split out
 # of this.
@@ -1713,8 +2257,10 @@ def convert(infile: Any,  # to hard to type this
 
     # TODO: convert the output routines (*add*) to a class.
     #
-    out_imports = []
-    def add_import(expr):
+    out_imports: List[str] = []
+    out: List[str] = []
+
+    def add_import(expr: str) -> None:
         """Add the import if we haven't alredy done so"""
 
         if expr in out_imports:
@@ -1722,15 +2268,13 @@ def convert(infile: Any,  # to hard to type this
 
         out_imports.append(expr)
 
-    out: List[str] = []
-
-    def add_spacer(always=True):
+    def add_spacer(always: bool = True) -> None:
         if not always and len(out) > 0 and out[-1] == '':
             return
 
         out.append('')
 
-    def madd(expr, expand=False):
+    def madd(expr: str, expand: bool = False) -> None:
         if expand:
             if explicit is None:
                 expr = expr.replace('XX', '')
@@ -1780,7 +2324,7 @@ def convert(infile: Any,  # to hard to type this
 
     # Store information about datasets, responses, and models.
     #
-    state: Dict[str, Any] = {
+    state: StateDict = {
         'nodata': True,  # set once a data command is found
 
         'statistic': 'chi',
@@ -1912,21 +2456,7 @@ def convert(infile: Any,  # to hard to type this
             if ntoks > 3:
                 raise ValueError(f"Unsupported DATA syntax: '{xline}'")
 
-            state['nodata'] = False
-
-            if ntoks == 2:
-                assert len(state['datasets']) == 0
-                add('load_pha', f"'{toks[1]}'", use_errors=True)
-                state['datasets'].append(1)
-                continue
-
-            groupnum, datanum = parse_dataid(toks[1])
-            if groupnum is None:
-                groupnum = 1
-
-            state['group'][groupnum].append(datanum)
-            state['datasets'].append(datanum)
-            add('load_pha', datanum, f"'{toks[2]}'", use_errors=True)
+            parse_data(state, add, toks[1:])
             continue
 
         # similar to data but
@@ -1945,21 +2475,7 @@ def convert(infile: Any,  # to hard to type this
             if ntoks > 3:
                 raise ValueError(f"Unsupported BACKGRND syntax: '{xline}'")
 
-            if ntoks == 2:
-                if toks[1] == 'none':
-                    state['nobackgrounds'].append(1)
-                else:
-                    add('load_background', f"'{toks[1]}'")
-                continue
-
-            groupnum, datanum = parse_dataid(toks[1])
-            if groupnum is not None:
-                raise ValueError(f"Unsupported BACKGRND syntax: '{xline}'")
-
-            if toks[2] == 'none':
-                state['nobackgrounds'].append(datanum)
-            else:
-                add('load_background', f"'{toks[2]}'")
+            parse_backgrnd(state, add, xline, toks[1:])
             continue
 
         # We do not support all response options, such as
@@ -1977,26 +2493,7 @@ def convert(infile: Any,  # to hard to type this
             if ntoks > 3:
                 raise ValueError(f"Unsupported {command.upper()} syntax: '{xline}'")
 
-            if command == 'arf':
-                command = 'load_arf'
-            elif command == 'response':
-                command = 'load_rmf'
-            else:
-                raise NotImplementedError(f"Internal error: command={command}")
-
-            if ntoks == 2:
-                add(command, f"'{toks[1]}'")
-                continue
-
-            sourcenum, datanum = parse_dataid(toks[1])
-
-            kwargs = {}
-            if sourcenum is not None and sourcenum != 1:
-                kwargs['resp_id'] = sourcenum
-                state['sourcenum'][sourcenum].append(datanum)
-                state['datanum'][datanum].append(sourcenum)
-
-            add(command, datanum, f"'{toks[2]}'", **kwargs)
+            parse_response(state, add, command, toks[1:])
             continue
 
         if command in ['ignore', 'notice']:
@@ -2008,236 +2505,17 @@ def convert(infile: Any,  # to hard to type this
 
         if command == 'mdefine':
             mdefine = process_mdefine(session, extra_models, xline, state["mdefines"])
-
-            # We may over-write an existing model, but I am not
-            # convinced this will result in a usable XCM file if it
-            # happens.
-            #
-            for idx, m in enumerate(state["mdefines"]):
-                if m.name != mdefine.name:
-                    continue
-
-                # There should only be a single value
-                del state["mdefines"][idx]
-                break
-
-            state["mdefines"].append(mdefine)
-
-            # We have to define the model function here, as the MODEL
-            # command will cause the model function to be converted
-            # into a user model.
-            #
-            madd("")
-            madd(f"# mdefine {mdefine.name} {mdefine.expr} : {mdefine.mtype.name}")
-            madd(f"# parameters: {', '.join(mdefine.params)}")
-            madd(f"def model_{mdefine.name}(pars, elo, ehi):")
-            for idx, par in enumerate(mdefine.params):
-                madd(f"    {par} = pars[{idx}]")
-
-            madd("    elo = np.asarray(elo)")
-            madd("    ehi = np.asarray(ehi)")
-
-            if mdefine.models:
-                madd("")
-                for model in mdefine.models:
-
-                    # Is this a mdefine/user model or a compiled model?
-                    #
-                    matches = [md for md in state["mdefines"] if md.name == model]
-                    if matches:
-                        # assume there's only one match by construction
-                        match = matches[0]
-
-                        # We should be able to call the model function
-                        # we created directly.
-                        #
-                        callfunc = f"model_{match.name}"
-                        temp_mtype = match.mtype
-                    else:
-                        answer = handle_xspecmodel(session, model, "temp_cpt")
-                        if answer is None:
-                            print(f"Unable to find model '{model}' for MDEFINE {mdefine.name}")
-                            madd(f"    print('Unable to identify model={model}')")
-                            continue
-
-                        temp_cpt = answer[0]
-                        # Hopefully the class is available
-                        madd(f"    {model}_cpt = {temp_cpt.__class__.__name__}()")
-                        callfunc = f"{model}_cpt.calc"
-                        temp_mtype = answer[1]
-
-                    madd("")
-                    madd(f"    def {model}(*args):")
-                    madd("        pars = list(args)")
-                    if temp_mtype == Term.ADD:
-                        madd("        pars.append(1.0)  # model is additive")
-                    madd(f"        out = {callfunc}(pars, elo, ehi)")
-                    if temp_mtype == Term.ADD:
-                        madd("        out /= de  # model is additive")
-                    madd("        return out")
-                    madd("")
-
-            # Use the name E to match the XSPEC code
-            madd("    E = (elo + ehi) / 2")
-            if mdefine.mtype == Term.ADD:
-                madd("    de = ehi - elo")
-                madd(f"    return norm * ({mdefine.converted}) * de")
-            elif mdefine.mtype == Term.MUL:
-                madd(f"    return {mdefine.converted}")
-            else:
-                madd(f"    raise RuntimeError('convolution model to write: {mdefine.expr}')")
-
-            madd("\n")  # want two bare lines
+            add_mdefine_model(state, session, madd, mdefine)
             continue
 
         if command == 'model':
-            # Need some place to set up subtract calls, so pick here
-            #
-            add_spacer(always=False)
-
-            set_subtract(add_import, add_spacer, add, state)
-
-            # Now, the XCM file may not contain any data statements,
-            # so if so we assume a single dataset only. This is done
-            # after the set_subtract call.
-            #
-            if state['nodata']:
-                state['datasets'] = [1]
-                state['group'][1] = [1]
-
-            # I find it useful to point out the models being processed
-            #
-            v1(xline)
-            madd(f"# {xline}")
-
             if ntoks == 1:
                 raise ValueError(f"Missing MODEL option: '{xline}'")
 
-            # do we have a sourcenumber?
-            #
-            rest = xline[5:]
-            tok = rest.split()[0]
-            if ':' in tok:
-
-                toks = tok.split(':')
-                emsg = f"Unable to parse spectrum number of MODEL: '{xline}'"
-                if len(toks) != 2:
-                    raise ValueError(emsg)
-
-                try:
-                    sourcenum = int(toks[0])
-                except ValueError:
-                    raise ValueError(emsg) from None
-
-                label = toks[1]
-                rest = rest.strip()[len(tok) + 1:]
-
-            else:
-                sourcenum = None
-                label = None
-
-            # If there's no spectrum number then we want an expression
-            # for each group. It there is a spectrum number then
-            # we only want those spectra with a response for that
-            # spectrum number.
-            #
-            # I really shouldn't use the term "groups" here as it
-            # muddies the water.
-            #
-            if label is None:
-                label = "unnamed"
-                postfix = ''
-                groups = sorted(list(state['group'].keys()))
-            else:
-                postfix = f"s{sourcenum}"
-                groups = sorted(state['sourcenum'][sourcenum])
-
-            if len(groups) == 0:
-                raise RuntimeError("The script is currently unable to handle the input file")
-
-            exprs = convert_model(session, extra_models, rest, postfix, groups,
-                                  state['mdefines'],
-                                  add=add, madd=madd)
-
-            assert sourcenum not in state['exprs'], sourcenum
-            state['exprs'][sourcenum] = exprs
-
-            # Create the list of all parameters, so we can set up links.
-            # Note that we store these with the label, not sourcenumber,
-            # since this is how they are referenced.
-            #
-            assert label not in state['allpars'], label
-            state['allpars'][label] = []
-            for expr in exprs:
-                pars = get_pars_from_expr(expr)
-                for par in pars:
-                    state['allpars'][label].append(par)
-
-            # Separate the model definition from the parameters
-            madd("")
-            if state['allpars'][label]:
-                madd("# Parameter settings")
-
-            # Process all the parameter values for each data group.
-            #
-            escape = False  # NEED TO REFACTOR THIS CODE!
-            for expr in exprs:
-                if escape:
-                    break
-
-                pars = get_pars_from_expr(expr)
-                for par in pars:
-                    if escape:
-                        break
-
-                    assert isinstance(par, Parameter)  # for mypy
-                    pname = par.fullname
-                    pmin = par.min
-                    pmax = par.max
-
-                    # Grab the parameter line
-                    try:
-                        pline = intext.pop(0).strip()
-                    except IndexError:
-                        v1(f"Unable to find parameter value for {pname} - skipping other parameters")
-                        escape = True
-                        break
-
-                    # This may only be possible with hand-edited files.
-                    if not pline:
-                        v1(f"Found a blank line when expecting paramter {pname} - skipping other parameters")
-                        excape = True
-                        break
-
-                    if pline.startswith('='):
-                        parse_tie(state['allpars'], add_import, add, pname, pline)
-                        continue
-
-                    toks = pline.split()
-                    if len(toks) != 6:
-                        raise ValueError(f"Unexpected parameter line '{pline}'")
-
-                    # We always set the parameter value, but only change the
-                    # limits if they are different. We only look at the "soft"
-                    # limits.
-                    #
-                    lmin = float(toks[3])
-                    lmax = float(toks[4])
-
-                    pargs = [pname, toks[0]]
-                    pkwargs = {}
-
-                    if pmin is None or lmin != pmin:
-                        pkwargs['min'] = toks[3]
-
-                    if pmax is None or lmax != pmax:
-                        pkwargs['max'] = toks[4]
-
-                    if toks[1].startswith('-'):
-                        pkwargs['frozen'] = True
-
-                    add('set_par', *pargs, **pkwargs)
-
+            exprs = parse_model(state, session, extra_models,
+                                add_spacer, add_import, add, madd,
+                                xline)
+            parse_possible_parameters(state, intext, exprs, add_import, add)
             continue
 
         v1(f"SKIPPING '{xline}'")
@@ -2255,108 +2533,6 @@ def convert(infile: Any,  # to hard to type this
 
             v1(f"  - {mdefine.name}  {mdefine.mtype.name} : {status}")
 
-    # We need to create the source models. This is left till here because
-    # Sherpa handles "multiple specnums" differently to XSPEC.
-    #
-
-    # Technically we could have no model expression, but assume that is unlikely
-    madd("")
-    madd("# Set up the model expressions")
-    madd("#")
-
-    # The easy case:
-    #
-    exprs = state['exprs']
-    nsource = len(state['sourcenum'])
-    v3(f"Number of extra sources: {nsource}")
-    v3(f"Keys in exprs: {exprs.keys()}")
-    if list(exprs.keys()) == []:
-        v3("Appear to have no model expression")
-
-    elif nsource == 0:
-        if list(exprs.keys()) != [None]:
-            raise RuntimeError("Unexpected state when processing the model expressions in the XCM file!")
-
-        # Do we use the same model or separate models?
-        #
-        if len(exprs[None]) == 1:
-            v2("Single source expression for all data sets")
-            sexpr = create_source_expression(exprs[None][0])
-            for did in state['datasets']:
-                add('set_source', did, sexpr)
-
-        else:
-            v2("Separate source expressions for the data sets")
-            if len(state['datasets']) != len(exprs[None]):
-                raise RuntimeError("Unexpected state when handling source models!")
-
-            for did, expr in zip(state['datasets'], exprs[None]):
-                sexpr = create_source_expression(expr)
-                add('set_source', did, sexpr)
-
-    else:
-        # What "specnums" do we have to deal with?
-        #   'unnamed' + <numbers>
-        #
-        # We need to check each dataset to see what specnums we care about.
-        #
-        if len(exprs[None]) != len(state['datasets']):
-            # I am not convinced this is a requirement
-            raise RuntimeError("Unexpected state when handling multiple sourcenum components!")
-
-        # Response1D only seems to use the default response id.
-        #
-        add_import('from sherpa.astro.instrument import Response1D')
-
-        for did, expr in zip(state['datasets'], exprs[None]):
-
-            madd(f"# source model for dataset {did}")
-
-            try:
-                snums = state['datanum'][did]
-            except KeyError:
-                # I should probably add a mapping to unnamed when we have the
-                # first data or model command.
-                #
-                snums = []
-
-            sexpr = create_source_expression(expr)
-
-            if snums == []:
-                # Easy
-                add('set_source', did, sexpr)
-                continue
-
-            madd(f"d = get_data({did})")
-            madd(f"m = {sexpr}")
-            madd("fmdl = Response1D(d)(m)")
-
-            # Identifying the source expression is more-awkward than it needs
-            # to be!
-            #
-            for snum in snums:
-
-                xs = state['sourcenum'][snum]
-                if len(exprs[snum]) != len(xs):
-                    raise RuntimeError("Unexpected state when handling multiple sourcenum components!")
-
-                found = False
-                for xid, xexpr in zip(xs, exprs[snum]):
-                    if xid != did:
-                        continue
-
-                    sexpr = create_source_expression(xexpr)
-                    found = True
-
-                    add_import('from sherpa_contrib.xspec import xcm')
-                    madd(f"m = {sexpr}")
-                    madd(f"fmdl += xcm.Response1D(d, {snum})(m)")
-                    break
-
-                if not found:
-                    raise RuntimeError(f"Unable to find expression for sourcenum={snum} with dataset {did}")
-
-            add('set_full_model', did, 'fmdl')
-            madd("")
+    create_model_expressions(state, add_import, add,madd)
 
     return "\n".join(out_imports + [""] + out) + "\n"
