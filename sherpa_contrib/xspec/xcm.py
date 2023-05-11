@@ -1924,15 +1924,15 @@ def convert(infile: Any,  # to hard to type this
         #
         # Let's just assume the source already exists.
         #
-        if command == 'background':
+        if command == 'backgrnd':
             if state['subtracted']:
-                raise ValueError("XCM file is too complex: calling BACKGROUND after METHOD is not supported.")
+                raise ValueError("XCM file is too complex: calling BACKGRND after METHOD is not supported.")
 
             if ntoks < 2:
-                raise ValueError(f"Missing BACKGROUND options: '{xline}'")
+                raise ValueError(f"Missing BACKGRND options: '{xline}'")
 
             if ntoks > 3:
-                raise ValueError(f"Unsupported BACKGROUND syntax: '{xline}'")
+                raise ValueError(f"Unsupported BACKGRND syntax: '{xline}'")
 
             if ntoks == 2:
                 if toks[1] == 'none':
@@ -1943,7 +1943,7 @@ def convert(infile: Any,  # to hard to type this
 
             groupnum, datanum = parse_dataid(toks[1])
             if groupnum is not None:
-                raise ValueError(f"Unsupported BACKGROUND syntax: '{xline}'")
+                raise ValueError(f"Unsupported BACKGRND syntax: '{xline}'")
 
             if toks[2] == 'none':
                 state['nobackgrounds'].append(datanum)
