@@ -1509,6 +1509,17 @@ def tokenize_model_expr(session: Session,
             out.append("*")
 
         usymbol = symbol.upper()
+
+        # Is this a table model? We include the { in case a user has
+        # created a local model starting [ame]table.... (it that is
+        # possible).
+        #
+        if usymbol.startswith("ATABLE{") or \
+           usymbol.startswith("MTABLE{") or \
+           usymbol.startswith("ETABLE{"):
+            out.append(symbol)  # no case change because of file names
+            return
+
         if usymbol not in KNOWN_MODELS:
             raise ValueError(f"Unrecognized model '{symbol}' in '{expr}'")
 
