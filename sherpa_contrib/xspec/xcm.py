@@ -1562,7 +1562,7 @@ def convert_model(output : Output,
 
     for i, tok in enumerate(toks, 1):
         v2(f"  token {i} = '{tok}'")
-        v3(f"    bracket={fake_bracket} convolution={in_convolution}")
+        v3(f"    bracket={fake_bracket} convolution={in_convolution} prev_model_type={prev_model_type}")
 
         if tok == "(":
 
@@ -1571,6 +1571,13 @@ def convert_model(output : Output,
             #
             if prev_model_type is not None and \
                prev_model_type == Term.MUL:
+                tok = " * ("
+
+            elif i > 1 and toks[i - 2] == ")":
+                # Special case "(phabs)(apec)". I am concerned this
+                # could cause problems elsewhere, in particular with
+                # the fake_bracket rule, so let's see.
+                #
                 tok = " * ("
 
             add_token(tok)
