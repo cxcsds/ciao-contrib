@@ -406,9 +406,91 @@ class StateDict(TypedDict):
 RangeValue = Union[int, float]
 
 
-def set_subtract(add_import: Callable[[str], None],
-                 add_spacer: Callable[[], None],
-                 add: Callable[..., None],
+class Output:
+    """Represent the output text."""
+
+    def __init__(self, explicit: Optional[str] = None) -> None:
+        self.imports: List[str] = []
+        self.text: List[str] = []
+        self.explicit = explicit
+
+    @property
+    def answer(self):
+        """The output"""
+        answer = list(self.imports)
+        if answer:
+            answer += [""]
+
+        answer += self.text
+        return "\n".join(answer) + "\n"
+
+    def add_comment(self, comment: Optional[str] = None) -> None:
+        if comment is None:
+            self.text.append("#")
+            return
+
+        self.text.append(f"# {comment}")
+
+    def add_import(self, text: str) -> None:
+        """Record an import line.
+
+        We avoid repititions but only an exact match,
+        so adding "from foo import a,b" and
+        "from foo import b,a" will duplicate things.
+        """
+
+        if text in self.imports:
+            return
+
+        self.imports.append(text)
+
+    def add_spacer(self, always: bool = True) -> None:
+        """Add an extra line (with some flexibility)"""
+
+        if not always and len(self.text) > 0 and self.text[-1] == '':
+            return
+
+        self.text.append('')
+
+    def add_expr(self, expr: str, expand: bool = False) -> None:
+        """Add the expression. 'XX' is used to handle implicit/explicit ui import"""
+
+        if expand:
+            if self.explicit is None:
+                store = expr.replace('XX', '')
+            else:
+                store = expr.replace('XX', f'{self.explicit}.')
+
+        else:
+            store = expr
+
+        self.text.append(store)
+
+    def symbol(self, name: str) -> str:
+        """Do we expand out the symbol?"""
+
+        if self.explicit is None:
+            return name
+
+        return f"{self.explicit}.{name}"
+
+    def add_call(self, name: str, *args, expand: bool = True, **kwargs):
+        """Represent a function call."""
+
+        if expand:
+            sym = self.symbol(name)
+        else:
+            sym = name
+
+        cstr = f"{sym}("
+        arglist = [str(a) for a in args] + \
+            [f"{k}={v}" for k, v in kwargs.items()]
+        cstr += ", ".join(arglist)
+        cstr += ")"
+        self.text.append(cstr)
+
+
+def set_subtract(output: Output,
                  state: StateDict) -> None:
     """Ensure the data is subtracted (as much as we can tell)."""
 
@@ -419,18 +501,17 @@ def set_subtract(add_import: Callable[[str], None],
         if did in state['nobackgrounds']:
             continue
 
-        add_import('from sherpa_contrib.xspec import xcm')
-        add('xcm.subtract', did, expand=False)
+        output.add_import('from sherpa_contrib.xspec import xcm')
+        output.add_call('xcm.subtract', did, expand=False)
 
-    add_spacer()
+    output.add_spacer()
 
     # The assumption is that we don't add data/backgrounds after this is called
     state['subtracted'] = True
 
 
-def parse_tie(pars: Dict[str, Parameter],
-              add_import: Callable[..., None],
-              add: Callable[..., None],
+def parse_tie(output: Output,
+              pars: Dict[str, Parameter],
               par: str,
               pline: str) -> None:
     """Parse a tie line.
@@ -441,12 +522,10 @@ def parse_tie(pars: Dict[str, Parameter],
 
     Parameters
     ----------
+    output : Output
+        The output state.
     pars : dict
         The parameters for each "label".
-    add_import : function reference
-        Add an import
-    add : function reference
-        Add a command to the record
     par : str
         The full parameter name (e.g. foo.xpos) being linked
     pline : str
@@ -492,7 +571,7 @@ def parse_tie(pars: Dict[str, Parameter],
         #
         if fchar in "()+*/-^":
             if token != '':
-                token = expand_token(add_import, pars, par, token)
+                token = expand_token(output, pars, par, token)
                 expr += token
                 token = ''
 
@@ -515,13 +594,13 @@ def parse_tie(pars: Dict[str, Parameter],
         raise ValueError(f"Unable to parse {pline}")
 
     if token != '':
-        token = expand_token(add_import, pars, par, token)
+        token = expand_token(output, pars, par, token)
         expr += token
 
-    add('link', par, expr)
+    output.add_call('link', par, expr)
 
 
-def expand_token(add_import: Callable[...,None],
+def expand_token(output: Output,
                  pars: Dict[str, Parameter],
                  pname: str,
                  token: str) -> str:
@@ -532,7 +611,7 @@ def expand_token(add_import: Callable[...,None],
     """
 
     def import_xcm():
-        add_import('from sherpa_contrib.xspec import xcm')
+        output.add_import('from sherpa_contrib.xspec import xcm')
 
     # Hard code the function names. This allows us to replace
     # symbols if needed (such as the degree variants of the
@@ -710,8 +789,8 @@ def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[RangeValue], Opt
     return store["chantype"], out
 
 
-def parse_data(state: Session,
-               add: Callable[..., None],
+def parse_data(output : Output,
+               state: Session,
                toks: List[str]) -> None:
     """Parse the DATA line
 
@@ -738,11 +817,11 @@ def parse_data(state: Session,
 
     state['group'][groupnum].append(datanum)
     state['datasets'].append(datanum)
-    add('load_pha', *args, use_errors=True)
+    output.add_call('load_pha', *args, use_errors=True)
 
 
-def parse_backgrnd(state: StateDict,
-                   add: Callable[..., None],
+def parse_backgrnd(output: Output,
+                   state: StateDict,
                    xline: str,
                    toks: List[str]) -> None:
     """Parse the BACKGRND line
@@ -756,7 +835,7 @@ def parse_backgrnd(state: StateDict,
         if toks[0] == 'none':
             state['nobackgrounds'].append(1)
         else:
-            add('load_background', f"'{toks[0]}'")
+            output.add_call('load_background', f"'{toks[0]}'")
 
         return
 
@@ -767,11 +846,11 @@ def parse_backgrnd(state: StateDict,
     if toks[1] == 'none':
         state['nobackgrounds'].append(datanum)
     else:
-        add('load_background', f"'{toks[1]}'")
+        output.add_call('load_background', f"'{toks[1]}'")
 
 
-def parse_response(state: StateDict,
-                   add: Callable[..., None],
+def parse_response(output: Output,
+                   state: StateDict,
                    command: str,
                    toks: List[str]) -> None:
     """Parse a arf or response line
@@ -797,24 +876,24 @@ def parse_response(state: StateDict,
 
     ntoks = len(toks)
     if ntoks == 1:
-        add(xcommand, f"'{toks[0]}'")
+        output.add_call(xcommand, f"'{toks[0]}'")
         return
 
     sourcenum, datanum = parse_dataid(toks[0])
 
-    kwargs = {}
     if sourcenum is not None and sourcenum != 1:
-        kwargs['resp_id'] = sourcenum
-
         # TODO: Shouldn't we always record these?
         state['sourcenum'][sourcenum].append(datanum)
         state['datanum'][datanum].append(sourcenum)
 
-    add(xcommand, datanum, f"'{toks[1]}'", **kwargs)
+        output.add_call(xcommand, datanum, f"'{toks[1]}'", resp_id=str(sourcenum))
+
+    else:
+        output.add_call(xcommand, datanum, f"'{toks[1]}'")
 
 
-def parse_notice_range(add_import: Callable[[str], None],
-                       add: Callable[..., None],
+
+def parse_notice_range(output: Output,
                        datasets: List[int],
                        command: str,
                        tokens: List[str]) -> None:
@@ -822,10 +901,8 @@ def parse_notice_range(add_import: Callable[[str], None],
 
     Parameters
     ----------
-    add_import : function reference
-        Used to add an import command
-    add : function reference
-        Used to add the commands to the store.
+    output : Output
+        The output state
     datasets : list of int
         The loaded datasets.
     command : {'notice', 'ignore'}
@@ -864,7 +941,7 @@ def parse_notice_range(add_import: Callable[[str], None],
 
         if chantype == 'other':
             for lo, hi in ranges:
-                add(f'{command}_id', ds, lo, hi)
+                output.add_call(f'{command}_id', ds, lo, hi)
 
             return
 
@@ -872,13 +949,13 @@ def parse_notice_range(add_import: Callable[[str], None],
         #
         for d in ds:
             for lo, hi in ranges:
-                add_import('from sherpa_contrib.xspec import xcm')
-                add(f"xcm.{command}", d, lo, hi, expand=False)
+                output.add_import('from sherpa_contrib.xspec import xcm')
+                output.add_call(f"xcm.{command}", d, lo, hi, expand=False)
 
 
-def add_mdefine_model(state: StateDict,
+def add_mdefine_model(output: Output,
+                      state: StateDict,
                       session: Session,
-                      madd: Callable[..., None],
                       mdefine: MDefine
                       ) -> None:
     """Set up the MDEFINE model"""
@@ -901,18 +978,18 @@ def add_mdefine_model(state: StateDict,
     # command will cause the model function to be converted
     # into a user model.
     #
-    madd("")
-    madd(f"# mdefine {mdefine.name} {mdefine.expr} : {mdefine.mtype.name}")
-    madd(f"# parameters: {', '.join(mdefine.params)}")
-    madd(f"def model_{mdefine.name}(pars, elo, ehi):")
+    output.add_spacer()
+    output.add_comment(f"mdefine {mdefine.name} {mdefine.expr} : {mdefine.mtype.name}")
+    output.add_comment(f"parameters: {', '.join(mdefine.params)}")
+    output.add_expr(f"def model_{mdefine.name}(pars, elo, ehi):")
     for idx, par in enumerate(mdefine.params):
-        madd(f"    {par} = pars[{idx}]")
+        output.add_expr(f"    {par} = pars[{idx}]")
 
-    madd("    elo = np.asarray(elo)")
-    madd("    ehi = np.asarray(ehi)")
+    output.add_expr("    elo = np.asarray(elo)")
+    output.add_expr("    ehi = np.asarray(ehi)")
 
     if mdefine.models:
-        madd("")
+        output.add_expr("")
         for model in mdefine.models:
 
             # Is this a mdefine/user model or a compiled model?
@@ -928,49 +1005,48 @@ def add_mdefine_model(state: StateDict,
                 callfunc = f"model_{match.name}"
                 temp_mtype = match.mtype
             else:
-                answer = handle_xspecmodel(session, model, "temp_cpt")
+                answer = handle_xspecmodel(session, model, "temp_cpt", output=None)
                 if answer is None:
                     print(f"Unable to find model '{model}' for MDEFINE {mdefine.name}")
-                    madd(f"    print('Unable to identify model={model}')")
+                    output.add_expr(f"    print('Unable to identify model={model}')")
                     continue
 
                 temp_cpt = answer[0]
                 # Hopefully the class is available
-                madd(f"    {model}_cpt = {temp_cpt.__class__.__name__}()")
+                output.add_expr(f"    {model}_cpt = {temp_cpt.__class__.__name__}()")
                 callfunc = f"{model}_cpt.calc"
                 temp_mtype = answer[1]
 
-            madd("")
-            madd(f"    def {model}(*args):")
-            madd("        pars = list(args)")
+            output.add_expr("")
+            output.add_expr(f"    def {model}(*args):")
+            output.add_expr("        pars = list(args)")
             if temp_mtype == Term.ADD:
-                madd("        pars.append(1.0)  # model is additive")
-            madd(f"        out = {callfunc}(pars, elo, ehi)")
+                output.add_expr("        pars.append(1.0)  # model is additive")
+            output.add_expr(f"        out = {callfunc}(pars, elo, ehi)")
             if temp_mtype == Term.ADD:
-                madd("        out /= de  # model is additive")
-            madd("        return out")
-            madd("")
+                output.add_expr("        out /= de  # model is additive")
+            output.add_expr("        return out")
+            output.add_expr("")
 
     # Use the name E to match the XSPEC code
-    madd("    E = (elo + ehi) / 2")
+    output.add_expr("    E = (elo + ehi) / 2")
     if mdefine.mtype == Term.ADD:
-        madd("    de = ehi - elo")
-        madd(f"    return norm * ({mdefine.converted}) * de")
+        output.add_expr("    de = ehi - elo")
+        output.add_expr(f"    return norm * ({mdefine.converted}) * de")
     elif mdefine.mtype == Term.MUL:
-        madd(f"    return {mdefine.converted}")
+        output.add_expr(f"    return {mdefine.converted}")
     else:
-        madd(f"    raise RuntimeError('convolution model to write: {mdefine.expr}')")
+        output.add_expr(f"    raise RuntimeError('convolution model to write: {mdefine.expr}')")
 
-    madd("\n")  # want two bare lines
+    # want two bare lines
+    output.add_spacer()
+    output.add_spacer()
 
 
-def parse_model(state: StateDict,
+def parse_model(output: Output,
+                state: StateDict,
                 session: Session,
                 extra_models: List[str],
-                add_spacer: Callable[...,None],
-                add_import: Callable[...,None],
-                add: Callable[...,None],
-                madd: Callable[...,None],
                 xline: str) -> Dict[int, Expression]:
     """Handle the model line
 
@@ -991,9 +1067,9 @@ def parse_model(state: StateDict,
 
     # Need some place to set up subtract calls, so pick here
     #
-    add_spacer(always=False)
+    output.add_spacer(always=False)
 
-    set_subtract(add_import, add_spacer, add, state)
+    set_subtract(output, state)
 
     # Now, the XCM file may not contain any data statements,
     # so if so we assume a single dataset only. This is done
@@ -1006,7 +1082,7 @@ def parse_model(state: StateDict,
     # I find it useful to point out the models being processed
     #
     v1(xline)
-    madd(f"# {xline}")
+    output.add_comment(xline)
 
     # Do we have a group or source number? At the moment the code is unclear
     # about the labelling for the two concepts.
@@ -1061,14 +1137,10 @@ def parse_model(state: StateDict,
     if len(groups) == 0:
         raise RuntimeError("The script is currently unable to handle the input file")
 
-    exprs = convert_model(session, extra_models, rest, postfix, groups,
-                          state['mdefines'],
-                          add=add, madd=madd)
+    exprs = convert_model(output, session, extra_models,
+                          rest, postfix, groups,
+                          state['mdefines'])
 
-    # TODO: convert_model returns List[Expression] but
-    # state['exprs'][sourcenum] expects Expression.
-    #
-    # This needs fixing
     assert sourcenum not in state['exprs'], sourcenum
     state['exprs'][sourcenum] = exprs
 
@@ -1083,22 +1155,21 @@ def parse_model(state: StateDict,
         for par in pars:
             state['allpars'][label].append(par)
 
-    madd("")
+    output.add_spacer()
 
     # Separate the model definition from the parameters.  We could
     # wait to add this until we fnid any parameter definition.
     #
     if state['allpars'][label]:
-        madd("# Parameter settings")
+        output.add_comment("Parameter settings")
 
     return exprs
 
 
-def parse_possible_parameters(state: StateDict,
+def parse_possible_parameters(output: Output,
+                              state: StateDict,
                               intext: List[str],
-                              exprs: Dict[int, Expression],
-                              add_import: Callable[...,None],
-                              add: Callable[...,None]) -> None:
+                              exprs: Dict[int, Expression]) -> None:
     """Do we have any parameter lines to deconstruct?
 
     This mutates the intext argument
@@ -1137,7 +1208,7 @@ def parse_possible_parameters(state: StateDict,
                 break
 
             if pline.startswith('='):
-                parse_tie(state['allpars'], add_import, add, pname, pline)
+                parse_tie(output, state['allpars'], pname, pline)
                 continue
 
             toks = pline.split()
@@ -1165,7 +1236,7 @@ def parse_possible_parameters(state: StateDict,
             if toks[1].startswith('-'):
                 pkwargs['frozen'] = True
 
-            add('set_par', *pargs, **pkwargs)
+            output.add_call('set_par', *pargs, **pkwargs)
 
 
 def is_model_convolution(mdl: Union[xspec.XSModel, MDefine]) -> bool:
@@ -1243,7 +1314,7 @@ def create_session(models: Optional[List[str]]) -> Tuple[Session, List[str]]:
 def handle_xspecmodel(session: Session,
                       model: str,
                       cpt: str,
-                      madd: Optional[Callable[..., None]] = None) -> Optional[tuple[xspec.XSModel, Term]]:
+                      output: Optional[Output]) -> Optional[tuple[xspec.XSModel, Term]]:
     """Create a model instance for an XSPEC model.
 
     Parameters
@@ -1255,8 +1326,8 @@ def handle_xspecmodel(session: Session,
         the name from the XCM script.
     cpt : str
         The component name for the model.
-    madd : callable, optional
-        Create the model text (if wanted)
+    output : Output or None
+        The output object, if output is wanted,
 
     Notes
     -----
@@ -1278,9 +1349,9 @@ def handle_xspecmodel(session: Session,
             v3(f"Looking for XSPEC model '{model}' with prefix '{prefix}'")
             mname = f"{prefix}{model}"
             mdl = session.create_model_component(mname, cpt)
-            if madd is not None:
-                madd(f"{cpt} = XXcreate_model_component('{mname}', '{cpt}')",
-                     expand=True)
+            if output is not None:
+                output.add_expr(f"{cpt} = XXcreate_model_component('{mname}', '{cpt}')",
+                                expand=True)
 
             if isinstance(mdl, xspec.XSAdditiveModel):
                 mtype = MODEL_TYPES["ADD"]
@@ -1327,11 +1398,10 @@ def make_component_name(postfix: str, ngroups: int, ctr: int, grp: int) -> str:
     return name
 
 
-def handle_tablemodel(session: Session,
+def handle_tablemodel(output: Output,
+                      session: Session,
                       expr: str,
-                      gname: str,
-                      add: Callable[..., None],
-                      madd: Callable[..., None]) -> Tuple[xspec.XSTableModel, Term]:
+                      gname: str) -> Tuple[xspec.XSTableModel, Term]:
     """Create a tablemodel (it the file can be found)"""
 
     if expr.startswith("atable{"):
@@ -1364,12 +1434,12 @@ def handle_tablemodel(session: Session,
     else:
         kwargs = {}
 
-    add("load_xstable_model", f"'{gname}'", f"'{tbl}'",
-        expand=True, **kwargs)
+    output.add_call("load_xstable_model", f"'{gname}'", f"'{tbl}'",
+                    expand=True, **kwargs)
 
     # Not really needed but just in case
-    madd(f"{gname} = XXget_model_component('{gname}')",
-         expand=True)
+    output.add_expr(f"{gname} = XXget_model_component('{gname}')",
+                    expand=True)
 
     return mdl, mtype
 
@@ -1378,11 +1448,11 @@ def dummy_model(pars, elo, ehi=None):
     raise NotImplementedError()
 
 
-def handle_mdefine(session: Session,
+def handle_mdefine(output: Output,
+                   session: Session,
                    mdefines: List[MDefine],
                    basename: str,
-                   gname: str,
-                   add: Callable[..., None]) -> Optional[Tuple[UserModel, Term]]:
+                   gname: str) -> Optional[Tuple[UserModel, Term]]:
     """Is this a mdefine model?
 
     Note we actually create a model (with a dummy function)
@@ -1395,10 +1465,10 @@ def handle_mdefine(session: Session,
 
         v2(f"Handling MDEFINE model: {basename} for {gname}")
 
-        add("load_user_model", f"model_{basename}", f"'{gname}'",
-            expand=True)
-        add("add_user_pars", f"'{gname}'", str(mdefine.params),
-            expand=True)
+        output.add_call("load_user_model", f"model_{basename}", f"'{gname}'",
+                        expand=True)
+        output.add_call("add_user_pars", f"'{gname}'", str(mdefine.params),
+                        expand=True)
 
         session.load_user_model(dummy_model, gname)
         session.add_user_pars(gname, mdefine.params)
@@ -1408,14 +1478,13 @@ def handle_mdefine(session: Session,
     return None
 
 
-def convert_model(session: Session,
+def convert_model(output : Output,
+                  session: Session,
                   extra_models: List[str],
                   expr: str,
                   postfix: str,
                   groups: List[int],
-                  mdefines: List[MDefine],
-                  add: Callable[..., None],
-                  madd: Callable[..., None]) -> Dict[int, Expression]:
+                  mdefines: List[MDefine]) -> Dict[int, Expression]:
     """Extract the model components.
 
     Model names go from m1 to mn (when groups is empty) or
@@ -1423,6 +1492,8 @@ def convert_model(session: Session,
 
     Parameters
     ----------
+    output : Output
+        The output object
     session : Session
         The Sherpa session used to define/create models.
     extra_models : list of str
@@ -1435,8 +1506,6 @@ def convert_model(session: Session,
         The groups to create. It must not be empty. We special case a
         single group, as there's no need to add an identifier.
     mdefines : list of MDefine
-    add, madd : callable
-        Create the output.
 
     Returns
     -------
@@ -1540,7 +1609,7 @@ def convert_model(session: Session,
                 # At this point we expect to have [..., model, "("]
                 # thanks to the fake_bracket handling.
                 #
-                v3(f"  - found 'cmdl * ..' so dropping '*' token")
+                v3("  - found 'cmdl * ..' so dropping '*' token")
 
                 # Should we clear prev_model_type?
                 # prev_model_type = None
@@ -1556,11 +1625,11 @@ def convert_model(session: Session,
             gname = make_component_name(postfix, ngroups, ctr, grp)
 
             if "{" in tok:
-                mdl, mtype = handle_tablemodel(session, tok, gname, add, madd)
+                mdl, mtype = handle_tablemodel(output, session, tok, gname)
             else:
-                answer = handle_xspecmodel(session, tok, gname, madd)
+                answer = handle_xspecmodel(session, tok, gname, output=output)
                 if answer is None:
-                    answer = handle_mdefine(session, mdefines, tok, gname, add)
+                    answer = handle_mdefine(output, session, mdefines, tok, gname)
                     if answer is None:
                         raise ValueError(f"Unable to convert {tok} to a model")
 
@@ -1929,7 +1998,7 @@ def tokenize_model_expr(session: Session,
             return
 
         if usymbol not in KNOWN_MODELS:
-            raise ValueError(f"Unrecognized model '{symbol}' in '{expr}'")
+            raise ValueError(f"Unrecognized model '{symbol}' in '{expr.strip()}'")
 
         out.append(symbol.lower())
 
@@ -2070,18 +2139,16 @@ def get_pars_from_expr(expr: Expression) -> List[Parameter]:
     return out
 
 
-def create_model_expressions(state: StateDict,
-                             add_import: Callable[..., None],
-                             add: Callable[..., None],
-                             madd: Callable[..., None]) -> None:
+def create_model_expressions(output: Output,
+                             state: StateDict) -> None:
 
     # We need to create the source models. This is left till here because
     # Sherpa handles "multiple specnums" differently to XSPEC.
     #
     # Technically we could have no model expression, but assume that is unlikely
-    madd("")
-    madd("# Set up the model expressions")
-    madd("#")
+    output.add_spacer()
+    output.add_comment("Set up the model expressions")
+    output.add_comment()
 
     # The easy case:
     #
@@ -2095,8 +2162,8 @@ def create_model_expressions(state: StateDict,
 
     # In current testing we require exprs[0] to exist. Is this always true?
     if 0 not in exprs.keys():
-        madd("")
-        madd("print('Unexpected state when processing models')")
+        output.add_spacer()
+        output.add_expr("print('Unexpected state when processing models')")
         print(f"UNEXPECTED: no expression for default model {list(exprs.keys())}")
         return
 
@@ -2104,8 +2171,8 @@ def create_model_expressions(state: StateDict,
 
     if nsource == 0:
         if list(exprs.keys()) != [0]:
-            madd("")
-            madd("print('Unexpected state when processing models')")
+            output.add_spacer()
+            output.add_expr("print('Unexpected state when processing models')")
             print(f"UNEXPECTED: expected [0] but found {list(exprs.keys())}")
             return
 
@@ -2118,20 +2185,21 @@ def create_model_expressions(state: StateDict,
             evals = list(exprs0.values())
             sexpr = create_source_expression(evals[0])
             for did in state['datasets']:
-                add('set_source', did, sexpr)
+                output.add_call('set_source', did, sexpr)
 
-        else:
-            v2("Separate source expressions for the data sets")
-            if len(state['datasets']) != len(exprs0):
-                madd("")
-                madd("print('Unexpected state when processing models')")
-                print(f"UNEXPECTED: expected {len(state['datasets'])} items but found {len(exprs0)}")
-                return
+            return
 
-            for did in state['datasets']:
-                expr = exprs0[did]
-                sexpr = create_source_expression(expr)
-                add('set_source', did, sexpr)
+        v2("Separate source expressions for the data sets")
+        if len(state['datasets']) != len(exprs0):
+            output.add_spacer()
+            output.add_expr("print('Unexpected state when processing models')")
+            print(f"UNEXPECTED: expected {len(state['datasets'])} items but found {len(exprs0)}")
+            return
+
+        for did in state['datasets']:
+            expr = exprs0[did]
+            sexpr = create_source_expression(expr)
+            output.add_call('set_source', did, sexpr)
 
         return
 
@@ -2142,18 +2210,18 @@ def create_model_expressions(state: StateDict,
     #
     if len(exprs0) != len(state['datasets']):
         # I am not convinced this is a requirement
-        madd("")
-        madd("print('Unexpected state when processing models')")
+        output.add_spacer()
+        output.add_expr("print('Unexpected state when processing models')")
         print(f"UNEXPECTED: expected {len(state['datasets'])} items but found {len(exprs0)}")
         return
 
     # Response1D only seems to use the default response id.
     #
-    add_import('from sherpa.astro.instrument import Response1D')
+    output.add_import('from sherpa.astro.instrument import Response1D')
 
     for did in state['datasets']:
         expr = exprs0[did]  # This should hold
-        madd(f"# source model for dataset {did}")
+        output.add_comment(f"source model for dataset {did}")
 
         try:
             snums = state['datanum'][did]
@@ -2167,12 +2235,12 @@ def create_model_expressions(state: StateDict,
 
         if snums == []:
             # Easy
-            add('set_source', did, sexpr)
+            output.add_call('set_source', did, sexpr)
             continue
 
-        madd(f"d = get_data({did})")
-        madd(f"m = {sexpr}")
-        madd("fmdl = Response1D(d)(m)")
+        output.add_expr(f"d = get_data({did})")
+        output.add_expr(f"m = {sexpr}")
+        output.add_expr("fmdl = Response1D(d)(m)")
 
         # Hopefully this is correct. It's a lot simpler than it used
         # to be, at least.
@@ -2182,21 +2250,21 @@ def create_model_expressions(state: StateDict,
                 xexpr = exprs[snum][did]
                 sexpr = create_source_expression(xexpr)
 
-                add_import('from sherpa_contrib.xspec import xcm')
-                madd(f"m = {sexpr}")
-                madd(f"fmdl += xcm.Response1D(d, {snum})(m)")
+                output.add_import('from sherpa_contrib.xspec import xcm')
+                output.add_expr(f"m = {sexpr}")
+                output.add_expr(f"fmdl += xcm.Response1D(d, {snum})(m)")
                 break
             except KeyError:
                 pass
 
-            madd("")
+            output.add_spacer()
             emsg = f"Unable to find model for sourcenum={snum} and dataset {did}"
-            madd(f"print('{emsg}')")
+            output.add_expr(f"print('{emsg}')")
             print(f"UNEXPECTED: {emsg}")
             return
 
-        add('set_full_model', did, 'fmdl')
-        madd("")
+        output.add_call('set_full_model', did, 'fmdl')
+        output.add_spacer()
 
 
 # The conversion routine. The functionality needs to be split out
@@ -2249,72 +2317,23 @@ def convert(infile: Any,  # to hard to type this
         with open(infile, "r", encoding="utf-8") as fh:
             intext = fh.readlines()
 
-    # TODO: convert the output routines (*add*) to a class.
-    #
-    out_imports: List[str] = []
-    out: List[str] = []
-
-    def add_import(expr: str) -> None:
-        """Add the import if we haven't alredy done so"""
-
-        if expr in out_imports:
-            return
-
-        out_imports.append(expr)
-
-    def add_spacer(always: bool = True) -> None:
-        if not always and len(out) > 0 and out[-1] == '':
-            return
-
-        out.append('')
-
-    def madd(expr: str, expand: bool = False) -> None:
-        if expand:
-            if explicit is None:
-                expr = expr.replace('XX', '')
-            else:
-                expr = expr.replace('XX', f'{explicit}.')
-
-        out.append(expr)
-
-    if explicit is None:
-        def sym(name):
-            """Expand the symbol name"""
-            return name
-
-    else:
-        def sym(name):
-            """Expand the symbol name"""
-            return f"{explicit}.{name}"
-
-    def add(name, *args, expand=True, **kwargs):
-        if expand:
-            name = sym(name)
-
-        cstr = f"{name}("
-
-        arglist = [str(a) for a in args] + \
-            [f"{k}={v}" for k, v in kwargs.items()]
-        cstr += ", ".join(arglist)
-
-        cstr += ")"
-        out.append(cstr)
+    out = Output(explicit)
 
     # START
     #
     if explicit is None:
-        add_import("from sherpa.astro.ui import *")
+        out.add_import("from sherpa.astro.ui import *")
     else:
-        add_import(f"import sherpa.astro.ui as {explicit}")
+        out.add_import(f"import sherpa.astro.ui as {explicit}")
 
     # Are there any XSPEC user models to load?
     #
     if models is not None:
         for mexpr in models:
-            add_import(f"import {mexpr}.ui")
+            out.add_import(f"import {mexpr}.ui")
 
     if clean:
-        add("clean")
+        out.add_call("clean")
 
     # Store information about datasets, responses, and models.
     #
@@ -2365,29 +2384,33 @@ def convert(infile: Any,  # to hard to type this
         if command == 'bayes':
             v2(f"Skipping: {command}")
             # No need to mention this
-            # madd(f"print('skipped \"{xline}\"')")
+            # out.add_expr(f"print('skipped \"{xline}\"')")
             continue
 
         if command == 'systematic':
             v2(f"Skipping: {command}")
             # Only report if not "systematic 0"
             if toks[1] != "0":
-                madd(f"print('skipped \"{xline}\"')")
+                out.add_expr(f"print('skipped \"{xline}\"')")
 
             continue
 
         if command == 'method':
             # Assume we have method after data so a nice place to put a spacer
-            add_spacer(always=False)
+            out.add_spacer(always=False)
 
             meth = toks[1].lower()
             if meth == 'leven':
-                add('set_method', "'levmar'")
+                methname = "levmar"
             elif meth == 'simplex':
-                add('set_method', "'simplex'")
+                methname = "simplex"
             else:
-                add('print', f"'WARNING: there is no equivalent to METHOD {meth}'")
+                emsg = f"WARNING: there is no equivalent to METHOD {meth}"
+                v1(emsg)
+                out.add_call('print', f"'{emsg}'")
+                continue
 
+            out.add_call('set_method', f"'{methname}'")
             continue
 
         if command == 'statistic':
@@ -2396,13 +2419,17 @@ def convert(infile: Any,  # to hard to type this
 
             stat = toks[1].lower()
             if stat == 'chi':
-                add('set_stat', f"'{chisq}'")
+                statname = chisq
             elif stat.startswith('cstat'):
-                add('print', "'WARNING: Have chosen cstat but wstat statistic may be better'")
-                add('set_stat', "'cstat'")
+                out.add_expr("print('WARNING: Have chosen cstat but wstat statistic may be better')")
+                statname = "cstat"
             else:
-                add('print', f"'WARNING: there is no equivalent to STATISTIC {stat}'")
+                emsg = f"WARNING: there is no equivalent to STATISTIC {stat}"
+                v1(emsg)
+                out.add_expr(f"print('{emsg}')")
+                statname = chisq
 
+            out.add_call('set_stat', f"'{statname}'")
             state['statistic'] = stat
             continue
 
@@ -2410,14 +2437,14 @@ def convert(infile: Any,  # to hard to type this
             if ntoks != 2:
                 raise ValueError(f"Expected 1 argument for {command.upper()}: '{xline}'")
 
-            add(f'set_xs{command}', f"'{toks[1]}'")
+            out.add_call(f'set_xs{command}', f"'{toks[1]}'")
             continue
 
         if command == 'cosmo':
             if ntoks != 4:
                 raise ValueError(f"Expected 3 arguments for COSMO: '{xline}'")
 
-            add('set_xscosmo', *toks[1:])
+            out.add_call('set_xscosmo', *toks[1:])
             continue
 
         if command == 'xset':
@@ -2432,7 +2459,7 @@ def convert(infile: Any,  # to hard to type this
 
             # At the moment force this to a string value. This may
             # not be sensible.
-            add('set_xsxset', f"'{toks[1]}'", f"'{toks[2]}'")
+            out.add_call('set_xsxset', f"'{toks[1]}'", f"'{toks[2]}'")
             continue
 
         # We do not support all data options, such as
@@ -2450,7 +2477,7 @@ def convert(infile: Any,  # to hard to type this
             if ntoks > 3:
                 raise ValueError(f"Unsupported DATA syntax: '{xline}'")
 
-            parse_data(state, add, toks[1:])
+            parse_data(out, state, toks[1:])
             continue
 
         # similar to data but
@@ -2469,7 +2496,7 @@ def convert(infile: Any,  # to hard to type this
             if ntoks > 3:
                 raise ValueError(f"Unsupported BACKGRND syntax: '{xline}'")
 
-            parse_backgrnd(state, add, xline, toks[1:])
+            parse_backgrnd(out, state, xline, toks[1:])
             continue
 
         # We do not support all response options, such as
@@ -2487,33 +2514,32 @@ def convert(infile: Any,  # to hard to type this
             if ntoks > 3:
                 raise ValueError(f"Unsupported {command.upper()} syntax: '{xline}'")
 
-            parse_response(state, add, command, toks[1:])
+            parse_response(out, state, command, toks[1:])
             continue
 
         if command in ['ignore', 'notice']:
             if ntoks == 1:
                 raise ValueError(f"Missing {command.upper()} option: '{xline}'")
 
-            parse_notice_range(add_import, add, state['datasets'], command, toks[1:])
+            parse_notice_range(out, state['datasets'], command, toks[1:])
             continue
 
         if command == 'mdefine':
             mdefine = process_mdefine(session, extra_models, xline, state["mdefines"])
-            add_mdefine_model(state, session, madd, mdefine)
+            add_mdefine_model(out, state, session, mdefine)
             continue
 
         if command == 'model':
             if ntoks == 1:
                 raise ValueError(f"Missing MODEL option: '{xline}'")
 
-            exprs = parse_model(state, session, extra_models,
-                                add_spacer, add_import, add, madd,
+            exprs = parse_model(out, state, session, extra_models,
                                 xline)
-            parse_possible_parameters(state, intext, exprs, add_import, add)
+            parse_possible_parameters(out, state, intext, exprs)
             continue
 
         v1(f"SKIPPING '{xline}'")
-        madd(f"print('WARNING: skipped {xline}')")
+        out.add_expr(f"print('WARNING: skipped {xline}')")
 
     # Warn the user if MDEFINE was used
     #
@@ -2527,6 +2553,5 @@ def convert(infile: Any,  # to hard to type this
 
             v1(f"  - {mdefine.name}  {mdefine.mtype.name} : {status}")
 
-    create_model_expressions(state, add_import, add,madd)
-
-    return "\n".join(out_imports + [""] + out) + "\n"
+    create_model_expressions(out, state)
+    return out.answer
