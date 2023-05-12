@@ -398,7 +398,7 @@ class StateDict(TypedDict):
     datasets: List[int]
     sourcenum: Dict[int, List[int]]
     datanum: Dict[int, List[int]]
-    exprs: Dict[int, List[Expression]]
+    exprs: Dict[int, Dict[int, Expression]]
     allpars: Dict[str, Parameter]
     mdefines: List[MDefine]
 
@@ -971,7 +971,7 @@ def parse_model(state: StateDict,
                 add_import: Callable[...,None],
                 add: Callable[...,None],
                 madd: Callable[...,None],
-                xline: str) -> List[Expression]:
+                xline: str) -> Dict[int, Expression]:
     """Handle the model line
 
     Can we assume that if the model has no dataset/label then it's
@@ -1078,7 +1078,7 @@ def parse_model(state: StateDict,
     #
     assert label not in state['allpars'], label
     state['allpars'][label] = []
-    for expr in exprs:
+    for expr in exprs.values():
         pars = get_pars_from_expr(expr)
         for par in pars:
             state['allpars'][label].append(par)
@@ -1096,7 +1096,7 @@ def parse_model(state: StateDict,
 
 def parse_possible_parameters(state: StateDict,
                               intext: List[str],
-                              exprs: List[Expression],
+                              exprs: Dict[int, Expression],
                               add_import: Callable[...,None],
                               add: Callable[...,None]) -> None:
     """Do we have any parameter lines to deconstruct?
@@ -1105,9 +1105,10 @@ def parse_possible_parameters(state: StateDict,
     """
 
     # Process all the parameter values for each data group.
+    # Is the ordering correct here?
     #
     escape = False  # NEED TO REFACTOR THIS CODE!
-    for expr in exprs:
+    for expr in exprs.values():
         if escape:
             break
 
@@ -1414,7 +1415,7 @@ def convert_model(session: Session,
                   groups: List[int],
                   mdefines: List[MDefine],
                   add: Callable[..., None],
-                  madd: Callable[..., None]) -> List[Expression]:
+                  madd: Callable[..., None]) -> Dict[int, Expression]:
     """Extract the model components.
 
     Model names go from m1 to mn (when groups is empty) or
@@ -1465,10 +1466,10 @@ def convert_model(session: Session,
     ngroups = len(groups)
 
     # Need an output list for each group
-    out: List[Expression] = [[] for g in groups]
+    out: Dict[int, Expression] = {g: [] for g in groups}
 
     def add_token(tkn):
-        for outlist in out:
+        for outlist in out.values():
             outlist.append(tkn)
 
     # We need to address differences in the XSPEC and Sherpa
@@ -1539,7 +1540,7 @@ def convert_model(session: Session,
                 # At this point we expect to have [..., model, "("]
                 # thanks to the fake_bracket handling.
                 #
-                v3(f"  - found 'cmdl * ..' so dropping * for {out[0][-2].name}")
+                v3(f"  - found 'cmdl * ..' so dropping '*' token")
 
                 # Should we clear prev_model_type?
                 # prev_model_type = None
@@ -1551,7 +1552,7 @@ def convert_model(session: Session,
 
         # This must be a model.
         #
-        for grp, outlist in zip(groups, out):
+        for grp, outlist in out.items():
             gname = make_component_name(postfix, ngroups, ctr, grp)
 
             if "{" in tok:
@@ -1600,7 +1601,7 @@ def convert_model(session: Session,
         add_token(")")
 
     v2(f"Found {len(out)} expressions")
-    for grp, eterm in zip(groups, out):
+    for grp, eterm in out.items():
         v2(f"Expression: {grp}  #tokens={len(eterm)}")
         for j, token in enumerate(eterm, 1):
             if isinstance(token, ArithmeticModel):
@@ -2112,7 +2113,10 @@ def create_model_expressions(state: StateDict,
         #
         if len(exprs0) == 1:
             v2("Single source expression for all data sets")
-            sexpr = create_source_expression(exprs0[0])
+            # What is the identifier used here?
+            v3("  - identifier = {list(exprs0.keys())}")
+            evals = list(exprs0.values())
+            sexpr = create_source_expression(evals[0])
             for did in state['datasets']:
                 add('set_source', did, sexpr)
 
@@ -2124,7 +2128,8 @@ def create_model_expressions(state: StateDict,
                 print(f"UNEXPECTED: expected {len(state['datasets'])} items but found {len(exprs0)}")
                 return
 
-            for did, expr in zip(state['datasets'], exprs0):
+            for did in state['datasets']:
+                expr = exprs0[did]
                 sexpr = create_source_expression(expr)
                 add('set_source', did, sexpr)
 
@@ -2146,8 +2151,8 @@ def create_model_expressions(state: StateDict,
     #
     add_import('from sherpa.astro.instrument import Response1D')
 
-    for did, expr in zip(state['datasets'], exprs0):
-
+    for did in state['datasets']:
+        expr = exprs0[did]  # This should hold
         madd(f"# source model for dataset {did}")
 
         try:
@@ -2169,37 +2174,26 @@ def create_model_expressions(state: StateDict,
         madd(f"m = {sexpr}")
         madd("fmdl = Response1D(d)(m)")
 
-        # Identifying the source expression is more-awkward than it needs
-        # to be!
+        # Hopefully this is correct. It's a lot simpler than it used
+        # to be, at least.
         #
         for snum in snums:
-
-            xs = state['sourcenum'][snum]
-            if len(exprs[snum]) != len(xs):
-                madd("")
-                madd("print('Unexpected state when processing multiple models')")
-                print(f"UNEXPECTED: expected {len(exprs[snum])} items but found {len(xs)}")
-                return
-
-            found = False
-            for xid, xexpr in zip(xs, exprs[snum]):
-                if xid != did:
-                    continue
-
+            try:
+                xexpr = exprs[snum][did]
                 sexpr = create_source_expression(xexpr)
-                found = True
 
                 add_import('from sherpa_contrib.xspec import xcm')
                 madd(f"m = {sexpr}")
                 madd(f"fmdl += xcm.Response1D(d, {snum})(m)")
                 break
+            except KeyError:
+                pass
 
-            if not found:
-                madd("")
-                emsg = f"Unable to find model for sourcenum={snum} and dataset {did}"
-                madd(f"print('{emsg}')")
-                print(f"UNEXPECTED: {emsg}")
-                return
+            madd("")
+            emsg = f"Unable to find model for sourcenum={snum} and dataset {did}"
+            madd(f"print('{emsg}')")
+            print(f"UNEXPECTED: {emsg}")
+            return
 
         add('set_full_model', did, 'fmdl')
         madd("")
