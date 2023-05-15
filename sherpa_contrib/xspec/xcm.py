@@ -32,6 +32,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 import importlib
+import logging
 from typing import Any, Callable, Dict, List, Optional, Set, \
     TypedDict, Tuple, Union
 
@@ -58,6 +59,14 @@ v1 = lgr.verbose1
 v2 = lgr.verbose2
 v3 = lgr.verbose3
 del lgr
+
+
+# For code run within a Sherpa session, rather than from the
+# convert_xspec_script script, We don't want to use the contrib logger
+# as it will not be affected by SherpaVerbosity, so use the sherpa
+# one.
+#
+swarn = logging.getLogger("sherpa").warning
 
 
 # Helper classes and functions that can be used by the converted
@@ -120,9 +129,45 @@ def notice(spectrum: int, lo: int, hi: int, ignore: bool = False) -> None:
     --------
     ignore
 
+    Notes
+    -----
+    As of CIAO 4.15, the notice and ignore calls from the UI layer
+    report the selected filter. This routine used to call the method
+    directly but has switched to calling the UI layer to get the same
+    behavior (it is more work but this is not a time-sensitive
+    routine).
+
     """
 
     d = ui.get_data(spectrum)
+
+    # XSPEC channels and Sherpa group numbers do not always agree.
+    # This is fast enough it's not worth storing in a cache.
+    #
+    mapping = validate_grouping(d)
+    if mapping is not None:
+        slo = mapping.xspec[lo]
+        shi = mapping.xspec[hi]
+
+        # Do we need to warn? If it is only for the upper limit
+        # AND this corresponds to the last group (e.g. something
+        # like 45-**) then it should not matter.
+        #
+        # We need to know the number of groups, and I am not sure
+        # we store that, so just calculate it directly.
+        #
+        rawdata = d.apply_filter(d.counts)
+        ngroups = len(rawdata)
+        if slo != lo or (shi != hi and shi < ngroups):
+            # In CIAO 4.15 we can not use "foo %d", value as only
+            # the first argument is used in the logging code (should be
+            # fixed in 4.16).
+            #
+            swarn(f"Spectrum {spectrum}: the grouping scheme does not match OGIP "
+                  "standards. The filtering may not exactly match XSPEC.")
+
+        lo = slo
+        hi = shi
 
     # The naming of these routines is a bit odd since sometimes
     # channel means group and sometimes it means channel.
@@ -132,7 +177,8 @@ def notice(spectrum: int, lo: int, hi: int, ignore: bool = False) -> None:
         ehi = d._channel_to_energy(hi)
 
         v2(f"Converting group {lo}-{hi} to {elo:.3f}-{ehi:.3f} keV [ignore={ignore}]]")
-        d.notice(elo, ehi, ignore=ignore)
+        # d.notice(elo, ehi, ignore=ignore)
+        ui.notice_id(spectrum, elo, ehi, ignore=ignore)
         return
 
     if d.units == 'wavelength':
@@ -140,7 +186,8 @@ def notice(spectrum: int, lo: int, hi: int, ignore: bool = False) -> None:
         wlo = d._channel_to_energy(hi)
 
         v2(f"Converting group {lo}-{hi} to {wlo:.5f}-{whi:.5f} A [ignore={ignore}]]")
-        d.notice(wlo, whi, ignore=ignore)
+        # d.notice(wlo, whi, ignore=ignore)
+        ui.notice_id(spectrum, wlo, whi, ignore=ignore)
         return
 
     if d.units != 'channel':
@@ -151,7 +198,8 @@ def notice(spectrum: int, lo: int, hi: int, ignore: bool = False) -> None:
     chi = d._group_to_channel(hi)
 
     v2(f"Converting group {lo}-{hi} to channels {clo}-{chi} [ignore={ignore}]]")
-    d.notice(clo, chi, ignore=ignore)
+    # d.notice(clo, chi, ignore=ignore)
+    ui.notice_id(spectrum, clo, chi)
 
 
 def ignore(spectrum: int, lo: int, hi: int) -> None:
@@ -187,6 +235,123 @@ def subtract(spectrum: int) -> None:
         ui.subtract(spectrum)
     except DataErr:
         v1(f"Dataset {spectrum} has no background data!")
+
+
+@dataclass
+class Grouping:
+    """Handle XSPEC/Sherpa differences in grouping
+
+    Note that the "channel" and "group" values here start at 1 (for
+    both XSPEC and Sherpa.
+
+    """
+
+    xspec : Dict[int, int]
+    """Keys are XSPEC 'channel' numbers, values are Sherpa 'group' numbers"""
+
+    sherpa : Dict[int, List[int]]
+    """Keys are Sherpa 'group' and vaue are the matching XSPEC 'channels'"""
+
+
+def validate_grouping(pha: ui.DataPHA) -> Optional[Grouping]:
+    """Compare XSPEC and Sherpa grouping.
+
+    After reading OGIP standards OGIP Memo OGIP/92-007 and OGIP Memo
+    OGIP/92-007a, which can be found at
+    https://heasarc.gsfc.nasa.gov/docs/heasarc/ofwg/docs/spectra/ogip_92_007/ogip_92_007.html
+    and
+    https://heasarc.gsfc.nasa.gov/docs/heasarc/ofwg/docs/spectra/ogip_92_007a/ogip_92_007a.html
+    respectively, I thought I understood grouping. Then I came across
+    a hand-edited file which XSPEC grouped differently to Sherpa, and
+    I believe it's because the quality values differ within a single
+    group. This routine checks for this case.
+
+    Parameters
+    ----------
+    pha : DataPHA
+        The PHA data.
+
+    Returns
+    -------
+    grouping : Grouping or None
+        If None then Sherpa and XSPEC agree (I believe) otherwise an
+        object containing the mapping between the two systems.
+
+    Notes
+    -----
+    If quality is set but grouping is not we assume there is no
+    grouping, and return None. I have not tested this case in XSPEC.
+
+    """
+
+    if pha.grouping is None or pha.quality is None:
+        return None
+
+    # Use dictionaries rather than a list as it is semantically
+    # clearer, although in reality there's no difference since the key
+    # is an integer.
+    #
+    # Given an XSPEC "channel", what Sherpa group does it match?
+    map_xspec_sherpa: Dict[int, int] = {}
+
+    # Given a Sherpa group, what XSPEC "channels" does it match?
+    map_sherpa_xspec: Dict[int, List[int]] = {}
+
+    gxspec = 1
+    gsherpa = 1
+    last_qual = pha.quality[0]
+
+    map_xspec_sherpa[1] = 1
+    map_sherpa_xspec[1] = [1]
+
+    # We could use
+    #
+    #   gmin = pha.apply_groupig(pha.quality, pha._min)
+    #   gmax = pha.apply_groupig(pha.quality, pha._max)
+    #
+    # to identify groups where the quality value is not constant, but
+    # we still would need to go through each such group, so we go
+    # through each PHA channel.
+    #
+    for grp, qual in zip(pha.grouping[1:], pha.quality[1:]):
+        if grp == 1:
+            gxspec += 1
+            gsherpa += 1
+
+            map_xspec_sherpa[gxspec] = gsherpa
+            map_sherpa_xspec[gsherpa] = [gxspec]
+            last_qual = qual
+            continue
+
+        if grp == -1:
+            if qual == last_qual:
+                continue
+
+            # This is a group with varying quality
+            gxspec += 1
+
+            map_xspec_sherpa[gxspec] = gsherpa
+            map_sherpa_xspec[gsherpa].append(gxspec)
+            last_qual = qual
+            continue
+
+        # Assume this is 0, but it could be anything. Assume this
+        # is not-a-group
+        #
+        gxspec += 1
+        gsherpa += 1
+
+        map_xspec_sherpa[gxspec] = gsherpa
+        map_sherpa_xspec[gsherpa] = [gxspec]
+        last_qual = None
+
+    # If the Sherpa and XSPEC grouping values agree then we don't need
+    # to return anything.
+    #
+    if gxspec == gsherpa:
+        return None
+
+    return Grouping(xspec=map_xspec_sherpa, sherpa=map_sherpa_xspec)
 
 
 def _mklabel(func: Callable) -> str:
@@ -451,6 +616,15 @@ class Output:
             return
 
         self.text.append('')
+
+    def add_warning(self, msg: str, local: bool = True) -> None:
+        """Add a warning message (both now and in the script)"""
+
+        if local:
+            v1(f"WARNING: {msg}")
+
+        self.add_import("import logging")
+        self.add_expr(f'logging.getLogger("sherpa").warning("{msg}")')
 
     def add_expr(self, expr: str, expand: bool = False) -> None:
         """Add the expression. 'XX' is used to handle implicit/explicit ui import"""
@@ -2412,9 +2586,7 @@ def convert(infile: Any,  # to hard to type this
             elif meth == 'simplex':
                 methname = "simplex"
             else:
-                emsg = f"WARNING: there is no equivalent to METHOD {meth}"
-                v1(emsg)
-                out.add_call('print', f"'{emsg}'")
+                out.add_warning(f"there is no equivalent to METHOD {meth}")
                 continue
 
             out.add_call('set_method', f"'{methname}'")
@@ -2428,12 +2600,10 @@ def convert(infile: Any,  # to hard to type this
             if stat == 'chi':
                 statname = chisq
             elif stat.startswith('cstat'):
-                out.add_expr("print('WARNING: Have chosen cstat but wstat statistic may be better')")
+                out.add_warning('Have chosen cstat but wstat statistic may be better', local=False)
                 statname = "cstat"
             else:
-                emsg = f"WARNING: there is no equivalent to STATISTIC {stat}"
-                v1(emsg)
-                out.add_expr(f"print('{emsg}')")
+                out.add_warning(f"there is no equivalent to STATISTIC {stat}")
                 statname = chisq
 
             out.add_call('set_stat', f"'{statname}'")
@@ -2546,7 +2716,7 @@ def convert(infile: Any,  # to hard to type this
             continue
 
         v1(f"SKIPPING '{xline}'")
-        out.add_expr(f"print('WARNING: skipped {xline}')")
+        out.add_warning(f'skipped {xline}', local=False)
 
     # Warn the user if MDEFINE was used
     #

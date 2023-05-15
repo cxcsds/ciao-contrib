@@ -363,7 +363,7 @@ model mymod
   running convert_xspec_script will display
 </PARA>
 <VERBATIM>
-  model mymod
+model mymod
 Unable to find parameter value for m1.p1 - skipping other parameters
 Found MDEFINE command: please consult 'ahelp convert_xspec_script'
   - junk  ADD : check definition of model_junk()
@@ -500,9 +500,9 @@ set_source(1, m1)
     </ADESC>
 
     <ADESC title="Changes in the scripts 4.15.2 (May 2023) release">
-      <PARA title="Allow files that reference user models">
-	If the XCM file references one or XSPEC user models, then the
-	--models argument can be used to tell the script about
+      <PARA title="Allow scripts that reference user models">
+	If the XCM scripts references one or XSPEC user models, then the
+	--models argument must be used to tell the script about
 	these models (this assumes that convert_xspec_user_script
 	was used to convert them). So if
 	<EQUATION>convert_xspec_user_model javier lmodel.dat</EQUATION>
@@ -524,6 +524,25 @@ set_source(1, m1)
 	HelpDesk if there appear to be problems or differences to
 	XSPEC when using the output of this script.
       </PARA>
+      <PARA title="Changes to the notice and ignore commands">
+	To match changes made in CIAO 4.15, calls to ignore and notice
+	in the XCM script will now display the change in the filter, such
+	as reporting
+      </PARA>
+<VERBATIM>
+dataset 1: 0:15.01 -> 0.32:15.01 Energy (keV)
+dataset 1: 0.32:15.01 -> 0.32:9.92 Energy (keV)
+</VERBATIM>
+      <PARA>
+	It turns out that Sherpa and XSPEC handle PHA files with
+	invalid grouping data (the GROUPING and QUALITY columns)
+	differently. When running the output of &tool;,
+	warning messages will be displayed when the filters
+	used by XSPEC do not match those used by Sherpa, saying
+      </PARA>
+<VERBATIM>
+WARNING: Spectrum 1: the grouping scheme does not match OGIP standards. The filtering may not exactly match XSPEC.
+</VERBATIM>
       <PARA title="Improvements in model parsing">
 	The XSPEC model language is different to Sherpa, for example
 	a model can be expressed as
