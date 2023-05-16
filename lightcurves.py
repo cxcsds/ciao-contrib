@@ -46,9 +46,12 @@ import pycrates as pcr
 
 from ciao_contrib.runtool import dmcopy, dmgti
 
-import matplotlib
-matplotlib.interactive(True)
-matplotlib.rcParams["toolbar"] = "None"
+import os, matplotlib
+if "DISPLAY" in os.environ and os.environ["DISPLAY"] != "":
+    matplotlib.interactive(True)
+    matplotlib.rcParams["toolbar"] = "None"
+else:
+    matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
@@ -56,7 +59,7 @@ import matplotlib.pyplot as plt
 # __all__ = ("lc_sigma_clip", "lc_sigma_uclip", "lc_clean")
 __all__ = ("lc_sigma_clip", "lc_clean")
 
-__revision = "05 April 2023"
+__revision = "16 May 2023"
 
 
 def _write_gti_text(outfile, tstart, tend):
