@@ -1009,7 +1009,7 @@ def parse_backgrnd(output: Output,
         if toks[0] == 'none':
             state['nobackgrounds'].append(1)
         else:
-            output.add_call('load_background', f"'{toks[0]}'")
+            output.add_call('load_bkg', f"'{toks[0]}'")
 
         return
 
@@ -1020,7 +1020,7 @@ def parse_backgrnd(output: Output,
     if toks[1] == 'none':
         state['nobackgrounds'].append(datanum)
     else:
-        output.add_call('load_background', f"'{toks[1]}'")
+        output.add_call('load_bkg', str(datanum), f"'{toks[1]}'")
 
 
 def parse_response(output: Output,
