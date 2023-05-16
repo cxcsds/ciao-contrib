@@ -2502,6 +2502,11 @@ def convert(infile: Any,  # to hard to type this
 
     # START
     #
+    # This isn't always needed but let's make it available anyway, to
+    # simplify the code.
+    #
+    out.add_import("import numpy as np")
+
     if explicit is None:
         out.add_import("from sherpa.astro.ui import *")
     else:
