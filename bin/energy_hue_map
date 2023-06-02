@@ -21,9 +21,11 @@
 "Script to combine energy map w/ counts image to create true color image"
 
 __toolname__ = "energy_hue_map"
-__revision__ = "24 April 2023"
+__revision__ = "02 June 2023"
 
 import sys
+from colorsys import hls_to_rgb, hsv_to_rgb
+
 import numpy as np
 from pycrates import read_file
 import ciao_contrib.logger_wrapper as lw
@@ -38,34 +40,41 @@ np.seterr(all='ignore')
 
 
 @np.vectorize
-def vec_sys_to_rgb(hue, sat, func):
+def vec_sys_to_rgb(hue, sat, value, func):
     'Vectorized version of to convert hsv_to_rgb or hls_to_rgb'
 
-    if np.isnan(hue):
-        red, grn, blu = (0, 0, 0)
-    elif np.isnan(sat):
-        red, grn, blu = (0, 0, 0)
-    else:
-        # We use the saturation (counts) for both the
-        # saturation and for the 'value' | lightness.
-        red, grn, blu = func(hue, sat, sat)
+    if any(np.isnan([hue, sat, value])):
+        return (0, 0, 0)
+
+    red, grn, blu = func(hue, sat, value)
 
     return (red*255, grn*255, blu*255)
 
 
+def hisv_to_rgb(hue, saturation, value):
+    "Same as hsv_to_rgb, but reverse saturation"
+    return hsv_to_rgb(hue, 1.0-saturation, value)
+
+
+def my_hls_to_rgb(hue, saturation, lightness):
+    "Same as hls_to_rgb, but swap l and s"
+    
+    return hls_to_rgb(hue, lightness, saturation)
+
+
 def scale_values(map_in, map_min, map_max, map_func):
     'Scale the values using the map_func function'
+
     min_val = np.nanmin(map_in) if map_min is None else map_min
     max_val = np.nanmax(map_in) if map_max is None else map_max
-    map_out = map_func(map_in-min_val)/map_func(max_val-min_val)
+    map_out = map_func(map_in - min_val) / map_func(max_val - min_val)
     map_out = np.clip(map_out, 0, 1)
     return map_out
 
 
 def map_scale_func(func_name):
     'Map parameter names to functions'
-    valid_funcs = {'linear': lambda x: x,
-                   'asinh': np.arcsinh,
+    valid_funcs = {'linear': lambda x: x, 'asinh': np.arcsinh,
                    'log': lambda x: np.log10(x+1),
                    'sqrt': np.sqrt,
                    'square': lambda x: x*x}
@@ -76,8 +85,9 @@ def map_scale_func(func_name):
 
 def map_colorsys_func(func_name):
     'Map parameter names to function'
-    from colorsys import hls_to_rgb, hsv_to_rgb
-    valid_funcs = {'hsv': hsv_to_rgb, 'hls': hls_to_rgb}
+    valid_funcs = {'hsv': hsv_to_rgb,
+                   'hls': my_hls_to_rgb,
+                   'hisv': hisv_to_rgb}
     if func_name not in valid_funcs:
         raise ValueError(f"Unknown scale function: {func_name}")
     return valid_funcs[func_name]
@@ -219,13 +229,20 @@ def main():
     h_map = h_map * (wpars['max_hue']-wpars['min_hue']) + wpars['min_hue']
 
     # Scale the counts to get the saturation and lightness|value
-
     s_map = scale_values(counts_map, wpars['min_counts'],
                          wpars['max_counts'], wpars['counts_scale'])
     s_map = s_map * (wpars['max_sat']-wpars['min_sat']) + wpars['min_sat']
 
+    # We now apply the contrast and bias values to the "value" value.
+    # This lets us adjust the brightness of the pixels while keeping
+    # the saturation
+    # The contrast and bias are same sense and range as ds9 uses.
+
+    v_map = (s_map - 0.5) / float(wpars["contrast"]) + (1.0 - float(wpars["bias"]))
+    v_map = np.clip(v_map, 0, 1)
+
     # Convert hsv|hsl to rgb
-    red_map, grn_map, blu_map = vec_sys_to_rgb(h_map, s_map,
+    red_map, grn_map, blu_map = vec_sys_to_rgb(h_map, s_map, v_map,
                                                wpars['colorsys'])
 
     # Write outputs
