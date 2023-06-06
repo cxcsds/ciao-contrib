@@ -1,5 +1,6 @@
 #
-#  Copyright (C) 2020, 2023  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2020, 2023
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -28,19 +29,27 @@ analysis in Sherpa.
 """
 
 from collections import defaultdict
+from dataclasses import dataclass
 from enum import Enum
+import importlib
+import logging
+from typing import Any, Callable, Dict, List, Optional, Set, \
+    TypedDict, Tuple, Union
 
 import numpy as np
 
-from sherpa.astro import ui
-from sherpa.astro.ui.utils import Session
-from sherpa.astro import xspec
-from sherpa.utils.err import ArgumentErr, DataErr
+from sherpa.astro import ui  # type: ignore
+from sherpa.astro.ui.utils import Session  # type: ignore
+from sherpa.astro import xspec  # type: ignore
+from sherpa.models.basic import ArithmeticModel, UserModel  # type: ignore
+from sherpa.models.parameter import Parameter, CompositeParameter, ConstantParameter  # type: ignore
+from sherpa.utils.err import ArgumentErr, DataErr  # type: ignore
 
-import sherpa.astro.instrument
-import sherpa.models.parameter
+import sherpa.astro.instrument  # type: ignore
+import sherpa.models.parameter  # type: ignore
+import sherpa.utils             # type: ignore
 
-import ciao_contrib.logger_wrapper as lw
+import ciao_contrib.logger_wrapper as lw  # type: ignore
 
 
 __all__ = ("convert", )
@@ -50,6 +59,14 @@ v1 = lgr.verbose1
 v2 = lgr.verbose2
 v3 = lgr.verbose3
 del lgr
+
+
+# For code run within a Sherpa session, rather than from the
+# convert_xspec_script script, We don't want to use the contrib logger
+# as it will not be affected by SherpaVerbosity, so use the sherpa
+# one.
+#
+swarn = logging.getLogger("sherpa").warning
 
 
 # Helper classes and functions that can be used by the converted
@@ -95,7 +112,7 @@ class Response1D(sherpa.astro.instrument.Response1D):
         raise DataErr('norsp', pha.name)
 
 
-def notice(spectrum, lo, hi, ignore=False):
+def notice(spectrum: int, lo: int, hi: int, ignore: bool = False) -> None:
     """Apply XSPEC channel numbering to notice or ignore a range.
 
     Parameters
@@ -112,9 +129,45 @@ def notice(spectrum, lo, hi, ignore=False):
     --------
     ignore
 
+    Notes
+    -----
+    As of CIAO 4.15, the notice and ignore calls from the UI layer
+    report the selected filter. This routine used to call the method
+    directly but has switched to calling the UI layer to get the same
+    behavior (it is more work but this is not a time-sensitive
+    routine).
+
     """
 
     d = ui.get_data(spectrum)
+
+    # XSPEC channels and Sherpa group numbers do not always agree.
+    # This is fast enough it's not worth storing in a cache.
+    #
+    mapping = validate_grouping(d)
+    if mapping is not None:
+        slo = mapping.xspec[lo]
+        shi = mapping.xspec[hi]
+
+        # Do we need to warn? If it is only for the upper limit
+        # AND this corresponds to the last group (e.g. something
+        # like 45-**) then it should not matter.
+        #
+        # We need to know the number of groups, and I am not sure
+        # we store that, so just calculate it directly.
+        #
+        rawdata = d.apply_filter(d.counts)
+        ngroups = len(rawdata)
+        if slo != lo or (shi != hi and shi < ngroups):
+            # In CIAO 4.15 we can not use "foo %d", value as only
+            # the first argument is used in the logging code (should be
+            # fixed in 4.16).
+            #
+            swarn(f"Spectrum {spectrum}: the grouping scheme does not match OGIP "
+                  "standards. The filtering may not exactly match XSPEC.")
+
+        lo = slo
+        hi = shi
 
     # The naming of these routines is a bit odd since sometimes
     # channel means group and sometimes it means channel.
@@ -124,7 +177,8 @@ def notice(spectrum, lo, hi, ignore=False):
         ehi = d._channel_to_energy(hi)
 
         v2(f"Converting group {lo}-{hi} to {elo:.3f}-{ehi:.3f} keV [ignore={ignore}]]")
-        d.notice(elo, ehi, ignore=ignore)
+        # d.notice(elo, ehi, ignore=ignore)
+        ui.notice_id(spectrum, elo, ehi, ignore=ignore)
         return
 
     if d.units == 'wavelength':
@@ -132,7 +186,8 @@ def notice(spectrum, lo, hi, ignore=False):
         wlo = d._channel_to_energy(hi)
 
         v2(f"Converting group {lo}-{hi} to {wlo:.5f}-{whi:.5f} A [ignore={ignore}]]")
-        d.notice(wlo, whi, ignore=ignore)
+        # d.notice(wlo, whi, ignore=ignore)
+        ui.notice_id(spectrum, wlo, whi, ignore=ignore)
         return
 
     if d.units != 'channel':
@@ -143,10 +198,11 @@ def notice(spectrum, lo, hi, ignore=False):
     chi = d._group_to_channel(hi)
 
     v2(f"Converting group {lo}-{hi} to channels {clo}-{chi} [ignore={ignore}]]")
-    d.notice(clo, chi, ignore=ignore)
+    # d.notice(clo, chi, ignore=ignore)
+    ui.notice_id(spectrum, clo, chi)
 
 
-def ignore(spectrum, lo, hi):
+def ignore(spectrum: int, lo: int, hi: int) -> None:
     """Apply XSPEC channel numbering to ignore a range.
 
     Parameters
@@ -166,7 +222,7 @@ def ignore(spectrum, lo, hi):
     notice(spectrum, lo, hi, ignore=True)
 
 
-def subtract(spectrum):
+def subtract(spectrum: int) -> None:
     """Subtract the background (a no-op if there is no background).
 
     Parameters
@@ -181,7 +237,124 @@ def subtract(spectrum):
         v1(f"Dataset {spectrum} has no background data!")
 
 
-def _mklabel(func):
+@dataclass
+class Grouping:
+    """Handle XSPEC/Sherpa differences in grouping
+
+    Note that the "channel" and "group" values here start at 1 (for
+    both XSPEC and Sherpa.
+
+    """
+
+    xspec : Dict[int, int]
+    """Keys are XSPEC 'channel' numbers, values are Sherpa 'group' numbers"""
+
+    sherpa : Dict[int, List[int]]
+    """Keys are Sherpa 'group' and vaue are the matching XSPEC 'channels'"""
+
+
+def validate_grouping(pha: ui.DataPHA) -> Optional[Grouping]:
+    """Compare XSPEC and Sherpa grouping.
+
+    After reading OGIP standards OGIP Memo OGIP/92-007 and OGIP Memo
+    OGIP/92-007a, which can be found at
+    https://heasarc.gsfc.nasa.gov/docs/heasarc/ofwg/docs/spectra/ogip_92_007/ogip_92_007.html
+    and
+    https://heasarc.gsfc.nasa.gov/docs/heasarc/ofwg/docs/spectra/ogip_92_007a/ogip_92_007a.html
+    respectively, I thought I understood grouping. Then I came across
+    a hand-edited file which XSPEC grouped differently to Sherpa, and
+    I believe it's because the quality values differ within a single
+    group. This routine checks for this case.
+
+    Parameters
+    ----------
+    pha : DataPHA
+        The PHA data.
+
+    Returns
+    -------
+    grouping : Grouping or None
+        If None then Sherpa and XSPEC agree (I believe) otherwise an
+        object containing the mapping between the two systems.
+
+    Notes
+    -----
+    If quality is set but grouping is not we assume there is no
+    grouping, and return None. I have not tested this case in XSPEC.
+
+    """
+
+    if pha.grouping is None or pha.quality is None:
+        return None
+
+    # Use dictionaries rather than a list as it is semantically
+    # clearer, although in reality there's no difference since the key
+    # is an integer.
+    #
+    # Given an XSPEC "channel", what Sherpa group does it match?
+    map_xspec_sherpa: Dict[int, int] = {}
+
+    # Given a Sherpa group, what XSPEC "channels" does it match?
+    map_sherpa_xspec: Dict[int, List[int]] = {}
+
+    gxspec = 1
+    gsherpa = 1
+    last_qual = pha.quality[0]
+
+    map_xspec_sherpa[1] = 1
+    map_sherpa_xspec[1] = [1]
+
+    # We could use
+    #
+    #   gmin = pha.apply_groupig(pha.quality, pha._min)
+    #   gmax = pha.apply_groupig(pha.quality, pha._max)
+    #
+    # to identify groups where the quality value is not constant, but
+    # we still would need to go through each such group, so we go
+    # through each PHA channel.
+    #
+    for grp, qual in zip(pha.grouping[1:], pha.quality[1:]):
+        if grp == 1:
+            gxspec += 1
+            gsherpa += 1
+
+            map_xspec_sherpa[gxspec] = gsherpa
+            map_sherpa_xspec[gsherpa] = [gxspec]
+            last_qual = qual
+            continue
+
+        if grp == -1:
+            if qual == last_qual:
+                continue
+
+            # This is a group with varying quality
+            gxspec += 1
+
+            map_xspec_sherpa[gxspec] = gsherpa
+            map_sherpa_xspec[gsherpa].append(gxspec)
+            last_qual = qual
+            continue
+
+        # Assume this is 0, but it could be anything. Assume this
+        # is not-a-group
+        #
+        gxspec += 1
+        gsherpa += 1
+
+        map_xspec_sherpa[gxspec] = gsherpa
+        map_sherpa_xspec[gsherpa] = [gxspec]
+        last_qual = None
+
+    # If the Sherpa and XSPEC grouping values agree then we don't need
+    # to return anything.
+    #
+    if gxspec == gsherpa:
+        return None
+
+    return Grouping(xspec=map_xspec_sherpa, sherpa=map_sherpa_xspec)
+
+
+def _mklabel(func: Callable) -> str:
     """Create a 'nice' symbol for the function.
 
     Is this worth it over just using __name__?
@@ -210,7 +383,7 @@ def _mklabel(func):
     return lbl
 
 
-class FunctionParameter(sherpa.models.parameter.CompositeParameter):
+class FunctionParameter(CompositeParameter):
     """Store a function of a single argument.
 
     We need to only evalate the function when required.
@@ -218,9 +391,9 @@ class FunctionParameter(sherpa.models.parameter.CompositeParameter):
 
     @staticmethod
     def wrapobj(obj):
-        if isinstance(obj, sherpa.models.parameter.Parameter):
+        if isinstance(obj, Parameter):
             return obj
-        return sherpa.models.parameter.ConstantParameter(obj)
+        return ConstantParameter(obj)
 
     def __init__(self, arg, func):
 
@@ -233,14 +406,13 @@ class FunctionParameter(sherpa.models.parameter.CompositeParameter):
         # Would like to be able to add the correct import symbol here
         lbl = _mklabel(func)
         lbl += f'{func.__name__}({self.arg.fullname})'
-        sherpa.models.parameter.CompositeParameter.__init__(self, lbl,
-                                                            (self.arg,))
+        CompositeParameter.__init__(self, lbl, (self.arg,))
 
     def eval(self):
         return self.func(self.arg.val)
 
 
-class Function2Parameter(sherpa.models.parameter.CompositeParameter):
+class Function2Parameter(CompositeParameter):
     """Store a function of two arguments.
 
     We need to only evalate the function when required.
@@ -248,9 +420,9 @@ class Function2Parameter(sherpa.models.parameter.CompositeParameter):
 
     @staticmethod
     def wrapobj(obj):
-        if isinstance(obj, sherpa.models.parameter.Parameter):
+        if isinstance(obj, Parameter):
             return obj
-        return sherpa.models.parameter.ConstantParameter(obj)
+        return ConstantParameter(obj)
 
     def __init__(self, arg1, arg2, func):
 
@@ -264,11 +436,10 @@ class Function2Parameter(sherpa.models.parameter.CompositeParameter):
         # Would like to be able to add the correct import symbol here
         lbl = _mklabel(func)
         lbl += f'{func.__name__}({self.arg1.fullname}, {self.arg2.fullname})'
-        sherpa.models.parameter.CompositeParameter.__init__(self, lbl,
-                                                            (self.arg1, self.arg2))
+        CompositeParameter.__init__(self, lbl, (self.arg1, self.arg2))
 
     def eval(self):
-        return self.func(self.arg1.valm, self.arg2.val)
+        return self.func(self.arg1.val, self.arg2.val)
 
 
 def exp(x):
@@ -281,14 +452,42 @@ def sin(x):
     return FunctionParameter(x, np.sin)
 
 
+def sind(x):
+    """sin where x is in degrees."""
+    # could use np.deg2rad but would need to wrap that
+    return FunctionParameter(x * np.pi / 180, np.sin)
+
+
 def cos(x):
     """cos where x is in radians."""
     return FunctionParameter(x, np.cos)
 
 
+def cosd(x):
+    """cos where x is in degrees."""
+    # could use np.deg2rad but would need to wrap that
+    return FunctionParameter(x * np.pi / 180, np.cos)
+
+
 def tan(x):
     """tan where x is in radians."""
     return FunctionParameter(x, np.tan)
+
+
+def tand(x):
+    """tan where x is in degrees."""
+    # could use np.deg2rad but would need to wrap that
+    return FunctionParameter(x * np.pi / 180, np.tan)
+
+
+def log(x):
+    """logarithm base 10"""
+    return FunctionParameter(x, np.log10)
+
+
+def ln(x):
+    """natural logarithm"""
+    return FunctionParameter(x, np.log)
 
 
 def sqrt(x):
@@ -301,24 +500,6 @@ def abs(x):
     return FunctionParameter(x, np.abs)
 
 
-def sind(x):
-    """sin where x is in degrees."""
-    # could use np.deg2rad but would need to wrap that
-    return FunctionParameter(x * np.pi / 180, np.sin)
-
-
-def cosd(x):
-    """cos where x is in degrees."""
-    # could use np.deg2rad but would need to wrap that
-    return FunctionParameter(x * np.pi / 180, np.cos)
-
-
-def tand(x):
-    """tan where x is in degrees."""
-    # could use np.deg2rad but would need to wrap that
-    return FunctionParameter(x * np.pi / 180, np.tan)
-
-
 def asin(x):
     """arcsin where x is in radians."""
     return FunctionParameter(x, np.arcsin)
@@ -327,16 +508,6 @@ def asin(x):
 def acos(x):
     """arccos where x is in radians."""
     return FunctionParameter(x, np.arccos)
-
-
-def ln(x):
-    """natural logarithm"""
-    return FunctionParameter(x, np.log)
-
-
-def log(x):
-    """logarithm base 10"""
-    return FunctionParameter(x, np.log10)
 
 
 # It's not entirely clear that int maps to floor
@@ -357,7 +528,144 @@ def xmax(x, y):
 
 # Routines used in converting a script.
 #
-def set_subtract(add_import, add_spacer, add, state):
+class Term(Enum):
+    """The "type" of an XSPEC model."""
+
+    ADD = 1
+    MUL = 2
+    CON = 3
+
+
+MODEL_TYPES = {t.name: t for t in list(Term)}
+
+
+@dataclass
+class MDefine:
+    name: str
+    expr: str        # the original expression
+    params: List[str]
+    models: List[str]
+    converted: str   # the Python version of the model (likely needs reworking)
+    mtype: Term
+    erange: Optional[Tuple[float, float]]
+
+
+SimpleToken = Union[str, ArithmeticModel]
+Expression = List[SimpleToken]
+
+
+class StateDict(TypedDict):
+    nodata: bool
+    statistic: str
+    subtracted: bool
+    nobackgrounds: List[int]
+    group: Dict[int, List[int]]
+    datasets: List[int]
+    sourcenum: Dict[int, List[int]]
+    datanum: Dict[int, List[int]]
+    exprs: Dict[int, Dict[int, Expression]]
+    allpars: Dict[str, Parameter]
+    mdefines: List[MDefine]
+
+
+RangeValue = Union[int, float]
+
+
+class Output:
+    """Represent the output text."""
+
+    def __init__(self, explicit: Optional[str] = None) -> None:
+        self.imports: List[str] = []
+        self.text: List[str] = []
+        self.explicit = explicit
+
+    @property
+    def answer(self):
+        """The output"""
+        answer = list(self.imports)
+        if answer:
+            answer += [""]
+
+        answer += self.text
+        return "\n".join(answer) + "\n"
+
+    def add_comment(self, comment: Optional[str] = None) -> None:
+        if comment is None:
+            self.text.append("#")
+            return
+
+        self.text.append(f"# {comment}")
+
+    def add_import(self, text: str) -> None:
+        """Record an import line.
+
+        We avoid repititions but only an exact match,
+        so adding "from foo import a,b" and
+        "from foo import b,a" will duplicate things.
+        """
+
+        if text in self.imports:
+            return
+
+        self.imports.append(text)
+
+    def add_spacer(self, always: bool = True) -> None:
+        """Add an extra line (with some flexibility)"""
+
+        if not always and len(self.text) > 0 and self.text[-1] == '':
+            return
+
+        self.text.append('')
+
+    def add_warning(self, msg: str, local: bool = True) -> None:
+        """Add a warning message (both now and in the script)"""
+
+        if local:
+            v1(f"WARNING: {msg}")
+
+        self.add_import("import logging")
+        self.add_expr(f'logging.getLogger("sherpa").warning("{msg}")')
+
+    def add_expr(self, expr: str, expand: bool = False) -> None:
+        """Add the expression. 'XX' is used to handle implicit/explicit ui import"""
+
+        if expand:
+            if self.explicit is None:
+                store = expr.replace('XX', '')
+            else:
+                store = expr.replace('XX', f'{self.explicit}.')
+
+        else:
+            store = expr
+
+        self.text.append(store)
+
+    def symbol(self, name: str) -> str:
+        """Do we expand out the symbol?"""
+
+        if self.explicit is None:
+            return name
+
+        return f"{self.explicit}.{name}"
+
+    def add_call(self, name: str, *args, expand: bool = True, **kwargs):
+        """Represent a function call."""
+
+        if expand:
+            sym = self.symbol(name)
+        else:
+            sym = name
+
+        cstr = f"{sym}("
+        arglist = [str(a) for a in args] + \
+            [f"{k}={v}" for k, v in kwargs.items()]
+        cstr += ", ".join(arglist)
+        cstr += ")"
+        self.text.append(cstr)
+
+
+def set_subtract(output: Output,
+                 state: StateDict) -> None:
     """Ensure the data is subtracted (as much as we can tell)."""
 
     if state['nodata'] or state['subtracted'] or not state['statistic'].startswith('chi'):
@@ -367,16 +675,19 @@ def set_subtract(add_import, add_spacer, add, state):
         if did in state['nobackgrounds']:
             continue
 
-        add_import('from sherpa_contrib.xspec import xcm')
-        add('xcm.subtract', did, expand=False)
+        output.add_import('from sherpa_contrib.xspec import xcm')
+        output.add_call('xcm.subtract', did, expand=False)
 
-    add_spacer()
+    output.add_spacer()
 
     # The assumption is that we don't add data/backgrounds after this is called
     state['subtracted'] = True
 
 
-def parse_tie(pars, add_import, add, par, pline):
+def parse_tie(output: Output,
+              pars: Dict[str, Parameter],
+              par: str,
+              pline: str) -> None:
     """Parse a tie line.
 
     The idea is to convert p<integer> or <integer> to the
@@ -385,14 +696,12 @@ def parse_tie(pars, add_import, add, par, pline):
 
     Parameters
     ----------
+    output : Output
+        The output state.
     pars : dict
         The parameters for each "label".
-    add_import : function reference
-        Add an import
-    add : function reference
-        Add a command to the record
-    par : Parameter instance
-        The parameter being linked
+    par : str
+        The full parameter name (e.g. foo.xpos) being linked
     pline : str
         The tie line.
 
@@ -436,7 +745,7 @@ def parse_tie(pars, add_import, add, par, pline):
         #
         if fchar in "()+*/-^":
             if token != '':
-                token = expand_token(add_import, pars, par.fullname, token)
+                token = expand_token(output, pars, par, token)
                 expr += token
                 token = ''
 
@@ -459,13 +768,16 @@ def parse_tie(pars, add_import, add, par, pline):
         raise ValueError(f"Unable to parse {pline}")
 
     if token != '':
-        token = expand_token(add_import, pars, par.fullname, token)
+        token = expand_token(output, pars, par, token)
         expr += token
 
-    add('link', f"{par.fullname}", expr)
+    output.add_call('link', par, expr)
 
 
-def expand_token(add_import, pars, pname, token):
+def expand_token(output: Output,
+                 pars: Dict[str, Parameter],
+                 pname: str,
+                 token: str) -> str:
     """Is this a reference to a parameter?
 
     Ideally we'd add a '.val' to the parameter value when we
@@ -473,7 +785,7 @@ def expand_token(add_import, pars, pname, token):
     """
 
     def import_xcm():
-        add_import('from sherpa_contrib.xspec import xcm')
+        output.add_import('from sherpa_contrib.xspec import xcm')
 
     # Hard code the function names. This allows us to replace
     # symbols if needed (such as the degree variants of the
@@ -527,16 +839,16 @@ def expand_token(add_import, pars, pname, token):
 
         return tpar.fullname
 
-    # See if we can convert the token to an integer (beginnnig with
+    # See if we can convert the token to an integer (beginning with
     # p or not). If we can't we just return the token.
     #
     if token.startswith('p'):
-        tie = token[1:]
+        tieval = token[1:]
     else:
-        tie = token
+        tieval = token
 
     try:
-        tie = int(tie)
+        tie = int(tieval)
     except ValueError:
         return token
 
@@ -545,7 +857,7 @@ def expand_token(add_import, pars, pname, token):
     try:
         plist = pars['unnamed']
     except KeyError:
-        raise RuntimeError("Internal error accessing parameter names") from None
+        raise RuntimeError(f"Internal error accessing parameter names: pars={pars}") from None
 
     try:
         tpar = plist[tie - 1]
@@ -555,8 +867,13 @@ def expand_token(add_import, pars, pname, token):
     return tpar.fullname
 
 
-def parse_dataid(token):
+def parse_dataid(token: str) -> Tuple[Optional[int], int]:
     """Convert '[<data group #>:] <spectrum #>' to values.
+
+    This is used for both the DATA command, and the ARF/RESPONSE
+    commands, which have subtly-different meanings but the syntax is
+    the same. It is not used for MODEL as the second element is a
+    string in that case.
 
     Parameters
     ----------
@@ -564,7 +881,8 @@ def parse_dataid(token):
 
     Returns
     -------
-    groupnum, datanum : None or int, int
+    othernum, datanum : None or int, int
+
     """
 
     emsg = f"Unsupported data identifier: '{token}'"
@@ -574,17 +892,17 @@ def parse_dataid(token):
         raise ValueError(emsg)
 
     try:
-        toks = [int(t) for t in toks]
+        itoks = [int(t) for t in toks]
     except ValueError:
         raise ValueError(emsg) from None
 
     if ntoks == 2:
-        return toks[0], toks[1]
+        return itoks[0], itoks[1]
 
-    return None, toks[0]
+    return None, itoks[0]
 
 
-def parse_ranges(ranges):
+def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[RangeValue], Optional[RangeValue]]]]:
     """Convert a-b,... to a set of ranges.
 
     Parameters
@@ -605,14 +923,14 @@ def parse_ranges(ranges):
     validate this.
     """
 
-    chantype = "channel"
+    store = {"chantype": "channel"}
 
-    def lconvert(val):
-        global chantype
+    def lconvert(val: str) -> Optional[RangeValue]:
         if '.' in val:
-            chantype = "other"
             try:
-                return float(val)
+                out = float(val)
+                store["chantype"] = "other"
+                return out
             except ValueError:
                 raise ValueError(f"Expected **, integer, or float: sent '{val}'") from None
 
@@ -642,18 +960,123 @@ def parse_ranges(ranges):
 
         out.append((start, end))
 
-    return chantype, out
+    return store["chantype"], out
 
 
-def parse_notice_range(add_import, add, datasets, command, tokens):
+def parse_data(output : Output,
+               state: Session,
+               toks: List[str]) -> None:
+    """Parse the DATA line
+
+    https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSdata.html
+
+    """
+
+    state['nodata'] = False
+
+    ntoks = len(toks)
+    if ntoks == 1:
+        assert len(state['datasets']) == 0
+        groupnum = 1
+        datanum = 1
+        args = [f"'{toks[0]}'"]
+    else:
+        igroupnum, datanum = parse_dataid(toks[0])
+        if igroupnum is None:
+            groupnum = 1
+        else:
+            groupnum = igroupnum
+
+        args = [str(datanum), f"'{toks[1]}'"]
+
+    state['group'][groupnum].append(datanum)
+    state['datasets'].append(datanum)
+    output.add_call('load_pha', *args, use_errors=True)
+
+
+def parse_backgrnd(output: Output,
+                   state: StateDict,
+                   xline: str,
+                   toks: List[str]) -> None:
+    """Parse the BACKGRND line
+
+    https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSbackgrnd.html
+
+    """
+
+    ntoks = len(toks)
+    if ntoks == 1:
+        if toks[0] == 'none':
+            state['nobackgrounds'].append(1)
+        else:
+            output.add_call('load_bkg', f"'{toks[0]}'")
+
+        return
+
+    groupnum, datanum = parse_dataid(toks[0])
+    if groupnum is not None:
+        raise ValueError(f"Unsupported BACKGRND syntax: '{xline}'")
+
+    if toks[1] == 'none':
+        state['nobackgrounds'].append(datanum)
+    else:
+        output.add_call('load_bkg', str(datanum), f"'{toks[1]}'")
+
+
+def parse_response(output: Output,
+                   state: StateDict,
+                   command: str,
+                   toks: List[str]) -> None:
+    """Parse a arf or response line
+
+    From
+
+    https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSarf.html
+    https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSresponse.html
+
+    Syntax:  arf       [<filespec>...]
+    Syntax:  response  [<filespec>...]
+             response  [<source num>:]<spectrum num> none
+
+    where <filespec> ::= [[<source num>:]<spectrum num>] <file name>...,
+    """
+
+    if command == 'arf':
+        xcommand = 'load_arf'
+    elif command == 'response':
+        xcommand = 'load_rmf'
+    else:
+        raise NotImplementedError(f"Internal error: command={command}")
+
+    ntoks = len(toks)
+    if ntoks == 1:
+        output.add_call(xcommand, f"'{toks[0]}'")
+        return
+
+    sourcenum, datanum = parse_dataid(toks[0])
+
+    if sourcenum is not None and sourcenum != 1:
+        # TODO: Shouldn't we always record these?
+        state['sourcenum'][sourcenum].append(datanum)
+        state['datanum'][datanum].append(sourcenum)
+
+        output.add_call(xcommand, datanum, f"'{toks[1]}'", resp_id=str(sourcenum))
+
+    else:
+        output.add_call(xcommand, datanum, f"'{toks[1]}'")
+
+
+
+def parse_notice_range(output: Output,
+                       datasets: List[int],
+                       command: str,
+                       tokens: List[str]) -> None:
     """Handle the notice range.
 
     Parameters
     ----------
-    add_import : function reference
-        Used to add an import command
-    add : function reference
-        Used to add the commands to the store.
+    output : Output
+        The output state
     datasets : list of int
         The loaded datasets.
     command : {'notice', 'ignore'}
@@ -692,7 +1115,7 @@ def parse_notice_range(add_import, add, datasets, command, tokens):
 
         if chantype == 'other':
             for lo, hi in ranges:
-                add(f'{command}_id', ds, lo, hi)
+                output.add_call(f'{command}_id', ds, lo, hi)
 
             return
 
@@ -700,344 +1123,542 @@ def parse_notice_range(add_import, add, datasets, command, tokens):
         #
         for d in ds:
             for lo, hi in ranges:
-                add_import('from sherpa_contrib.xspec import xcm')
-                add(f"xcm.{command}", d, lo, hi, expand=False)
+                output.add_import('from sherpa_contrib.xspec import xcm')
+                output.add_call(f"xcm.{command}", d, lo, hi, expand=False)
 
 
-class Term(Enum):
-    """The "type" of an XSPEC model."""
+def add_mdefine_model(output: Output,
+                      state: StateDict,
+                      session: Session,
+                      mdefine: MDefine
+                      ) -> None:
+    """Set up the MDEFINE model"""
 
-    ADD = 1
-    MUL = 2
-    CON = 3
+    # We may over-write an existing model, but I am not
+    # convinced this will result in a usable XCM file if it
+    # happens.
+    #
+    for idx, m in enumerate(state["mdefines"]):
+        if m.name != mdefine.name:
+            continue
+
+        # There should only be a single value
+        del state["mdefines"][idx]
+        break
+
+    state["mdefines"].append(mdefine)
+
+    # We have to define the model function here, as the MODEL
+    # command will cause the model function to be converted
+    # into a user model.
+    #
+    output.add_spacer()
+    output.add_comment(f"mdefine {mdefine.name} {mdefine.expr} : {mdefine.mtype.name}")
+    output.add_comment(f"parameters: {', '.join(mdefine.params)}")
+    output.add_expr(f"def model_{mdefine.name}(pars, elo, ehi):")
+    for idx, par in enumerate(mdefine.params):
+        output.add_expr(f"    {par} = pars[{idx}]")
+
+    output.add_expr("    elo = np.asarray(elo)")
+    output.add_expr("    ehi = np.asarray(ehi)")
+
+    if mdefine.models:
+        output.add_expr("")
+        for model in mdefine.models:
+
+            # Is this a mdefine/user model or a compiled model?
+            #
+            matches = [md for md in state["mdefines"] if md.name == model]
+            if matches:
+                # assume there's only one match by construction
+                match = matches[0]
+
+                # We should be able to call the model function
+                # we created directly.
+                #
+                callfunc = f"model_{match.name}"
+                temp_mtype = match.mtype
+            else:
+                answer = handle_xspecmodel(session, model, "temp_cpt", output=None)
+                if answer is None:
+                    print(f"Unable to find model '{model}' for MDEFINE {mdefine.name}")
+                    output.add_expr(f"    print('Unable to identify model={model}')")
+                    continue
+
+                temp_cpt = answer[0]
+                # Hopefully the class is available
+                output.add_expr(f"    {model}_cpt = {temp_cpt.__class__.__name__}()")
+                callfunc = f"{model}_cpt.calc"
+                temp_mtype = answer[1]
+
+            output.add_expr("")
+            output.add_expr(f"    def {model}(*args):")
+            output.add_expr("        pars = list(args)")
+            if temp_mtype == Term.ADD:
+                output.add_expr("        pars.append(1.0)  # model is additive")
+            output.add_expr(f"        out = {callfunc}(pars, elo, ehi)")
+            if temp_mtype == Term.ADD:
+                output.add_expr("        out /= de  # model is additive")
+            output.add_expr("        return out")
+            output.add_expr("")
+
+    # Use the name E to match the XSPEC code
+    output.add_expr("    E = (elo + ehi) / 2")
+    if mdefine.mtype == Term.ADD:
+        output.add_expr("    de = ehi - elo")
+        output.add_expr(f"    return norm * ({mdefine.converted}) * de")
+    elif mdefine.mtype == Term.MUL:
+        output.add_expr(f"    return {mdefine.converted}")
+    else:
+        output.add_expr(f"    raise RuntimeError('convolution model to write: {mdefine.expr}')")
+
+    # want two bare lines
+    output.add_spacer()
+    output.add_spacer()
 
 
-class ModelExpression:
-    """Construct a model expression."""
+def parse_model(output: Output,
+                state: StateDict,
+                session: Session,
+                extra_models: List[str],
+                xline: str) -> Dict[int, Expression]:
+    """Handle the model line
 
-    def __init__(self, expr, groups, postfix, names):
-        self.expr = expr
-        self.groups = groups
-        self.ngroups = len(groups)
-        self.postfix = postfix
-        self.names = names
+    Can we assume that if the model has no dataset/label then it's
+    used for all datasets, otherwise we have separate models, or
+    is that too simple? Too simple, as I have an example with
 
-        # I would like to say
-        #    [[]] * self.ngroups
-        # but this aliases the lists so they are all the same.
-        #
-        self.out = [[] for i in range(self.ngroups)]
+    model  gaussian + gaussian + constant*constant(apec + (apec + apec + powerlaw)wabs + apec*wabs)
+    model  2:pbg1 powerlaw
+    model  3:pbg2 powerlaw
+    model  4:pbg3 powerlaw
 
-        # Record the number of brackets at the current "convolution level".
-        # When a convolution is started we add an entry to the end of the
-        # list and track from that point, then when the convolution ends we
-        # pop the value off. So the number of convolution terms currently
-        # in use is len(self.depth) - 1.
-        #
-        self.depth = [0]  # treat as a stack
+    From https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSmodel.html
 
-        # What was the last term we added. When set it should be a
-        # Term enumeration. Note that this tracks a combination of
-        # paranthesis and convolution depth.
-        #
-        self.lastterm = [[]]  # treat as a stack
+    Syntax: model[<source num>:<name>] [<delimiter>] <component1> <delimiter><component2><delimiter>...<componentN> [<delimiter>]
 
-        # Create our own session object to make it easy to
-        # find out XSPEC models and the correct naming scheme.
-        #
-        self.session = Session()
-        self.session._add_model_types(xspec,
-                                      (xspec.XSAdditiveModel,
-                                       xspec.XSMultiplicativeModel,
-                                       xspec.XSConvolutionKernel))
+    """
 
-    def mkname(self, ctr, grp):
-        n = f"m{ctr}{self.postfix}"
-        if self.ngroups > 1:
-            n += f"g{grp}"
+    # Need some place to set up subtract calls, so pick here
+    #
+    output.add_spacer(always=False)
 
-        if n in self.names:
-            raise RuntimeError("Unable to handle model names with this input script")
+    set_subtract(output, state)
 
-        self.names.add(n)
-        return n
+    # Now, the XCM file may not contain any data statements,
+    # so if so we assume a single dataset only. This is done
+    # after the set_subtract call.
+    #
+    if state['nodata']:
+        state['datasets'] = [1]
+        state['group'][1] = [1]
 
-    def try_tablemodel(self, basename, gname):
-        if not basename.startswith('etable{') and \
-           not basename.startswith('mtable{') and \
-           not basename.startswith('atable{'):
-            return None, None
+    # I find it useful to point out the models being processed
+    #
+    v1(xline)
+    output.add_comment(xline)
 
-        if not basename.endswith('}'):
-            raise ValueError(f"No }} in {basename}")
+    # Do we have a group or source number? At the moment the code is unclear
+    # about the labelling for the two concepts.
+    #
+    rest = xline[5:]
+    tok = rest.split()[0]
+    ilabel: Optional[str] = None  # added for mypy
+    if ':' in tok:
 
-        v2(f"Handling TABLE model: {basename} for {gname}")
-        tbl = basename[7:-1]
-        kwargs = {}
-        if basename[0] == 'e':
-            kwargs['etable'] = True
+        toks = tok.split(':')
+        emsg = f"Unable to parse spectrum number of MODEL: '{xline}'"
+        if len(toks) != 2:
+            raise ValueError(emsg)
 
         try:
-            self.session.load_xstable_model(gname, tbl, **kwargs)
-        except FileNotFoundError:
-            raise ValueError(f"Unable to find XSPEC table model: {basename}") from None
+            sourcenum = int(toks[0])
+        except ValueError:
+            raise ValueError(emsg) from None
 
-        mdl = self.session.get_model_component(gname)
-        return mdl, (['tablemodel', gname, tbl, basename[:6]], mdl)
-
-    def add_term(self, start, end, ctr):
-
-        # It's not ideal we need this
-        if start == end:
-            return ctr
-
-        basename = self.expr[start:end]
-        v2(f"Identified model expression '{basename}'")
-
-        name = f"xs{basename}"
-        for i, grp in enumerate(self.groups, 1):
-            outlist = self.out[i - 1]
-            gname = self.mkname(ctr, grp)
-
-            mdl, store = self.try_tablemodel(basename, gname)
-            if mdl is None:
-                try:
-                    mdl = self.session.create_model_component(name, gname)
-                except ArgumentErr:
-                    raise ValueError(f"Unrecognized XSPEC model '{basename}' in {self.expr}") from None
-
-                outlist.append((mdl.name.split('.'), mdl))
-            else:
-                outlist.append(store)
-
-            # This only needs to be checked for the first group,
-            # **but** we change outlist, which makes me think we need
-            # to do something got all groups, but it is unclear what
-            # is going on.
-            #
-            if i == 1:
-                if isinstance(mdl, xspec.XSConvolutionKernel):
-                    v2(" - it's a convolution model")
-
-                    # Track a new convolution term
-                    self.lastterm[-1].append(Term.CON)
-                    self.lastterm.append([])
-
-                    # start a new entry to track the bracket depth
-                    self.depth.append(0)
-                    outlist.append(("(", None))
-                    continue
-
-                if isinstance(mdl, xspec.XSMultiplicativeModel):
-                    v2(" - it's a multiplicative model")
-                    self.lastterm[-1].append(Term.MUL)
-                    continue
-
-                if isinstance(mdl, xspec.XSAdditiveModel):
-                    v2(" - it's an additive model")
-                    self.lastterm[-1].append(Term.ADD)
-                    continue
-
-                if isinstance(mdl, xspec.XSTableModel):
-                    if mdl.addmodel:
-                        v2(" - it's an additive table model")
-                        lterm = Term.ADD
-                    else:
-                        v2(" - it's a multiplicative table model")
-                        lterm = Term.MUL
-
-                    self.lastterm[-1].append(lterm)
-                    continue
-
-                raise RuntimeError(f"Unrecognized XSPEC model: {mdl.__class__}")
-
-        return ctr + 1
-
-    def add_token(self, token):
-        "Not sure about this"
-        v2(f"Adding token [{token}]")
-        for outlist in self.out:
-            outlist.append((token, None))
-
-    def open_sep(self, prefix=None):
-
-        self.depth[-1] += 1
-        v2(f"Adding token (   depth={self.depth}")
-
-        for outlist in self.out:
-            if prefix is not None:
-                outlist.append((prefix, None))
-            outlist.append(('(', None))
-
-        # We have a new context for the token list
+        # It looks like this is allowed, but maybe not going to happen
+        # in a XCM file created by XSPEC.
         #
-        self.lastterm.append([])
+        ilabel = toks[1].strip()
+        if not ilabel:
+            ilabel = None
 
-    def close_sep(self, postfix=None):
+        rest = rest.strip()[len(tok) + 1:]
 
-        v2(f"Adding token )   depth={self.depth}")
-        self.depth[-1] -= 1
-        assert self.depth[-1] >= 0, self.depth
+    else:
+        sourcenum = 0
+        ilabel = None
 
-        for outlist in self.out:
-            outlist.append((')', None))
+    # If there's no spectrum number then we want an expression
+    # for each group. It there is a spectrum number then
+    # we only want those spectra with a response for that
+    # spectrum number.
+    #
+    # I really shouldn't use the term "groups" here as it
+    # muddies the water.
+    #
+    if ilabel is None:
+        label = "unnamed"
+        postfix = ''
+        groups = sorted(list(state['group'].keys()))
+    else:
+        label = ilabel
 
-            if postfix is not None:
-                outlist.append((postfix, None))
+        # at this point sourcenum is expected to be > 0
+        postfix = f"s{sourcenum}"
+        groups = sorted(state['sourcenum'][sourcenum])
 
-        tokens = self.lastterm.pop()
-        v2(f" - closing out sub-expression {tokens}")
+    if len(groups) == 0:
+        raise RuntimeError("The script is currently unable to handle the input file")
 
-    def check_end_convolution(self):
-        """Returns True is this ends the convolution, False otherwise"""
+    exprs = convert_model(output, session, extra_models,
+                          rest, postfix, groups,
+                          state['mdefines'])
 
-        # We track the convolution "depth" with the depth field as the
-        # lastterm tracks the number of brackets.
-        #
-        if len(self.depth) == 1:
-            return False
+    assert sourcenum not in state['exprs'], sourcenum
+    state['exprs'][sourcenum] = exprs
 
-        v2("Checking end of convolution")
-        v2(f"depth: {self.depth}")
-        v2(f"lastterm: {self.lastterm}")
+    # Create the list of all parameters, so we can set up links.
+    # Note that we store these with the label, not sourcenumber,
+    # since this is how they are referenced.
+    #
+    assert label not in state['allpars'], label
+    state['allpars'][label] = []
+    for expr in exprs.values():
+        pars = get_pars_from_expr(expr)
+        for par in pars:
+            state['allpars'][label].append(par)
 
-        # Assume the convolution has come to an end when
-        # the current depth is 0.
-        if self.depth[-1] > 0:
-            v2("--> still in convolution")
-            return False
+    output.add_spacer()
 
-        v2("Ending convolution")
+    # Separate the model definition from the parameters.  We could
+    # wait to add this until we fnid any parameter definition.
+    #
+    if state['allpars'][label]:
+        output.add_comment("Parameter settings")
 
-        for outlist in self.out:
-            outlist.append((")", None))
-
-        self.depth.pop()
-        self.lastterm.pop()
-        return True
-
-    def in_convolution(self):
-        """Are we in a convolution expression?"""
-
-        # return len(self.lastterm) > 1 and self.lastterm[1][0] == Term.CON
-        return len(self.depth) > 1
-
-    def lastterm_is_openbracket(self):
-        last = self.out[0][-1]
-        return last[1] is None and last[0] == "("
-
-    def remove_unneeded_open_bracket(self):
-
-        # We currently skip this optimization
-        #
-        return False
+    return exprs
 
 
-        # We need to decide whether to add the bracket or not. It is
-        # tricky since in a situation like 'phabs(powerlaw)' we want
-        # to output 'phabs * powerlaw' and not 'phabs *
-        # (powerlaw)'. Complications are 'cflux(powerlaw)' when we
-        # want to keep the brackets and 'clux(phabs(powerlaw))' when
-        # we want to keep the cflux brackets but not the phabs
-        # brackets.
-        #
-        # Only bother with this optimisation if there's one model
-        # being applied to a previous model (we could only do this for
-        # an additive model but does this help?).
-        #
-        if len(self.lastterm) == 1 or len(self.lastterm[-1]) > 1:
-            return False
+def parse_possible_parameters(output: Output,
+                              state: StateDict,
+                              intext: List[str],
+                              exprs: Dict[int, Expression]) -> None:
+    """Do we have any parameter lines to deconstruct?
 
-        v2("Found a potential case for removing )")
-        v2(self.lastterm)
+    This mutates the intext argument
+    """
 
-        # If the previous term is not a multiplicative model
-        # then assume we should keep the bracket.
-        #
-        if self.lastterm[-2][-1] != Term.MUL:
-            return False
+    # Process all the parameter values for each data group.
+    # Is the ordering correct here?
+    #
+    escape = False  # NEED TO REFACTOR THIS CODE!
+    for expr in exprs.values():
+        if escape:
+            break
 
-        orig = create_source_expression(self.out[0])
+        pars = get_pars_from_expr(expr)
+        for par in pars:
+            if escape:
+                break
 
-        for outlist in self.out:
+            assert isinstance(par, Parameter)  # for mypy
+            pname = par.fullname
+            pmin = par.min
+            pmax = par.max
 
-            # We need to loop back to find the first unmatched (.
-            # If we'd stored the depth in the token stream this
-            # would be easier.
-            #
-            # It should also be the same in all outlist but
-            # treat separately.
-            #
-            idx = -1
-            count = 0
+            # Grab the parameter line
             try:
-                while True:
-                    token = outlist[idx]
-                    idx -= 1
-                    if token == (')', None):
-                        count += 1
-                        continue
-
-                    if token != ('(', None):
-                        continue
-
-                    if count == 0:
-                        # need to add 1 back to idx
-                        idx += 1
-                        break
-
-                    count -= 1
-
+                pline = intext.pop(0).strip()
             except IndexError:
-                v2("Unable to find unmatched ( in outlist")
-                v2(outlist)
-                return False
+                v1(f"Unable to find parameter value for {pname} - skipping other parameters")
+                escape = True
+                break
 
-            outlist.pop(idx)
+            # This may only be possible with hand-edited files.
+            if not pline:
+                v1(f"Found a blank line when expecting paramter {pname} - skipping other parameters")
+                escape = True
+                break
+
+            if pline.startswith('='):
+                parse_tie(output, state['allpars'], pname, pline)
+                continue
+
+            toks = pline.split()
+            if len(toks) != 6:
+                raise ValueError(f"Unexpected parameter line '{pline}'")
+
+            # We always set the parameter value, but only change the
+            # limits if they are different. We only look at the "soft"
+            # limits.
+            #
+            lmin = float(toks[3])
+            lmax = float(toks[4])
+
+            pargs = [pname, toks[0]]
+
+            KWargs = TypedDict('KWargs', {"min": str, "max": str, "frozen": bool}, total=False)
+            pkwargs: KWargs = {}
+
+            if pmin is None or lmin != pmin:
+                pkwargs['min'] = toks[3]
+
+            if pmax is None or lmax != pmax:
+                pkwargs['max'] = toks[4]
+
+            if toks[1].startswith('-'):
+                pkwargs['frozen'] = True
+
+            output.add_call('set_par', *pargs, **pkwargs)
 
 
-        v2("Removing excess )")
-        v2(orig)
-        v2(" -> ")
-        v2(create_source_expression(self.out[0]))
+def is_model_convolution(mdl: Union[xspec.XSModel, MDefine]) -> bool:
+    """Is this a convolution model"""
 
-        # Note that we've removed a bracket and remove the
-        # convolution term.
-        #
-        # Something has gone wrong with my beautiful code
-        # as the check on self.lastterm shouldn't be needed
-        #
+    if isinstance(mdl, MDefine):
+        return mdl.mtype == Term.CON
 
-        v2(f"Testing: lastterm = {self.lastterm}")
-        # assert self.lastterm[-1] == [Term.CON], self.lastterm
-        if self.lastterm[-1] == [Term.CON]:
-            self.depth[-1] -= 1
-            self.lastterm.pop()
-        else:
-            print("Internal issue:")
-            print(self.depth)
-            print(self.lastterm)
-
-        return True
+    return isinstance(mdl, xspec.XSConvolutionKernel)
 
 
-def create_source_expression(expr):
+def is_model_multiplicative(mdl: Union[xspec.XSModel, MDefine]) -> bool:
+    """Is this a multiplicative model"""
+
+    if isinstance(mdl, MDefine):
+        return mdl.mtype == Term.MUL
+
+    return isinstance(mdl, xspec.XSMultiplicativeModel)
+
+
+def is_model_additive(mdl: Union[xspec.XSModel, MDefine]) -> bool:
+    """Is this an additive model"""
+
+    if isinstance(mdl, MDefine):
+        return mdl.mtype == Term.ADD
+
+    return isinstance(mdl, xspec.XSAdditiveModel)
+
+
+def create_session(models: Optional[List[str]]) -> Tuple[Session, List[str]]:
+    """Create a Sherpa session into which XSPEC models have been loaded.
+
+    Parameters
+    ----------
+    models : list of str or None
+        The models created by convert_xspec_user_model to
+        import.
+
+    Returns
+    -------
+    session, extras : Session, list of str
+        The Sherpa session object and the list of any "extra"
+        models that have been loaded from the models arguments.
+
+    """
+
+    MODTYPES = (xspec.XSAdditiveModel,
+                xspec.XSMultiplicativeModel,
+                xspec.XSConvolutionKernel)
+
+    # Create our own session object to make it easy to
+    # find out XSPEC models and the correct naming scheme.
+    #
+    session = Session()
+    session._add_model_types(xspec, MODTYPES)
+
+    extras: List[str] = []
+    if models is None:
+        return session, extras
+
+    # Need to register the XSPEC user models.
+    #
+    for model in models:
+        lmod = importlib.import_module(model)
+        session._add_model_types(lmod, MODTYPES)
+
+        for symbol in lmod.__all__:
+            cls = getattr(lmod, symbol)
+            if issubclass(cls, MODTYPES):
+                extras.append(symbol.lower())
+
+    return session, extras
+
+
+def handle_xspecmodel(session: Session,
+                      model: str,
+                      cpt: str,
+                      output: Optional[Output]) -> Optional[tuple[xspec.XSModel, Term]]:
+    """Create a model instance for an XSPEC model.
+
+    Parameters
+    ----------
+    session : Session
+        The session to query/add to.
+    model : str
+        The model name (e.g. phabs). It should not begin with xs as it's
+        the name from the XCM script.
+    cpt : str
+        The component name for the model.
+    output : Output or None
+        The output object, if output is wanted,
+
+    Notes
+    -----
+
+    To support XSPEC user models, which could have arbitrary prefixes,
+    we try several options. It may turn out that we need to get the
+    user to report the prefix, or to grab it from the module metadata
+    (unfortunately we do not store it yet), bit for now just try the
+    "obvious" options:
+
+        prefix = xs    - the standard XSPEC models or --prefix xs
+        prefix = xsum  - default for convert_xspec_user_script
+        prifix =       - User used --prefix
+
+    """
+
+    for prefix in ["xs", "xsum", ""]:
+        try:
+            v3(f"Looking for XSPEC model '{model}' with prefix '{prefix}'")
+            mname = f"{prefix}{model}"
+            mdl = session.create_model_component(mname, cpt)
+            if output is not None:
+                output.add_expr(f"{cpt} = XXcreate_model_component('{mname}', '{cpt}')",
+                                expand=True)
+
+            if isinstance(mdl, xspec.XSAdditiveModel):
+                mtype = MODEL_TYPES["ADD"]
+            elif isinstance(mdl, xspec.XSMultiplicativeModel):
+                mtype = MODEL_TYPES["MUL"]
+            elif isinstance(mdl, xspec.XSConvolutionKernel):
+                mtype = MODEL_TYPES["CON"]
+            else:
+                raise ValueError(f"Unable to recognize XSPEC model {mname}: {mdl}")
+
+            return mdl, mtype
+
+        except ArgumentErr:
+            pass
+
+    return None
+
+
+def create_source_expression(expr: Expression) -> str:
     "create a readable source expression"
 
     v3(f"Processing an expression of {len(expr)} terms")
-    def conv(t):
-        if t[1] is None:
-            return t[0]
+    v3(f"Expression: {expr}")
 
-        return t[0][1]
+    def tokenize(t: SimpleToken) -> str:
+        if isinstance(t, ArithmeticModel):
+            # want the "name", so "gal" in "xsphabs.gal"
+            toks = t.name.split(".")
+            return toks[-1]
 
-    cpts = [conv(t) for t in expr]
+        return t
+
+    cpts = [tokenize(t) for t in expr]
     out = "".join(cpts)
     v3(f" -> {out}")
     return out
 
 
-def convert_model(expr, postfix, groups, names):
+def make_component_name(postfix: str, ngroups: int, ctr: int, grp: int) -> str:
+    name = f"m{ctr}{postfix}"
+    if ngroups > 1:
+        name += f"g{grp}"
+
+    return name
+
+
+def handle_tablemodel(output: Output,
+                      session: Session,
+                      expr: str,
+                      gname: str) -> Tuple[xspec.XSTableModel, Term]:
+    """Create a tablemodel (it the file can be found)"""
+
+    if expr.startswith("atable{"):
+        mtype = MODEL_TYPES["ADD"]
+    elif expr.startswith("mtable{"):
+        mtype = MODEL_TYPES["MUL"]
+    elif expr.startswith("etable{"):
+        mtype = MODEL_TYPES["MUL"]
+    else:
+        raise ValueError(f"Expected a tablemodel, found '{expr}'")
+
+    if not expr.endswith('}'):
+        raise ValueError(f"No }} in {expr}")
+
+    v2(f"Handling TABLE model: {expr} for {gname}")
+    tbl = expr[7:-1]
+    kwargs = {}
+    if expr.startswith("etable"):
+        kwargs['etable'] = True
+
+    try:
+        session.load_xstable_model(gname, tbl, **kwargs)
+    except FileNotFoundError:
+        raise ValueError(f"Unable to find XSPEC table model: {tbl}") from None
+
+    mdl = session.get_model_component(gname)
+
+    if mdl.etable:
+        kwargs = {"etable": True}
+    else:
+        kwargs = {}
+
+    output.add_call("load_xstable_model", f"'{gname}'", f"'{tbl}'",
+                    expand=True, **kwargs)
+
+    # Not really needed but just in case
+    output.add_expr(f"{gname} = XXget_model_component('{gname}')",
+                    expand=True)
+
+    return mdl, mtype
+
+
+def dummy_model(pars, elo, ehi=None):
+    raise NotImplementedError()
+
+
+def handle_mdefine(output: Output,
+                   session: Session,
+                   mdefines: List[MDefine],
+                   basename: str,
+                   gname: str) -> Optional[Tuple[UserModel, Term]]:
+    """Is this a mdefine model?
+
+    Note we actually create a model (with a dummy function)
+    as it makes downstream processing easier to handle.
+    """
+
+    for mdefine in mdefines:
+        if mdefine.name != basename:
+            continue
+
+        v2(f"Handling MDEFINE model: {basename} for {gname}")
+
+        output.add_call("load_user_model", f"model_{basename}", f"'{gname}'",
+                        expand=True)
+        output.add_call("add_user_pars", f"'{gname}'", str(mdefine.params),
+                        expand=True)
+
+        session.load_user_model(dummy_model, gname)
+        session.add_user_pars(gname, mdefine.params)
+        mdl = session.get_model_component(gname)
+        return mdl, mdefine.mtype
+
+    return None
+
+
+def convert_model(output : Output,
+                  session: Session,
+                  extra_models: List[str],
+                  expr: str,
+                  postfix: str,
+                  groups: List[int],
+                  mdefines: List[MDefine]) -> Dict[int, Expression]:
     """Extract the model components.
 
     Model names go from m1 to mn (when groups is empty) or
@@ -1045,6 +1666,12 @@ def convert_model(expr, postfix, groups, names):
 
     Parameters
     ----------
+    output : Output
+        The output object
+    session : Session
+        The Sherpa session used to define/create models.
+    extra_models : list of str
+        The XSPEC user models to search from.
     expr : str
         The XSPEC model expression.
     postfix : str
@@ -1052,19 +1679,13 @@ def convert_model(expr, postfix, groups, names):
     groups : list of int
         The groups to create. It must not be empty. We special case a
         single group, as there's no need to add an identifier.
-    names : set of str
-        The names we have created (will be updated). This is just
-        for testing.
+    mdefines : list of MDefine
 
     Returns
     -------
-    exprs : list of lists
-        The model expression for each group (if groups was None then
-        for a single group). Each list contains a pair of
-        (str, None) or ((str, str), Model), where for the Model
-        case the two names are the model type and the instance name,
-        unless we have a table model in which it stores
-        ('tablemodel', name, filename, tabletype).
+    exprs : list of list of tokens
+        The model expression for each group (if len(groups) == 1 then
+        for a single un-named group).
 
     Notes
     -----
@@ -1076,150 +1697,765 @@ def convert_model(expr, postfix, groups, names):
     closing brackets when processing a multiplcative model.
     """
 
-    # Let's remove the spaces
     v2(f"Processing model expression: {expr}")
-    expr = expr.translate({32: None})
 
-    if len(groups) == 1:
-        groups = [None]
-
-    maxchar = len(expr) - 1
-    start = 0
-    end = 0
-    mnum = 1
-
-    process = ModelExpression(expr, groups, postfix, names)
-
-    # Scan through each character and when we have identified a term
-    # "seperator" then process the preceeding token. We assume the
-    # text is valid XSPEC - i.e. there's little to no support for
-    # invalid commands.
+    # First tokenize. Note that we assume this is a valid XSPEC
+    # expression, so we can make a number of assumptions about the
+    # input.
     #
-    # Note that we switch mode when { is found as we have to
-    # then find the matching } and not any of the other normal
-    # tokens.
+    toks = tokenize_model_expr(session, extra_models, expr,
+                               mdefines=mdefines)
+
+    ngroups = len(groups)
+
+    # Need an output list for each group
+    out: Dict[int, Expression] = {g: [] for g in groups}
+
+    def add_token(tkn):
+        for outlist in out.values():
+            outlist.append(tkn)
+
+    # We need to address differences in the XSPEC and Sherpa
+    # model language:
     #
-    in_curly_bracket = False
-    for end, char in enumerate(expr):
+    # - need to add multiplication for cases like "(...)model"
+    # - need to handle mdl1(mdl2) for multiplicative models
+    # - convert cmdl*amdl[*...] to cmdl(amdl[*...]) for
+    #   convolution models
+    #
+    v2(f"Found {len(toks)} tokens in the model expression")
+    v3(f"expression: {toks}")
+    in_convolution = False
+    fake_bracket = False
+    ctr = 1
 
-        if char == '{':
-            if in_curly_bracket:
-                raise ValueError("Unable to parse '{expr}'")
+    # What was the previous model type (add, mul, con)? This is
+    # separate to the in_convolution check.
+    #
+    prev_model_type = None
 
-            in_curly_bracket = True
-            continue
+    for i, tok in enumerate(toks, 1):
+        v2(f"  token {i} = '{tok}'")
+        v3(f"    bracket={fake_bracket} convolution={in_convolution} prev_model_type={prev_model_type}")
 
-        if in_curly_bracket:
-            if char == '}':
-                in_curly_bracket = False
-            continue
+        if tok == "(":
 
-        # Not completely sure of the supported language.
-        #
-        if char not in "*+-/()":
-            continue
-
-        # Report the current processing state
-        #
-        # v2(f"output: {process.out[0]}")
-        v2(f"output: {create_source_expression(process.out[0])}")
-
-        # What does an open-bracket mean?
-        # It can imply multiplication, wrapping a term in
-        # a convolution model, or an actual bracket.
-        #
-        if char == "(":
-            if end == 0:
-                process.open_sep()
-            else:
-                mnum = process.add_term(start, end, mnum)
-
-                if process.in_convolution() and len(process.lastterm[-1]) == 0:
-                    # We've just started a convolution which has added a bracket
-                    # so we don't need to do anything
-                    pass
-
-                elif expr[end - 1] in "+*-/":
-                    # Assume this is an "actual" model evaluation
-                    process.open_sep(" ")
-
-                else:
-                    process.open_sep(" * ")
-
-            start = end + 1
-            continue
-
-        if char == ")":
-            mnum = process.add_term(start, end, mnum)
-
-            flag = process.remove_unneeded_open_bracket()
-            cflag = process.check_end_convolution()
-
-            if not flag and not cflag:
-                if end == maxchar or expr[end + 1] == ")":
-                    process.close_sep()
-                elif expr[end + 1] in "+*-/":
-                    process.close_sep(" ")
-                else:
-                    process.close_sep(" * ")
-
-            start = end + 1
-            continue
-
-        mnum = process.add_term(start, end, mnum)
-
-        # conv*a1+a2 is conv(s1) + a2
-        if char == '+':
-            process.check_end_convolution()
-
-        # If we had conv*mdl then we want to drop the *
-        # but conv*m1*a1 is conv(m1*a1). I am not convinced this
-        # is correct but the XSPEC docs are opaque as to this
-        # meaning.
-        #
-        if not(char == '*' and process.in_convolution() and process.lastterm_is_openbracket()):
-            # Add space characters to separate out the expression,
-            # even if start==end.
+            # If the previous term was a multiplicative model
+            # then add in a * term.
             #
-            process.add_token(f" {char} ")
+            if prev_model_type is not None and \
+               prev_model_type == Term.MUL:
+                tok = " * ("
 
-        start = end + 1
+            elif i > 1 and toks[i - 2] == ")":
+                # Special case "(phabs)(apec)". I am concerned this
+                # could cause problems elsewhere, in particular with
+                # the fake_bracket rule, so let's see.
+                #
+                tok = " * ("
 
-    # Last name, which is not always present.
+            add_token(tok)
+            prev_model_type = None
+            continue
+
+        if tok == ")":
+            if fake_bracket:
+                add_token(")")
+                fake_bracket = False
+
+            add_token(tok)
+            in_convolution = False
+            prev_model_type = None
+            continue
+
+        if tok == "+":
+            if fake_bracket:
+                add_token(")")
+                fake_bracket = False
+
+            add_token(" + ")
+            in_convolution = False
+            prev_model_type = None
+            continue
+
+        # We need to worry about cmdl*amdl when cmdl is a convolution
+        # model.
+        #
+        if tok == "*":
+            # If the previous term as a convolution model then
+            # drop the multiplication.
+            #
+            if prev_model_type is not None and \
+               prev_model_type == Term.CON:
+                # At this point we expect to have [..., model, "("]
+                # thanks to the fake_bracket handling.
+                #
+                v3("  - found 'cmdl * ..' so dropping '*' token")
+
+                # Should we clear prev_model_type?
+                # prev_model_type = None
+                continue
+
+            add_token(" * ")
+            prev_model_type = None
+            continue
+
+        # This must be a model.
+        #
+        for grp, outlist in out.items():
+            gname = make_component_name(postfix, ngroups, ctr, grp)
+
+            if "{" in tok:
+                mdl, mtype = handle_tablemodel(output, session, tok, gname)
+            else:
+                answer = handle_xspecmodel(session, tok, gname, output=output)
+                if answer is None:
+                    answer = handle_mdefine(output, session, mdefines, tok, gname)
+                    if answer is None:
+                        raise ValueError(f"Unable to convert {tok} to a model")
+
+                mdl, mtype = answer
+
+            outlist.append(mdl)
+
+            # This is annoying to check as we need to loop over the
+            # groups here, so can not change in_convolution or
+            # fake_bracket until after the loop.
+            #
+            if mtype == Term.CON and not in_convolution:
+                # Adding a bracket is needed to support con*m1*m2 syntax.
+                # This a simple solution which can be improved upon.
+                #
+                outlist.append("(")
+
+        v3(f" - found model token: {tok} - type: {mtype.name}")
+
+        # Adjust in_convolution / fake_bracket if needed
+        #
+        if mtype == Term.CON:
+            if in_convolution:
+                print("WARNING: found a convolution term within a convolution")
+            else:
+                in_convolution = True
+                fake_bracket = True
+
+        prev_model_type = mtype
+
+        # Update the counter for the next model
+        ctr += 1
+
+    # If the expression was just 'con*m1*m2' then need to add a
+    # trailing bracket.
     #
-    if start < end:
-        process.add_term(start, None, mnum)
+    if fake_bracket:
+        add_token(")")
 
-    # I'm not sure whether this should only be done if start < end.
-    # I am concerned we may have a case where this is needed.
-    #
-    process.check_end_convolution()
-
-    if process.in_convolution():
-        print("WARNING: convolution model may not be handled correctly.")
-
-    if len(process.depth) != 1 or process.depth != [0]:
-        print("WARNING: unexpected issues handling brackets in the model")
-        v2(f"depth = {process.depth}")
-
-    if len(process.lastterm) != 1:
-        print("WARNING: unexpected issues in the model")
-        v2(f"lastterm = {process.lastterm}")
-
-    out = process.out
     v2(f"Found {len(out)} expressions")
-    for i, eterm in enumerate(out):
-        v2(f"Expression: {i + 1}")
-        for token in eterm:
-            v2(f"  {token}")
+    for grp, eterm in out.items():
+        v2(f"Expression: {grp}  #tokens={len(eterm)}")
+        for j, token in enumerate(eterm, 1):
+            if isinstance(token, ArithmeticModel):
+                v2(f"  {j:2d} '{token.name}'")
+            else:
+                v2(f"  {j:2d} '{token}'")
 
     return out
+
+
+FunctionDict = Dict[str, Optional[str]]
+
+
+UNOP_TOKENS: FunctionDict = {
+    "EXP": "np.exp",
+    "SIN": "np.sin",
+    "SIND": None,
+    "COS": "np.cos",
+    "COSD": None,
+    "TAN": "np.tan",
+    "TAND": None,
+    "SINH": "np.sinh",
+    "SINHD": None,
+    "COSH": "np.cosh",
+    "COSHD": None,
+    "TANH": "np.tanh",
+    "TANHD": "np.tanhd",
+    "LOG": "np.log10",
+    "LN": "np.log",
+    "SQRT": "np.sqrt",
+    "ABS": "np.abs",
+    "INT": None,
+    "ASIN": "np.arcsin",
+    "ACOS": "np.arccos",
+    "ATAN": "np.arctan",
+    "ASINH": "np.arcsinh",
+    "ACOSH": "np.aarccosh",
+    "ATANH": "np.aarctanh",
+    "ERF": "sherpa.utils.erf",
+    "ERFC": None,
+    "GAMMA": "sherpa.utils.gamma",
+    "SIGN": None,
+    "HEAVISIDE": None,
+    "BOXCAR": None,
+    "MEAN": "np.mean",
+    "DIM": "np.size",  # is this correct?
+    "SMIN": "np.min",
+    "SMAX": "np.max"
+}
+
+
+BINOP_TOKENS: FunctionDict = {
+    "ATAN2": "np.arctan2",  # does this match XSPEC?
+    "MAX": None,
+    "MIN": None
+}
+
+
+# Add helper functions to handle the UNOP and BINOP models which we
+# can not just handle with numpy routines. As we do not actually parse
+# the expressions, we can't easily add extra closing brackets to allow
+# the <trigonometric>D forms to be inlined.
+#
+def SIND(x):
+    return np.sin(np.deg2rad(x))
+
+def COSD(x):
+    return np.cos(np.deg2rad(x))
+
+def TAND(x):
+    return np.tan(np.deg2rad(x))
+
+def SINHD(x):
+    return np.sinh(np.deg2rad(x))
+
+def COSHD(x):
+    return np.cosh(np.deg2rad(x))
+
+def TANHD(x):
+    return np.tanh(np.deg2rad(x))
+
+def SIGN(x):
+    """-1 if negative, 1 if positive; assume 0 is positive"""
+    return -1 + (np.asarray(x) >= 0) * 2
+
+def HEAVISIDE(x):
+    """0 if negative, 1 if positive; assume 0 is positive"""
+    return (np.asarray(x) >= 0) * 1
+
+def BOXCAR(x):
+    """1 if 0 <= x <= 1, 0 elsewhere"""
+    xx = np.asarray(x)
+    return ((xx >= 0) & (xx <= 1)) * 1
+
+def INT(x):
+    """Can we assume everything is an array?"""
+    if np.isscalar(x):
+        return np.int(x)
+    return np.asarray([np.int(xi) for xi in x])
+
+def ERFC(x):
+    return 1 - sherpa.utils.erf(x)
+
+def MAX(x, y):
+    """Is this a per-element max or are x and y only scalars?"""
+    if np.isscalar(x) and np.isscalar(y):
+        return np.max([x, y])
+    raise RuntimeError("Unclear from documentation what MAX is meant to do here")
+
+def MIN(x, y):
+    """Is this a per-element min or are x and y only scalars?"""
+    if np.isscalar(x) and np.isscalar(y):
+        return np.min([x, y])
+    raise RuntimeError("Unclear from documentation what MIN is meant to do here")
+
+
+def parse_mdefine_expr(session: Session,
+                       extra_models: List[str],
+                       expr: str,
+                       mdefines: List[MDefine]) -> Tuple[str, List[str], List[str]]:
+    """Parse the model expression in a MDEFINE line.
+
+    This is incomplete, as all we do is find what appear to be
+    the model parameters.
+
+    Parameters
+    ----------
+    session : Session
+        The Sherpa session to use to find models.
+    extra_models : list of str
+        XSPEC user models created with convert_xspec_user_model.
+    expr : str
+        The model expression
+    mdefines : list of MDefine
+        The existing model definitions.
+
+    Returns
+    -------
+    converted, pars : str, list of str, list of str
+        The converted expression, parameter names found in the
+        model, and any models used in the expression.
+
+    """
+
+    if not expr:
+        raise ValueError("Model expression can not be empty")
+
+    KNOWN_MODELS = [n[2:].upper() for n in session.list_models("xspec")] + \
+        [m.upper() for m in extra_models] + \
+        [m.name.upper() for m in mdefines]
+
+    pnames: List[str] = []
+    models: List[str] = []
+    seen: Set[str] = set()
+    out: List[str] = []
+
+    def add_current(symbol: str) -> None:
+        """Add the current symbol to the output."""
+
+        if not symbol:
+            return
+
+        usymbol = symbol.upper()
+        if usymbol in ["E", ".E"]:
+            # For now we do not support convolution models so just punt here
+            out.append(usymbol)
+            return
+
+        try:
+            answer = UNOP_TOKENS[usymbol]
+            if answer is None:
+                out.append(f"xcm.{usymbol}")
+            else:
+                out.append(answer)
+            return
+        except KeyError:
+            pass
+
+        try:
+            answer = BINOP_TOKENS[usymbol]
+            if answer is None:
+                out.append(f"xcm.{usymbol}")
+            else:
+                out.append(answer)
+            return
+        except KeyError:
+            pass
+
+        if usymbol in KNOWN_MODELS:
+            # This is currently unsupported
+            out.append(symbol)
+            if symbol not in models:
+                models.append(symbol)
+            return
+
+        # Maybe it's a number
+        try:
+            float(symbol)
+            out.append(symbol)
+            return
+        except ValueError:
+            pass
+
+        # XSPEC allows syntax like "(1+E)normVal" so check if
+        # we need to add "*". This is not particularly efficient.
+        #
+        if out and "".join(out).rstrip()[-1] == ")":
+            out.append("*")
+
+        out.append(symbol)
+
+        # Assume it's a parameter name
+        #
+        if usymbol in seen:
+            return
+
+        pnames.append(symbol)
+        seen.add(usymbol)
+
+    # This code is not designed for efficiency!
+    #
+    instack = list(expr)
+    current = ""
+    while instack:
+        c = instack.pop(0)
+
+        # If it's a space, an operator, or bracket we can push the
+        # current symbol. The '^' and '*' cases are handled separately.
+        #
+        if c in " ()+-/,":
+            add_current(current)
+            out.append(c)
+            current = ""
+            continue
+
+        if c == "^":
+            add_current(current)
+            out.append("**")
+            current = ""
+            continue
+
+        # Is this multiply or exponent? Not really needed just yet.
+        #
+        if c == "*":
+            # A valid MDEFINE expression will not end in * so assume
+            # that there is another token to check.
+            #
+            if instack[0] == "*":
+                instack.pop(0)
+                c = "**"
+
+            add_current(current)
+            out.append(c)
+            current = ""
+            continue
+
+        current += c
+
+    # There may be a trailing term
+    add_current(current)
+
+    converted = "".join(out)
+    return converted, pnames, models
+
+
+def tokenize_model_expr(session: Session,
+                        extra_models: List[str],
+                        expr: str,
+                        mdefines: List[MDefine]) -> List[str]:
+    """Parse the model expression.
+
+    This is simpler than parse_mdefine_expr as do not have to
+    deal with parameters or functions.
+
+    Parameters
+    ----------
+    session : Session
+        The Sherpa session to use to find models.
+    extra_models : list of str
+        Any XSPEC user models.
+    extra_models : list of str
+        XSPEC user models created with convert_xspec_user_model.
+    expr : str
+        The model expression
+    mdefines : list of MDefine
+        The existing model definitions.
+
+    Returns
+    -------
+    tokens : list of terms
+
+    """
+
+    if not expr:
+        raise ValueError("Model expression can not be empty")
+
+    KNOWN_MODELS = [n[2:].upper() for n in session.list_models("xspec")] + \
+        [m.upper() for m in extra_models] + \
+        [m.name.upper() for m in mdefines]
+
+    out: List[str] = []
+
+    def add_current(symbol: str) -> None:
+        """Add the current symbol to the output."""
+
+        if not symbol:
+            return
+
+        # Check to see if we need to add a "*" symbol. This is assumed to
+        # not need to be efficient.
+        #
+        if out and out[-1] == ")":
+            out.append("*")
+
+        usymbol = symbol.upper()
+
+        # Is this a table model? We include the { in case a user has
+        # created a local model starting [ame]table.... (it that is
+        # possible).
+        #
+        if usymbol.startswith("ATABLE{") or \
+           usymbol.startswith("MTABLE{") or \
+           usymbol.startswith("ETABLE{"):
+            out.append(symbol)  # no case change because of file names
+            return
+
+        if usymbol not in KNOWN_MODELS:
+            raise ValueError(f"Unrecognized model '{symbol}' in '{expr.strip()}'")
+
+        out.append(symbol.lower())
+
+    # This code is not designed for efficiency!
+    #
+    # We strip out spaces as we assume there are none that will
+    # be relevant (it may be needed for table names?).
+    #
+    instack = list(expr.translate({32: None}))
+    current = ""
+    while instack:
+        c = instack.pop(0)
+
+        # If it's aan operator or bracket we can push the current
+        # symbol. We only have to deal with brackets () and operators
+        # + and *. We do not parse the table names here for table
+        # models.
+        #
+        if c in "()+*":
+            add_current(current)
+            out.append(c)
+            current = ""
+            continue
+
+        current += c
+
+    # There may be a trailing term
+    add_current(current)
+    return out
+
+
+def process_mdefine(session: Session,
+                    extra_models: List[str],
+                    xline: str,
+                    mdefines: List[MDefine]) -> MDefine:
+    """Parse a mdefine line.
+
+    Parameters
+    ----------
+    session : Session
+        The Sherpa session.
+    extra_models : Session
+        XSPEC user models.
+    xline : str
+        The line to process.
+    mdefines : list of MDefine
+        The already-processed mdefines (in case the model expression
+        makes use of one).
+
+    Returns
+    -------
+    mdefine : MDefine
+        A representation of the model.
+
+    Notes
+    -----
+    Tries to follow
+    https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSmdefine.html
+
+    The returned model may redfine an existing element in mdefines,
+    although I'm not sure that's likely in a XCM file.
+
+    """
+
+    # For the moment we require that the line start with 'mdefine '
+    xline = xline[7:].strip()
+
+    if not xline:
+        raise ValueError(f"No name or expression in '{xline}'")
+
+    # Strip off any options. We assume that : can only exist once,
+    # if given (the documentation is unclear)
+    #
+    toks = xline.split(":")
+    if len(toks) > 2:
+        raise ValueError(f"Expected only one : in '{xline}'")
+
+    name, expr = toks[0].strip().split(" ", 1)
+    expr = expr.strip()
+
+    # For now we do not parse the expression other than to try
+    # and grab the parameter names.
+    #
+    converted, params, models = parse_mdefine_expr(session, extra_models, expr, mdefines)
+
+    mtype = Term.ADD
+    erange = None
+    if len(toks) == 2:
+
+        stoks = toks[1].strip().split(" ")
+        nstoks = len(stoks)
+        if nstoks > 3:
+            raise ValueError(f"Expected ': <type> <emin> <emax>' in '{xline}'")
+
+        # It looks like can have 1, 2, or 3 values
+        #   - 1: type
+        #   - 2: emin emax
+        #   - 3: type emin emax
+        #
+        if nstoks != 2:
+            mtok = stoks.pop(0).upper()
+            try:
+                mtype = MODEL_TYPES[mtok]
+            except KeyError:
+                raise ValueError(f"Unknown model type '{mtok}' in '{xline}'") from None
+
+        if nstoks > 1:
+            emin = float(stoks[0])
+            emax = float(stoks[1])
+            erange = (emin, emax)
+
+    if mtype == Term.ADD:
+        params.append("norm")
+
+    return MDefine(name=name,
+                   expr=expr,
+                   params=params,
+                   models=models,
+                   converted=converted,
+                   mtype=mtype,
+                   erange=erange)
+
+
+def get_pars_from_expr(expr: Expression) -> List[Parameter]:
+    """Find all the parameters."""
+
+    out = []
+    for t in expr:
+        if not isinstance(t, ArithmeticModel):
+            continue
+
+        for par in t.pars:
+            if par.hidden:
+                continue
+
+            out.append(par)
+
+    return out
+
+
+def create_model_expressions(output: Output,
+                             state: StateDict) -> None:
+
+    # We need to create the source models. This is left till here because
+    # Sherpa handles "multiple specnums" differently to XSPEC.
+    #
+    # Technically we could have no model expression, but assume that is unlikely
+    output.add_spacer()
+    output.add_comment("Set up the model expressions")
+    output.add_comment()
+
+    # The easy case:
+    #
+    exprs = state['exprs']
+    nsource = len(state['sourcenum'])
+    v2(f"Number of extra sources: {nsource}")
+    v2(f"Keys in exprs: {exprs.keys()}")
+    if not list(exprs.keys()):
+        v3("Appear to have no model expression")
+        return
+
+    # In current testing we require exprs[0] to exist. Is this always true?
+    if 0 not in exprs.keys():
+        output.add_spacer()
+        output.add_expr("print('Unexpected state when processing models')")
+        print(f"UNEXPECTED: no expression for default model {list(exprs.keys())}")
+        return
+
+    exprs0 = exprs[0]
+
+    if nsource == 0:
+        if list(exprs.keys()) != [0]:
+            output.add_spacer()
+            output.add_expr("print('Unexpected state when processing models')")
+            print(f"UNEXPECTED: expected [0] but found {list(exprs.keys())}")
+            return
+
+        # Do we use the same model or separate models?
+        #
+        if len(exprs0) == 1:
+            v2("Single source expression for all data sets")
+            # What is the identifier used here?
+            v3("  - identifier = {list(exprs0.keys())}")
+            evals = list(exprs0.values())
+            sexpr = create_source_expression(evals[0])
+            for did in state['datasets']:
+                output.add_call('set_source', did, sexpr)
+
+            return
+
+        v2("Separate source expressions for the data sets")
+        if len(state['datasets']) != len(exprs0):
+            output.add_spacer()
+            output.add_expr("print('Unexpected state when processing models')")
+            print(f"UNEXPECTED: expected {len(state['datasets'])} items but found {len(exprs0)}")
+            return
+
+        for did in state['datasets']:
+            expr = exprs0[did]
+            sexpr = create_source_expression(expr)
+            output.add_call('set_source', did, sexpr)
+
+        return
+
+    # What "specnums" do we have to deal with?
+    #   'unnamed' + <numbers>
+    #
+    # We need to check each dataset to see what specnums we care about.
+    #
+    if len(exprs0) != len(state['datasets']):
+        # I am not convinced this is a requirement
+        output.add_spacer()
+        output.add_expr("print('Unexpected state when processing models')")
+        print(f"UNEXPECTED: expected {len(state['datasets'])} items but found {len(exprs0)}")
+        return
+
+    # Response1D only seems to use the default response id.
+    #
+    output.add_import('from sherpa.astro.instrument import Response1D')
+
+    for did in state['datasets']:
+        expr = exprs0[did]  # This should hold
+        output.add_comment(f"source model for dataset {did}")
+
+        try:
+            snums = state['datanum'][did]
+        except KeyError:
+            # I should probably add a mapping to unnamed when we have the
+            # first data or model command.
+            #
+            snums = []
+
+        sexpr = create_source_expression(expr)
+
+        if snums == []:
+            # Easy
+            output.add_call('set_source', did, sexpr)
+            continue
+
+        output.add_expr(f"d = get_data({did})")
+        output.add_expr(f"m = {sexpr}")
+        output.add_expr("fmdl = Response1D(d)(m)")
+
+        # Hopefully this is correct. It's a lot simpler than it used
+        # to be, at least.
+        #
+        for snum in snums:
+            try:
+                xexpr = exprs[snum][did]
+                sexpr = create_source_expression(xexpr)
+
+                output.add_import('from sherpa_contrib.xspec import xcm')
+                output.add_expr(f"m = {sexpr}")
+                output.add_expr(f"fmdl += xcm.Response1D(d, {snum})(m)")
+                break
+            except KeyError:
+                pass
+
+            output.add_spacer()
+            emsg = f"Unable to find model for sourcenum={snum} and dataset {did}"
+            output.add_expr(f"print('{emsg}')")
+            print(f"UNEXPECTED: {emsg}")
+            return
+
+        output.add_call('set_full_model', did, 'fmdl')
+        output.add_spacer()
 
 
 # The conversion routine. The functionality needs to be split out
 # of this.
 #
-def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
+def convert(infile: Any,  # to hard to type this
+            models: Optional[List[str]] = None,
+            chisq: str = "chi2datavar",
+            clean: bool = False,
+            explicit: Optional[str] = None) -> str:
     """Convert a XSPEC xcm file into Sherpa commands.
 
     The XSPEC save command will create an ASCII representation of the
@@ -1231,10 +2467,14 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
         The file containing the XCM files. It can be a file name or a
         file handle, in which case the read method is used to access
         the data.
+    models : List of str or None
+        What XSPEC user models should be loaded. Each entry should be
+        the module name sent to convert_xspec_user_script (i.e. is the
+        name used in the "import name" or "import name.ui" line). For
+        the moment it requires that convert_xspec_user_script were
+        called with the empty --prefix argument.
     chisq : str, optional
         The Sherpa chi-square statistic to use for "statistic chi".
-        Unfortunately 'chi2xspecvar' is known to not match XSPEC
-        in CIAO 4.13.
     clean : bool, optional
         Should the commands start with a call to clean()? This should
         only be used when the XCM file loads in data.
@@ -1258,91 +2498,61 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
         with open(infile, "r", encoding="utf-8") as fh:
             intext = fh.readlines()
 
-    # TODO: convert the output routines (*add*) to a class.
-    #
-    out_imports = []
-    def add_import(expr):
-        """Add the import if we haven't alredy done so"""
-
-        if expr in out_imports:
-            return
-
-        out_imports.append(expr)
-
-    out = []
-
-    def add_spacer(always=True):
-        if not always and len(out) > 0 and out[-1] == '':
-            return
-
-        out.append('')
-
-    def madd(expr, expand=False):
-        if expand:
-            if explicit is None:
-                expr = expr.replace('XX', '')
-            else:
-                expr = expr.replace('XX', f'{explicit}.')
-
-        out.append(expr)
-
-    if explicit is None:
-        def sym(name):
-            """Expand the symbol name"""
-            return name
-
-    else:
-        def sym(name):
-            """Expand the symbol name"""
-            return f"{explicit}.{name}"
-
-    def add(name, *args, expand=True, **kwargs):
-        if expand:
-            name = sym(name)
-
-        cstr = f"{name}("
-
-        arglist = [str(a) for a in args] + \
-            [f"{k}={v}" for k, v in kwargs.items()]
-        cstr += ", ".join(arglist)
-
-        cstr += ")"
-        out.append(cstr)
+    out = Output(explicit)
 
     # START
     #
+    # This isn't always needed but let's make it available anyway, to
+    # simplify the code.
+    #
+    out.add_import("import numpy as np")
+
     if explicit is None:
-        add_import("from sherpa.astro.ui import *")
+        out.add_import("from sherpa.astro.ui import *")
     else:
-        add_import(f"import sherpa.astro.ui as {explicit}")
+        out.add_import(f"import sherpa.astro.ui as {explicit}")
+
+    # Are there any XSPEC user models to load?
+    #
+    if models is not None:
+        for mexpr in models:
+            out.add_import(f"import {mexpr}.ui")
 
     if clean:
-        add("clean")
+        out.add_call("clean")
 
     # Store information about datasets, responses, and models.
     #
-    state = {'nodata': True,  # set once a data command is found
+    state: StateDict = {
+        'nodata': True,  # set once a data command is found
 
-             'statistic': 'chi',
-             'subtracted': False,
-             'nobackgrounds': [], # contains dataset with no background
+        'statistic': 'chi',
+        'subtracted': False,
+        'nobackgrounds': [], # contains dataset with no background
 
-             # I still don't have a good grasp on the internal structures
-             # used by XSPEC, so I have both 'group' and 'sourcenum'.
-             #
-             'group': defaultdict(list),
-             'datasets': [],
+        # I still don't have a good grasp on the internal structures
+        # used by XSPEC, so I have both 'group' and 'sourcenum'.
+        #
+        'group': defaultdict(list),
+        'datasets': [],
 
-             # Map of those datasets with extra sourcenum values,
-             # and then the map of what sourcenum values are
-             # associated with each dataset.
-             #
-             'sourcenum': defaultdict(list),
-             'datanum': defaultdict(list),
-             'exprs': {},
-             'allpars': {},
-             'names': set()
+        # Map of those datasets with extra sourcenum values,
+        # and then the map of what sourcenum values are
+        # associated with each dataset.
+        #
+        'sourcenum': defaultdict(list),
+        'datanum': defaultdict(list),
+        'exprs': {},
+        'allpars': {},
+
+        # The known user-models created by mdefine.
+        # At the moment we do not handle them (i.e.
+        # create usable usermodels).
+        #
+        'mdefines': [],
     }
+
+    session, extra_models = create_session(models)
 
     # Processing is just a hard-coded set of rules.
     #
@@ -1357,22 +2567,34 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
         command = toks[0].lower()
         v2(f"[{command}] - {xline}")
 
-        if command in ['bayes', 'systematic']:
+        if command == 'bayes':
             v2(f"Skipping: {command}")
+            # No need to mention this
+            # out.add_expr(f"print('skipped \"{xline}\"')")
+            continue
+
+        if command == 'systematic':
+            v2(f"Skipping: {command}")
+            # Only report if not "systematic 0"
+            if toks[1] != "0":
+                out.add_expr(f"print('skipped \"{xline}\"')")
+
             continue
 
         if command == 'method':
             # Assume we have method after data so a nice place to put a spacer
-            add_spacer(always=False)
+            out.add_spacer(always=False)
 
             meth = toks[1].lower()
             if meth == 'leven':
-                add('set_method', "'levmar'")
+                methname = "levmar"
             elif meth == 'simplex':
-                add('set_method', "'simplex'")
+                methname = "simplex"
             else:
-                add('print', f"'WARNING: there is no equivalent to METHOD {meth}'")
+                out.add_warning(f"there is no equivalent to METHOD {meth}")
+                continue
 
+            out.add_call('set_method', f"'{methname}'")
             continue
 
         if command == 'statistic':
@@ -1381,28 +2603,30 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
 
             stat = toks[1].lower()
             if stat == 'chi':
-                add('set_stat', f"'{chisq}'")
+                statname = chisq
             elif stat.startswith('cstat'):
-                add('print', "'WARNING: Have chosen cstat but wstat statistic may be better'")
-                add('set_stat', "'cstat'")
+                out.add_warning('Have chosen cstat but wstat statistic may be better', local=False)
+                statname = "cstat"
             else:
-                add('print', f"'WARNING: there is no equivalent to STATISTIC {stat}'")
+                out.add_warning(f"there is no equivalent to STATISTIC {stat}")
+                statname = chisq
 
+            out.add_call('set_stat', f"'{statname}'")
             state['statistic'] = stat
             continue
 
         if command in ['abund', 'xsect']:
-            if ntoks == 1:
-                raise ValueError(f"Missing {command.upper()} option: '{xline}'")
+            if ntoks != 2:
+                raise ValueError(f"Expected 1 argument for {command.upper()}: '{xline}'")
 
-            add(f'set_xs{command}', f"'{toks[1]}'")
+            out.add_call(f'set_xs{command}', f"'{toks[1]}'")
             continue
 
         if command == 'cosmo':
             if ntoks != 4:
                 raise ValueError(f"Expected 3 arguments for COSMO: '{xline}'")
 
-            add('set_xscosmo', *toks[1:])
+            out.add_call('set_xscosmo', *toks[1:])
             continue
 
         if command == 'xset':
@@ -1417,7 +2641,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
 
             # At the moment force this to a string value. This may
             # not be sensible.
-            add('set_xsxset', f"'{toks[1]}'", f"'{toks[2]}'")
+            out.add_call('set_xsxset', f"'{toks[1]}'", f"'{toks[2]}'")
             continue
 
         # We do not support all data options, such as
@@ -1435,21 +2659,7 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
             if ntoks > 3:
                 raise ValueError(f"Unsupported DATA syntax: '{xline}'")
 
-            state['nodata'] = False
-
-            if ntoks == 2:
-                assert len(state['datasets']) == 0
-                add('load_pha', f"'{toks[1]}'", use_errors=True)
-                state['datasets'].append(1)
-                continue
-
-            groupnum, datanum = parse_dataid(toks[1])
-            if groupnum is None:
-                groupnum = 1
-
-            state['group'][groupnum].append(datanum)
-            state['datasets'].append(datanum)
-            add('load_pha', datanum, f"'{toks[2]}'", use_errors=True)
+            parse_data(out, state, toks[1:])
             continue
 
         # similar to data but
@@ -1458,31 +2668,17 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
         #
         # Let's just assume the source already exists.
         #
-        if command == 'background':
+        if command == 'backgrnd':
             if state['subtracted']:
-                raise ValueError("XCM file is too complex: calling BACKGROUND after METHOD is not supported.")
+                raise ValueError("XCM file is too complex: calling BACKGRND after METHOD is not supported.")
 
             if ntoks < 2:
-                raise ValueError(f"Missing BACKGROUND options: '{xline}'")
+                raise ValueError(f"Missing BACKGRND options: '{xline}'")
 
             if ntoks > 3:
-                raise ValueError(f"Unsupported BACKGROUND syntax: '{xline}'")
+                raise ValueError(f"Unsupported BACKGRND syntax: '{xline}'")
 
-            if ntoks == 2:
-                if toks[1] == 'none':
-                    state['nobackgrounds'].append(1)
-                else:
-                    add('load_background', f"'{toks[1]}'")
-                continue
-
-            groupnum, datanum = parse_dataid(toks[1])
-            if groupnum is not None:
-                raise ValueError(f"Unsupported BACKGROUND syntax: '{xline}'")
-
-            if toks[2] == 'none':
-                state['nobackgrounds'].append(datanum)
-            else:
-                add('load_background', f"'{toks[2]}'")
+            parse_backgrnd(out, state, xline, toks[1:])
             continue
 
         # We do not support all response options, such as
@@ -1500,305 +2696,44 @@ def convert(infile, chisq="chi2datavar", clean=False, explicit=None):
             if ntoks > 3:
                 raise ValueError(f"Unsupported {command.upper()} syntax: '{xline}'")
 
-            if command == 'arf':
-                command = 'load_arf'
-            elif command == 'response':
-                command = 'load_rmf'
-            else:
-                raise NotImplementedError(f"Internal error: command={command}")
-
-            if ntoks == 2:
-                add(command, f"'{toks[1]}'")
-                continue
-
-            sourcenum, datanum = parse_dataid(toks[1])
-
-            kwargs = {}
-            if sourcenum is not None and sourcenum != 1:
-                kwargs['resp_id'] = sourcenum
-                state['sourcenum'][sourcenum].append(datanum)
-                state['datanum'][datanum].append(sourcenum)
-
-            add(command, datanum, f"'{toks[2]}'", **kwargs)
+            parse_response(out, state, command, toks[1:])
             continue
 
         if command in ['ignore', 'notice']:
             if ntoks == 1:
                 raise ValueError(f"Missing {command.upper()} option: '{xline}'")
 
-            parse_notice_range(add_import, add, state['datasets'], command, toks[1:])
+            parse_notice_range(out, state['datasets'], command, toks[1:])
+            continue
+
+        if command == 'mdefine':
+            mdefine = process_mdefine(session, extra_models, xline, state["mdefines"])
+            add_mdefine_model(out, state, session, mdefine)
             continue
 
         if command == 'model':
-            # Need some place to set up subtract calls, so pick here
-            #
-            add_spacer(always=False)
-
-            set_subtract(add_import, add_spacer, add, state)
-
-            # Now, the XCM file may not contain any data statements,
-            # so if so we assume a single dataset only. This is done
-            # after the set_subtract call.
-            #
-            if state['nodata']:
-                state['datasets'] = [1]
-                state['group'][1] = [1]
-
-            # I find it useful to point out the models being processed
-            #
-            v1(xline)
-            madd(f"# {xline}")
-
             if ntoks == 1:
                 raise ValueError(f"Missing MODEL option: '{xline}'")
 
-            # do we have a sourcenumber?
-            #
-            rest = xline[5:]
-            tok = rest.split()[0]
-            if ':' in tok:
-
-                toks = tok.split(':')
-                emsg = f"Unable to parse spectrum number of MODEL: '{xline}'"
-                if len(toks) != 2:
-                    raise ValueError(emsg)
-
-                try:
-                    sourcenum = int(toks[0])
-                except ValueError:
-                    raise ValueError(emsg) from None
-
-                label = toks[1]
-                rest = rest.strip()[len(tok) + 1:]
-
-            else:
-                sourcenum = None
-                label = None
-
-            # If there's no spectrum number then we want an expression
-            # for each group. It there is a spectrum number then
-            # we only want those spectra with a response for that
-            # spectrum number.
-            #
-            # I really shouldn't use the term "groups" here as it
-            # muddies the water.
-            #
-            if label is None:
-                label = "unnamed"
-                postfix = ''
-                groups = sorted(list(state['group'].keys()))
-            else:
-                postfix = f"s{sourcenum}"
-                groups = sorted(state['sourcenum'][sourcenum])
-
-            if len(groups) == 0:
-                raise RuntimeError("The script is currently unable to handle the input file")
-
-            exprs = convert_model(rest, postfix, groups, state['names'])
-
-            assert sourcenum not in state['exprs'], sourcenum
-            state['exprs'][sourcenum] = exprs
-
-            # We create the model components here, but do not create the
-            # full source model until the end of the script, since
-            # we may need to handle multiple source "spectra".
-            #
-            # This is complicated by the need to support table models.
-            for expr in exprs:
-                for cpt in expr:
-                    if cpt[1] is None:
-                        continue
-
-                    if cpt[0][0] == 'tablemodel':
-                        assert len(cpt[0]) == 4, cpt
-                        mname = cpt[0][1]
-                        tfile = cpt[0][2]
-                        ttype = cpt[0][3]
-                        if ttype == 'etable':
-                            madd(f"XXload_xstable_model('{mname}', '{tfile}', etable=True)",
-                                 expand=True)
-                        else:
-                            madd(f"XXload_xstable_model('{mname}', '{tfile}')",
-                                 expand=True)
-
-                        # Not really needed but just in case
-                        madd(f"{mname} = XXget_model_component('{mname}')",
-                             expand=True)
-
-                    else:
-                        mtype, mname = cpt[0]
-                        madd(f"{mname} = XXcreate_model_component('{mtype}', '{mname}')",
-                             expand=True)
-
-            # Create the list of all parameters, so we can set up links.
-            # Note that we store these with the label, not sourcenumber,
-            # since this is how they are referenced.
-            #
-            assert label not in state['allpars'], label
-            state['allpars'][label] = []
-            for expr in exprs:
-                for mdl in [t[1] for t in expr if t[1] is not None]:
-                    for par in mdl.pars:
-                        if par.hidden:
-                            continue
-
-                        state['allpars'][label].append(par)
-
-            # Process all the parameter values for each data group.
-            #
-            escape = False  # NEED TO REFACTOR THIS CODE!
-            for expr in exprs:
-                if escape:
-                    break
-
-                for mdl in [t[1] for t in expr if t[1] is not None]:
-                    if escape:
-                        break
-
-                    for par in mdl.pars:
-                        if par.hidden:
-                            continue
-
-                        # Grab the parameter line
-                        try:
-                            pline = intext.pop(0).strip()
-                        except IndexError:
-                            v1(f"Unable to find parameter value for {par.name} - skipping other parameters")
-                            escape = True
-                            break
-
-                        if pline.startswith('='):
-                            parse_tie(state['allpars'], add_import, add, par, pline)
-                            continue
-
-                        toks = pline.split()
-                        if len(toks) != 6:
-                            raise ValueError(f"Unexpected parameter line '{pline}'")
-
-                        # We always set the parameter value, but only change the
-                        # limits if they are different. We only look at the "soft"
-                        # limits.
-                        #
-                        lmin = float(toks[3])
-                        lmax = float(toks[4])
-
-                        args = [par.fullname, toks[0]]
-                        kwargs = {}
-
-                        if lmin != par.min:
-                            kwargs['min'] = toks[3]
-
-                        if lmax != par.max:
-                            kwargs['max'] = toks[4]
-
-                        if toks[1].startswith('-'):
-                            kwargs['frozen'] = True
-
-                        add('set_par', *args, **kwargs)
-
+            exprs = parse_model(out, state, session, extra_models,
+                                xline)
+            parse_possible_parameters(out, state, intext, exprs)
             continue
 
         v1(f"SKIPPING '{xline}'")
+        out.add_warning(f'skipped {xline}', local=False)
 
-    # We need to create the source models. This is left till here because
-    # Sherpa handles "multiple specnums" differently to XSPEC.
+    # Warn the user if MDEFINE was used
     #
+    if state["mdefines"]:
+        v1("Found MDEFINE command: please consult 'ahelp convert_xspec_script'")
+        for mdefine in state["mdefines"]:
+            if mdefine.mtype == Term.CON:
+                status = "convolution models are not currently supported"
+            else:
+                status = f"check definition of model_{mdefine.name}()"
 
-    # Technically we could have no model expression, but assume that is unlikely
-    madd("")
-    madd("# Set up the model expressions")
-    madd("#")
+            v1(f"  - {mdefine.name}  {mdefine.mtype.name} : {status}")
 
-    # The easy case:
-    #
-    exprs = state['exprs']
-    nsource = len(state['sourcenum'])
-    v3(f"Number of extra sources: {nsource}")
-    v3(f"Keys in exprs: {exprs.keys()}")
-    if nsource == 0:
-        if list(exprs.keys()) != [None]:
-            raise RuntimeError("Unexpected state when processing the model expressions in the XCM file!")
-
-        # Do we use the same model or separate models?
-        #
-        if len(exprs[None]) == 1:
-            v2("Single source expression for all data sets")
-            sexpr = create_source_expression(exprs[None][0])
-            for did in state['datasets']:
-                add('set_source', did, sexpr)
-
-        else:
-            v2("Separate source expressions for the data sets")
-            if len(state['datasets']) != len(exprs[None]):
-                raise RuntimeError("Unexpected state when handling source models!")
-
-            for did, expr in zip(state['datasets'], exprs[None]):
-                sexpr = create_source_expression(expr)
-                add('set_source', did, sexpr)
-
-    else:
-        # What "specnums" do we have to deal with?
-        #   'unnamed' + <numbers>
-        #
-        # We need to check each dataset to see what specnums we care about.
-        #
-        if len(exprs[None]) != len(state['datasets']):
-            # I am not convinced this is a requirement
-            raise RuntimeError("Unexpected state when handling multiple sourcenum components!")
-
-        # Response1D only seems to use the default response id.
-        #
-        add_import('from sherpa.astro.instrument import Response1D')
-
-        for did, expr in zip(state['datasets'], exprs[None]):
-
-            madd(f"# source model for dataset {did}")
-
-            try:
-                snums = state['datanum'][did]
-            except KeyError:
-                # I should probably add a mapping to unnamed when we have the
-                # first data or model command.
-                #
-                snums = []
-
-            sexpr = create_source_expression(expr)
-
-            if snums == []:
-                # Easy
-                add('set_source', did, sexpr)
-                continue
-
-            madd(f"d = get_data({did})")
-            madd(f"m = {sexpr}")
-            madd("fmdl = Response1D(d)(m)")
-
-            # Identifying the source expression is more-awkward than it needs
-            # to be!
-            #
-            for snum in snums:
-
-                xs = state['sourcenum'][snum]
-                if len(exprs[snum]) != len(xs):
-                    raise RuntimeError("Unexpected state when handling multiple sourcenum components!")
-
-                found = False
-                for xid, xexpr in zip(xs, exprs[snum]):
-                    if xid != did:
-                        continue
-
-                    sexpr = create_source_expression(xexpr)
-                    found = True
-
-                    add_import('from sherpa_contrib.xspec import xcm')
-                    madd(f"m = {sexpr}")
-                    madd(f"fmdl += xcm.Response1D(d, {snum})(m)")
-                    break
-
-                if not found:
-                    raise RuntimeError(f"Unable to find expression for sourcenum={snum} with dataset {did}")
-
-            add('set_full_model', did, 'fmdl')
-            madd("")
-
-    return "\n".join(out_imports + [""] + out) + "\n"
+    create_model_expressions(out, state)
+    return out.answer
