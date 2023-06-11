@@ -28,6 +28,8 @@ analysis in Sherpa.
 
 """
 
+from __future__ import annotations
+
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
@@ -42,8 +44,12 @@ from sherpa.astro import ui  # type: ignore
 from sherpa.astro.ui.utils import Session  # type: ignore
 from sherpa.astro import xspec  # type: ignore
 from sherpa.models.basic import ArithmeticModel, UserModel  # type: ignore
+from sherpa.models.model import RegridWrappedModel  # type: ignore
 from sherpa.models.parameter import Parameter, CompositeParameter, ConstantParameter  # type: ignore
+# from sherpa.models.regrid import EvaluationSpace1D, ModelDomainRegridder1D  # type: ignore
+from sherpa.models.regrid import EvaluationSpace1D  # type: ignore
 from sherpa.utils.err import ArgumentErr, DataErr  # type: ignore
+from sherpa.utils._utils import rebin  # type: ignore
 
 import sherpa.astro.instrument  # type: ignore
 import sherpa.models.parameter  # type: ignore
@@ -159,12 +165,9 @@ def notice(spectrum: int, lo: int, hi: int, ignore: bool = False) -> None:
         rawdata = d.apply_filter(d.counts)
         ngroups = len(rawdata)
         if slo != lo or (shi != hi and shi < ngroups):
-            # In CIAO 4.15 we can not use "foo %d", value as only
-            # the first argument is used in the logging code (should be
-            # fixed in 4.16).
-            #
-            swarn(f"Spectrum {spectrum}: the grouping scheme does not match OGIP "
-                  "standards. The filtering may not exactly match XSPEC.")
+            swarn("Spectrum %s: the grouping scheme does not match OGIP "
+                  "standards. The filtering may not exactly match XSPEC.",
+                  spectrum)
 
         lo = slo
         hi = shi
@@ -235,6 +238,212 @@ def subtract(spectrum: int) -> None:
         ui.subtract(spectrum)
     except DataErr:
         v1(f"Dataset {spectrum} has no background data!")
+
+
+# For CIAO 4.16 the regrid support doesn't quite work, so work around
+# it.
+#
+class EnergyExtend:
+    """Evaluate model on the energies grid and interpolate.
+
+    For CIAO 4.16 the sherpa.models.regrid.ModelDomainRegridder1D
+    class doesn't quite work for composite models (particularly
+    those that , so this is a way to work around the restriction.
+    It is also not generic, as it is designed for PHA data only.
+
+    """
+
+    name: str
+    name = "energyextend"
+
+    integrate: bool
+    integrate = True
+
+    def __init__(self, espace: EvaluationSpace1D) -> None:
+
+        if espace.is_empty:
+            raise ValueError("espace is empty")
+
+        if not espace.is_integrated:
+            raise ValueError("espace is not integrated")
+
+        self._evaluation_space = espace
+        self.xlo = espace.x_axis.lo
+        self.xhi = espace.x_axis.hi
+
+    @property
+    def evaluation_space(self):
+        return self._evaluation_space
+
+    @property
+    def grid(self):
+        return self._evaluation_space.grid
+
+    def calc(self, pars, model, xlo, xhi, **kwargs):
+        """Use the user-requested grid and rebin onto the output grid"""
+        y = model(pars, self.xlo, self.xhi, **kwargs)
+        return rebin(y, self.xlo, self.xhi, xlo, xhi)
+
+
+def extend_model_expression(pha, model, energies):
+    """Extend the model so it is evaluated over the given grid.
+
+    The given energies grid is combined with the existing response to
+    create a new grid which is used to evaluate the model, and then it
+    will be re-binned to remove the excess bins. This allows signal
+    from outside the instrument response to be included, for instance
+    by downscattering or redshifting data. It is only useful if the
+    model expression contains a convolution model.
+
+    Parameters
+    ----------
+    pha : sherpa.astro.data.DataPHA
+        The dataset that contains the response.
+    model : sherpa.models.model.Model
+        The model to extend. It is expected that it contains a convolution
+        component but this is not required.
+    energies : sequence of number
+        The energy grid to use (n bins are represented by n+1
+        elements, with the first n being the left-edge and the last
+        element is the right-edge of the last bin). The energies are
+        in keV.
+
+    See Also
+    --------
+    extend_model
+
+    Examples
+    --------
+
+    This example does not use an XSPEC convolution model so it is not
+    going to actually make use of the extended energy grid when
+    evaluating the model:
+
+    >>> pha = get_data()
+    >>> model = xsphabs.gal * xspowerlaw.pl
+    >>> energies = np.logspace(-3, 3, 500)
+    >>> nmodel = extend_model_expression(pha, model, energies)
+
+    """
+
+    # What is the current response grid?
+    #
+    arf, rmf = pha.get_response()
+    if arf is None and rmf is None:
+        raise DataErr("norsp", pha.name)
+
+    # The base grid to use is obj.xlo + [obj.xhi[-1]].
+    #
+    obj = rmf if rmf is not None else arf
+
+    # Check the user grid.
+    #
+    usergrid = np.asarray(energies)
+    if not np.iterable(usergrid):
+        raise DataErr("energies must be iterable")
+
+    if usergrid.ndim != 1:
+        raise DataErr("energies must be a 1D grid")
+
+    if usergrid.size < 2:
+        raise DataErr("energies must have at least 2 elements")
+
+    ediff = np.diff(usergrid)
+    if np.any(ediff <= 0):
+        raise DataErr("energies must be monotonically increasing")
+
+    # Create the new grid by combining the user-grid with the base
+    # grid.
+    #
+    idxlo, = np.where(usergrid < obj.xlo[0])
+    idxhi, = np.where(usergrid > obj.xhi[-1])
+
+    # Combine.
+    #
+    # TODO: is there a benefit to combine any bins that are too small?
+    # In particular the bins around obj.xlo[0] and obj.xhi[-1] may be
+    # too small?
+    #
+    grid = np.concatenate((usergrid[idxlo],
+                           obj.xlo, [obj.xhi[-1]],
+                           usergrid[idxhi]))
+
+    # Regrid the model.
+    #
+    eval_space = EvaluationSpace1D(grid[:-1], grid[1:])
+
+    # This doesn't work in CIAO 4.16
+    # regridder = ModelDomainRegridder1D(eval_space)
+    # return regridder.apply_to(model)
+
+    return RegridWrappedModel(model, EnergyExtend(eval_space))
+
+
+# No typing rules at the moment as typing NumPy expressions is complex.
+#
+def extend_model(idval, energies):
+    """Extend the model so it is evaluated over the given grid.
+
+    The given energies grid is combined with the existing response to
+    create a new grid which is used to evaluate the model, and then it
+    will be re-binned to remove the excess bins. This allows signal
+    from outside the instrument response to be included, for instance
+    by downscattering or redshifting data. It is only useful if the
+    associated source model contains a convolution model.
+
+    Parameters
+    ----------
+    idval : int or str
+        The dataset identifier. The dataset must contain a PHA
+        dataset, a response, and a source model.
+    energies : sequence of number or None
+        The energy grid to use (n bins are represented by n+1
+        elements, with the first n being the left-edge and the last
+        element is the right-edge of the last bin). The energies are
+        in keV. If set to None then any existing extension is removed.
+
+    See Also
+    --------
+    extend_model_expression
+
+    Examples
+    --------
+
+    This example does not use an XSPEC convolution model so it is not
+    going to actually make use of the extended energy grid when
+    evaluating the model:
+
+    >>> load_pha("src.pha")
+    >>> set_source(xsphabs.gal * xspowerlaw.pl)
+    >>> energies = np.logspace(-3, 3, 500)
+    >>> extend_model(1, energies)
+
+    """
+
+    # Check we have a response.
+    # TODO: what happens when we have multiple responses?
+    #
+    pha = ui.get_data(idval)
+    if not isinstance(pha, ui.DataPHA):
+        raise DataErr(f"Dataset {idval} is not a PHA dataset!")
+
+    # What is the model? Note that we "remove" any previous extension
+    # via a not-particularly-pythonic check (I do not want to rely on
+    # the presence of the model attribute meaning this is a regridded
+    # model, in case some other class also uses the same attribute
+    # name).
+    #
+    orig = ui.get_source(idval)
+    if isinstance(orig, RegridWrappedModel):
+        orig = orig.model
+
+    if energies is None:
+        # Do not bother with checking if the source was regridded.
+        ui.set_source(idval, orig)
+        return
+
+    nmodel = extend_model_expression(pha, orig, energies)
+    ui.set_source(idval, nmodel)
 
 
 @dataclass
@@ -566,6 +775,7 @@ class StateDict(TypedDict):
     exprs: Dict[int, Dict[int, Expression]]
     allpars: Dict[str, Parameter]
     mdefines: List[MDefine]
+    extend: EnergyGrid
 
 
 RangeValue = Union[int, float]
@@ -2350,6 +2560,12 @@ def create_model_expressions(output: Output,
 
     exprs0 = exprs[0]
 
+    has_egrid = False
+    extend = state["extend"]
+    if isinstance(extend, (ExternalGrid, ManualGrid)):
+        extend.add_grid(output)
+        has_egrid = True
+
     if nsource == 0:
         if list(exprs.keys()) != [0]:
             output.add_spacer()
@@ -2362,11 +2578,14 @@ def create_model_expressions(output: Output,
         if len(exprs0) == 1:
             v2("Single source expression for all data sets")
             # What is the identifier used here?
-            v3("  - identifier = {list(exprs0.keys())}")
+            v3(f"  - identifier = {list(exprs0.keys())}")
             evals = list(exprs0.values())
             sexpr = create_source_expression(evals[0])
             for did in state['datasets']:
                 output.add_call('set_source', did, sexpr)
+                if has_egrid:
+                    output.add_call('xcm.extend_model', did, 'egrid',
+                                    expand=False)
 
             return
 
@@ -2381,6 +2600,9 @@ def create_model_expressions(output: Output,
             expr = exprs0[did]
             sexpr = create_source_expression(expr)
             output.add_call('set_source', did, sexpr)
+            if has_egrid:
+                output.add_call('xcm.extend_model', did, 'egrid',
+                                expand=False)
 
         return
 
@@ -2417,10 +2639,16 @@ def create_model_expressions(output: Output,
         if snums == []:
             # Easy
             output.add_call('set_source', did, sexpr)
+            if has_egrid:
+                output.add_call('xcm.extend_model', did, 'egrid',
+                                expand=False)
             continue
 
         output.add_expr(f"d = get_data({did})")
         output.add_expr(f"m = {sexpr}")
+        if has_egrid:
+            output.add_expr("m = xcm.extend_model_expression(d, m, egrid)")
+
         output.add_expr("fmdl = Response1D(d)(m)")
 
         # Hopefully this is correct. It's a lot simpler than it used
@@ -2433,6 +2661,9 @@ def create_model_expressions(output: Output,
 
                 output.add_import('from sherpa_contrib.xspec import xcm')
                 output.add_expr(f"m = {sexpr}")
+                if has_egrid:
+                    output.add_expr("m = xcm.extend_model_expression(d, m, egrid)")
+
                 output.add_expr(f"fmdl += xcm.Response1D(d, {snum})(m)")
                 break
             except KeyError:
@@ -2446,6 +2677,193 @@ def create_model_expressions(output: Output,
 
         output.add_call('set_full_model', did, 'fmdl')
         output.add_spacer()
+
+
+class EnergyGrid:
+    """Represent an energy grid"""
+
+
+class NoGrid(EnergyGrid):
+    """Hey, no grid"""
+
+
+class ResetGrid(EnergyGrid):
+    """Remove the grid."""
+
+
+class ExternalGrid(EnergyGrid):
+    """Grid read from a file"""
+
+    def __init__(self, filename, grid):
+        self.filename = filename
+        self.grid = grid
+
+    def add_grid(self, output: Output) -> None:
+        """Create the egrid variable"""
+
+        output.add_import("from numpy import array")
+
+        # We are going to need this, so may as well imort it now
+        output.add_import('from sherpa_contrib.xspec import xcm')
+
+        output.add_comment(f"grid read from {self.filename}")
+        output.add_expr(f"egrid = {repr(self.grid)}")
+
+
+class ManualGrid(EnergyGrid):
+    """User has designed the grid from linear/logarithmic sub-grids"""
+
+    def __init__(self, ranges: List[Tuple[str, float, float, int]]) -> None:
+        self.ranges = ranges
+
+    def add_grid(self, output: Output) -> None:
+        """Create the egrid variable"""
+
+        nr = len(self.ranges)
+        v3(f"Found user grid of {nr} range(s)")
+        for rval in self.ranges:
+            v3(f" - {rval}")
+
+        # We are going to need this, so may as well imort it now
+        output.add_import('from sherpa_contrib.xspec import xcm')
+
+        def display(idx):
+            ftype, lo, hi, nbins = self.ranges[idx]
+            if ftype == "log":
+                lo = np.log10(lo)
+                hi = np.log10(hi)
+
+            return f"np.{ftype}space({lo}, {hi}, {nbins})"
+
+        if nr == 1:
+            output.add_expr(f"egrid = {display(0)}")
+            return
+
+        # When combining the ranges we need to drop the first element
+        # of all-but-the-first range (as it is identical to the last
+        # element of the previous range).
+        #
+        output.add_expr(f"egrids = [{display(0)}]")
+        for idx in range(1, nr):
+            output.add_expr(f"egrids.append({display(idx)}[1:])")
+
+        output.add_expr("egrid = np.concatenate(egrids)")
+
+
+def process_energies_grid(toks: List[str]) -> EnergyGrid:
+    """What is the required grid?
+
+    From https://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSenergies.html
+
+    Syntax:
+        energies  <range specifier>[<additional range specifiers>...]
+        energies  <input ascii file>
+        energies  extend <extension specifier>
+        energies  reset
+
+    where the first <range specifier> ::= <low E><high E><nBins>log|lin
+    <additional range specifiers> ::= <high E><nBins>log|lin
+    <extension specifier> ::= low|high <energy><nBins>log|lin
+
+    """
+
+    if len(toks) == 0:
+        raise RuntimeError("No arguments to ENERGIES command")
+
+    if len(toks) == 1:
+        # Either a file name or reset
+        if toks[0].lower() == "reset":
+            return ResetGrid()
+
+        infile = toks[0]
+        vals = []
+        with open(infile, "r", encoding="utf-8") as fh:
+            for origl in fh.readlines():
+                l = origl.strip()
+                if l == "" or l.startswith("#"):
+                    continue
+
+                idx = l.find("#")
+                if idx > -1:
+                    l = l[:idx].strip()
+
+                try:
+                    vals.append(float(l))
+                except ValueError as ve:
+                    raise RuntimeError(f"Unable to convert file '{infile}'\nline: {origl}") from ve
+
+        if len(vals) == 0:
+            raise RuntimeError("No grid specification found in '{infile}'")
+
+        return ExternalGrid(infile, vals)
+
+    if toks[0].lower() == "extend":
+        raise NotImplementedError("EXTEND option for ENERGIES is not supported")
+
+    def_lo = 0.1
+    def_hi = 10
+    def_nbins = 1000
+    def_mode = "lin"
+
+    # We need to deal with a mix of commas and spacing to parse the
+    # expression. My guess is that there are cases where this fails,
+    # in particular if a user only uses a subset of commas and
+    # multiple ranges, like ",,100 1e4," (assuming this is valid).
+    #
+    store = {"lo": def_lo, "hi": def_hi, "nbins": def_nbins, "mode": def_mode}
+    state = "lo"
+    next_state = {"lo": "hi", "hi": "nbins", "nbins": "mode", "mode": "hi"}
+
+    ranges: List[Tuple[str, float, float, int]] = []
+
+    cstr = " ".join(toks)
+    v3(f"Resolving energy grid '{cstr}'")
+
+    # Add an extra space to cstr so that we process the last token in
+    # this loop and do not need to add a case after the loop has
+    # finished.
+    #
+    cur = ""
+    for c in cstr + " ":
+        if c not in " ,":
+            cur += c
+            continue
+
+        v3(f" - found token [{cur}] for state={state}")
+
+        # We have a token (it can be empty).
+        #
+        if cur != "":
+            if state == "mode":
+                if cur not in ["log", "lin"]:
+                    raise RuntimeError(f"Expected 'log' or 'lin' but found '{cur}'")
+
+                store[state] = cur
+            elif state == "nbins":
+                store[state] = int(cur)
+            else:
+                store[state] = float(cur)
+
+        # Have we come to the end of a range?
+        #
+        if state == "mode":
+            # mypy doesn't like the type-conversion going on here as
+            # it thinks the values all have type 'object'.
+            #
+            ranges.append((store["mode"],
+                           store["lo"],
+                           store["hi"],
+                           store["nbins"]))  # type: ignore
+
+            store["lo"] = store["hi"]
+            store["hi"] = None
+
+        # Move to next state
+        #
+        state = next_state[state]
+        cur = ""
+
+    return ManualGrid(ranges)
 
 
 # The conversion routine. The functionality needs to be split out
@@ -2550,6 +2968,9 @@ def convert(infile: Any,  # to hard to type this
         # create usable usermodels).
         #
         'mdefines': [],
+
+        # What energy grid extensions are required?
+        'extend': NoGrid()
     }
 
     session, extra_models = create_session(models)
@@ -2718,6 +3139,20 @@ def convert(infile: Any,  # to hard to type this
             exprs = parse_model(out, state, session, extra_models,
                                 xline)
             parse_possible_parameters(out, state, intext, exprs)
+            continue
+
+        if command == 'energies':
+            # Store the energy grid so it can be applied later.
+            # We do no processing here.
+            #
+            if ntoks == 1:
+                raise ValueError(f"Missing ENERGIES option: '{xline}'")
+
+            if not isinstance(state["extend"], NoGrid):
+                out.add_warning("Multiple ENERGIES statements found; only last one will be used")
+                v1("Found multiple ENERGIES statements; only last one will be used")
+
+            state["extend"] = process_energies_grid(toks[1:])
             continue
 
         v1(f"SKIPPING '{xline}'")
