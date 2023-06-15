@@ -54,16 +54,114 @@
  <QEXAMPLELIST>
    <QEXAMPLE>
       <SYNTAX>
-         <LINE>
+         <LINE>unix% energy_hue_map acis_broad_thresh.img median_energy.map my_output
          </LINE>
       </SYNTAX>
       <DESC>
+
+
+
+         <PARA>Using all the default values, this will take the counts image
+         in the input file: acis_broad_thresh.img, and will apply color hues
+         based on the median energy values stored in the image: median_energy.map.
+         There will be two output files: my_output.fits and my_output.jpg.
+         The JPEG file shows the true color image.  The .fits file contains
+         separate extensions corresponding the reg, green, and blue color
+         channels. The default verbose=1 terminal output looks like
+         </PARA>
+<VERBATIM>
+energy_hue_map
+          infile = acis_broad_thresh.img
+       energymap = median_energy.map
+         outroot = my_output
+        colorsys = hsv
+      min_energy = INDEF
+      max_energy = INDEF
+      min_counts = INDEF
+      max_counts = INDEF
+    energy_scale = linear
+    counts_scale = asinh
+         min_hue = 0
+         max_hue = 0.833
+         min_sat = 0
+         max_sat = 1
+        contrast = 1
+            bias = 0.5
+       show_plot = no
+         clobber = no
+         verbose = 1
+            mode = ql
+
+To display the data correctly in ds9 use the following command:
+
+ds9 -rgb -red 'my_output.fits' -linear -scale limits 0 255 \
+    -green 'my_output.fits[GREEN]' -linear -scale limits 0 255 \
+    -blue 'my_output.fits[BLUE]' -linear -scale limits 0 255
+</VERBATIM>
+
+        <PARA>
+        Users will typically want to tweak some of the min/max
+        parameters to improve the image.
+        </PARA>
+
+      </DESC>
+   </QEXAMPLE>
+
+
+   <QEXAMPLE>
+      <SYNTAX>
+         <LINE>unix% energy_hue_map acis_broad_thresh.img median_energy.map my_output \</LINE>
+         <LINE>min_counts=0 max_counts=10 min_energy=1000 max_energy=3000 counts_scale=log</LINE>
+      </SYNTAX>
+      <DESC>
          <PARA>
+            This is similar to the previous example, but with the min and max
+            counts and energy values specified, and the counts scaling changed
+            to log scale.
          </PARA>
       </DESC>
    </QEXAMPLE>
 
 
+   <QEXAMPLE>
+      <SYNTAX>         
+         <LINE>unix% energy_hue_map acis_broad_thresh.img median_energy.map my_output \</LINE>
+         <LINE>min_counts=0 max_counts=10 min_energy=1000 max_energy=3000 counts_scale=log \</LINE>
+         <LINE>contrast=0.7 bias=0.35</LINE>
+      </SYNTAX>
+      <DESC>
+         <PARA>
+            Experiments have shown that sometimes the colors become fully saturated 
+            causing a loss of spatial details.  Users can adjust the contrast and
+            bias settings akin to ds9 to try to recover some of those details.
+         </PARA>
+      </DESC>
+   </QEXAMPLE>
+
+   <QEXAMPLE>
+      <SYNTAX>
+         <LINE>unix% merge_obs '*/repro/*evt2.fits' outroot=acis</LINE>
+         <LINE>unix% dmnautilus acis_broad_thresh.img img.abin snr=5 method=3 outmask=img.map</LINE>
+         <LINE>unix% statmap acis_merged_evt.fits"[energy=500:7000]" img.map out=median_energy.map col=energy stat=median</LINE>
+         <LINE>unix% energy_hue_map acis_broad_thresh.img median_energy.map my_output</LINE>
+      </SYNTAX>
+      <DESC>
+         <PARA>
+            This is one possible example of the processing steps to create the 
+            image and the median energy map which are input to the energy_hue_map
+            script.
+         </PARA>
+          <PARA>
+            Users could choose to (adaptively) smooth the counts image and
+            the exposure map to create a smoothed, fluxed image.
+            CIAO 4.15 provides two adaptive binning tools: dmnautilus and dmradar;
+            however any tool that produces a "map" file (pixel values provide
+            a grouping of neighboring pixels according to some algorithm) 
+            could be used.  Also, the energy=500:7000 filter could also be adjusted based
+            the spectrum of the object(s).
+          </PARA>
+      </DESC>
+   </QEXAMPLE>
 
 </QEXAMPLELIST>
 
@@ -405,7 +503,7 @@ as computing the mean energy using dmimgcalc and using the
       </PARA>
     </BUGS>
     
-    <LASTMODIFIED>May 2023</LASTMODIFIED>
+    <LASTMODIFIED>June 2023</LASTMODIFIED>
 
   </ENTRY>    
 </cxchelptopics>
