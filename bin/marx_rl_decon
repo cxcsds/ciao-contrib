@@ -1,0 +1,307 @@
+#!/usr/bin/env python
+# coding: utf-8
+#
+# Copyright (C) 2023 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+
+'Perform Richardson Lucy deconvolution using MARX to convolve data'
+
+import os
+import sys
+from subprocess import check_output
+
+from ciao_contrib.runtool import make_tool
+import numpy as np
+from pycrates import read_file
+import paramio
+import ciao_contrib.logger_wrapper as lw
+
+
+__toolname__ = "marx_rl_decon"
+__revision__ = "11 July 2023"
+
+np.seterr(divide='ignore', invalid='ignore')
+
+# HACK  : FIXME
+# My fixed version of MARX
+MARX_ROOT = os.path.join(os.getcwd(), "src")
+
+lw.initialize_logger(__toolname__)
+verb0 = lw.get_logger(__toolname__).verbose0
+verb1 = lw.get_logger(__toolname__).verbose1
+verb2 = lw.get_logger(__toolname__).verbose2
+verb5 = lw.get_logger(__toolname__).verbose5
+
+
+def go_rm(delme):
+    'Wrapper around remove'
+
+    if 'SAVE_ALL' in os.environ:
+        return
+
+    if os.path.exists(delme):
+        os.unlink(delme)
+
+
+def get_binspec(fovfile, binsize, xcenter, ycenter):
+    '''marx requires the center of the image be the aimpoint so we need
+    to make the counts image centered correctly'''
+
+    verb1("Computing binning specification")
+
+    gfl = make_tool("get_fov_limits")
+    gfl(fovfile)
+    xygrid = gfl.xygrid
+
+    xgrid = [float(x) for x in xygrid.split(",")[0].split(":")[0:2]]
+    xlen = np.array(xgrid)-xcenter
+    xlen = max(np.abs(xlen))
+
+    ygrid = [float(y) for y in xygrid.split(",")[1].split(":")[0:2]]
+    ylen = np.array(ygrid)-ycenter
+    ylen = max(np.abs(ylen))
+
+    img_xgrid = f"x={xcenter-xlen}:{xcenter+xlen}:{binsize}"
+    img_ygrid = f"y={ycenter-ylen}:{ycenter+ylen}:{binsize}"
+
+    bin_grid = f"[bin {img_xgrid},{img_ygrid}]"
+
+    return bin_grid
+
+
+def my_clobber_check(outroot, clobber):
+    '''Check different output file names to clobber'''
+    from ciao_contrib._tools.fileio import outfile_clobber_checks
+
+    for outfile in ["_counts.img", ]:
+        outfile_clobber_checks(clobber, f"{outroot}{outfile}")
+
+
+def make_counts_image(evtfile, bin_grid, outroot):
+    '''Create the counts image, img_0'''
+
+    verb1("Making counts image centered on the aim point")
+    outfile = f"{outroot}_counts.img"
+
+    dmcopy = make_tool("dmcopy")
+    dmcopy(f"{evtfile}{bin_grid}[opt type=i4]", outfile, clobber=True)
+
+    img0 = read_file(outfile)
+    img0_vals = img0.get_image().values
+
+    return outfile, img0_vals
+
+
+def make_marx_dot_par(counts_file, energy, randseed, outroot):
+    '''We run marx once (via simulate_psf) w/ dummy parameters just
+    to get .par file setup'''
+
+    verb1("Setting up MARX parameter file")
+    blk = read_file(counts_file)
+    ra_pnt = blk.get_key_value("RA_PNT")
+    dec_pnt = blk.get_key_value("DEC_PNT")
+    del blk
+
+    sim_psf = make_tool("simulate_psf")
+    sim_psf.infile = counts_file
+    sim_psf.outroot = outroot
+    sim_psf.ra = ra_pnt
+    sim_psf.dec = dec_pnt
+    sim_psf.spectrumfile = ""
+    sim_psf.monoenergy = energy
+    sim_psf.random_seed = randseed
+    sim_psf.flux = 1.0e-5
+    sim_psf.marx_root = MARX_ROOT
+    sim_psf(keepiter=True)
+
+    import glob
+    marx_par = glob.glob(f"{sim_psf.outroot}*marx.par")
+    marx_par = marx_par[0]
+
+    for suffix in [".psf", "_i0000.psf", "_i0000_projrays.fits",
+                   "_projrays.fits"]:
+        delme = f"{outroot}{suffix}"
+        go_rm(delme)
+
+    return marx_par
+
+
+def convolve_using_marx(marx_par, bin_grid, outroot):
+    "Convolution is done using marx"
+    dmcopy = make_tool("dmcopy")
+
+    paramio.pset(marx_par, "OutputDir", f"{outroot}_marxdir")
+    delme = check_output([f"{MARX_ROOT}/bin/marx", f"@@{marx_par}"])
+    if delme:
+        verb5(delme)
+
+    delme = check_output(['marx2fits', f"{outroot}_marxdir",
+                          f"{outroot}_marx.fits"])
+    if delme:
+        verb5(delme)
+
+    dmcopy(f"{outroot}_marx.fits{bin_grid}[opt type=i4]",
+           f"{outroot}_marx.img", clobber=True)
+
+    if 'SAVE_ALL' not in os.environ:
+        from shutil import rmtree
+        go_rm(f"{outroot}_marx.fits")
+        rmtree(f"{outroot}_marxdir")
+
+    marx_crate = read_file(f"{outroot}_marx.img")
+    return marx_crate
+
+
+def rl_deconvolution(counts_file, marx_par, flux, img0_vals, binspec,
+                     numiter, outroot):
+    'Perform Richardson Lucy deconvolution'
+
+    # The iterative algorithm is just:
+
+    #                  /     I_0         \
+    #  I_{n+1} = I_n * | --------- ⊙ P^  |
+    #                  \  I_n ⊙ P        /
+    #
+    #  where P^ is the flip of the PSF, P
+    #
+
+    # Setup for 1st iteration,
+    paramio.pset(marx_par, "SourceType", "IMAGE")
+    paramio.pset(marx_par, "SourceFlux", str(flux))
+    paramio.pset(marx_par, "S-ImageFile", counts_file)  # 1st iteration
+    img_n_vals = img0_vals    # 1st iteration
+
+    for xxp1 in range(1, numiter+1):
+
+        verb1(f"Iteration {xxp1:04d}")
+
+        # Run marx using input image.  This is the denominator of
+        # the fraction (I_n \circledast P)
+        verb1("\tI_n ⊙ P")
+        den_n = convolve_using_marx(marx_par, binspec, outroot)
+        den_n_vals = den_n.get_image().values*1.0
+
+        # We need to renorm since number "psf" is not normalized
+        renorm = np.sum(img_n_vals*1.0)/np.sum(den_n_vals)
+        den_n_vals *= renorm
+
+        # Compute the division, set inf's to 0
+        verb1("\tI_0/(I_n ⊙ P)")
+        fraction = np.nan_to_num(img0_vals/den_n_vals, 0, posinf=0)
+
+        # We cannot flip the marx simulation, but we can use
+        # the identity
+        #     a^ ⊙ b^ = (a ⊙ b)^
+        # so
+        #    (a^ ⊙ b^)^ = a ⊙ b
+        # letting using P^ = b, then
+        #     (a^ ⊙ P)^ = (a ⊙ P^)
+        # the RHS is the quantity inside the ()'s and we can
+        # can compute the flips needed to compute the LHS.
+
+        # Flip
+        verb1("\tflip(I_0/(I_n ⊙ P))")
+        flip_frac = np.flip(fraction, axis=[0, 1])
+        den_n.get_image().values = flip_frac
+        den_n.write(f"{outroot}_flip.img", clobber=True)
+
+        # Now run marx with the flipped data
+        verb1("\tflip(I_0/(I_n ⊙ P)) ⊙ P")
+        paramio.pset(marx_par, "S-ImageFile", f"{outroot}_flip.img")
+        img_flip_n = convolve_using_marx(marx_par, binspec, outroot)
+
+        # Get the data and flop it back
+        verb1("\tflip(flip(I_0/(I_n ⊙ P)) ⊙ P)")
+        img_flip_n_vals = img_flip_n.get_image().values*1.0
+        img_flop_n_vals = np.flip(img_flip_n_vals, axis=[0, 1])
+
+        # Renorm by the sum of the fraction
+        renorm = np.sum(fraction*1.0)/np.sum(img_flop_n_vals)
+        img_flop_n_vals = img_flop_n_vals * renorm
+
+        # Finally multiply by the n-the iteration
+        verb1("\tI_n * flip(flip(I_0/(I_n ⊙ P)) ⊙ P)")
+        img_n_plus_1 = img_n_vals * img_flop_n_vals
+
+        # Write those values out and setup for the next loop
+        outfile = f"{outroot}_{xxp1:04d}_out.img"
+        img_flip_n.get_image().values = img_n_plus_1
+        img_flip_n.write(outfile, clobber=True)
+
+        # TBR: automatically stop iterations if some
+        # condition is met?
+
+        # Setup for next iteration
+        paramio.pset(marx_par, "S-ImageFile", outfile)
+        img_n_vals = img_n_plus_1
+
+        go_rm(f"{outroot}_flip.img")
+        go_rm(f"{outroot}_marx.img")
+
+    return outfile
+
+
+def get_center(event_file):
+    '''Get physical coords of optical axis. Could hard code, but go
+    ahead and use pixlib'''
+
+    from pixlib import Pixlib
+    pix = Pixlib("chandra", "geom.par")
+
+    evt = read_file(event_file)
+    inst = evt.get_key_value("INSTRUME")
+    if inst == "ACIS":
+        pix.detector = inst
+    elif inst == "HRC":
+        det = evt.get_key_value("DETNAM")
+        pix.detector = det
+    else:
+        raise ValueError(f"Unknown value for INSTRUME='{inst}' in {event_file}")
+
+    # get x,y at theta=0, phi=0 => optical axis, eg 4096.5, 4096.5
+    crpix = pix.msc2fpc((-pix.flength, 0, 0))
+    return crpix
+
+
+@lw.handle_ciao_errors(__toolname__, __revision__)
+def main():
+    """Main routine"""
+
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(__toolname__, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": verb1})
+
+    my_clobber_check(pars["outroot"], pars["clobber"])
+    xcenter, ycenter = get_center(pars["infile"])
+    binspec = get_binspec(pars["fovfile"], pars["binsize"],
+                          xcenter, ycenter)
+    counts_file, img0_vals = make_counts_image(pars["infile"], binspec,
+                                               pars["outroot"])
+    marx_par = make_marx_dot_par(counts_file, pars["energy"],
+                                 pars["random_seed"], pars["outroot"])
+    outfile = rl_deconvolution(counts_file, marx_par, pars["flux"],
+                               img0_vals, binspec, int(pars["numiter"]),
+                               pars["outroot"])
+
+    verb1("")
+    verb1(f"Orignal Image: {counts_file}")
+    verb1(f"Deconvolved Image: {outfile}")
+
+
+if __name__ == '__main__':
+    main()
