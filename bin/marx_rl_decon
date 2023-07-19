@@ -33,13 +33,9 @@ import ciao_contrib.logger_wrapper as lw
 
 
 __toolname__ = "marx_rl_decon"
-__revision__ = "11 July 2023"
+__revision__ = "19 July 2023"
 
 np.seterr(divide='ignore', invalid='ignore')
-
-# HACK  : FIXME
-# My fixed version of MARX
-MARX_ROOT = os.path.join(os.getcwd(), "src")
 
 lw.initialize_logger(__toolname__)
 verb0 = lw.get_logger(__toolname__).verbose0
@@ -107,7 +103,8 @@ def make_counts_image(evtfile, bin_grid, outroot):
     return outfile, img0_vals
 
 
-def make_marx_dot_par(counts_file, energy, randseed, outroot):
+def make_marx_dot_par(counts_file, energy, randseed, marx_root, 
+                      asolfile, outroot):
     '''We run marx once (via simulate_psf) w/ dummy parameters just
     to get .par file setup'''
 
@@ -126,8 +123,12 @@ def make_marx_dot_par(counts_file, energy, randseed, outroot):
     sim_psf.monoenergy = energy
     sim_psf.random_seed = randseed
     sim_psf.flux = 1.0e-5
-    sim_psf.marx_root = MARX_ROOT
-    sim_psf(keepiter=True)
+    sim_psf.marx_root = marx_root
+    sim_psf.asolfile = asolfile
+    ver_out = sim_psf(keepiter=True)
+
+    if ver_out:
+        verb2(ver_out)
 
     import glob
     marx_par = glob.glob(f"{sim_psf.outroot}*marx.par")
@@ -141,11 +142,11 @@ def make_marx_dot_par(counts_file, energy, randseed, outroot):
     return marx_par
 
 
-def convolve_using_marx(marx_par, bin_grid, outroot):
+def convolve_using_marx(marx_root, marx_par, bin_grid, outroot):
     "Convolution is done using marx"
 
     paramio.pset(marx_par, "OutputDir", f"{outroot}_marxdir")
-    delme = check_output([f"{MARX_ROOT}/bin/marx", f"@@{marx_par}"])
+    delme = check_output([f"{marx_root}/bin/marx", f"@@{marx_par}"])
     if delme:
         verb5(delme)
 
@@ -179,8 +180,8 @@ def convolve_using_marx(marx_par, bin_grid, outroot):
     return marx_crate
 
 
-def rl_deconvolution(counts_file, marx_par, flux, img0_vals, binspec,
-                     numiter, outroot):
+def rl_deconvolution(counts_file, marx_root, marx_par, flux, img0_vals,
+                     binspec, numiter, outroot):
     'Perform Richardson Lucy deconvolution'
 
     # The iterative algorithm is just:
@@ -205,7 +206,8 @@ def rl_deconvolution(counts_file, marx_par, flux, img0_vals, binspec,
         # Run marx using input image.  This is the denominator of
         # the fraction (I_n \circledast P)
         verb1("\tI_n ⊙ P")
-        den_n = convolve_using_marx(marx_par, binspec, outroot)
+        den_n = convolve_using_marx(marx_root, marx_par, binspec,
+                                    outroot)
         den_n_vals = den_n.get_image().values*1.0
 
         # We need to renorm since number "psf" is not normalized
@@ -235,7 +237,8 @@ def rl_deconvolution(counts_file, marx_par, flux, img0_vals, binspec,
         # Now run marx with the flipped data
         verb1("\tflip(I_0/(I_n ⊙ P)) ⊙ P")
         paramio.pset(marx_par, "S-ImageFile", f"{outroot}_flip.img")
-        img_flip_n = convolve_using_marx(marx_par, binspec, outroot)
+        img_flip_n = convolve_using_marx(marx_root, marx_par, binspec,
+                                         outroot)
 
         # Get the data and flop it back
         verb1("\tflip(flip(I_0/(I_n ⊙ P)) ⊙ P)")
@@ -305,10 +308,12 @@ def main():
     counts_file, img0_vals = make_counts_image(pars["infile"], binspec,
                                                pars["outroot"])
     marx_par = make_marx_dot_par(counts_file, pars["energy"],
-                                 pars["random_seed"], pars["outroot"])
-    outfile = rl_deconvolution(counts_file, marx_par, pars["flux"],
-                               img0_vals, binspec, int(pars["numiter"]),
-                               pars["outroot"])
+                                 pars["random_seed"],
+                                 pars["marx_root"],
+                                 pars["asolfile"], pars["outroot"])
+    outfile = rl_deconvolution(counts_file, pars["marx_root"], marx_par,
+                               pars["flux"], img0_vals, binspec,
+                               int(pars["numiter"]), pars["outroot"])
 
     from ciao_contrib.runtool import add_tool_history
     add_tool_history(outfile, __toolname__, pars,
