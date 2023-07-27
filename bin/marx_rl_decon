@@ -60,10 +60,10 @@ class Observation():
         self.phys_limits = None
         self.bin_spec = None
         self.marx = None
+        self.full_grid = None
 
         self.compute_aimpoint()
         self.compute_binspec(binsize)
-        self.make_counts_image()
 
     def compute_aimpoint(self):
         '''Get physical coords of optical axis. If reprojected then need
@@ -113,21 +113,33 @@ class Observation():
 
         self.bin_grid = f"[bin {img_xgrid},{img_ygrid}]"
 
-    def make_counts_image(self):
+    def make_counts_image(self, full_grid):
         '''Create the counts image, img_0'''
 
         verb1("Making counts image centered on the aim point")
+
+        self.full_grid = full_grid
         outfile = f"{self.outroot}_counts.img"
 
         dmcopy = make_tool("dmcopy")
-        dmcopy(f"{self.eventfile}{self.bin_grid}[opt type=i4]", outfile,
+        dmcopy(f"{self.eventfile}{full_grid}[opt type=i4]", outfile,
                clobber=True)
 
         self.img0_filename = outfile
+        
+        dmstat = make_tool("dmstat")
+        dmstat(outfile, centroid=False, sigma=False, median=False)
+        self.counts = int(dmstat.out_sum)
+        
 
-    def make_marx_dot_par(self, marx):
-        self.marx = marx
-        marx.make_marx_dot_par(self)
+    def make_marx_dot_par(self, energy, flux, randseed, marx_root):
+        self.marx = Marx(energy, flux, randseed, marx_root)
+        self.marx.make_marx_dot_par(self)
+
+    def convolve_using_marx(self, full_grid):
+        # dmcopy full image using self.bin_grid
+        self.marx.convolve_using_marx("", full_grid)
+
 
 
 class Marx():
@@ -139,12 +151,13 @@ class Marx():
         self.marx_root = marx_root
         self.outroot = None
         self.marx_par = None
-        
+
     def make_marx_dot_par(self, obsr):
         '''We run marx once (via simulate_psf) w/ dummy parameters just
         to get .par file setup'''
 
         self.outroot = obsr.outroot
+        self.full_grid = obsr.full_grid
 
         verb1("Setting up MARX parameter file")
         ra_pnt = obsr._ra_pnt
@@ -175,8 +188,48 @@ class Marx():
         marx_par = glob.glob(f"{sim_psf.outroot}*marx.par")
         self.marx_par = marx_par[0]
 
+        # Setup for start of processing
         paramio.pset(self.marx_par, "SourceType", "IMAGE")
         paramio.pset(self.marx_par, "SourceFlux", str(self.flux))
+
+    def convolve_using_marx(self, infile):
+        "Convolution is done using marx"
+
+        paramio.pset(self.marx_par, "S-ImageFile", infile)
+        paramio.pset(self.marx_par, "OutputDir", f"{self.outroot}_marxdir")
+        delme = check_output([f"{self.marx_root}/bin/marx",
+                              f"@@{self.marx_par}"])
+        if delme:
+            verb5(delme)
+
+        delme = check_output(["marx2fits", f"{self.outroot}_marxdir",
+                              f"{self.outroot}_marx.fits"])
+        if delme:
+            verb5(delme)
+
+        dmcopy = make_tool("dmcopy")
+        dmcopy(f"{self.outroot}_marx.fits{self.full_grid}[opt type=i4]",
+               f"{self.outroot}_marx.img", clobber=True)
+
+        # ~ # Make sure each pixel has at least '1' count
+        # ~ dmimgadapt = make_tool("dmimgadapt")
+        # ~ dmimgadapt.infile = f"{outroot}_marx.fits{bin_grid}[opt type=i4]"
+        # ~ dmimgadapt.outfile = f"{outroot}_marx.img"
+        # ~ dmimgadapt.function = "box"
+        # ~ dmimgadapt.minrad = 1
+        # ~ dmimgadapt.maxrad = 10
+        # ~ dmimgadapt.numrad = 10
+        # ~ dmimgadapt.radscale = "linear"
+        # ~ dmimgadapt.counts = 1
+        # ~ dmimgadapt(clobber=True)
+
+        if 'SAVE_ALL' not in os.environ:
+            from shutil import rmtree
+            go_rm(f"{self.outroot}_marx.fits")
+            rmtree(f"{self.outroot}_marxdir")
+
+        marx_crate = read_file(f"{self.outroot}_marx.img")
+        return marx_crate
 
 
 
@@ -198,42 +251,6 @@ def my_clobber_check(outroot, clobber):
         outfile_clobber_checks(clobber, f"{outroot}{outfile}")
 
 
-def convolve_using_marx(marx_root, marx_par, bin_grid, outroot):
-    "Convolution is done using marx"
-
-    paramio.pset(marx_par, "OutputDir", f"{outroot}_marxdir")
-    delme = check_output([f"{marx_root}/bin/marx", f"@@{marx_par}"])
-    if delme:
-        verb5(delme)
-
-    delme = check_output(['marx2fits', f"{outroot}_marxdir",
-                          f"{outroot}_marx.fits"])
-    if delme:
-        verb5(delme)
-
-    dmcopy = make_tool("dmcopy")
-    dmcopy(f"{outroot}_marx.fits{bin_grid}[opt type=i4]",
-           f"{outroot}_marx.img", clobber=True)
-
-    # ~ # Make sure each pixel has at least '1' count
-    # ~ dmimgadapt = make_tool("dmimgadapt")
-    # ~ dmimgadapt.infile = f"{outroot}_marx.fits{bin_grid}[opt type=i4]"
-    # ~ dmimgadapt.outfile = f"{outroot}_marx.img"
-    # ~ dmimgadapt.function = "box"
-    # ~ dmimgadapt.minrad = 1
-    # ~ dmimgadapt.maxrad = 10
-    # ~ dmimgadapt.numrad = 10
-    # ~ dmimgadapt.radscale = "linear"
-    # ~ dmimgadapt.counts = 1
-    # ~ dmimgadapt(clobber=True)
-
-    if 'SAVE_ALL' not in os.environ:
-        from shutil import rmtree
-        go_rm(f"{outroot}_marx.fits")
-        rmtree(f"{outroot}_marxdir")
-
-    marx_crate = read_file(f"{outroot}_marx.img")
-    return marx_crate
 
 
 def rl_deconvolution(counts_file, marx_root, marx_par, img0_vals,
@@ -250,7 +267,7 @@ def rl_deconvolution(counts_file, marx_root, marx_par, img0_vals,
     #
 
     # Setup for 1st iteration,
-    
+
     outfile = counts_file  # 1st iteration
     img_n_plus_1 = img0_vals    # 1st iteration
 
@@ -327,6 +344,48 @@ def rl_deconvolution(counts_file, marx_root, marx_par, img0_vals,
 
     return outfile
 
+def make_full_grid(observations, binsize):
+    'Compute the grid that covers all the observations'
+    xlo = min([obs.phys_limits['xlo'] for obs in observations])
+    ylo = min([obs.phys_limits['ylo'] for obs in observations])
+    xhi = max([obs.phys_limits['xhi'] for obs in observations])
+    yhi = max([obs.phys_limits['yhi'] for obs in observations])
+    
+    full_grid = f"[bin x={xlo}:{xhi}:{binsize},y={ylo}:{yhi}:{binsize}]"
+    verb2(f"Full grid is {full_grid}")
+    return full_grid
+
+
+def sum_obs(observations, suffix, outroot):
+    'Combine the observations'
+
+    infiles = [obs.outroot+suffix for obs in observations]
+    with open(f"{outroot}_img.lis","w") as fp:
+        fp.write("\n".join(infiles))
+        fp.write("\n")
+    
+    numerator = []
+    denominator = []
+
+    for ii, obs in enumerate(observations):
+        numerator.append(f"(img{ii+1}*{obs.counts})")
+        denominator.append(f"{obs.counts}")
+
+    numerator = "+".join(numerator)
+    denominator = "+".join(denominator)
+    operation = "imgout=("+numerator+")/((float)("+denominator+"))"
+
+    with open(f"{outroot}_img.op","w") as fp:
+        fp.write(operation.replace("+", "+\\\n"))
+        fp.write("\n")
+
+    dmimgcalc = make_tool("dmimgcalc")
+    dmimgcalc.infile = f"@-{outroot}_img.lis"
+    dmimgcalc.outfile = f"{outroot}{suffix}"
+    dmimgcalc.operation = f"@-{outroot}_img.op"
+    dmimgcalc(clobber=True)
+
+
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
@@ -341,11 +400,14 @@ def main():
     tag = "_obi1"
     myobs = Observation(pars["infile"], pars["fovfile"], pars["asolfile"],
                         pars["binsize"], pars["outroot"]+tag)
-        
-    marx = Marx(pars["energy"], pars["flux"], pars["random_seed"],
-                pars["marx_root"])
 
-    myobs.make_marx_dot_par(marx)                        
+    full_grid = make_full_grid([myobs], pars["binsize"])
+
+    myobs.make_counts_image(full_grid)
+    myobs.make_marx_dot_par(pars["energy"], pars["flux"],
+                            pars["random_seed"], pars["marx_root"])
+
+    sum_obs([myobs], "_counts.img", pars["outroot"])
 
     # ~ outfile = rl_deconvolution(counts_file, pars["marx_root"], marx_par,
                                # ~ img0_vals, binspec,
