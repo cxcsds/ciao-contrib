@@ -44,6 +44,142 @@ verb2 = lw.get_logger(__toolname__).verbose2
 verb5 = lw.get_logger(__toolname__).verbose5
 
 
+class Observation():
+    'Class to  hold info about grid needed for each observation'
+
+    X = 0
+    Y = 1
+
+    def __init__(self, eventfile, fovfile, asolfile, binsize, outroot):
+
+        self.eventfile = eventfile
+        self.fovfile = fovfile
+        self.asolfile = asolfile
+        self.outroot = outroot
+        self.phys_center = None
+        self.phys_limits = None
+        self.bin_spec = None
+        self.marx = None
+
+        self.compute_aimpoint()
+        self.compute_binspec(binsize)
+        self.make_counts_image()
+
+    def compute_aimpoint(self):
+        '''Get physical coords of optical axis. If reprojected then need
+        to use wcs'''
+        evt = read_file(self.eventfile)
+
+        self._ra_pnt = evt.get_key_value("RA_PNT")    # location of optical axis
+        self._dec_pnt = evt.get_key_value("DEC_PNT")
+        crval = [self._ra_pnt, self._dec_pnt]
+
+        eqpos = evt.get_transform("eqpos")  # Chandra data only, OK
+
+        # pytransform requires and returns lists :(
+        crpix = eqpos.invert([crval])
+        self.phys_center = crpix[0]
+
+    def compute_binspec(self, binsize):
+        '''marx requires the center of the image be the aimpoint so we need
+        to make the counts image centered correctly'''
+        verb1("Computing binning specification")
+
+        xcenter = self.phys_center[self.X]
+        ycenter = self.phys_center[self.Y]
+
+        gfl = make_tool("get_fov_limits")
+        gfl(self.fovfile)
+        xygrid = gfl.xygrid
+
+        xgrid = [float(x) for x in xygrid.split(",")[0].split(":")[0:2]]
+        xlen = np.array(xgrid)-xcenter
+        xlen = max(np.abs(xlen))
+
+        ygrid = [float(y) for y in xygrid.split(",")[1].split(":")[0:2]]
+        ylen = np.array(ygrid)-ycenter
+        ylen = max(np.abs(ylen))
+
+        self.phys_limits = {'xlo': xcenter-xlen,
+                            'xhi': xcenter+xlen,
+                            'ylo': ycenter-ylen,
+                            'yhi': ycenter+ylen,
+                            'xlen': xlen,
+                            'ylen': ylen,
+                            }
+
+        img_xgrid = f"x={xcenter-xlen}:{xcenter+xlen}:{binsize}"
+        img_ygrid = f"y={ycenter-ylen}:{ycenter+ylen}:{binsize}"
+
+        self.bin_grid = f"[bin {img_xgrid},{img_ygrid}]"
+
+    def make_counts_image(self):
+        '''Create the counts image, img_0'''
+
+        verb1("Making counts image centered on the aim point")
+        outfile = f"{self.outroot}_counts.img"
+
+        dmcopy = make_tool("dmcopy")
+        dmcopy(f"{self.eventfile}{self.bin_grid}[opt type=i4]", outfile,
+               clobber=True)
+
+        self.img0_filename = outfile
+
+    def make_marx_dot_par(self, marx):
+        self.marx = marx
+        marx.make_marx_dot_par(self)
+
+
+class Marx():
+
+    def __init__(self, energy, flux, randseed, marx_root):
+        self.energy = energy
+        self.flux = flux
+        self.randseed = randseed
+        self.marx_root = marx_root
+        self.outroot = None
+        self.marx_par = None
+        
+    def make_marx_dot_par(self, obsr):
+        '''We run marx once (via simulate_psf) w/ dummy parameters just
+        to get .par file setup'''
+
+        self.outroot = obsr.outroot
+
+        verb1("Setting up MARX parameter file")
+        ra_pnt = obsr._ra_pnt
+        dec_pnt = obsr._dec_pnt
+
+        sim_psf = make_tool("simulate_psf")
+        sim_psf.infile = obsr.img0_filename
+        sim_psf.outroot = obsr.outroot
+        sim_psf.ra = ra_pnt
+        sim_psf.dec = dec_pnt
+        sim_psf.spectrumfile = ""
+        sim_psf.monoenergy = self.energy
+        sim_psf.random_seed = self.randseed
+        sim_psf.flux = 1.0e-5
+        sim_psf.marx_root = self.marx_root
+        sim_psf.asolfile = obsr.asolfile
+        ver_out = sim_psf(keepiter=True)
+
+        if ver_out:
+            verb2(ver_out)
+
+        for suffix in [".psf", "_i0000.psf", "_i0000_projrays.fits",
+                       "_projrays.fits"]:
+            delme = f"{self.outroot}{suffix}"
+            go_rm(delme)
+
+        import glob
+        marx_par = glob.glob(f"{sim_psf.outroot}*marx.par")
+        self.marx_par = marx_par[0]
+
+        paramio.pset(self.marx_par, "SourceType", "IMAGE")
+        paramio.pset(self.marx_par, "SourceFlux", str(self.flux))
+
+
+
 def go_rm(delme):
     'Wrapper around remove'
 
@@ -54,92 +190,12 @@ def go_rm(delme):
         os.unlink(delme)
 
 
-def get_binspec(fovfile, binsize, xcenter, ycenter):
-    '''marx requires the center of the image be the aimpoint so we need
-    to make the counts image centered correctly'''
-
-    verb1("Computing binning specification")
-
-    gfl = make_tool("get_fov_limits")
-    gfl(fovfile)
-    xygrid = gfl.xygrid
-
-    xgrid = [float(x) for x in xygrid.split(",")[0].split(":")[0:2]]
-    xlen = np.array(xgrid)-xcenter
-    xlen = max(np.abs(xlen))
-
-    ygrid = [float(y) for y in xygrid.split(",")[1].split(":")[0:2]]
-    ylen = np.array(ygrid)-ycenter
-    ylen = max(np.abs(ylen))
-
-    img_xgrid = f"x={xcenter-xlen}:{xcenter+xlen}:{binsize}"
-    img_ygrid = f"y={ycenter-ylen}:{ycenter+ylen}:{binsize}"
-
-    bin_grid = f"[bin {img_xgrid},{img_ygrid}]"
-
-    return bin_grid
-
-
 def my_clobber_check(outroot, clobber):
     '''Check different output file names to clobber'''
     from ciao_contrib._tools.fileio import outfile_clobber_checks
 
     for outfile in ["_counts.img", ]:
         outfile_clobber_checks(clobber, f"{outroot}{outfile}")
-
-
-def make_counts_image(evtfile, bin_grid, outroot):
-    '''Create the counts image, img_0'''
-
-    verb1("Making counts image centered on the aim point")
-    outfile = f"{outroot}_counts.img"
-
-    dmcopy = make_tool("dmcopy")
-    dmcopy(f"{evtfile}{bin_grid}[opt type=i4]", outfile, clobber=True)
-
-    img0 = read_file(outfile)
-    img0_vals = img0.get_image().values
-
-    return outfile, img0_vals
-
-
-def make_marx_dot_par(counts_file, energy, randseed, marx_root, 
-                      asolfile, outroot):
-    '''We run marx once (via simulate_psf) w/ dummy parameters just
-    to get .par file setup'''
-
-    verb1("Setting up MARX parameter file")
-    blk = read_file(counts_file)
-    ra_pnt = blk.get_key_value("RA_PNT")
-    dec_pnt = blk.get_key_value("DEC_PNT")
-    del blk
-
-    sim_psf = make_tool("simulate_psf")
-    sim_psf.infile = counts_file
-    sim_psf.outroot = outroot
-    sim_psf.ra = ra_pnt
-    sim_psf.dec = dec_pnt
-    sim_psf.spectrumfile = ""
-    sim_psf.monoenergy = energy
-    sim_psf.random_seed = randseed
-    sim_psf.flux = 1.0e-5
-    sim_psf.marx_root = marx_root
-    sim_psf.asolfile = asolfile
-    ver_out = sim_psf(keepiter=True)
-
-    if ver_out:
-        verb2(ver_out)
-
-    import glob
-    marx_par = glob.glob(f"{sim_psf.outroot}*marx.par")
-    marx_par = marx_par[0]
-
-    for suffix in [".psf", "_i0000.psf", "_i0000_projrays.fits",
-                   "_projrays.fits"]:
-        delme = f"{outroot}{suffix}"
-        go_rm(delme)
-
-    return marx_par
 
 
 def convolve_using_marx(marx_root, marx_par, bin_grid, outroot):
@@ -180,7 +236,7 @@ def convolve_using_marx(marx_root, marx_par, bin_grid, outroot):
     return marx_crate
 
 
-def rl_deconvolution(counts_file, marx_root, marx_par, flux, img0_vals,
+def rl_deconvolution(counts_file, marx_root, marx_par, img0_vals,
                      binspec, numiter, outroot):
     'Perform Richardson Lucy deconvolution'
 
@@ -194,10 +250,9 @@ def rl_deconvolution(counts_file, marx_root, marx_par, flux, img0_vals,
     #
 
     # Setup for 1st iteration,
-    paramio.pset(marx_par, "SourceType", "IMAGE")
-    paramio.pset(marx_par, "SourceFlux", str(flux))
-    paramio.pset(marx_par, "S-ImageFile", counts_file)  # 1st iteration
-    img_n_vals = img0_vals    # 1st iteration
+    
+    outfile = counts_file  # 1st iteration
+    img_n_plus_1 = img0_vals    # 1st iteration
 
     for xxp1 in range(1, numiter+1):
 
@@ -206,6 +261,11 @@ def rl_deconvolution(counts_file, marx_root, marx_par, flux, img0_vals,
         # Run marx using input image.  This is the denominator of
         # the fraction (I_n \circledast P)
         verb1("\tI_n ⊙ P")
+
+        # Setup for next iteration
+        paramio.pset(marx_par, "S-ImageFile", outfile)
+        img_n_vals = img_n_plus_1
+
         den_n = convolve_using_marx(marx_root, marx_par, binspec,
                                     outroot)
         den_n_vals = den_n.get_image().values*1.0
@@ -261,36 +321,11 @@ def rl_deconvolution(counts_file, marx_root, marx_par, flux, img0_vals,
         # TBR: automatically stop iterations if some
         # condition is met?
 
-        # Setup for next iteration
-        paramio.pset(marx_par, "S-ImageFile", outfile)
-        img_n_vals = img_n_plus_1
 
         go_rm(f"{outroot}_flip.img")
         go_rm(f"{outroot}_marx.img")
 
     return outfile
-
-
-def get_center(event_file):
-    '''Get physical coords of optical axis. Could hard code, but go
-    ahead and use pixlib'''
-
-    from pixlib import Pixlib
-    pix = Pixlib("chandra", "geom.par")
-
-    evt = read_file(event_file)
-    inst = evt.get_key_value("INSTRUME")
-    if inst == "ACIS":
-        pix.detector = inst
-    elif inst == "HRC":
-        det = evt.get_key_value("DETNAM")
-        pix.detector = det
-    else:
-        raise ValueError(f"Unknown value for INSTRUME='{inst}' in {event_file}")
-
-    # get x,y at theta=0, phi=0 => optical axis, eg 4096.5, 4096.5
-    crpix = pix.msc2fpc((-pix.flength, 0, 0))
-    return crpix
 
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
@@ -302,26 +337,27 @@ def main():
                       verbose={"set": lw.set_verbosity, "cmd": verb1})
 
     my_clobber_check(pars["outroot"], pars["clobber"])
-    xcenter, ycenter = get_center(pars["infile"])
-    binspec = get_binspec(pars["fovfile"], pars["binsize"],
-                          xcenter, ycenter)
-    counts_file, img0_vals = make_counts_image(pars["infile"], binspec,
-                                               pars["outroot"])
-    marx_par = make_marx_dot_par(counts_file, pars["energy"],
-                                 pars["random_seed"],
-                                 pars["marx_root"],
-                                 pars["asolfile"], pars["outroot"])
-    outfile = rl_deconvolution(counts_file, pars["marx_root"], marx_par,
-                               pars["flux"], img0_vals, binspec,
-                               int(pars["numiter"]), pars["outroot"])
 
-    from ciao_contrib.runtool import add_tool_history
-    add_tool_history(outfile, __toolname__, pars,
-                     toolversion=__revision__)
+    tag = "_obi1"
+    myobs = Observation(pars["infile"], pars["fovfile"], pars["asolfile"],
+                        pars["binsize"], pars["outroot"]+tag)
+        
+    marx = Marx(pars["energy"], pars["flux"], pars["random_seed"],
+                pars["marx_root"])
 
-    verb1("")
-    verb1(f"Orignal Image: {counts_file}")
-    verb1(f"Deconvolved Image: {outfile}")
+    myobs.make_marx_dot_par(marx)                        
+
+    # ~ outfile = rl_deconvolution(counts_file, pars["marx_root"], marx_par,
+                               # ~ img0_vals, binspec,
+                               # ~ int(pars["numiter"]), pars["outroot"])
+
+    # ~ from ciao_contrib.runtool import add_tool_history
+    # ~ add_tool_history(outfile, __toolname__, pars,
+                     # ~ toolversion=__revision__)
+
+    # ~ verb1("")
+    # ~ verb1(f"Orignal Image: {counts_file}")
+    # ~ verb1(f"Deconvolved Image: {outfile}")
 
 
 if __name__ == '__main__':
