@@ -126,20 +126,27 @@ class Observation():
                clobber=True)
 
         self.img0_filename = outfile
-        
+
         dmstat = make_tool("dmstat")
         dmstat(outfile, centroid=False, sigma=False, median=False)
         self.counts = int(dmstat.out_sum)
-        
+
 
     def make_marx_dot_par(self, energy, flux, randseed, marx_root):
         self.marx = Marx(energy, flux, randseed, marx_root)
         self.marx.make_marx_dot_par(self)
 
-    def convolve_using_marx(self, full_grid):
-        # dmcopy full image using self.bin_grid
-        self.marx.convolve_using_marx("", full_grid)
+    def crop(self, infile):
+        dmcopy = make_tool("dmcopy")
+        dmcopy.infile = f"{infile}{self.bin_grid}"
+        dmcopy.outfile = f"{self.outroot}_crop.img"
+        dmcopy(clobber=True)
+        return dmcopy.outfile
 
+    def convolve_using_marx(self, infile):
+        # dmcopy full image using self.bin_grid
+        cropfile = self.crop(infile)
+        self.marx.convolve_using_marx(cropfile)
 
 
 class Marx():
@@ -250,11 +257,18 @@ def my_clobber_check(outroot, clobber):
     for outfile in ["_counts.img", ]:
         outfile_clobber_checks(clobber, f"{outroot}{outfile}")
 
+def convolve_observations(observations, infile, outroot):
+
+    for obs in observations:
+        obs.convolve_using_marx(infile)
+
+    sum_obs(observations, "_marx.img", outroot)
+
+    outimg = read_file(f"{outroot}_marx.img")
+    return outimg
 
 
-
-def rl_deconvolution(counts_file, marx_root, marx_par, img0_vals,
-                     binspec, numiter, outroot):
+def rl_deconvolution(observations, numiter, outroot):
     'Perform Richardson Lucy deconvolution'
 
     # The iterative algorithm is just:
@@ -268,6 +282,11 @@ def rl_deconvolution(counts_file, marx_root, marx_par, img0_vals,
 
     # Setup for 1st iteration,
 
+    counts_file = f"{outroot}_counts.img"
+    img0_crate = read_file(counts_file)
+    img0_vals = img0_crate.get_image().values * 1.0  # make a copy
+
+
     outfile = counts_file  # 1st iteration
     img_n_plus_1 = img0_vals    # 1st iteration
 
@@ -280,11 +299,10 @@ def rl_deconvolution(counts_file, marx_root, marx_par, img0_vals,
         verb1("\tI_n ⊙ P")
 
         # Setup for next iteration
-        paramio.pset(marx_par, "S-ImageFile", outfile)
         img_n_vals = img_n_plus_1
 
-        den_n = convolve_using_marx(marx_root, marx_par, binspec,
-                                    outroot)
+        den_n = convolve_observations(observations, outfile, outroot)
+
         den_n_vals = den_n.get_image().values*1.0
 
         # We need to renorm since number "psf" is not normalized
@@ -313,9 +331,9 @@ def rl_deconvolution(counts_file, marx_root, marx_par, img0_vals,
 
         # Now run marx with the flipped data
         verb1("\tflip(I_0/(I_n ⊙ P)) ⊙ P")
-        paramio.pset(marx_par, "S-ImageFile", f"{outroot}_flip.img")
-        img_flip_n = convolve_using_marx(marx_root, marx_par, binspec,
-                                         outroot)
+        img_flip_n = convolve_observations(observations,
+                                           f"{outroot}_flip.img",
+                                           outroot)
 
         # Get the data and flop it back
         verb1("\tflip(flip(I_0/(I_n ⊙ P)) ⊙ P)")
@@ -339,8 +357,8 @@ def rl_deconvolution(counts_file, marx_root, marx_par, img0_vals,
         # condition is met?
 
 
-        go_rm(f"{outroot}_flip.img")
-        go_rm(f"{outroot}_marx.img")
+        # ~ go_rm(f"{outroot}_flip.img")
+        # ~ go_rm(f"{outroot}_marx.img")
 
     return outfile
 
@@ -350,7 +368,7 @@ def make_full_grid(observations, binsize):
     ylo = min([obs.phys_limits['ylo'] for obs in observations])
     xhi = max([obs.phys_limits['xhi'] for obs in observations])
     yhi = max([obs.phys_limits['yhi'] for obs in observations])
-    
+
     full_grid = f"[bin x={xlo}:{xhi}:{binsize},y={ylo}:{yhi}:{binsize}]"
     verb2(f"Full grid is {full_grid}")
     return full_grid
@@ -363,7 +381,7 @@ def sum_obs(observations, suffix, outroot):
     with open(f"{outroot}_img.lis","w") as fp:
         fp.write("\n".join(infiles))
         fp.write("\n")
-    
+
     numerator = []
     denominator = []
 
@@ -384,7 +402,6 @@ def sum_obs(observations, suffix, outroot):
     dmimgcalc.outfile = f"{outroot}{suffix}"
     dmimgcalc.operation = f"@-{outroot}_img.op"
     dmimgcalc(clobber=True)
-
 
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
@@ -409,17 +426,15 @@ def main():
 
     sum_obs([myobs], "_counts.img", pars["outroot"])
 
-    # ~ outfile = rl_deconvolution(counts_file, pars["marx_root"], marx_par,
-                               # ~ img0_vals, binspec,
-                               # ~ int(pars["numiter"]), pars["outroot"])
+    outfile = rl_deconvolution([myobs], int(pars["numiter"]), pars["outroot"])
 
-    # ~ from ciao_contrib.runtool import add_tool_history
-    # ~ add_tool_history(outfile, __toolname__, pars,
-                     # ~ toolversion=__revision__)
+    from ciao_contrib.runtool import add_tool_history
+    add_tool_history(outfile, __toolname__, pars,
+                     toolversion=__revision__)
 
-    # ~ verb1("")
-    # ~ verb1(f"Orignal Image: {counts_file}")
-    # ~ verb1(f"Deconvolved Image: {outfile}")
+    verb1("")
+    verb1(f"Orignal Image: {counts_file}")
+    verb1(f"Deconvolved Image: {outfile}")
 
 
 if __name__ == '__main__':
