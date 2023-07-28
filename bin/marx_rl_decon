@@ -125,33 +125,46 @@ class Observation():
         dmcopy(f"{self.eventfile}{full_grid}[opt type=i4]", outfile,
                clobber=True)
 
-        self.img0_filename = outfile
-
         dmstat = make_tool("dmstat")
         dmstat(outfile, centroid=False, sigma=False, median=False)
         self.counts = int(dmstat.out_sum)
 
-
     def make_marx_dot_par(self, energy, flux, randseed, marx_root):
+        'Create marx parameter file for this obs'
         self.marx = Marx(energy, flux, randseed, marx_root)
         self.marx.make_marx_dot_par(self)
 
-    def crop(self, infile):
+    def crop(self, infile, flip):
+        'Crop image to center on aimpoint for this obs'
+        outfile = f"{self.outroot}_crop.img"
         dmcopy = make_tool("dmcopy")
         dmcopy.infile = f"{infile}{self.bin_grid}"
-        dmcopy.outfile = f"{self.outroot}_crop.img"
+        dmcopy.outfile = outfile
         dmcopy(clobber=True)
-        return dmcopy.outfile
 
-    def convolve_using_marx(self, infile):
-        # dmcopy full image using self.bin_grid
-        cropfile = self.crop(infile)
-        self.marx.convolve_using_marx(cropfile)
+        if flip:
+            # Flip
+            verb1("\tflip(I_0/(I_n ⊙ P))")
+            out_crate = read_file(outfile)
+            out_vals = out_crate.get_image().values
+            out_vals = np.flip(out_vals, axis=[0, 1])
+            out_crate.get_image().values = out_vals
+            outfile = f"{self.outroot}_flip.img"
+            out_crate.write(outfile, clobber=True)
+
+        return outfile
+
+    def convolve_using_marx(self, infile, flip=False):
+        'Convolve per obs image using marx'
+        cropfile = self.crop(infile, flip)
+        self.marx.convolve_using_marx(cropfile, flip)
 
 
 class Marx():
+    'Class to hold info needed to run marx'
 
     def __init__(self, energy, flux, randseed, marx_root):
+        'init, save info'
         self.energy = energy
         self.flux = flux
         self.randseed = randseed
@@ -199,7 +212,7 @@ class Marx():
         paramio.pset(self.marx_par, "SourceType", "IMAGE")
         paramio.pset(self.marx_par, "SourceFlux", str(self.flux))
 
-    def convolve_using_marx(self, infile):
+    def convolve_using_marx(self, infile, flip):
         "Convolution is done using marx"
 
         paramio.pset(self.marx_par, "S-ImageFile", infile)
@@ -235,9 +248,17 @@ class Marx():
             go_rm(f"{self.outroot}_marx.fits")
             rmtree(f"{self.outroot}_marxdir")
 
-        marx_crate = read_file(f"{self.outroot}_marx.img")
-        return marx_crate
+        marx_crate = read_file(f"{self.outroot}_marx.img", mode="rw")
 
+        if flip:
+            # Get the data and flop it back
+            verb1("\tflip(flip(I_0/(I_n ⊙ P)) ⊙ P)")
+            vals = marx_crate.get_image().values
+            flip_vals = np.flip(vals, axis=[0, 1])
+            marx_crate.get_image().values = flip_vals
+            marx_crate.write()
+
+        return marx_crate
 
 
 def go_rm(delme):
@@ -257,10 +278,18 @@ def my_clobber_check(outroot, clobber):
     for outfile in ["_counts.img", ]:
         outfile_clobber_checks(clobber, f"{outroot}{outfile}")
 
-def convolve_observations(observations, infile, outroot):
+
+def convolve_observations(observations, infile, outroot, flip=False):
+    'Loop over observations and convolve, now in parallel'
+    from ciao_contrib._tools.taskrunner import TaskRunner
+    taskrunner = TaskRunner()
 
     for obs in observations:
-        obs.convolve_using_marx(infile)
+        # ~ obs.convolve_using_marx(infile, flip)
+        taskrunner.add_task(obs.outroot, "", obs.convolve_using_marx,
+                            infile, flip)
+
+    taskrunner.run_tasks()
 
     sum_obs(observations, "_marx.img", outroot)
 
@@ -285,7 +314,6 @@ def rl_deconvolution(observations, numiter, outroot):
     counts_file = f"{outroot}_counts.img"
     img0_crate = read_file(counts_file)
     img0_vals = img0_crate.get_image().values * 1.0  # make a copy
-
 
     outfile = counts_file  # 1st iteration
     img_n_plus_1 = img0_vals    # 1st iteration
@@ -313,6 +341,9 @@ def rl_deconvolution(observations, numiter, outroot):
         verb1("\tI_0/(I_n ⊙ P)")
         fraction = np.nan_to_num(img0_vals/den_n_vals, 0, posinf=0)
 
+        den_n.get_image().values = fraction
+        den_n.write(f"{outroot}_frac.img", clobber=True)
+
         # We cannot flip the marx simulation, but we can use
         # the identity
         #     a^ ⊙ b^ = (a ⊙ b)^
@@ -323,22 +354,13 @@ def rl_deconvolution(observations, numiter, outroot):
         # the RHS is the quantity inside the ()'s and we can
         # can compute the flips needed to compute the LHS.
 
-        # Flip
-        verb1("\tflip(I_0/(I_n ⊙ P))")
-        flip_frac = np.flip(fraction, axis=[0, 1])
-        den_n.get_image().values = flip_frac
-        den_n.write(f"{outroot}_flip.img", clobber=True)
-
         # Now run marx with the flipped data
         verb1("\tflip(I_0/(I_n ⊙ P)) ⊙ P")
         img_flip_n = convolve_observations(observations,
-                                           f"{outroot}_flip.img",
-                                           outroot)
+                                           f"{outroot}_frac.img",
+                                           outroot, flip=True)
 
-        # Get the data and flop it back
-        verb1("\tflip(flip(I_0/(I_n ⊙ P)) ⊙ P)")
-        img_flip_n_vals = img_flip_n.get_image().values*1.0
-        img_flop_n_vals = np.flip(img_flip_n_vals, axis=[0, 1])
+        img_flop_n_vals = img_flip_n.get_image().values
 
         # Renorm by the sum of the fraction
         renorm = np.sum(fraction*1.0)/np.sum(img_flop_n_vals)
@@ -356,11 +378,11 @@ def rl_deconvolution(observations, numiter, outroot):
         # TBR: automatically stop iterations if some
         # condition is met?
 
-
         # ~ go_rm(f"{outroot}_flip.img")
         # ~ go_rm(f"{outroot}_marx.img")
 
     return outfile
+
 
 def make_full_grid(observations, binsize):
     'Compute the grid that covers all the observations'
@@ -378,7 +400,7 @@ def sum_obs(observations, suffix, outroot):
     'Combine the observations'
 
     infiles = [obs.outroot+suffix for obs in observations]
-    with open(f"{outroot}_img.lis","w") as fp:
+    with open(f"{outroot}_img.lis", "w") as fp:
         fp.write("\n".join(infiles))
         fp.write("\n")
 
@@ -393,7 +415,7 @@ def sum_obs(observations, suffix, outroot):
     denominator = "+".join(denominator)
     operation = "imgout=("+numerator+")/((float)("+denominator+"))"
 
-    with open(f"{outroot}_img.op","w") as fp:
+    with open(f"{outroot}_img.op", "w") as fp:
         fp.write(operation.replace("+", "+\\\n"))
         fp.write("\n")
 
@@ -433,8 +455,8 @@ def main():
                      toolversion=__revision__)
 
     verb1("")
-    verb1(f"Orignal Image: {counts_file}")
-    verb1(f"Deconvolved Image: {outfile}")
+    # ~ verb1(f"Orignal Image: {counts_file}")
+    # ~ verb1(f"Deconvolved Image: {outfile}")
 
 
 if __name__ == '__main__':
