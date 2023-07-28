@@ -72,6 +72,7 @@ class Observation():
 
         self._ra_pnt = evt.get_key_value("RA_PNT")    # location of optical axis
         self._dec_pnt = evt.get_key_value("DEC_PNT")
+        self._obsid = evt.get_key_value("OBS_ID")
         crval = [self._ra_pnt, self._dec_pnt]
 
         eqpos = evt.get_transform("eqpos")  # Chandra data only, OK
@@ -112,11 +113,14 @@ class Observation():
         img_ygrid = f"y={ycenter-ylen}:{ycenter+ylen}:{binsize}"
 
         self.bin_grid = f"[bin {img_xgrid},{img_ygrid}]"
+        print(self.bin_grid)
 
     def make_counts_image(self, full_grid):
         '''Create the counts image, img_0'''
 
         verb1("Making counts image centered on the aim point")
+
+        self.outroot += f"_obsid{self._obsid}"
 
         self.full_grid = full_grid
         outfile = f"{self.outroot}_counts.img"
@@ -124,6 +128,8 @@ class Observation():
         dmcopy = make_tool("dmcopy")
         dmcopy(f"{self.eventfile}{full_grid}[opt type=i4]", outfile,
                clobber=True)
+
+        self.img0_filename = outfile
 
         dmstat = make_tool("dmstat")
         dmstat(outfile, centroid=False, sigma=False, median=False)
@@ -149,7 +155,7 @@ class Observation():
             out_vals = out_crate.get_image().values
             out_vals = np.flip(out_vals, axis=[0, 1])
             out_crate.get_image().values = out_vals
-            outfile = f"{self.outroot}_flip.img"
+            outfile = f"{self.outroot}_cropflip.img"
             out_crate.write(outfile, clobber=True)
 
         return outfile
@@ -157,7 +163,7 @@ class Observation():
     def convolve_using_marx(self, infile, flip=False):
         'Convolve per obs image using marx'
         cropfile = self.crop(infile, flip)
-        self.marx.convolve_using_marx(cropfile, flip)
+        self.marx.run_marx(cropfile, flip)
 
 
 class Marx():
@@ -212,7 +218,7 @@ class Marx():
         paramio.pset(self.marx_par, "SourceType", "IMAGE")
         paramio.pset(self.marx_par, "SourceFlux", str(self.flux))
 
-    def convolve_using_marx(self, infile, flip):
+    def run_marx(self, infile, flip):
         "Convolution is done using marx"
 
         paramio.pset(self.marx_par, "S-ImageFile", infile)
@@ -227,9 +233,23 @@ class Marx():
         if delme:
             verb5(delme)
 
+        # Reproject marx files to match tangent point of images
+        reproject_events = make_tool("reproject_events")
+        reproject_events.infile = f"{self.outroot}_marx.fits"
+        reproject_events.outfile = f"{self.outroot}_reprojmarx.fits"
+        reproject_events.random = "-1"
+        reproject_events.match = infile
+        reproject_events(clobber=True)
+
         dmcopy = make_tool("dmcopy")
-        dmcopy(f"{self.outroot}_marx.fits{self.full_grid}[opt type=i4]",
-               f"{self.outroot}_marx.img", clobber=True)
+
+        if flip:
+            outfile = f"{self.outroot}_marxflip.img"
+        else:
+            outfile = f"{self.outroot}_marx.img"
+
+        dmcopy(f"{self.outroot}_reprojmarx.fits{self.full_grid}[opt type=i4]",
+               outfile, clobber=True)
 
         # ~ # Make sure each pixel has at least '1' count
         # ~ dmimgadapt = make_tool("dmimgadapt")
@@ -248,7 +268,7 @@ class Marx():
             go_rm(f"{self.outroot}_marx.fits")
             rmtree(f"{self.outroot}_marxdir")
 
-        marx_crate = read_file(f"{self.outroot}_marx.img", mode="rw")
+        marx_crate = read_file(outfile, mode="rw")
 
         if flip:
             # Get the data and flop it back
@@ -291,9 +311,13 @@ def convolve_observations(observations, infile, outroot, flip=False):
 
     taskrunner.run_tasks()
 
-    sum_obs(observations, "_marx.img", outroot)
+    if flip:
+        sum_obs(observations, "_marxflip.img", outroot)
+        outimg = read_file(f"{outroot}_marxflip.img")
+    else:
+        sum_obs(observations, "_marx.img", outroot)
+        outimg = read_file(f"{outroot}_marx.img")
 
-    outimg = read_file(f"{outroot}_marx.img")
     return outimg
 
 
@@ -436,19 +460,26 @@ def main():
 
     my_clobber_check(pars["outroot"], pars["clobber"])
 
-    tag = "_obi1"
-    myobs = Observation(pars["infile"], pars["fovfile"], pars["asolfile"],
-                        pars["binsize"], pars["outroot"]+tag)
+    import stk
+    event_files = stk.build(pars["infile"])
+    asol_files = stk.build(pars["asolfile"])
+    fov_files = stk.build(pars["fovfile"])
 
-    full_grid = make_full_grid([myobs], pars["binsize"])
+    myobs = []
+    for evt,asp,fov in zip(event_files, asol_files, fov_files):
+        myobs.append(Observation(evt, fov, asp, pars["binsize"],
+                                 pars["outroot"]))
 
-    myobs.make_counts_image(full_grid)
-    myobs.make_marx_dot_par(pars["energy"], pars["flux"],
-                            pars["random_seed"], pars["marx_root"])
+    full_grid = make_full_grid(myobs, pars["binsize"])
 
-    sum_obs([myobs], "_counts.img", pars["outroot"])
+    for myobi in myobs:
+        myobi.make_counts_image(full_grid)
+        myobi.make_marx_dot_par(pars["energy"], pars["flux"],
+                                pars["random_seed"], pars["marx_root"])
 
-    outfile = rl_deconvolution([myobs], int(pars["numiter"]), pars["outroot"])
+    sum_obs(myobs, "_counts.img", pars["outroot"])
+
+    outfile = rl_deconvolution(myobs, int(pars["numiter"]), pars["outroot"])
 
     from ciao_contrib.runtool import add_tool_history
     add_tool_history(outfile, __toolname__, pars,
