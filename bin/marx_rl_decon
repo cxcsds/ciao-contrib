@@ -86,8 +86,8 @@ class Observation():
         to make the counts image centered correctly'''
         verb1("Computing binning specification")
 
-        xcenter = self.phys_center[self.X]
-        ycenter = self.phys_center[self.Y]
+        xcenter = np.rint(self.phys_center[self.X])
+        ycenter = np.rint(self.phys_center[self.Y])
 
         gfl = make_tool("get_fov_limits")
         gfl(self.fovfile)
@@ -107,12 +107,15 @@ class Observation():
                             'yhi': ycenter+ylen,
                             'xlen': xlen,
                             'ylen': ylen,
+                            'xcen': xcenter,
+                            'ycen': ycenter,
                             }
 
         img_xgrid = f"x={xcenter-xlen}:{xcenter+xlen}:{binsize}"
         img_ygrid = f"y={ycenter-ylen}:{ycenter+ylen}:{binsize}"
 
         self.bin_grid = f"[bin {img_xgrid},{img_ygrid}]"
+        verb2(self.bin_grid)
 
     def make_counts_image(self, full_grid):
         '''Create the counts image, img_0'''
@@ -183,6 +186,7 @@ class Marx():
 
         self.outroot = obsr.outroot
         self.full_grid = obsr.full_grid
+        self.bin_grid = obsr.bin_grid
 
         verb1("Setting up MARX parameter file")
         ra_pnt = obsr._ra_pnt
@@ -247,7 +251,7 @@ class Marx():
         else:
             outfile = f"{self.outroot}_marx.img"
 
-        dmcopy(f"{self.outroot}_reprojmarx.fits{self.full_grid}[opt type=i4]",
+        dmcopy(f"{self.outroot}_reprojmarx.fits{self.bin_grid}[opt type=i4]",
                outfile, clobber=True)
 
         # ~ # Make sure each pixel has at least '1' count
@@ -265,9 +269,10 @@ class Marx():
         if 'SAVE_ALL' not in os.environ:
             from shutil import rmtree
             go_rm(f"{self.outroot}_marx.fits")
+            go_rm(f"{self.outroot}_reprojmarx.fits")
             rmtree(f"{self.outroot}_marxdir")
 
-        marx_crate = read_file(outfile, mode="rw")
+        marx_crate = read_file(outfile)
 
         if flip:
             # Get the data and flop it back
@@ -275,7 +280,9 @@ class Marx():
             vals = marx_crate.get_image().values
             flip_vals = np.flip(vals, axis=[0, 1])
             marx_crate.get_image().values = flip_vals
-            marx_crate.write()
+            marx_crate.write(f"{self.outroot}_marxflop.img", clobber=True)
+            marx_crate = read_file(f"{self.outroot}_marxflop.img")
+            gorm(f"{self.outroot}_marx.img")
 
         return marx_crate
 
@@ -311,8 +318,8 @@ def convolve_observations(observations, infile, outroot, flip=False):
     taskrunner.run_tasks()
 
     if flip:
-        sum_obs(observations, "_marxflip.img", outroot)
-        outimg = read_file(f"{outroot}_marxflip.img")
+        sum_obs(observations, "_marxflop.img", outroot)
+        outimg = read_file(f"{outroot}_marxflop.img")
     else:
         sum_obs(observations, "_marx.img", outroot)
         outimg = read_file(f"{outroot}_marx.img")
@@ -401,8 +408,8 @@ def rl_deconvolution(observations, numiter, outroot):
         # TBR: automatically stop iterations if some
         # condition is met?
 
-        # ~ go_rm(f"{outroot}_flip.img")
-        # ~ go_rm(f"{outroot}_marx.img")
+        go_rm(f"{outroot}_flip.img")
+        go_rm(f"{outroot}_marx.img")
 
     return outfile
 
@@ -415,14 +422,29 @@ def make_full_grid(observations, binsize):
     yhi = max([obs.phys_limits['yhi'] for obs in observations])
 
     full_grid = f"[bin x={xlo}:{xhi}:{binsize},y={ylo}:{yhi}:{binsize}]"
-    verb2(f"Full grid is {full_grid}")
+    verb1(f"Full grid is {full_grid}")
+
+    for obs in observations:
+        xcenter = obs.phys_limits['xcen']
+        ycenter = obs.phys_limits['ycen']
+        new_xlen = max([xcenter-xlo, xhi-xcenter])
+
+        new_ylen = max([ycenter-ylo, yhi-ycenter])
+
+        new_xgrid = f"x={xcenter-new_xlen}:{xcenter+new_xlen}:{binsize}"
+        new_ygrid = f"y={ycenter-new_ylen}:{ycenter+new_ylen}:{binsize}"
+
+        obs.bin_grid = f"[bin {new_xgrid},{new_ygrid}]"
+        verb2(obs._obsid, obs.bin_grid)
+
     return full_grid
 
 
 def sum_obs(observations, suffix, outroot):
     'Combine the observations'
 
-    infiles = [obs.outroot+suffix for obs in observations]
+    infiles = [obs.outroot+suffix+obs.full_grid
+               for obs in observations]
     with open(f"{outroot}_img.lis", "w") as fp:
         fp.write("\n".join(infiles))
         fp.write("\n")
@@ -465,7 +487,7 @@ def main():
     fov_files = stk.build(pars["fovfile"])
 
     myobs = []
-    for evt,asp,fov in zip(event_files, asol_files, fov_files):
+    for evt, asp, fov in zip(event_files, asol_files, fov_files):
         myobs.append(Observation(evt, fov, asp, pars["binsize"],
                                  pars["outroot"]))
 
