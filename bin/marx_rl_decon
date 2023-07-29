@@ -69,11 +69,9 @@ class Observation():
         '''Get physical coords of optical axis. If reprojected then need
         to use wcs'''
         evt = read_file(self.eventfile)
+        self.keys = {k: evt.get_key_value(k) for k in evt.get_keynames()}
 
-        self._ra_pnt = evt.get_key_value("RA_PNT")    # location of optical axis
-        self._dec_pnt = evt.get_key_value("DEC_PNT")
-        self._obsid = evt.get_key_value("OBS_ID")
-        crval = [self._ra_pnt, self._dec_pnt]
+        crval = [self.keys['RA_PNT'], self.keys['DEC_PNT']]
 
         eqpos = evt.get_transform("eqpos")  # Chandra data only, OK
 
@@ -122,7 +120,7 @@ class Observation():
 
         verb1("Making counts image centered on the aim point")
 
-        self.outroot += f"_obsid{self._obsid}"
+        self.outroot += f"_obsid{self.keys['OBS_ID']}"
 
         self.full_grid = full_grid
         outfile = f"{self.outroot}_counts.img"
@@ -159,6 +157,7 @@ class Observation():
             out_crate.get_image().values = out_vals
             outfile = f"{self.outroot}_cropflip.img"
             out_crate.write(outfile, clobber=True)
+            go_rm(f"{self.outroot}_crop.img")
 
         return outfile
 
@@ -166,6 +165,7 @@ class Observation():
         'Convolve per obs image using marx'
         cropfile = self.crop(infile, flip)
         self.marx.run_marx(cropfile, flip)
+        go_rm(cropfile)
 
 
 class Marx():
@@ -189,8 +189,8 @@ class Marx():
         self.bin_grid = obsr.bin_grid
 
         verb1("Setting up MARX parameter file")
-        ra_pnt = obsr._ra_pnt
-        dec_pnt = obsr._dec_pnt
+        ra_pnt = obsr.keys['RA_PNT']
+        dec_pnt = obsr.keys['DEC_PNT']
 
         sim_psf = make_tool("simulate_psf")
         sim_psf.infile = obsr.img0_filename
@@ -266,10 +266,10 @@ class Marx():
         # ~ dmimgadapt.counts = 1
         # ~ dmimgadapt(clobber=True)
 
+        go_rm(f"{self.outroot}_marx.fits")
+        go_rm(f"{self.outroot}_reprojmarx.fits")
         if 'SAVE_ALL' not in os.environ:
             from shutil import rmtree
-            go_rm(f"{self.outroot}_marx.fits")
-            go_rm(f"{self.outroot}_reprojmarx.fits")
             rmtree(f"{self.outroot}_marxdir")
 
         marx_crate = read_file(outfile)
@@ -282,7 +282,7 @@ class Marx():
             marx_crate.get_image().values = flip_vals
             marx_crate.write(f"{self.outroot}_marxflop.img", clobber=True)
             marx_crate = read_file(f"{self.outroot}_marxflop.img")
-            gorm(f"{self.outroot}_marx.img")
+            go_rm(f"{self.outroot}_marxflip.img")
 
         return marx_crate
 
@@ -408,8 +408,12 @@ def rl_deconvolution(observations, numiter, outroot):
         # TBR: automatically stop iterations if some
         # condition is met?
 
-        go_rm(f"{outroot}_flip.img")
-        go_rm(f"{outroot}_marx.img")
+    for suffix in ["flip.img", "marx.img", "frac.img",
+                   "marxflop.img", "img.lis", "img.op"]:
+        go_rm(f"{outroot}_{suffix}")
+
+    for obs in observations:
+        go_rm(obs.marx.marx_par)
 
     return outfile
 
@@ -422,7 +426,7 @@ def make_full_grid(observations, binsize):
     yhi = max([obs.phys_limits['yhi'] for obs in observations])
 
     full_grid = f"[bin x={xlo}:{xhi}:{binsize},y={ylo}:{yhi}:{binsize}]"
-    verb1(f"Full grid is {full_grid}")
+    verb2(f"Full grid is {full_grid}")
 
     for obs in observations:
         xcenter = obs.phys_limits['xcen']
@@ -435,7 +439,7 @@ def make_full_grid(observations, binsize):
         new_ygrid = f"y={ycenter-new_ylen}:{ycenter+new_ylen}:{binsize}"
 
         obs.bin_grid = f"[bin {new_xgrid},{new_ygrid}]"
-        verb2(obs._obsid, obs.bin_grid)
+        verb2(obs.keys['OBS_ID']+" "+obs.bin_grid)
 
     return full_grid
 
@@ -470,6 +474,32 @@ def sum_obs(observations, suffix, outroot):
     dmimgcalc.operation = f"@-{outroot}_img.op"
     dmimgcalc(clobber=True)
 
+    for obs in observations:
+        infile = obs.outroot+suffix
+        go_rm(infile)
+
+def check_obs(observations):
+    'Some simple consistency checks'
+
+    okay = True
+    mesg = ""
+    obi_list = []
+    for obs in observations:
+        if obs.keys['RA_NOM'] != observations[0].keys['RA_NOM']:
+            okay = False
+            mesg += f"ERROR: RA_NOM keyword is different in OBS_ID {obs.keys['OBS_ID']}\n"
+        if obs.keys['DEC_NOM'] != observations[0].keys['DEC_NOM']:
+            okay = False
+            mesg += f"ERROR: DEC_NOM keyword is different in OBS_ID {obs.keys['OBS_ID']}\n"
+        if obs.keys['OBS_ID'] in obi_list:
+            okay = False
+            mesg += f"ERROR: Multiple copies of OBS_ID {obs.keys['OBS_ID']} are not allowed\n"
+
+        obi_list.append(obs.keys['OBS_ID'])
+
+    if not okay:
+        raise RuntimeError(mesg)
+
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
@@ -491,6 +521,7 @@ def main():
         myobs.append(Observation(evt, fov, asp, pars["binsize"],
                                  pars["outroot"]))
 
+    check_obs(myobs)
     full_grid = make_full_grid(myobs, pars["binsize"])
 
     for myobi in myobs:
@@ -507,8 +538,8 @@ def main():
                      toolversion=__revision__)
 
     verb1("")
-    # ~ verb1(f"Orignal Image: {counts_file}")
-    # ~ verb1(f"Deconvolved Image: {outfile}")
+    verb1(f"Orignal Image: {pars['outroot']}_counts.img")
+    verb1(f"Deconvolved Image: {outfile}")
 
 
 if __name__ == '__main__':
