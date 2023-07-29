@@ -305,7 +305,7 @@ def my_clobber_check(outroot, clobber):
         outfile_clobber_checks(clobber, f"{outroot}{outfile}")
 
 
-def convolve_observations(observations, infile, outroot, flip=False):
+def convolve_observations(observations, infile, outroot, nproc, flip=False):
     'Loop over observations and convolve, now in parallel'
     from ciao_contrib._tools.taskrunner import TaskRunner
     taskrunner = TaskRunner()
@@ -315,7 +315,7 @@ def convolve_observations(observations, infile, outroot, flip=False):
         taskrunner.add_task(obs.outroot, "", obs.convolve_using_marx,
                             infile, flip)
 
-    taskrunner.run_tasks()
+    taskrunner.run_tasks(processes=nproc)
 
     if flip:
         sum_obs(observations, "_marxflop.img", outroot)
@@ -327,7 +327,7 @@ def convolve_observations(observations, infile, outroot, flip=False):
     return outimg
 
 
-def rl_deconvolution(observations, numiter, outroot):
+def rl_deconvolution(observations, numiter, outroot, nproc):
     'Perform Richardson Lucy deconvolution'
 
     # The iterative algorithm is just:
@@ -359,7 +359,7 @@ def rl_deconvolution(observations, numiter, outroot):
         # Setup for next iteration
         img_n_vals = img_n_plus_1
 
-        den_n = convolve_observations(observations, outfile, outroot)
+        den_n = convolve_observations(observations, outfile, outroot, nproc)
 
         den_n_vals = den_n.get_image().values*1.0
 
@@ -388,7 +388,7 @@ def rl_deconvolution(observations, numiter, outroot):
         verb1("\tflip(I_0/(I_n ⊙ P)) ⊙ P")
         img_flip_n = convolve_observations(observations,
                                            f"{outroot}_frac.img",
-                                           outroot, flip=True)
+                                           outroot, nproc, flip=True)
 
         img_flop_n_vals = img_flip_n.get_image().values
 
@@ -502,6 +502,18 @@ def check_obs(observations):
         raise RuntimeError(mesg)
 
 
+def set_nproc(pars):
+    'Set number of processors'
+
+    if "no" == pars["parallel"]:
+        pars["nproc"] = 1
+    else:
+        if pars["nproc"] != "INDEF":
+            pars["nproc"] = int(pars["nproc"])
+        else:
+            pars["nproc"] = 999   # Hack, else history gets stuck with a pset
+
+
 @lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
     """Main routine"""
@@ -511,11 +523,17 @@ def main():
                       verbose={"set": lw.set_verbosity, "cmd": verb1})
 
     my_clobber_check(pars["outroot"], pars["clobber"])
+    set_nproc(pars)
 
     import stk
     event_files = stk.build(pars["infile"])
     asol_files = stk.build(pars["asolfile"])
     fov_files = stk.build(pars["fovfile"])
+
+    if len(event_files) != len(asol_files):
+        raise IOError("ERROR: Mismatch in number of event files and aspect solution files")
+    if len(event_files) != len(fov_files):
+        raise IOError("ERROR: Mismatch in number of event files and FOV files")
 
     myobs = []
     for evt, asp, fov in zip(event_files, asol_files, fov_files):
@@ -532,7 +550,8 @@ def main():
 
     sum_obs(myobs, "_counts.img", pars["outroot"])
 
-    outfile = rl_deconvolution(myobs, int(pars["numiter"]), pars["outroot"])
+    outfile = rl_deconvolution(myobs, int(pars["numiter"]),
+                               pars["outroot"], pars["nproc"])
 
     from ciao_contrib.runtool import add_tool_history
     add_tool_history(outfile, __toolname__, pars,
