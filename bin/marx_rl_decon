@@ -30,6 +30,7 @@ import numpy as np
 from pycrates import read_file
 import paramio
 import ciao_contrib.logger_wrapper as lw
+from sherpa.utils import parallel_map
 
 
 __toolname__ = "marx_rl_decon"
@@ -514,16 +515,13 @@ def set_nproc(pars):
             pars["nproc"] = 999   # Hack, else history gets stuck with a pset
 
 
-@lw.handle_ciao_errors(__toolname__, __revision__)
-def main():
-    """Main routine"""
+def create_observations(pars):
+    'Create the observations objects'
 
-    from ciao_contrib.param_soaker import get_params
-    pars = get_params(__toolname__, "rw", sys.argv,
-                      verbose={"set": lw.set_verbosity, "cmd": verb1})
-
-    my_clobber_check(pars["outroot"], pars["clobber"])
-    set_nproc(pars)
+    def make_obs(stuff):
+        'Wrapper to help create object'
+        obs = Observation(*stuff)
+        return obs
 
     import stk
     event_files = stk.build(pars["infile"])
@@ -535,18 +533,46 @@ def main():
     if len(event_files) != len(fov_files):
         raise IOError("ERROR: Mismatch in number of event files and FOV files")
 
-    myobs = []
+    stuff = []
     for evt, asp, fov in zip(event_files, asol_files, fov_files):
-        myobs.append(Observation(evt, fov, asp, pars["binsize"],
-                                 pars["outroot"]))
+        stuff.append((evt, fov, asp, pars["binsize"], pars["outroot"]))
 
+    myobs = parallel_map(make_obs, stuff, numcores=int(pars["nproc"]))
+
+    return myobs
+
+
+def setup_marx(myobs, pars, full_grid):
+    'Setup marx objects'
+
+    def make_marx(obsr):
+        'Wrapper to run in parallel'
+        obsr.make_counts_image(full_grid)
+        obsr.make_marx_dot_par(pars["energy"], pars["flux"],
+                               pars["random_seed"], pars["marx_root"])
+        # I need to return the updated object back
+        return obsr
+
+    new_obs = parallel_map(make_marx, myobs, numcores=int(pars["nproc"]))
+    return new_obs
+
+
+@lw.handle_ciao_errors(__toolname__, __revision__)
+def main():
+    """Main routine"""
+
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(__toolname__, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": verb1})
+
+    my_clobber_check(pars["outroot"], pars["clobber"])
+    set_nproc(pars)
+
+    myobs = create_observations(pars)
     check_obs(myobs)
     full_grid = make_full_grid(myobs, pars["binsize"])
 
-    for myobi in myobs:
-        myobi.make_counts_image(full_grid)
-        myobi.make_marx_dot_par(pars["energy"], pars["flux"],
-                                pars["random_seed"], pars["marx_root"])
+    myobs = setup_marx(myobs, pars, full_grid)
 
     sum_obs(myobs, "_counts.img", pars["outroot"])
 
