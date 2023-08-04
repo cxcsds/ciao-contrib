@@ -519,6 +519,12 @@ def set_nproc(pars):
 def create_observations(pars):
     'Create the observations objects'
 
+    def check_asolfiles():
+        gziped = [x for x in asol_files if x.endswith(".gz")]
+        if len(gziped) != 0:
+            gziped = "\n".join(gziped)
+            raise IOError(f"ERROR: These aspect solution files must be gunzip'ed:\n{gziped}")
+
     def make_obs(stuff):
         'Wrapper to help create object'
         obs = Observation(*stuff)
@@ -534,6 +540,8 @@ def create_observations(pars):
         raise IOError("ERROR: Mismatch in number of event files and aspect solution files")
     if len(event_files) != len(fov_files):
         raise IOError("ERROR: Mismatch in number of event files and FOV files")
+
+    check_asolfiles()
 
     stuff = []
     for evt, asp, fov in zip(event_files, asol_files, fov_files):
