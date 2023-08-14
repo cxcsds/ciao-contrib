@@ -1853,6 +1853,8 @@ class Srcflux(ImageProcTaskTextOut):
 
         self.use_eventfile()
         self.tool.outroot = self.outfile.name.replace(".fits", "")
+        os.makedirs(self.tool.outroot, exist_ok=True)
+        self.tool.outroot = os.path.join(self.tool.outroot, "out")
 
         self.tool.bands = args[0]
         self.tool.model = args[1]
@@ -1915,7 +1917,7 @@ class Srcflux(ImageProcTaskTextOut):
         for dat in mydat:
             print(dat.rstrip())
 
-        print(f"\nOutput files are have root name: {self.tool.outroot}")
+        print(f"\nOutput files have the root file name: {self.tool.outroot}")
 
         from paramio import pget
         outfiles = glob(f"{self.tool.outroot}*.flux")
