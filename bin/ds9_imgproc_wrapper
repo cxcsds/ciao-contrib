@@ -1124,7 +1124,7 @@ class Dmextract(ImageProcTaskPlotOut):
     def set_args(self, args):
         'args: units'
 
-        regout = self.xpaget("regions -format ds9 -system physical")
+        regout = self.xpaget("regions source -format ds9 -system physical")
         ds9_reg = self.tool.outfile+".ds9.reg"
         with open(ds9_reg, "w") as fptr:
             fptr.write(regout)
@@ -1142,9 +1142,17 @@ class Dmextract(ImageProcTaskPlotOut):
             print("ERROR: No valid regions found")
             raise
 
+        keep_infile = self.tool.infile
         self.tool.infile = "{}[bin (x,y)=@-{}]".format(self.tool.infile,
                                                        ciao_reg)
         self.tool.opt = "generic"
+
+        try:
+            bkgreg = self.get_regions(src_or_bkg="background").strip()
+            if bkgreg:
+                self.tool.bkg = f"{keep_infile}[bin (x,y)={bkgreg}]"
+        except:
+            print("Continuing without background.")
 
         if 'physical' == args[0]:
             cols = "[cols rmid,sur_bri]"
