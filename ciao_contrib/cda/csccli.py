@@ -128,6 +128,7 @@ fileTypes_cur = {
     "mrgsrc"      : { "extn" : "mrgsrc3", "filetype" : "mrgsrc",     "prodlevel" : "stk", "obilevel" : False, "bands" : False,   "acisonly" : False },
     "bayesblks"   : { "extn" : "blocks3", "filetype" : "bayesblks",  "prodlevel" : "mst", "obilevel" : False, "bands" : False,   "acisonly" : False },
     "srcaperphot" : { "extn" : "phot3",   "filetype" : "srcaperphot","prodlevel" : "mst", "obilevel" : False, "bands" : True,    "acisonly" : False },
+    "srcpoly"     : { "extn" : "poly3",   "filetype" : "srcpoly3",   "prodlevel" : "mst", "obilevel" : False, "bands" : False,   "acisonly" : False },
 
 
 }
