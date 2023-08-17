@@ -3,7 +3,7 @@
 <cxchelptopics>
   <ENTRY key="obsid_search_csc"
          context="Tools::Download" 
-         refkeywords="csc ftp wget download java catalog obsid obi obs_id observation  ascii products retrieve radius psf rmf arf exposure region lightcurve lc level3"
+         refkeywords="csc csc1 csc2 current latest ftp wget download java catalog obsid obi obs_id observation  ascii products retrieve radius psf rmf arf exposure region lightcurve lc level3 poly srcpoly"
          seealsogroups="contrib.cda">
 
     <SYNOPSIS>Search the Chandra Source Catalog by OBS_ID</SYNOPSIS>
@@ -47,11 +47,11 @@
     <QEXAMPLELIST>
         <QEXAMPLE>
             <SYNTAX>
-<LINE> unix% obsid_search_csc obsid=635 outfile=635.tsv download=none mode=h catalog=csc1</LINE>
+<LINE> unix% obsid_search_csc obsid=635 outfile=635.tsv download=none mode=h catalog=csc2</LINE>
             </SYNTAX>
 <DESC>
 <PARA>
-Search for all sources that were detected in OBS_ID 635.
+Search for all sources that were detected in OBS_ID 635 in CSC 2:
 </PARA>
 
 <VERBATIM>
@@ -63,22 +63,24 @@ obsid_search_csc
             root = ./
            bands = broad,wide
        filetypes = regevt,pha,arf,rmf,lc,psf,regexp
-         catalog = csc1
+         catalog = csc2
          verbose = 1
          clobber = no
             mode = h
 
 
-94 rows returned by query
-94 Different Master Source(s).
+128 rows returned by query
+128 Different Master Source(s).
 1 Different Observation(s).
 
-name                    ra              dec             obsid
-CXO J162602.2-242348    246.50924       -24.39670         635
-CXO J162603.1-242336    246.51290       -24.39352         635
-CXO J162604.3-242252    246.51817       -24.38122         635
-CXO J162605.8-242756    246.52432       -24.46570         635
+name                	ra          	dec         	obsid	
+ 2CXO J162603.0-242336	2.465126e+02	-2.439342e+01	  635	
+ 2CXO J162605.7-242756	2.465241e+02	-2.446565e+01	  635	
+ 2CXO J162606.3-242132	2.465264e+02	-2.435916e+01	  635	
+ 2CXO J162607.0-242724	2.465293e+02	-2.445679e+01	  635	
 ...
+ 2CXO J162754.6-243715	2.469778e+02	-2.462110e+01	  635	
+ 2CXO J162755.1-242839	2.469800e+02	-2.447770e+01	  635	
 </VERBATIM>
 <PARA>
     Returns a TSV format file with source list. The default set of columns
@@ -86,32 +88,34 @@ CXO J162605.8-242756    246.52432       -24.46570         635
 </PARA>
 <VERBATIM>
 % dmlist "635.tsv[opt kernel=text/tsv]" cols
- 
+  
 --------------------------------------------------------------------------------
 Columns for Table Block 635.tsv
 --------------------------------------------------------------------------------
  
 ColNo  Name                 Unit        Type             Range
-   1   name                              String[20]                          Source name in the format 'CXO Jhhmmss.s +/- ddmmss'
+   1   name                              String[22]                          Source name in the format '2CXO Jhhmmss.s{+|-}ddmmss[X]'
    2   ra                   deg          Real4          -Inf:+Inf            Source position, ICRS right ascension
    3   dec                  deg          Real4          -Inf:+Inf            Source position, ICRS declination
-   4   err_ellipse_r0       arcsec       Real4          -Inf:+Inf            Major radius of the 95% confidence level error ellipse
-   5   conf_flag                         String[5]                           Source regions overlap (source is confused)
+   4   err_ellipse_r0       arcsec       Real4          -Inf:+Inf            Major radius of the 95% confidence level position error ellipse
+   5   conf_flag                         String[5]                           Source may be confused (source regions overlap in one or more contributing stack
    6   sat_src_flag                      String[5]                           Source is saturated in all observations; source properties are unreliable
-   7   significance                      Real4          -Inf:+Inf            Highest source flux significance across all observations
+   7   significance                      Real4          -Inf:+Inf            Highest flux significance (S/N) across all stacked observations and energy bands
+   8   flux_aper_b          erg/s/cm^2   Real4          -Inf:+Inf            Aperture-corrected net energy flux inferred from the source region aperture, bes
 ...
+  63   detect_stack_id                   String[24]                          Detect stack identifier (designation of observation stack used for source detect
 </VERBATIM>
 </DESC>
         </QEXAMPLE>
 <QEXAMPLE>
   <SYNTAX>
      <LINE>
-     unix% obsid_search_csc 635,637 outfile=none download=ask filetype=evt columns=o.cnts_aper_b catalog=csc1
+     unix% obsid_search_csc 635,637 outfile=none download=ask filetype=evt columns=o.cnts_aper_b catalog=csc2
      </LINE>
   </SYNTAX>
   <DESC>
       <PARA>
-      Search for two observations obsid=635 and 637.  We have asked that
+      Search for two observations obsid=635 and 637 from CSC 2.  We have asked that
       the full field evt file be return but will be prompted (download=ask).
       Additionally we require the broad-band source counts for
       each observation.
@@ -127,31 +131,29 @@ obsid_search_csc
             root = ./
            bands = broad,wide
        filetypes = evt
-         catalog = csc1
+         catalog = csc2
          verbose = 1
          clobber = no
             mode = ql
 
 
-175 rows returned by query
-152 Different Master Source(s).
+228 rows returned by query
+186 Different Master Source(s).
 2 Different Observation(s).
 
-name                    ra              dec             obsid   cnts_aper_b
-CXO J162538.1-242235    246.40889       -24.37654         637          3569
-CXO J162541.3-242138    246.42232       -24.35970         637           265
-CXO J162552.5-241710    246.46882       -24.28632         637           149
-...
-CXO J162752.0-244049    246.96687       -24.68049         635          3849
-CXO J162754.5-243717    246.97730       -24.62162         635            97
-CXO J162755.2-242839    246.98017       -24.47765         635            91
-
-If you use this data, please cite Evans et al 2010, ApJS 189, 37
-
-Download data for CXO J162538.1-242235 in 00637_001 [y,n,a,q]: y
+name                	ra          	dec         	obsid	cnts_aper_b	
+ 2CXO J162524.3-241543	2.463514e+02	-2.426214e+01	  637	        954	
+ 2CXO J162537.0-241759	2.464043e+02	-2.429996e+01	  637	        576	
+ 2CXO J162538.1-242235	2.464089e+02	-2.437658e+01	  637	       3064	
+ 2CXO J162541.2-242136	2.464219e+02	-2.436005e+01	  637	        354	
+ 2CXO J162552.4-241705	2.464686e+02	-2.428499e+01	  637	        175	
+ ...
+ 2CXO J162754.6-243715	2.469778e+02	-2.462110e+01	  635	         39	
+ 2CXO J162755.1-242839	2.469800e+02	-2.447770e+01	  635	         65	
+Download data for  2CXO J162524.3-241543 in 00637_001 [y,n,a,q]: y
 Retrieving files for obsid_obi 00637_001
-Retrieved file .//637/acisf00637_001N002_evt3.fits
-Download data for CXO J162541.3-242138 in 00637_001 [y,n,a,q]: a
+Retrieved file ./637/acisf00637_001N020_evt3.fits
+Download data for  2CXO J162537.0-241759 in 00637_001 [y,n,a,q]: a
 ...
 </VERBATIM>
   
@@ -169,7 +171,7 @@ Download data for CXO J162541.3-242138 in 00637_001 [y,n,a,q]: a
 
 <QEXAMPLE>
   <SYNTAX>
-    <LINE>unix% obsid_search_csc @bootes.lis catalog=csc1</LINE>
+    <LINE>unix% obsid_search_csc @bootes.lis catalog=csc2</LINE>
   </SYNTAX>
   <DESC>
     <PARA>
@@ -220,7 +222,7 @@ Columns for Table Block mysrc.tsv
 --------------------------------------------------------------------------------
  
 ColNo  Name                 Unit        Type             Range
-   1   name                              String[20]                          Source name in the format 'CXO Jhhmmss.s +/- ddmmss'
+   1   name                              String[20]                          Source name in the format '2CXO Jhhmmss.s +/- ddmmss'
    2   ra                                String[12]                          Source position, ICRS right ascension
    3   dec                               String[11]                          Source position, ICRS declination
    4   err_ellipse_r0       arcsec       Real4          -Inf:+Inf            Major radius of the 95% confidence level error ellipse
@@ -449,8 +451,8 @@ unix% search_csc ... columns="SOS,a.match_type,o.livetime" ...
             </PARA>
             <PARA>
                 Files are place in subdirectories of the current
-                directory.  They are organized by OBS_ID, source name "CXOJ...", 
-                and then by region id.
+                directory.  They are organized by OBS_ID, source name
+		("2CXOJ..." or "CXOJ..."), and then by region id.
                 This hierarchy ensures that the large per-obi files are
                 only retrieved/stored once per master source. 
                 
@@ -498,7 +500,7 @@ unix% search_csc ... columns="SOS,a.match_type,o.livetime" ...
     
     </PARAMLIST>
 
-    <ADESC title="Changes in the scripts 4.x.y (Month that ends in an 'R') release">
+    <ADESC title="Changes in the scripts 4.15.3 (August 2023) release">
       <PARA>
       Added the master 'srcpoly' file type to retrieve the Per-Master
       extended source polygon regions.
