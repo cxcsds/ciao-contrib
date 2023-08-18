@@ -1312,7 +1312,7 @@ def get_default_columns(cat_version=None):
     """
     retval = default_cols
 
-    if "csc2" == cat_version:
+    if cat_version in ["csc2", "current"]:
         default_cols.append("s.detect_stack_id")
         retval = default_cols # may be diff for ver2
 
