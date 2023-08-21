@@ -33,7 +33,7 @@ Script:
 
 __version__ = "CIAO 4.15"
 __toolname__ = "specextract"
-__revision__ = "18 January 2023"
+__revision__ = "18 August 2023"
 
 ##########################################################################
 #
@@ -1404,9 +1404,12 @@ def spectra(args):
 
                 bkgscale = fileio.get_keys_from_file(fullfile)[f"BKGSCAL{ccdid}"]
 
-                edit_headers(verbose, phafile, "AREASCAL", bkgscale, comment=f"blanksky BKGSCAL{ccdid} scaling factor from the 'blanksky' script, set to 1.0 if subtracting background")
+                edit_headers(verbose, phafile, "AREASCAL", 1/bkgscale, comment=f"1/BKGSCAL{ccdid} using the scaling factor from the 'blanksky' script") #, set to 1.0 if subtracting background")
 
-                v1(f"{phafile} AREASCAL keyword set to the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling.  Set AREASCAL to 1.0 if 'blanksky' spectrum is being used for background subtraction.")
+                v1(f"{phafile} AREASCAL keyword set to the inverse of the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling or for background subtraction.")
+
+                
+#                v1(f"{phafile} AREASCAL keyword set to the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling.  Set AREASCAL to 1.0 if 'blanksky' spectrum is being used for background subtraction.")
 
     try:
         return pardict
