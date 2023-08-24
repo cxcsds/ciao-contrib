@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2014 Smithsonian Astrophysical Observatory
+# Copyright (C) 2014-2023 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -17,106 +17,118 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from __future__ import print_function
+"Combine map regions together based on some metric"
 
 
-toolname = "merge_too_small"
-__revision__ = "31 July 2017"
-
-import os
 import sys
 import numpy as np
 
+
+__toolname__ = "merge_too_small"
+__revision__ = "24 August 2023"
+
 import ciao_contrib.logger_wrapper as lw
-lgr = lw.initialize_logger(toolname)
-verb0 = lgr.verbose0
-verb1 = lgr.verbose1
-verb2 = lgr.verbose2
-verb3 = lgr.verbose3
-verb5 = lgr.verbose5
+verb0 = lw.initialize_logger(__toolname__).verbose0
+verb1 = lw.initialize_logger(__toolname__).verbose1
+verb2 = lw.initialize_logger(__toolname__).verbose2
+verb3 = lw.initialize_logger(__toolname__).verbose3
+verb5 = lw.initialize_logger(__toolname__).verbose5
 
 
+def find_neighbors(mask, maskval):
+    'Identify which map ids neighbor the current mask value'
 
-def find_neighbors( mask, maskval ):
-
-    xxyy = np.where( mask == maskval )
-    xy = zip(xxyy[1],xxyy[0])
+    xxyy = np.where(mask == maskval)
     retvals = []
-    for ee in xy:
 
+    # For each pixel with a given maskval value
+    for ee in zip(xxyy[1], xxyy[0]):
+
+        # Go +/- 1 in Y direction
         for dy in [ee[1]-1, ee[1], ee[1]+1]:
             if dy < 0 or dy >= mask.shape[0]:
                 continue
 
+            # Go +/- 1 in the X direction
             for dx in [ee[0]-1, ee[0], ee[0]+1]:
                 if dx < 0 or dx >= mask.shape[1]:
                     continue
 
                 if mask[dy, dx] != maskval:
-                    retvals.append( int(mask[dy,dx]) )
+                    retvals.append(int(mask[dy, dx]))
 
     retvals = set(retvals)
     return list(retvals)
 
 
-def purge_too_small(mask, minarea, counts):    
+def purge_too_small(mask, minarea, counts):
     """
+    The idea is to check the area or total counts of each
+    mask value.  If it is below the threshold then the map value
+    is reassigned to the neighbor with the smallest area/counts.
     """
     mask_max = int(np.max(mask))
-    skiplist = []
+    skiplist = []   # The list of maskidvals that have been reassigned
 
     while True:
-        hh = np.histogram( mask, bins=mask_max, range=(1,mask_max+1), weights=counts)
+        # make histogram of pixel values.  If counts=None, then
+        # histogram is the area (logical pixels), if counts=value, then
+        # counts=counts (or flux or whatever units the input image is).
+
+        hh = np.histogram(mask, bins=mask_max, range=(1, mask_max+1),
+                          weights=counts)
         area = hh[0]
         maskid = hh[1][:-1]
-        
-        am = list(zip( area, maskid ))
-        am.sort()        
-        am = [ x for x in am if x[0]>0 and x[0] not in skiplist ]
-        
+
+        am = list(zip(area, maskid))
+        am.sort()
+        am = [x for x in am if x[0] > 0 and x[0] not in skiplist]
+
         if am[0][0] > minarea:
+            # When all the mapvals are above the threshold we break out
+            # and return.
             break
 
-        verb1("Working on mask_id {} with value {}".format(int(am[0][1]),am[0][0]))
-        nn = find_neighbors( mask, am[0][1])
+        verb2(f"Working on mask_id {am[0][1]} with value {am[0][0]}")
+        nn = find_neighbors(mask, am[0][1])
+
         if len(nn) == 0:
-            skiplist.append( am[0][1] )
+            # If area is 0, then skip it.
+            skiplist.append(am[0][1])
             continue
-        
-        nn = [i-1 for i in nn]
-        zz = list(zip( area[nn],maskid[nn]))
-        zz.sort()        
-        zz = [x for x in zz if (x[1] != am[0][1]) and (x[0]>0) and (x[1] not in skiplist)]
+
+        nn = [i-1 for i in nn]  # convert mapvalue to histogram index
+        zz = list(zip(area[nn], maskid[nn]))
+        zz.sort()
+
+        zz = [x for x in zz
+              if (x[1] != am[0][1]) and (x[0] > 0) and (x[1] not in skiplist)]
+
         if len(zz) > 0:
             replace_val = int(zz[0][1])
-            mask[ np.where( mask == int(am[0][1]) ) ] = replace_val
+            mask[np.where(mask == int(am[0][1]))] = replace_val
         else:
-            skiplist.append(am[0][0])
-        
+            skiplist.append(am[0][0])  # There are no pixel with this mapval
 
 
-  
-@lw.handle_ciao_errors( toolname, __revision__) 
+@lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
     """
-    
+    Main routine
     """
 
-    from ciao_contrib.param_soaker import get_params
-    from ciao_contrib.runtool import dmmaskbin
-    from ciao_contrib.runtool import add_tool_history
-
     # Load parameters
-    pars = get_params(toolname, "rw", sys.argv, 
-        verbose={"set":lw.set_verbosity, "cmd":verb1} )
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(__toolname__, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": verb1})
 
     from ciao_contrib._tools.fileio import outfile_clobber_checks
-    outfile_clobber_checks(pars["clobber"], pars["outfile"] )
-    outfile_clobber_checks(pars["clobber"], pars["binimg"] )
+    outfile_clobber_checks(pars["clobber"], pars["outfile"])
+    outfile_clobber_checks(pars["clobber"], pars["binimg"])
 
     import pycrates as pc
     inimg = pc.read_file(pars["infile"])
-    mask = inimg.get_image().values
+    mask = inimg.get_image().values  # mask pointing to data in the crate
 
     if "counts" == pars["method"]:
         counts = pc.read_file(pars["imgfile"]).get_image().values
@@ -125,25 +137,21 @@ def main():
     else:
         raise ValueError("Unknown value for method parameter")
 
-    purge_too_small( mask, int(pars["minvalue"]), counts )
+    purge_too_small(mask, int(pars["minvalue"]), counts)
 
-    pc.write_file( inimg, pars["outfile"], clobber=pars["clobber"] )
-    add_tool_history( pars["outfile"], toolname, pars, toolversion=__revision__)
+    pc.write_file(inimg, pars["outfile"], clobber=pars["clobber"])
 
-    if len(pars["binimg"])>0 and "none" != pars["binimg"].lower():
-        dmmaskbin( pars["imgfile"], pars["outfile"]+"[opt type=i4]", pars["binimg"], clobber=True)
-        add_tool_history( pars["binimg"], toolname, pars, toolversion=__revision__)
+    from ciao_contrib.runtool import add_tool_history
+    add_tool_history(pars["outfile"], __toolname__, pars,
+                     toolversion=__revision__)
 
-    
-
-
+    if len(pars["binimg"]) > 0 and "none" != pars["binimg"].lower():
+        from ciao_contrib.runtool import dmmaskbin
+        dmmaskbin(pars["imgfile"], pars["outfile"]+"[opt type=i4]",
+                  pars["binimg"], clobber=True)
+        add_tool_history(pars["binimg"], __toolname__, pars,
+                         toolversion=__revision__)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as E:
-        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
-        sys.exit(1)
-    sys.exit(0)
-
+    main()
