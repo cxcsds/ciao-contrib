@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2014 Smithsonian Astrophysical Observatory
+# Copyright (C) 2014-2023 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -17,51 +17,47 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from __future__ import print_function
-
-
-toolname = "hexgrid"
-__revision__ = "15 January 2019"
+'Create a map in the form a hexagonal grid'
 
 
 import sys
 import os
 import numpy as np
-import pycrates as pc
-from region import *
-from cxcdm import *
+
+from region import polygon
 from crates_contrib.masked_image_crate import MaskedIMAGECrate
-
-
 import ciao_contrib.logger_wrapper as lw
-lgr = lw.initialize_logger(toolname)
-verb0 = lgr.verbose0
-verb1 = lgr.verbose1
-verb2 = lgr.verbose2
-verb3 = lgr.verbose3
-verb5 = lgr.verbose5
 
 
-class HexagonGrid( ):
+__toolname__ = "hexgrid"
+__revision__ = "24 August 2023"
+
+verb0 = lw.initialize_logger(__toolname__).verbose0
+verb1 = lw.initialize_logger(__toolname__).verbose1
+verb2 = lw.initialize_logger(__toolname__).verbose2
+verb3 = lw.initialize_logger(__toolname__).verbose3
+verb5 = lw.initialize_logger(__toolname__).verbose5
+
+
+class HexagonGrid():
     """
     Create a map or grid of hexagons
-    
+
     Creates an image whose pixel values indicate which hexagon
     a pixel belongs to.
-    
-    >>> hh = HexagonGrid( 10, 1024, 1024)
+
+    >>> hh = HexagonGrid(10, 1024, 1024)
     >>> outvals = hh.make_map()
-    
     """
 
-    def __init__(self, sidelen, lx, ly, x0, y0 ):
+    def __init__(self, sidelen, xlen, ylen, x0, y0):
         """
         Setup the hexagon properties
         """
 
         self.sidelen = sidelen
-        self.lx = lx
-        self.ly = ly
+        self.xlen = xlen
+        self.ylen = ylen
         self.x0 = x0
         self.y0 = y0
 
@@ -69,29 +65,29 @@ class HexagonGrid( ):
         # Hexagon are aligned so that the "long" axis is parallel
         # to the X-axis.
         #
-        self.dx = 3 * sidelen 
-        self.dy = 2 * sidelen * np.sin(np.deg2rad(60))
 
-        self.x0 = np.mod( self.x0, self.dx )-1  # -1 => 0 based indexing
-        self.y0 = np.mod( self.y0, self.dy )-1
+        xdelta = 3 * self.sidelen
+        ydelta = 2 * self.sidelen * np.sin(np.deg2rad(60))
+
+        self.x0 = np.mod(self.x0, xdelta)-1  # -1 => 0 based indexing
+        self.y0 = np.mod(self.y0, ydelta)-1
 
         #
         # Create arrays for a polygon centered around 0,0.  It is shifted
         # to each hex point later
         #
-        s60 = np.sin(np.deg2rad(60))
-        c60 = np.cos(np.deg2rad(60))
-        self.px = np.array( [ -1, -c60, c60, 1, c60, -c60, -1 ] )*sidelen
-        self.py = np.array( [ 0, s60, s60, 0, -s60, -s60, 0 ] ) *sidelen
+        s60 = np.sin(np.deg2rad(60.0))
+        c60 = np.cos(np.deg2rad(60.0))
+        self.px = np.array([-1, -c60, c60, 1, c60, -c60, -1]) * sidelen
+        self.py = np.array([0, s60, s60, 0, -s60, -s60, 0]) * sidelen
 
         # Counter for the number of hexagons that are created
         self.counter = 0
 
         # The output array
-        self.stipple = np.zeros([ly,lx])
+        self.stipple = np.zeros([ylen, xlen])
 
-
-    def _fill_hexagon(self, xx,yy):
+    def _fill_hexagon(self, xx, yy):
         """
         Note: we do everything in logical coords
         """
@@ -103,105 +99,98 @@ class HexagonGrid( ):
         #
         pxx = self.px+xx
         pyy = self.py+yy
-        pxy = zip( pxx.tolist(), pyy.tolist() )
-        pp = [ ",".join(map(str,p)) for p in pxy ]
-        pp = ",".join(pp)
-        rr = regParse("polygon({})".format(pp))
 
-        for iy in range( int(yy-self.sidelen), int(yy+self.sidelen+1)):
-            if iy < 0 or iy >= self.ly:
+        poly = polygon(pxx, pyy)
+
+        for iy in range(int(yy-self.sidelen), int(yy+self.sidelen+1)):
+            if iy < 0 or iy >= self.ylen:
                 continue
-            for ix in range( int(xx-self.sidelen), int(xx+self.sidelen+1)):
-                if ix < 0 or ix >= self.lx:
+            for ix in range(int(xx-self.sidelen), int(xx+self.sidelen+1)):
+                if ix < 0 or ix >= self.xlen:
                     continue
-            
-                if regInsideRegion( rr, ix, iy ):
-                    self.stipple[iy,ix] = self.counter
+
+                if poly.is_inside(ix, iy):
+                    self.stipple[iy, ix] = self.counter
 
     def make_map(self):
         """
         Create the hexagon map
-        
+
         The hexagon grid is created by looping over pixels in
         a box around each hexagon.  There are two offset rows
-        (stried) that need to be checked 
+        (stried) that need to be checked
         """
+        xdelta = 3 * self.sidelen
+        ydelta = 2 * self.sidelen * np.sin(np.deg2rad(60))
 
-        ##x0 = 0 # self.sidelen/2.0
-        ##y0 = 0 # self.sidelen/2.0
-        for yy in np.arange( self.y0-self.dy,self.ly+self.dy,self.dy):
-            for xx in np.arange( self.x0-self.dx, self.lx+self.dx,self.dx ):
+        for yy in np.arange(self.y0-ydelta, self.ylen+ydelta, ydelta):
+            for xx in np.arange(self.x0-xdelta, self.xlen+xdelta, xdelta):
                 # 1st stride
-                self._fill_hexagon(xx,yy)
+                self._fill_hexagon(xx, yy)
                 # 2nd stride
-                self._fill_hexagon(xx+1.5*self.sidelen, yy+self.dy/2.0)
-        
+                self._fill_hexagon(xx+1.5*self.sidelen, yy+ydelta/2.0)
+
         return self.stipple
 
 
-@lw.handle_ciao_errors( toolname, __revision__)
+@lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
+    'Main routine'
+
     # get parameters
     from ciao_contrib.param_soaker import get_params
-    from ciao_contrib.runtool import dmmaskbin
-    from ciao_contrib.runtool import add_tool_history
-
     # Load parameters
-    pars = get_params(toolname, "rw", sys.argv, 
-        verbose={"set":lw.set_verbosity, "cmd":verb1} )
+    pars = get_params(__toolname__, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": verb1})
 
     from ciao_contrib._tools.fileio import outfile_clobber_checks
-    outfile_clobber_checks(pars["clobber"], pars["outfile"] )
-    outfile_clobber_checks(pars["clobber"], pars["binimg"] )
+    outfile_clobber_checks(pars["clobber"], pars["outfile"])
+    outfile_clobber_checks(pars["clobber"], pars["binimg"])
 
     #
     # Load image, don't care about the pixel values, just image size
     #
-    inimg = MaskedIMAGECrate(pars["infile"],mode="r")
+    inimg = MaskedIMAGECrate(pars["infile"], mode="r")
     xx = inimg.get_image().values
-    ly = len(xx)
-    lx = len(xx[0])
+    ylen = len(xx)
+    xlen = len(xx[0])
 
     #
     # Create full map
     #
-    hh = HexagonGrid( float(pars["sidelen"]), lx, ly, float(pars["xref"]), float(pars["yref"]) )
-    stipple = hh.make_map()
+    hexmap = HexagonGrid(float(pars["sidelen"]), xlen, ylen,
+                         float(pars["xref"]), float(pars["yref"]))
+    stipple = hexmap.make_map()
 
     #
     # Check pixels in image are inside subspace
     #
-    for _ix in range(lx):
-        for _iy in range(ly):
-            if not inimg.valid(_ix,_iy):
+    for _ix in range(xlen):
+        for _iy in range(ylen):
+            if not inimg.valid(_ix, _iy):
                 stipple[_iy][_ix] = 0
 
+    # Write output
+    if os.path.exists(pars["outfile"]):
+        os.remove(pars["outfile"])
 
-    #
-    # Want to use pycrates to write, but doesn't support linear wcs
-    #
-    if os.path.exists( pars["outfile"] ):
-        os.remove( pars["outfile"])
+    inimg.get_image().values = stipple
+    inimg.name = "HEXMAP"
+    inimg.write(pars["outfile"], clobber=True)
 
-    dm_img = dmImageOpen(pars["infile"]+"[opt type=i4]")
-    out_img = dmBlockCreateCopy( dmDatasetCreate(pars["outfile"]), "HEXMAP", dm_img)
-    out_dd = dmImageGetDataDescriptor( out_img )
-    dmImageSetData( out_dd, stipple )
-    dmImageClose( out_img )
-    dmImageClose( dm_img)
-    add_tool_history( pars["outfile"], toolname, pars, toolversion=__revision__)
+    from ciao_contrib.runtool import add_tool_history
+    add_tool_history(pars["outfile"], __toolname__, pars,
+                     toolversion=__revision__)
 
-    if len(pars["binimg"])>0 and "none" != pars["binimg"].lower():
-        dmmaskbin( pars["infile"], pars["outfile"]+"[opt type=i4]", pars["binimg"], clobber=True)
-        add_tool_history( pars["binimg"], toolname, pars, toolversion=__revision__)
-
+    # Apply to input image
+    if len(pars["binimg"]) > 0 and "none" != pars["binimg"].lower():
+        # pylint: disable=no-name-in-module
+        from ciao_contrib.runtool import dmmaskbin
+        dmmaskbin(pars["infile"], pars["outfile"]+"[opt type=i4]",
+                  pars["binimg"], clobber=True)
+        add_tool_history(pars["binimg"], __toolname__, pars,
+                         toolversion=__revision__)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as E:
-        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
-        sys.exit(1)
-    sys.exit(0)
-
+    main()
