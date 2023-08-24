@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2019-2020 Smithsonian Astrophysical Observatory
+# Copyright (C) 2019-2020, 2023
+# Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,11 +26,11 @@ import numpy as np
 import ciao_contrib.logger_wrapper as lw
 from pycrates import read_file
 
-TOOLNAME = "centroid_map"
-__REVISION__ = "25 February 2020"
+__TOOLNAME__ = "centroid_map"
+__REVISION__ = "24 August 2023"
 
 
-LGR = lw.initialize_logger(TOOLNAME)
+LGR = lw.initialize_logger(__TOOLNAME__)
 VERB0 = LGR.verbose0
 VERB1 = LGR.verbose1
 VERB2 = LGR.verbose2
@@ -68,9 +69,6 @@ class InputImage():
         func = self._map_scale_function(scale)
         self.imgvals = func(self.imgvals)
 
-        ##self.imgvals = np.sqrt(np.abs(self.imgvals))
-        ##self.imgvals = self.imgvals**2
-
         self.xlen = self.imgvals.shape[1]
         self.ylen = self.imgvals.shape[0]
 
@@ -91,13 +89,16 @@ class InputImage():
     @staticmethod
     def _map_scale_function(scale):
         'Map scaling function to numpy function'
-        
+
+        def square(x):
+            return x*x
+
         if 'linear' == scale:
             func = np.abs
         elif 'sqrt' == scale:
             func = np.sqrt
         elif 'squared' == scale:
-            func = lambda x: x*x
+            func = square
         elif 'asinh' == scale:
             func = np.arcsinh
         else:
@@ -138,36 +139,12 @@ def centroid_map(mapfile, img, outfile):
     img.write_new_sites(outvals, outfile)
 
 
-def make_tool_vtbin():
-    'replace with `make_tool` when vtbin is available'
-
-    import ciao_contrib.runtool as rt
-    newtool = {
-        'istool': True,
-        'req': [
-                rt.ParValue("infile", "f", "input image", None),
-                rt.ParValue("outfile", "f", "output filename", None),
-               ],
-        'opt': [
-                rt.ParValue("binimg", "f", "output bin image name", None),
-                rt.ParValue("shape", "s", "shape for local max", "box"),
-                rt.ParValue("radius", "r", "radius of local max", 2.5),
-                rt.ParValue("sitefile", "f", "Input site file", None),
-                rt.ParValue("clobber", "b", "Overwrite if file exists", False),
-                rt.ParRange("verbose", "i", "Debug level", 0, 0, 5)
-               ]}
-    gfm = rt.CIAOToolParFile("vtbin", newtool["req"], newtool["opt"])
-    return gfm
-
-
-@lw.handle_ciao_errors(TOOLNAME, __REVISION__)
+@lw.handle_ciao_errors(__TOOLNAME__, __REVISION__)
 def main():
     'Main routine'
     # Load parameters
     from ciao_contrib.param_soaker import get_params
-    from ciao_contrib.runtool import dmcopy
-
-    pars = get_params(TOOLNAME, "rw", sys.argv,
+    pars = get_params(__TOOLNAME__, "rw", sys.argv,
                       verbose={"set": lw.set_verbosity, "cmd": VERB1})
 
     infile = pars["infile"]
@@ -185,7 +162,9 @@ def main():
     img = InputImage(infile, scale=pars["scale"])
 
     # Compute tessellation
-    vtbin = make_tool_vtbin()
+    from ciao_contrib.runtool import dmcopy
+    from ciao_contrib.runtool import vtbin
+
     mapfile = CIAOTemporaryFile()
     vtbin(infile=infile, outfile=mapfile.name, site=sitefile, clobber=True)
 
@@ -194,43 +173,36 @@ def main():
 
     # Loop of iterations
     for niter in range(numiter):
-        VERB1("Working iteration {}".format(niter))
+        VERB1(f"Working iteration {niter}")
         # Compute centroid in each voronoi cell
         sitefile = CIAOTemporaryFile()
         centroid_map(mapfile.name, img, sitefile.name)
 
-        # compute tesselation to create new voronoi cells
+        # compute tessellation to create new voronoi cells
         mapfile = CIAOTemporaryFile()
         vtbin(infile=infile, outfile=mapfile.name, site=sitefile.name,
               clobber=True)
 
         # check to see if no change (converged) then exit
         newvals = read_file(mapfile.name).get_image().values.copy()
-        diff = np.argwhere(np.equal(oldvals, newvals) == False)
+        diff = np.argwhere(np.not_equal(oldvals, newvals))
         oldvals = newvals
-        VERB2("Number of pixels different: {}".format(len(diff)))
-        if 0 == len(diff):
-            VERB0("Converged at step {}. Done.".format(niter))
+        ndiff = len(diff)
+        VERB2(f"Number of pixels different: {ndiff}")
+        if 0 == ndiff:
+            VERB0(f"Converged at step {niter}. Done.")
             break
 
         if int(pars["verbose"]) >= 2:
-            dmcopy(sitefile.name, outfile+f".i{niter:03d}",clobber=True)
-
+            dmcopy(sitefile.name, outfile+f".i{niter:03d}", clobber=True)
 
     # Rename last temp file to final output file
-    from ciao_contrib.runtool import dmcopy
-    dmcopy(mapfile.name+"[1][centroid_map]", outfile, clobber=True)
+    dmcopy(mapfile.name+"[1][CENTROID_MAP]", outfile, clobber=True)
 
     # Add history
     from ciao_contrib.runtool import add_tool_history
-    add_tool_history(outfile, TOOLNAME, pars, toolversion=__REVISION__)
+    add_tool_history(outfile, __TOOLNAME__, pars, toolversion=__REVISION__)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as E:
-        print("\n# "+TOOLNAME+" ("+__REVISION__+"): ERROR "+str(E)+"\n",
-              file=sys.stderr)
-        sys.exit(1)
-    sys.exit(0)
+    main()
