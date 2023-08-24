@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+<ENTRY 
+        context="tools" 
+        key="pathfinder" 
+        refkeywords="gradient ascent steep steepest map mask adaptive bin group max tessellation" 
+        seealsogroups="dmimgtools"
+    >
+    <SYNOPSIS>
+       Group pixels by steepest gradient ascent to local maximum
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+        For each pixel, identify the maximum neighboring pixel.  Those form a group.
+        Continue from that maximum to identify it's maximum neighbor which
+        is then added to the group and so on.    When the algorithm finds a
+        local maximum which already belongs to a group, the new group is
+        abandoned and the pixels are added to the existing group. The process 
+        is repeated until the pixel being processed is the local maximum.
+        </PARA>
+        <PARA>
+        The input image should be modestly smoothed such that the 
+        local maxima are statistically significant.        
+        </PARA>
+        <PARA>
+        This algorithm can be helpful to separate region based on the 
+        "saddle-point" (where the gradient goes to zero).  For example it
+        helps find the natural separation point between point-likes sources
+        with different intensities (or different extent); rather than
+        simply using the mid-point between them, it uses the gradient
+        to assign pixel ownership to one-or-the-other.        
+        </PARA>
+
+    </DESC>
+
+     <QEXAMPLELIST>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+                % pathfinder smoothed.img out.map 
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+            The smoothed infile, smoothed.img, is processed through 
+            the path-finding algorithm.  The outfile, out.map, 
+            contains the group ID for each local maxima.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+                % pathfinder smoothed.img out.map direction=perpendicular
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+            Same as above; however this time restrict the search for
+            neighboring maxima to only 4 pixels: top, bottom, left, right.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+     </QEXAMPLELIST>
+
+     <PARAMLIST>
+        <PARAM name="infile" type="file" filetype="input" reqd="yes">
+            <SYNOPSIS>
+            Input image.
+            </SYNOPSIS>
+            <DESC>
+            <PARA>The image to be grouped.  Generally this 
+            algorithm works better if it is moderately smoothed.
+            </PARA>
+            <PARA>
+            Null  and NaN pixels, as well as those pixels outside the
+            image subspace will not be grouped.
+            </PARA>
+          </DESC>
+        </PARAM>
+
+        <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+          <SYNOPSIS>
+            Output map file
+          </SYNOPSIS>
+          <DESC>
+            <PARA>
+              The outfile is a map file containing integer pixel values.
+              The pixel values indicate which pixels are grouped
+              together by the algorithm.  A pixel value of 0 are pixels
+              which are ungrouped (ie outside the image subspace or below minval).           
+            </PARA>
+          </DESC>
+        </PARAM>
+
+<!--
+        <PARAM name="binimg" type="file" filetype="output">
+          <SYNOPSIS>Optional, output binned image</SYNOPSIS>
+          <DESC>
+            <PARA>
+                If the binimg file is specified, the script
+                will use the input image and the output map file to
+                create a binned version of the input image.
+            </PARA>          
+          </DESC>
+        </PARAM>
+-->
+
+        <PARAM name="minval" type="real" def="0">
+          <SYNOPSIS>
+          Minimum pixel value to group
+          </SYNOPSIS>
+          <DESC>
+            <PARA>
+            Pixels values less than minval will be left ungrouped.
+            </PARA>
+          </DESC>
+        </PARAM>
+
+        <PARAM name="direction" type="string" def="diagonal">
+          <SYNOPSIS>Direction to follow gradient: perpendicular or diagonal</SYNOPSIS>
+          <DESC>
+            <PARA>
+            When searching for the neighboring pixel with the maximum 
+            value, the tool will just consider just the 4 perpendicular
+            pixels (top, bottom, left, right) of the current pixel, 
+            or can consider all 8 adjacent pixels including the diagonal
+            pixels.            
+            </PARA>
+          </DESC>
+        </PARAM>
+
+
+        <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+            <SYNOPSIS>
+            Amount of chatter from the tool.
+            </SYNOPSIS>
+        </PARAM>
+        
+        <PARAM name="clobber" type="boolean" def="no">
+            <SYNOPSIS>
+            Delete outfile if it already exists?
+            </SYNOPSIS>
+        </PARAM>
+    </PARAMLIST>
+
+
+    <BUGS>
+        <PARA>
+            See the
+            <HREF link="http://cxc.harvard.edu/ciao/bugs/index.html">CIAO
+            website</HREF> for an up-to-date listing of known bugs.
+        </PARA>
+    </BUGS>
+    <LASTMODIFIED>January 2019</LASTMODIFIED>
+</ENTRY>
+</cxchelptopics>
