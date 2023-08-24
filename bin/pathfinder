@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2017 Smithsonian Astrophysical Observatory
+# Copyright (C) 2017, 2023 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -17,41 +17,43 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from __future__ import print_function
-import os
+'Group pixels together based on steepest assent'
+
+
 import sys
 
-
-
-toolname = "pathfinder"
-__revision__ = "27 June 2017"
-
-
 import ciao_contrib.logger_wrapper as lw
-lgr = lw.initialize_logger(toolname)
-verb0 = lgr.verbose0
-verb1 = lgr.verbose1
-verb2 = lgr.verbose2
-verb3 = lgr.verbose3
-verb5 = lgr.verbose5
 
+__toolname__ = "pathfinder"
+__revision__ = "24 August 2023"
+
+__lgr__ = lw.initialize_logger(__toolname__)
+verb0 = __lgr__.verbose0
+verb1 = __lgr__.verbose1
+verb2 = __lgr__.verbose2
+verb3 = __lgr__.verbose3
+verb5 = __lgr__.verbose5
 
 
 class PathFinderBase():
-    
-    def __init__(self, infile, debugfile ):
+    'Base class for pathfinder objects'
+
+    neighborhood = None
+
+    def __init__(self, infile, debugfile):
         """
-        
+        load data and do setup
         """
 
         # Load the input image file
-        from pycrates import read_file
-        self.crate = read_file(infile)
-        self.img = self.crate.get_image().values        
+        from crates_contrib.masked_image_crate import MaskedIMAGECrate
+
+        self.crate = MaskedIMAGECrate(infile)
+        self.img = self.crate.get_image().values
         self.xlen = self.img.shape[1]
         self.ylen = self.img.shape[0]
 
-        # Create the 
+        # Create the
         self.maxid = 0
         self.cell_list = {}
 
@@ -61,20 +63,19 @@ class PathFinderBase():
         # Init the debugregion file, if any
         self.init_debugfile(debugfile)
 
-
     def init_debugfile(self, debugfile):
         """Setup the debug region file file"""
 
-        if debugfile.lower().strip() in ["","none"]:
+        if debugfile.lower().strip() in ["", "none"]:
             self.fp = None
             return
 
-        self.fp = open(debugfile,"w") #NB:  Clobber is done in the main routine 
+        # NB:  Clobber is done in the main routine
+        self.fp = open(debugfile, "w")
 
         self.fp.write('# Region file format: DS9 version 4.1\n')
         self.fp.write('global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1\n')
         self.fp.write('image\n')  # Yes, image coordinates -- just easier!
-
 
     def __del__(self):
         """
@@ -83,180 +84,159 @@ class PathFinderBase():
         if self.fp is not None:
             self.fp.close()
 
-        
-
-    def find_peak( self, xx, yy ):
+    def find_peak(self, xx, yy):
         """
         From the starting location we follow the gradient up to the
         local maximum.
-        
+
         Since we know all these pixels will follow the same gradient, we
-        return the entire path to the max so that we can set all the 
+        return the entire path to the max so that we can set all the
         pixels along the way to the same cell.
         """
 
         # Starting location
-        xmax = xx  
-        ymax = yy  
+        xmax = xx
+        ymax = yy
         maxval = self.img[ymax][xmax]
 
-        _path = [ (xmax,ymax) ]
-            
+        _path = [(xmax, ymax)]
+
         while True:
             imax = None
             jmax = None
 
-            for ii,jj in self.neighborhood:
+            for ii, jj in self.neighborhood:
                 yat = ymax+jj
-                if (yat < 0) or (yat >= self.ylen):  continue
-                
+                if (yat < 0) or (yat >= self.ylen):
+                    continue
+
                 xat = xmax+ii
-                if (xat < 0) or (xat >= self.xlen):  continue
+                if (xat < 0) or (xat >= self.xlen):
+                    continue
 
                 if self.img[yat][xat] > maxval:
                     imax = ii
                     jmax = jj
                     maxval = self.img[yat][xat]
-                        
+
             if imax is None:
                 # max didn't move, we're done
                 return _path
-            else:
-                xmax = xmax + imax
-                ymax = ymax + jmax
-                _path.append( (xmax,ymax) )
 
+            xmax = xmax + imax
+            ymax = ymax + jmax
+            _path.append((xmax, ymax))
 
-    def get_cellid( self, max_loc ):
-        """ 
+    def get_cellid(self, max_loc):
+        """
         Get the cellid for the current local maximum location.  If it
         doesn't already exist, then add it to the list and increment
         counter.
         """
-        if ( max_loc not in self.cell_list ):
-            self.maxid = self.maxid +1
+        if max_loc not in self.cell_list:
+            self.maxid = self.maxid + 1
             self.cell_list[max_loc] = self.maxid
-        
+
         return self.cell_list[max_loc]
 
-
-    def paint( self, minval ):
+    def paint(self, minval):
         """
-        
+        Loop over pixels and assign to group based on steepest assent.
         """
-        import numpy as np
 
         for yy in range(self.ylen):
-            for xx in range(self.xlen):                
+            for xx in range(self.xlen):
                 # check threshold value
-                if (self.img[yy][xx] <= minval): 
+                if self.img[yy][xx] <= minval:
                     self.out[yy][xx] = 0
                     continue
-                if np.isnan( self.img[yy][xx] ): 
+
+                if not self.crate.valid(xx, yy):
                     self.out[yy][xx] = 0
                     continue
 
                 # check, if point already processed
-                if (self.out[yy][xx] > 0 ) : continue
-   
-                path = self.find_peak( xx, yy )
+                if self.out[yy][xx] > 0:
+                    continue
+
+                path = self.find_peak(xx, yy)
 
                 self._debug(path)
 
-                # Set all pixels along the path to the 
+                # Set all pixels along the path to the
                 # cellid associated with the max (the max is the
                 # last point in the path.
-                for px,py in path:
-                    if (self.out[py][px] > 0) : break
-                    self.out[py][px] = self.get_cellid( path[-1] )
+                for px, py in path:
+                    if self.out[py][px] > 0:
+                        break
+                    self.out[py][px] = self.get_cellid(path[-1])
 
-
-    def write( self, outfile, clobber=True ):
+    def write(self, outfile, clobber=True):
         """
         Write output. Uses the input crate and just replaces the
         pixel values.
-
-        TODO: creator keyword(?)
-        """        
+        """
         self.crate.get_image().values = self.out.astype("i4")
-        self.crate.write(outfile, clobber=clobber )
+        self.crate.name = "PATHMAP"
+        self.crate.write(outfile, clobber=clobber)
 
-
-    def _debug(self,path):
+    def _debug(self, path):
         """
         Write out a ds9 region file
         """
         if self.fp is None:
             return
 
-        if len(path)>1:
-            pts = ""
-            for x,y in path:
-                pts = pts + "{},{},".format(x+1,y+1)
-            self.fp.write( "# segment({})\n".format(pts[:-1]))
+        if len(path) > 1:
+            pts = [f"{x+1}, {y+1}" for x, y in path]
+            pts = ",".join(pts)
+            self.fp.write(f"# segment({pts})\n")
         else:
-            self.fp.write("point({},{}) # point=circle\n".format(path[0][0]+1,path[0][1]+1))\
+            self.fp.write(f"point({path[0][0]+1}, {path[0][1]+1}) # point=circle\n")
 
-        
 
 class PathFinderPerpendicular(PathFinderBase):
     """
     Only allow the gradient search to occur in perpendicular directions.
     """
-    neighborhood = [[-1,0],[0,1],[1,0],[0,-1]]
+    neighborhood = [[-1, 0], [0, 1], [1, 0], [0, -1]]
+
 
 class PathFinderDiagonal(PathFinderBase):
     """
     Allow the gradient search in perpendicular or diagonal directions.
     """
-    neighborhood = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]
+    neighborhood = [[-1, -1], [-1, 0], [-1, 1], [0, -1],
+                    [0, 1], [1, -1], [1, 0], [1, 1]]
 
 
-@lw.handle_ciao_errors( toolname, __revision__)
+@lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
+    """Main routine
     """
-    """
-    # get parameters
-    from ciao_contrib.param_soaker import get_params
-    from ciao_contrib.runtool import add_tool_history
 
     # Load parameters
-    pars = get_params(toolname, "rw", sys.argv, 
-        verbose={"set":lw.set_verbosity, "cmd":verb1} )
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(__toolname__, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": verb1})
 
     from ciao_contrib._tools.fileio import outfile_clobber_checks
-    outfile_clobber_checks(pars["clobber"], pars["outfile"] )
-    outfile_clobber_checks(pars["clobber"], pars["debugreg"] )
+    outfile_clobber_checks(pars["clobber"], pars["outfile"])
+    outfile_clobber_checks(pars["clobber"], pars["debugreg"])
 
     if "diagonal" == pars["direction"].strip().lower():
-        img = PathFinderDiagonal( pars["infile"], pars["debugreg"] )
+        img = PathFinderDiagonal(pars["infile"], pars["debugreg"])
     elif "perpendicular" == pars["direction"].strip().lower():
-        img = PathFinderPerpendicular( pars["infile"], pars["debugreg"] )
+        img = PathFinderPerpendicular(pars["infile"], pars["debugreg"])
     else:
-        raise ValueError("Unknown value for direction '{}'".format(pars["direction"]))
-    
-    img.paint( float( pars["minval"]))
-    img.write( pars["outfile"] )
-    add_tool_history( pars["outfile"], toolname, pars, toolversion=__revision__)
-    
- 
-   
+        raise ValueError("Unknown value for direction '{pars['direction']}'")
+
+    img.paint(float(pars["minval"]))
+    img.write(pars["outfile"])
+    from ciao_contrib.runtool import add_tool_history
+    add_tool_history(pars["outfile"], __toolname__, pars,
+                     toolversion=__revision__)
+
+
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as E:
-        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
-        sys.exit(1)
-    sys.exit(0)
-
-
-
-
-
-
-
-
-
-
-
-
+    main()
