@@ -2600,7 +2600,7 @@ parinfo['apowerspectrum'] = {
 parinfo['apply_fov_limits'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input event file",None),ParValue("outfile","f","Output image",None)],
-    'opt': [ParRange("binsize","r","Image binning factor",None,0,None),ParValue("fovfile","f","Input FOV file",None),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Debug Level (0-5)",1,0,5)],
+    'opt': [ParRange("binsize","r","Image binning factor",None,0,None),ParValue("fovfile","f","Input FOV file",None),ParSet("datatype","s","Data type for outfile",'i4',["i2","i4"]),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Debug Level (0-5)",1,0,5)],
     }
 
 
