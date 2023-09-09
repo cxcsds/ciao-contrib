@@ -29,10 +29,11 @@ import numpy as np
 
 from ciao_contrib.runtool import make_tool
 import ciao_contrib.logger_wrapper as lw
+from region import CXCRegion
+
 
 __toolname__ = "map2reg"
-__revision__ = "28 August 2023"
-
+__revision__ = "09 September 2023"
 
 __lgr__ = lw.initialize_logger(__toolname__)
 verb0 = __lgr__.verbose0
@@ -51,11 +52,15 @@ def set_nproc(pars):
 
     if "no" == pars["parallel"]:
         pars["nproc"] = 1
+        return
+
+    if pars["nproc"] == "INDEF":
+        # parallel_map doesn't limit to number of CPU's like 
+        # taskRunner does so we have to set the actual number
+        import multiprocessing
+        pars["nproc"] = multiprocessing.cpu_count()
     else:
-        if pars["nproc"] != "INDEF":
-            pars["nproc"] = int(pars["nproc"])
-        else:
-            pars["nproc"] = 999   # Hack, else history gets stuck with a pset
+        pars["nproc"] = int(pars["nproc"])
 
 
 def get_region(n_at):
@@ -77,7 +82,7 @@ def get_region(n_at):
     ypos, xpos = pixels[0] + 1  # Image coords are +1 from array index
 
     tmpfile = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
-                                 suffix="lasso.reg", delete=False)
+                                 suffix="lasso.reg", delete=True)
 
     lasso = make_tool("dmimglasso")
     lasso.infile = infile
@@ -91,7 +96,12 @@ def get_region(n_at):
     lasso.ypos = ypos
     lasso()
 
-    return lasso.outfile
+    lasso_reg = CXCRegion(tmpfile.name)
+
+    # CXCRegion object's can't be pickled so we have to pass back the
+    # string representation.
+
+    return str(lasso_reg)
 
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
@@ -126,20 +136,23 @@ def main():
     outreg = parallel_map(get_region, uniq_vals,
                           numcores=int(pars["nproc"]))
 
-    # Combine into single region file
-    from region import CXCRegion
-    allout = CXCRegion()
-    for myreg in outreg:
-        if myreg is None:
-            continue
+    # Original version adding CXCRegion objects, but it ended up
+    # consuming a huge amount of memory and was slow.  Writing to
+    # an ASCII region file and then reading back in as a single
+    # CXCRegion is much faster
 
-        parsed_reg = CXCRegion(myreg)
-        allout += parsed_reg
-        os.unlink(myreg)  # Delete along the way
+    # Combine into single region file
+    tmpfile = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
+                                 suffix=".reg", delete=True)
+    with open(tmpfile.name, "w") as outfile:
+        for myreg in outreg:
+            outfile.write(myreg+"\n")
 
     # Write output
+    myreg = CXCRegion(tmpfile.name)
+    myreg.write(pars["outfile"], fits=True, clobber=True)
+
     from ciao_contrib.runtool import add_tool_history
-    allout.write(pars["outfile"], fits=True, clobber=True)
     add_tool_history(pars["outfile"], __toolname__, pars,
                      toolversion=__revision__)
 
