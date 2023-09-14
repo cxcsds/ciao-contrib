@@ -27,7 +27,7 @@ Routines to support the specextract tool.
 
 __modulename__ = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "18 January 2023"
+__revision__ = "16 June 2023"
 
 import os
 import sys
@@ -1513,14 +1513,19 @@ class ParDicts(object):
                 # input to create_arf_*.
 
                 if asolstat:
+                    kw = fileio.get_keys_from_file(f"{filename}[#row=0]")
+                    
                     try:
-                        obsid = fileio.get_keys_from_file(f"{filename}[#row=0]")["OBS_ID"]
+                        obsid = kw["OBS_ID"]
                         asol_arg = asp_stk[f"{obsid}"]
 
                         if "," in asol_arg:
                             asol_arg = asol_arg.split(",")
                     except KeyError:
                         asol_arg = None
+
+                        if obsid == "0" or kw["DATACLAS"].lower() == "simulated":
+                            asol_arg = utils.getUniqueSynset(asp_stk.values())
 
                 if ahiststat:
                     # set asol_arg for get_resp_pos

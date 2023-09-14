@@ -33,7 +33,7 @@ Script:
 
 __version__ = "CIAO 4.15"
 __toolname__ = "specextract"
-__revision__ = "18 August 2023"
+__revision__ = "XX June 2023"
 
 ##########################################################################
 #
@@ -292,7 +292,7 @@ def create_arf_ps(full_outroot, evt_filename, asp_param, ebin,
     to mkrmf, which is the FEF-file-finding method to use for creating
     unweighted RMFs.  Return the name of the ARF and FEF file.
     """
-
+    
     mkarf = make_tool("mkarf")
 
     # generate mkarf 'detsubsys' keyword
@@ -710,7 +710,7 @@ def create_hrc_resp(specfile,rmf_file,full_outroot,
 
 
 
-def set_badpix(evtfile, bpixfile, instrument, verbose):
+def set_badpix(evtfile, bpixfile, instrument, verbose, dobpix):
     """
     set a different bad pixel file in ARDLIB for each
     observation in an input source or background stack
@@ -724,38 +724,48 @@ def set_badpix(evtfile, bpixfile, instrument, verbose):
 
     ardlib.read_params()
 
-    if instrument == "ACIS":
-        bpixfile = ",".join(stk.build(bpixfile))
+    if dobpix:
+        if instrument == "ACIS":
+            bpixfile = ",".join(stk.build(bpixfile))
 
-        acis_set_ardlib.punlearn()
+            acis_set_ardlib.punlearn()
 
-        acis_set_ardlib.badpixfile = bpixfile
-        acis_set_ardlib.verbose = verbose
+            acis_set_ardlib.badpixfile = bpixfile
+            acis_set_ardlib.verbose = verbose
 
-        acis_set_ardlib()
-        ardlib.write_params()
-
-        try:
             acis_set_ardlib()
-            #print(f"Updated ARDLib: {ardlib}") # verify for testing
-        except OSError as exc:
-            raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.") from exc
-
-    else:
-        detnam = fileio.get_keys_from_file(evtfile)["DETNAM"].replace("-","_")
-        bpixpar = f"AXAF_{detnam}_BADPIX_FILE"
-        bpix = f"{bpixfile}[BADPIX]"
-
-        try:
-            setattr(ardlib,bpixpar,bpix)
             ardlib.write_params()
 
-        finally:
-            if not os.path.isfile(bpixfile) or getattr(ardlib,bpixpar).replace("[BADPIX]","") != bpixfile:
-                raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.")
+            try:
+                acis_set_ardlib()
+                #print(f"Updated ARDLib: {ardlib}") # verify for testing
+            except OSError as exc:
+                raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.") from exc
+            
+        else:
+            detnam = fileio.get_keys_from_file(evtfile)["DETNAM"].replace("-","_")
+            bpixpar = f"AXAF_{detnam}_BADPIX_FILE"
+            bpix = f"{bpixfile}[BADPIX]"
+
+            try:
+                setattr(ardlib,bpixpar,bpix)
+                ardlib.write_params()
+
+            finally:
+                if not os.path.isfile(bpixfile) or getattr(ardlib,bpixpar).replace("[BADPIX]","") != bpixfile:
+                    raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.")
+
+    else:
+        setattr(ardlib,f"AXAF_HRC_I_BADPIX_FILE","NONE")
+        setattr(ardlib,f"AXAF_HRC_S_BADPIX_FILE","NONE")
+
+        for ccd in range(10):                 
+            setattr(ardlib,f"AXAF_ACIS{ccd}_BADPIX_FILE","NONE")                
+
+        ardlib.write_params()
 
 
-
+        
 def convert_region(infile, evt_filename, outfile, clobber, verbose):
     """
     Convert user-input source/background regions to physical coordinates, in
@@ -1085,11 +1095,10 @@ def build_acis_arf(args):
 
     tdetwmap = args["tdetwmap"]
 
-    if dobpix:
-        try:
-            bpix = args["bpix"]
-        except KeyError:
-            bpix = None
+    try:
+        bpix = args["bpix"]
+    except KeyError:
+        bpix = None
 
     try:
         da = args["da"]
@@ -1108,8 +1117,7 @@ def build_acis_arf(args):
     ###########################
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
-        if dobpix:
-            set_badpix(filename,bpix,instrument,verbose)
+        set_badpix(filename, bpix, instrument, verbose, dobpix)
 
         infostr = f"Creating {srcbkg} ARF {iteminfostr}"
 
@@ -1203,9 +1211,8 @@ def build_acis_rmf(args):
     ###########################
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
-        if dobpix:
-            set_badpix(filename,bpix,instrument,verbose)
-
+        set_badpix(filename, bpix, instrument, verbose, dobpix)
+            
         infostr = f"Creating {srcbkg} RMF {iteminfostr}"
 
         if null_rmffile:
@@ -1264,11 +1271,10 @@ def spectra(args):
 
     outreg = args["outreg"]
 
-    if dobpix:
-        try:
-            bpix = args["bpix"]
-        except KeyError:
-            bpix = None
+    try:
+        bpix = args["bpix"]
+    except KeyError:
+        bpix = None
 
     try:
         nrao_nh = args["nrao_nh"]
@@ -1289,8 +1295,9 @@ def spectra(args):
 
         if dobpix:
             v3(f"Setting bad pixel file for {srcbkg} {iteminfostr}")
-            set_badpix(filename, bpix, instrument, verbose)
 
+        set_badpix(filename, bpix, instrument, verbose, dobpix)
+            
         #####################################
         #
         # convert source region to physical
@@ -1408,8 +1415,9 @@ def spectra(args):
 
                 v1(f"{phafile} AREASCAL keyword set to the inverse of the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling or for background subtraction.")
 
+                #edit_headers(verbose, phafile, "AREASCAL", bkgscale, comment=f"blanksky BKGSCAL{ccdid} scaling factor from the 'blanksky' script, set to 1.0 if subtracting background")
                 
-#                v1(f"{phafile} AREASCAL keyword set to the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling.  Set AREASCAL to 1.0 if 'blanksky' spectrum is being used for background subtraction.")
+                #v1(f"{phafile} AREASCAL keyword set to the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling.  Set AREASCAL to 1.0 if 'blanksky' spectrum is being used for background subtraction.")
 
     try:
         return pardict
@@ -1440,11 +1448,10 @@ def _resps_preprocess_wrapper(args_dict):
         asphist = args_dict["asphist"]
         asolstat = False
 
-    if dobpix:
-        try:
-            bpix = args_dict["bpix"]
-        except KeyError:
-            bpix = None
+    try:
+        bpix = args_dict["bpix"]
+    except KeyError:
+        bpix = None
 
     try:
         dtf = args_dict["dtf"]
@@ -1454,9 +1461,8 @@ def _resps_preprocess_wrapper(args_dict):
     kdict = {}
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
-        if dobpix:
-            set_badpix(filename,bpix,instrument,verbose)
-
+        set_badpix(filename, bpix, instrument, verbose, dobpix)
+        
         if asolstat:
             #########################################
             #
@@ -1523,12 +1529,12 @@ def _build_resps(args):
     verbose = args["verbose"]
     iteminfostr = args["iteminfostr"]
 
-    if dobpix:
-        try:
-            bpix = args["bpix"]
-        except KeyError:
-            bpix = None
+    try:
+        bpix = args["bpix"]
 
+    except KeyError:
+        bpix = None
+            
     try:
         dtf = args["dtf"]
     except KeyError:
@@ -1541,6 +1547,11 @@ def _build_resps(args):
 
     try:
         msk = args["msk"]
+
+        if msk in ["", None]:
+            msk = "NONE"
+            args["msk"] = "NONE"
+        
     except KeyError:
         msk = None
 
@@ -1555,8 +1566,7 @@ def _build_resps(args):
         rmffile = args["rmffile"]
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
-        if dobpix:
-            set_badpix(filename,bpix,instrument,verbose)
+        set_badpix(filename, bpix, instrument, verbose, dobpix)
 
         if instrument == "ACIS":
 
