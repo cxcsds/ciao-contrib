@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 #
-#  Copyright (C) 2014, 2015, 2016, 2020  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2014, 2015, 2016, 2020, 2023
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -60,7 +61,7 @@ import ciao_contrib._tools.obsinfo as obsinfo
 import ciao_contrib._tools.utils as utils
 
 toolname = "apply_fov_limits"
-version = "01 April 2020"
+version = "08 September 2023"
 
 lw.initialize_logger(toolname)
 
@@ -93,10 +94,11 @@ def process_command_line(argv):
     if binsizestr != 'INDEF':
         binsize = pio.pgetd(fp, "binsize")
         if binsize <= 0:
-            raise ValueError("binsize={} is not valid, ".format(binsizestr) +
+            raise ValueError(f"binsize={binsizestr} is not valid, "
                              "it must be a number greater than zero.")
 
     fovfile = pio.pget(fp, "fovfile")
+    datatype = pio.pget(fp, "datatype")
     tmpdir = pio.pget(fp, "tmpdir")
     tmpdir = utils.process_tmpdir(tmpdir)
 
@@ -114,6 +116,7 @@ def process_command_line(argv):
     return {"infile": infile,
             "outfile": outfile,
             "fovfile": fovfile,
+            "datatype": datatype,
             "binsize": binsizestr,
             "clobber": clobber,
             "verbose": verbose,
@@ -124,17 +127,17 @@ def process_command_line(argv):
 def display_start_info(opts):
     "Display startup information to users"
 
-    v1("Running: {0}".format(toolname))
-    v1("  version: {0}".format(version))
+    v1(f"Running: {toolname}")
+    v1(f"  version: {version}")
 
     v2("with parameters:")
-    v2("  infile={0}".format(opts["infile"]))
-    v2("  outfile={0}".format(opts["outfile"]))
-    v2("  binsize={0}".format(opts["binsize"]))
-    v2("  fovfile={0}".format(opts["fovfile"]))
-    v2("  tmpdir={0}".format(opts["tmpdir"]))
-    v2("  clobber={0}".format(opts["clobber"]))
-    v2("  verbose={0}".format(opts["verbose"]))
+    v2(f"  infile={opts['infile']}")
+    v2(f"  outfile={opts['outfile']}")
+    v2(f"  binsize={opts['binsize']}")
+    v2(f"  fovfile={opts['fovfile']}")
+    v2(f"  tmpdir={opts['tmpdir']}")
+    v2(f"  clobber={opts['clobber']}")
+    v2(f"  verbose={opts['verbose']}")
 
 
 @lw.handle_ciao_errors(toolname, version)
@@ -152,7 +155,7 @@ def apply_fov_limits(args):
     # then this will likely not pick up if the file exists.
     v3("Clobber check")
     if pars["clobber"] == "no" and fileio.check_valid_file(outfile):
-        raise IOError("outfile={} exists and clobber=no.".format(outfile))
+        raise IOError(f"outfile={outfile} exists and clobber=no.")
 
     # We need to know the instrument (ACIS/HRC), chips/ccds
     # that are on in this file, and (maybe) the ASOLFILE/MASKFILE
@@ -162,10 +165,10 @@ def apply_fov_limits(args):
     #
     v3("Processing input file")
     obs = obsinfo.ObsInfo(infile)
-    ostr = "ObsId {} - {}".format(obs.obsid, obs.detector)
+    ostr = f"ObsId {obs.obsid} - {obs.detector}"
     if obs.grating is not None and obs.grating != "NONE":
-        ostr += " grating={}".format(obs.grating)
-    v1("Observation: {}".format(ostr))
+        ostr += f" grating={obs.grating}"
+    v1(f"Observation: {ostr}")
 
     # Now we can validate the pixel size
     if binsizestr == 'INDEF':
@@ -183,7 +186,7 @@ def apply_fov_limits(args):
             raise ValueError("binsize should be a number or INDEF, " +
                              "not '{}'".format(binsizestr))
 
-    v2("binsize = {}".format(binsize))
+    v2(f"binsize = {binsize}")
 
     # Should the chip range be accessed from the subspace? This won't
     # work for spatially-filtered files though, so for now just find
@@ -192,51 +195,59 @@ def apply_fov_limits(args):
     chipname = obs.get_chipname()
     chips = fluximage.get_unique_vals(infile, chipname)
     if chips is None:
-        raise IOError("Unable to find a {} column in {} ".format(chipname,
-                                                                 infile) +
-                      "(or the file is empty).")
+        raise IOError(f"Unable to find a {chipname} column "
+                      f"in {infile} (or the file is empty).")
     chipstr = ",".join([str(c) for c in chips])
-    v1("Using {}={} from {}".format(chipname, chipstr, infile))
+    v1(f"Using {chipname}={chipstr} from {infile}")
 
     if fovfile.strip() == "":
         v1("Calculating FOV file using:")
         for afile in obs.get_asol():
-            v1("  Aspect solution {}".format(afile))
-        v1("  Mask file       {}".format(obs.get_ancillary_('mask')))
+            v1(f"  Aspect solution {afile}")
+        v1(f"  Mask file       {obs.get_ancillary_('mask')}")
 
         (xgrid, ygrid) = fileio.find_output_grid2(obs, binsize, chips,
                                                   tmpdir=pars["tmpdir"])
         if xgrid is None or ygrid is None:
-            raise ValueError("Are the ASOLFILE and MASKFILE keywords for " +
-                             "{} correct?".format(infile))
+            raise ValueError("Are the ASOLFILE and MASKFILE keywords "
+                             f"for {infile} correct?")
 
     else:
-        v1("Using FOV file {}.".format(fovfile))
+        v1(f"Using FOV file {fovfile}.")
 
         # Do FOV files use ccd_id even for HRC files?
-        chip_filter = "[ccd_id={}]".format(chipstr)
-        (xgrid, ygrid) = fileio.get_sky_range(infile, fovfile + chip_filter,
+        chip_filter = f"[ccd_id={chipstr}]"
+        (xgrid, ygrid) = fileio.get_sky_range(infile,
+                                              fovfile + chip_filter,
                                               binsize)
         if xgrid is None or ygrid is None:
-            raise ValueError("There is no overlap between " +
-                             "{} and {} for {}".format(infile, fovfile,
-                                                       chip_filter))
+            raise ValueError("There is no overlap between "
+                             f"{infile} and {fovfile} for "
+                             f"{chip_filter}")
 
     ox = xgrid.nbins
     oy = ygrid.nbins
     pixsize = utils.sky_to_arcsec(obs.instrument, xgrid.size)
     v1("")
-    v1("The output image will have {} by {}".format(int(ox), int(oy)) +
-       " pixels, pixel size of {} arcsec,".format(pixsize))
-    v1("    and cover x={},y={}.".format(xgrid, ygrid))
+    v1(f"The output image will have {int(ox)} by {int(oy)}"
+       f" pixels, pixel size of {pixsize} arcsec,")
+    v1(f"    and cover x={xgrid},y={ygrid}.")
     v1("")
+
+    # Issue #793 points out that the default binning can lead to data
+    # overflow. As there's no way to know what type to use (without
+    # manually binning the data) we use the datatype parameter
+    # (which defaults to i4).
+    #
+    binning = f"[opt type={pars['datatype']}]"
+    infile2 = f"{infile}[bin x={xgrid},y={ygrid}]{binning}"
 
     v2("Binning input file")
     rt.dmcopy.punlearn()  # make sure opt != all
-    rt.dmcopy("{}[bin x={},y={}]".format(infile, xgrid, ygrid), outfile,
-              clobber=pars["clobber"], verbose=pars["verbose"])
+    rt.dmcopy(infile2, outfile, clobber=pars["clobber"],
+              verbose=pars["verbose"])
     rt.add_tool_history([outfile], toolname, pars, toolversion=version)
-    v1("Created: {}".format(outfile))
+    v1(f"Created: {outfile}")
 
 
 if __name__ == "__main__":
