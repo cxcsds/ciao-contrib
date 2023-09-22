@@ -3157,6 +3157,13 @@ parinfo['eff2evt'] = {
     }
 
 
+parinfo['energy_hue_map'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input counts image",None),ParValue("energymap","f","Input energy map image",None),ParValue("outroot","f","Output directory+root name",None)],
+    'opt': [ParSet("colorsys","s","Color system",'hsv',["hsv","hls","hisv"]),ParValue("min_energy","r","Minimum energy value",None),ParValue("max_energy","r","Maximum energy value",None),ParValue("min_counts","r","Minimum counts value",None),ParValue("max_counts","r","Maximum counts value",None),ParSet("energy_scale","s","Energy scaling function",'linear',["linear","log","asinh","sqrt","square"]),ParSet("counts_scale","s","Counts scaling function",'asinh',["linear","log","asinh","sqrt","square"]),ParRange("min_hue","r","Minimum hue",0,0,1),ParRange("max_hue","r","Maximum hue, 0.833=purple",0.833,0,1),ParRange("min_sat","r","Minimum saturation",0,0,1),ParRange("max_sat","r","Maximum saturation",1,0,1),ParRange("contrast","r","Contrast in intensity",1,0,10),ParRange("bias","r","Bias in intensity",0.5,0,1),ParValue("show_plot","b","",False),ParValue("clobber","b","Remove output files if they already exist?",False),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
+    }
+
+
 parinfo['evalpos'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input image files",None),ParValue("ra","s","Input right ascension",None),ParValue("dec","s","Input declination",None)],

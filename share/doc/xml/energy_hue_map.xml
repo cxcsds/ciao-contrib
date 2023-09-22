@@ -1,0 +1,509 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY context="Tools::Image"
+         key="energy_hue_map"
+         refkeywords="energy spectrum color tricolor truecolor true rgb hsv hls scale"
+         >
+    <SYNOPSIS>
+      Creates a true color image using median-energy map and counts image.
+    </SYNOPSIS>
+    <DESC>
+      <PARA>
+        `energy_hue_map' creates a true color image by using the 
+        energy of the events as the color hue (red through purple)
+        and the counts/flux image as the saturation and "value" values.
+        This creates an image in the "HSV" (Hue Saturation Value) color
+        system.  To display the image, the HSV values are converted to
+        RGB (Red Green Blue) color system.
+        The result is an image where the pixel color maps to continuous 
+        color spectrum and the intensity maps to the counts/flux in each
+        pixel.
+      </PARA>
+
+      <PARA title="Tri-Color vs. True Color">
+        Traditional RGB tri-color images start by creating 3 images in
+        separate energy bands.  One example could be 3 X-ray energy bands such as the
+        Chandra Source Catalog 'soft' (0.5 to 1.2kev), 'medium' (1.2 to 2keV), and 
+        'hard' (2.0 to 7.0 keV) bands.  However, the energy bands do
+        not need to continuous, and in fact could cover different parts
+        of the EM spectrum: for example Optical, Radio, and X-ray. 
+        Each image is represented by a single color channel that is 
+        independently scaled.  The combination of primary colors (RGB) 
+        leads to the visual interpretation of secondary colors:  eg pixels with 
+        both red and green counts will appear yellow, and pixels with
+        both green and blue counts will appear cyan.  Applications 
+        such as ds9, matplotlib, and dmimg2jpg can be used to visualize these
+        RGB datasets.    
+      </PARA>
+      <PARA>
+        True color images are created from a continuous energy range. 
+        The color hue represents the energy of each individual pixel, eg
+        the median or mean energy value of the individual events.  This 
+        provides an increase in the coverage of the color gamut.  Consider
+        the color purple/violet. In the optical color range, violet represents
+        the highest energies.  However, in traditional tri-color images, the
+        only way to see violet is to have a combination of pixels in the blue and
+        red color channel images, where red usually represents the lowest
+        energies. This is unlikely to occur when using a continuous energy range.
+        Using this true color energy hue mapping, the highest energy 
+        events get assigned the highest hue.
+      </PARA>
+    </DESC>
+    
+ <QEXAMPLELIST>
+   <QEXAMPLE>
+      <SYNTAX>
+         <LINE>unix% energy_hue_map acis_broad_thresh.img median_energy.map my_output
+         </LINE>
+      </SYNTAX>
+      <DESC>
+
+
+
+         <PARA>Using all the default values, this will take the counts image
+         in the input file: acis_broad_thresh.img, and will apply color hues
+         based on the median energy values stored in the image: median_energy.map.
+         There will be two output files: my_output.fits and my_output.jpg.
+         The JPEG file shows the true color image.  The .fits file contains
+         separate extensions corresponding the reg, green, and blue color
+         channels. The default verbose=1 terminal output looks like
+         </PARA>
+<VERBATIM>
+energy_hue_map
+          infile = acis_broad_thresh.img
+       energymap = median_energy.map
+         outroot = my_output
+        colorsys = hsv
+      min_energy = INDEF
+      max_energy = INDEF
+      min_counts = INDEF
+      max_counts = INDEF
+    energy_scale = linear
+    counts_scale = asinh
+         min_hue = 0
+         max_hue = 0.833
+         min_sat = 0
+         max_sat = 1
+        contrast = 1
+            bias = 0.5
+       show_plot = no
+         clobber = no
+         verbose = 1
+            mode = ql
+
+To display the data correctly in ds9 use the following command:
+
+ds9 -rgb -red 'my_output.fits' -linear -scale limits 0 255 \
+    -green 'my_output.fits[GREEN]' -linear -scale limits 0 255 \
+    -blue 'my_output.fits[BLUE]' -linear -scale limits 0 255
+</VERBATIM>
+
+        <PARA>
+        Users will typically want to tweak some of the min/max
+        parameters to improve the image.
+        </PARA>
+
+      </DESC>
+   </QEXAMPLE>
+
+
+   <QEXAMPLE>
+      <SYNTAX>
+         <LINE>unix% energy_hue_map acis_broad_thresh.img median_energy.map my_output \</LINE>
+         <LINE>min_counts=0 max_counts=10 min_energy=1000 max_energy=3000 counts_scale=log</LINE>
+      </SYNTAX>
+      <DESC>
+         <PARA>
+            This is similar to the previous example, but with the min and max
+            counts and energy values specified, and the counts scaling changed
+            to log scale.
+         </PARA>
+      </DESC>
+   </QEXAMPLE>
+
+
+   <QEXAMPLE>
+      <SYNTAX>         
+         <LINE>unix% energy_hue_map acis_broad_thresh.img median_energy.map my_output \</LINE>
+         <LINE>min_counts=0 max_counts=10 min_energy=1000 max_energy=3000 counts_scale=log \</LINE>
+         <LINE>contrast=0.7 bias=0.35</LINE>
+      </SYNTAX>
+      <DESC>
+         <PARA>
+            Experiments have shown that sometimes the colors become fully saturated 
+            causing a loss of spatial details.  Users can adjust the contrast and
+            bias settings akin to ds9 to try to recover some of those details.
+         </PARA>
+      </DESC>
+   </QEXAMPLE>
+
+   <QEXAMPLE>
+      <SYNTAX>
+         <LINE>unix% merge_obs '*/repro/*evt2.fits' outroot=acis</LINE>
+         <LINE>unix% dmnautilus acis_broad_thresh.img img.abin snr=5 method=3 outmask=img.map</LINE>
+         <LINE>unix% statmap acis_merged_evt.fits"[energy=500:7000]" img.map out=median_energy.map col=energy stat=median</LINE>
+         <LINE>unix% energy_hue_map acis_broad_thresh.img median_energy.map my_output</LINE>
+      </SYNTAX>
+      <DESC>
+         <PARA>
+            This is one possible example of the processing steps to create the 
+            image and the median energy map which are input to the energy_hue_map
+            script.
+         </PARA>
+          <PARA>
+            Users could choose to (adaptively) smooth the counts image and
+            the exposure map to create a smoothed, fluxed image.
+            CIAO 4.15 provides two adaptive binning tools: dmnautilus and dmradar;
+            however any tool that produces a "map" file (pixel values provide
+            a grouping of neighboring pixels according to some algorithm) 
+            could be used.  Also, the energy=500:7000 filter could also be adjusted based
+            the spectrum of the object(s).
+          </PARA>
+      </DESC>
+   </QEXAMPLE>
+
+</QEXAMPLELIST>
+
+<PARAMLIST>
+
+   <PARAM filetype="input" name="infile" reqd="yes" type="file">
+      <SYNOPSIS>
+          Input counts (or flux) file name.
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            The input image is the equivalent of the counts image
+            integrated over the same energy range as the energymap.
+            It can have additional processing done such as 
+            exposure correcting, smoothing, and possibly background
+            subtraction.  
+         </PARA>
+        <PARA>The input image is used to set the output pixel 
+        color saturation and "value".</PARA>
+
+      </DESC>
+   </PARAM>
+
+   <PARAM filetype="input" name="energymap" reqd="yes" type="file">
+      <SYNOPSIS>
+            The energy map file name.
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            The energy map provides an estimate of the energy for each
+            pixel.  This estimate may be based on the mean or median
+            of all the events in a single pixel or could be computed 
+            over some local area to gather enough events to get a
+            statistically meaningful sample.
+         </PARA>
+
+<PARA>
+The energy map can be created in several ways.  One option is to use the 
+<HREF link="https://cxc.cfa.harvard.edu/ciao/ahelp/statmap.html">statmap</HREF>
+tool; it computes the median (or mean) energy value using an adaptive
+binning map (eg created by 
+<HREF link="https://cxc.cfa.harvard.edu/ciao/ahelp/dmnautilus.html">dmnautilus</HREF>.)
+If the source has a large number of counts, then it can also be as simple
+as computing the mean energy using dmimgcalc and using the 
+<HREF link="https://cxc.cfa.harvard.edu/ciao/ahelp/dmbinning.html#Binning_with_weights">
+";weight" syntax when binning
+</HREF>
+
+</PARA>
+<VERBATIM>
+% dmimgcalc "evt.fits[bin sky=1;energy]" "evt.fits[bin sky=1]" mean_energy.map div
+</VERBATIM>
+
+
+         <PARA>The energy map file must have same axis lengths as the
+         input image.</PARA>
+
+      </DESC>
+   </PARAM>
+
+   <PARAM filetype="output" name="outroot" reqd="yes" type="file">
+      <SYNOPSIS>
+        Output directory and filename root.
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+             The tool produces two output files.             
+         </PARA>
+         <LIST>
+           <ITEM>${root}.fits - is a FITS file with three (3) 
+           separate extensions for the red, green, and blue images
+           used for display (eg by ds9, matplotlib, or dmimg2jpg).</ITEM>
+           <ITEM>${root}.jpg - is a JPEG file showing the combined
+           image.</ITEM>
+         </LIST>
+
+      </DESC>
+   </PARAM>
+
+
+   <PARAM name="colorsys" type="file" def="hsv">
+      <SYNOPSIS>
+          Which color system to use to process the data: hsv or hls?          
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+          A detailed description of the differences between the 
+          HSV (Hue Saturation and Value) and HLS (Hue Lightness Saturation)
+          color systems is deferred to 
+          <HREF link="https://en.wikipedia.org/wiki/HSL_and_HSV">wikipedia</HREF>.
+          The practical take away for how it affects this script is 
+          in how the lightest colors are represented, in particular the 
+          color "white".  Comparing to an optical system: white light 
+          represents all energies -- which then is uninformative as to
+          what is the actual mean/median energy.  The HSV color system
+          tends to preserve the visual color hue whereas the HLS color
+          system tends to emphasize the pixel intensity.
+
+         </PARA>
+      </DESC>
+   </PARAM>
+
+
+   <PARAM name="min_energy" type="real" def="INDEF">
+      <SYNOPSIS>
+          The minimum energy. This value maps to the min_hue. 
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            Pixels with energies at and below the minimum energy are set to the min_hue value
+            (default is 0, ie the color red).  The default value of 'INDEF'
+            lets the tool compute the minimum from all the pixels in
+            the energymap input file.
+         </PARA>
+         <PARA>The units of this parameter are the same as the 
+         units of the energymap input file.</PARA>
+
+      </DESC>
+   </PARAM>
+
+   <PARAM name="max_energy" type="real" def="INDEF">
+      <SYNOPSIS>
+         The maximum energy. This value maps to the max_hue.
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            Pixels with energies at and above the maximum energy are set to the max_hue value
+            (default is 0.833, ie the color purple).  The default value of 'INDEF'
+            lets the tool compute the maximum from all the pixels in
+            the energymap input file.
+         </PARA>
+         <PARA>The units of this parameter are the same as the 
+         units of the energymap input file.</PARA>
+      </DESC>
+   </PARAM>
+
+
+   <PARAM name="min_counts" type="real" def="INDEF">
+      <SYNOPSIS>
+          The minimum counts. This value maps to the min_sat.
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            Pixels with counts at and less than the minimum counts value 
+            are set to the min_sat (minimum saturation) value.
+            The default value of 'INDEF' lets the tool compute the minimum
+            from all the pixels in the infile input image.
+         </PARA>
+         <PARA>The units of this parameter as the same as the 
+         units of the infile input image.</PARA>
+
+      </DESC>
+   </PARAM>
+
+
+   <PARAM name="max_counts" type="real" def="INDEF">
+      <SYNOPSIS>
+          The maximum counts. This value maps to the max_sat.
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            Pixels with counts at and above than the maximum counts value 
+            are set to the max_sat (maximum saturation) value.
+            The default value of 'INDEF' lets the tool compute the maximum
+            from all the pixels in the infile input image.
+         </PARA>
+         <PARA>The units of this parameter as the same as the 
+         units of the infile input image.</PARA>
+
+      </DESC>
+   </PARAM>
+
+   <PARAM name="energy_scale" type="string" def="linear">
+      <SYNOPSIS>
+          Scaling applied to the energy values
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            The choices are:  linear, log, asinh (hyperbolic arcsine),
+            sqrt (square root), and square.
+         </PARA>
+      </DESC>
+   </PARAM>
+
+   <PARAM name="counts_scale" type="string" def="asinh">
+      <SYNOPSIS>
+        Scaling applied to the counts values.
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            The choices are:  linear, log, asinh (hyperbolic arcsine),
+            sqrt (square root), and square.
+         </PARA>
+      </DESC>
+   </PARAM>
+
+
+   <PARAM name="min_hue" type="real" def="0" min="0" max="1">
+      <SYNOPSIS>
+        The minimum color hue.
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            Color hues are cyclical starting from 0 (red) and going to 1,
+            which is also red.
+         </PARA>
+      </DESC>
+   </PARAM>
+
+
+   <PARAM name="max_hue" type="real" def="0.833" min="0" max="1">
+      <SYNOPSIS>
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            Color hues are cyclical starting from 0 (red) and going to 1,
+            which is also red.  The default value of 0.833 is the hue for 
+            the color purple/violet.
+         </PARA>
+      </DESC>
+   </PARAM>
+
+
+   <PARAM name="min_sat" type="real" def="0" min="0" max="1">
+      <SYNOPSIS>
+        Minimum saturation
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            The minimum allowed saturation value.
+         </PARA>
+      </DESC>
+   </PARAM>
+
+
+   <PARAM name="max_sat" type="real" def="1" min="0" max="1">
+      <SYNOPSIS>
+        Maximum saturation
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            The maximum allowed saturation value.
+         </PARA>
+      </DESC>
+   </PARAM>
+
+  <PARAM name="contrast" type="real" def="1.0" min="0.0" max="10.0">
+    <SYNOPSIS>
+      Adjust the contrast in the pixel intensity (brightness)
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+           This is equivalent to adjusting the contrast in ds9.
+           The contrast controls the how much the pixel brightness
+           is compressed (contrast values greater than 1.0) or stretched
+           (contrast values less than 1.0).  This may needed when the
+           range of the pixel values is especially large and usually used 
+           in conjunction with adjusting the bias parameter.
+        </PARA>    
+    </DESC>
+  </PARAM>
+
+  <PARAM name="bias" type="real" def="0.5" min="0.0" max="1.0">
+    <SYNOPSIS>
+      Adjust the bias in the pixel intensity (brightness)
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+            This is equivalent to adjust the color bias in ds9.
+            The bias controls the center of the intensity range.
+            Setting the bias less than the default of 0.5 will brighten 
+            darker pixels, and setting the bias greater than 0.5 will
+            darken lighter pixels.  This may needed when the
+           range of the pixel values is especially large and usually used 
+           in conjunction with adjusting the contrast parameter.
+        </PARA>
+    </DESC>
+
+  </PARAM>
+
+
+   <PARAM name="show_plot" type="boolean" def="no">
+      <SYNOPSIS>
+        Display a plot of the image?
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            If set to "yes", the tool will display the image.  Users must
+            close the display window for the tool to finish.
+         </PARA>
+      </DESC>
+   </PARAM>
+
+
+
+   <PARAM def="no" name="clobber" reqd="no" type="boolean">
+      <SYNOPSIS>
+         Remove files if they already exist?
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            Clobber will remove the output files if they already exist before
+            creating the new files.
+         </PARA>
+      </DESC>
+   </PARAM>
+
+   <PARAM def="0" max="5" min="0" name="verbose" reqd="no" type="integer">
+      <SYNOPSIS>
+         Report information to the user.
+      </SYNOPSIS>
+      <DESC>
+         <PARA>
+            This parameter defines how much information is passed to the user. A
+            level of 0 reports nothing, a level of 5 reports the most. Level 1
+            will report the input parameters.
+         </PARA>
+      </DESC>
+   </PARAM>
+</PARAMLIST>
+
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/energy_hue_map.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>June 2023</LASTMODIFIED>
+
+  </ENTRY>    
+</cxchelptopics>
