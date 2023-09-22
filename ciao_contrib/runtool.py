@@ -2695,6 +2695,13 @@ parinfo['celldetect'] = {
     }
 
 
+parinfo['centroid_map'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input counts image",None),ParValue("outfile","f","Output map file",None)],
+    'opt': [ParRange("numiter","i","Number of centroid iterations",1,1,None),ParValue("sitefile","f","Input initial site locations",None),ParSet("scale","s","Scaling applied to pixel values when computing centroid",'linear',["linear","sqrt","squared","asinh"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove outfile if it already exists?",True)],
+    }
+
+
 parinfo['chandra_repro'] = {
     'istool': True,
     'req': [ParValue("indir","f","Input directory",'./'),ParValue("outdir","f","Output directory (default = $indir/repro)",None)],
@@ -3241,6 +3248,13 @@ parinfo['gti_align'] = {
     }
 
 
+parinfo['hexgrid'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image",None),ParValue("outfile","f","Output hexagon grid image",None),ParRange("sidelen","r","Side length of hexagons",10,3,None)],
+    'opt': [ParValue("binimg","f","Output image file",None),ParValue("xref","r","X coordinate of reference point (image coordinates)",0),ParValue("yref","r","Y coordinate of reference point (image coordinates)",0),ParRange("verbose","i","Tool chatter level",0,0,5),ParValue("clobber","b","Remove outfile if it already exists?",False)],
+    }
+
+
 parinfo['hrc_bkgrnd_lookup'] = {
     'istool': True,
     'req': [ParValue("infile","f","The file for which you want a background file",None),ParSet("caltype","s","What type of background file?",'event',["event","spectrum"])],
@@ -3325,6 +3339,13 @@ parinfo['merge_obs'] = {
     }
 
 
+parinfo['merge_too_small'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input map",None),ParValue("outfile","f","Output map",None)],
+    'opt': [ParSet("method","s","Apply minval threshold to area of region or counts in region?",'counts',["counts","area"]),ParValue("imgfile","f","Input counts image file, required for method=counts",None),ParValue("binimg","f","Optional output image file",None),ParRange("minvalue","i","Minimum counts or area (logical pixels)",0,0,None),ParRange("verbose","i","Tool chatter level",0,0,5),ParValue("clobber","b","Remove outfile if it already exists?",False)],
+    }
+
+
 parinfo['mkacisrmf'] = {
     'istool': True,
     'req': [ParValue("infile","f","scatter/rsp matrix file",' '),ParValue("outfile","f","RMF output file",' '),ParValue("wmap","f","WMAP file",' '),ParValue("energy","s","energy grid in keV (lo:hi:bin)",' '),ParValue("channel","s","channel grids in pixel (min:max:bin)",' '),ParSet("chantype","s","channel type",'PI',["PI","PHA"]),ParRange("ccd_id","i","filter CCD-ID",None,0,9),ParValue("chipx","i","filter chipx in pixel",None),ParValue("chipy","i","filter chipy in pixel",None),ParValue("gain","f","gain file",'CALDB')],
@@ -3371,6 +3392,13 @@ parinfo['mkpsfmap'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input image file name",None),ParValue("outfile","f","Output image file name",None),ParValue("energy","r","Energy of PSF to lookup [keV]",None),ParValue("spectrum","f","Spectrum file [keV vs weight] if energy=None",None),ParRange("ecf","r","ECF of PSF to lookup",None,0,1)],
     'opt': [ParValue("psffile","f","PSF Calibration file",'CALDB'),ParSet("units","s","Units of output image",'arcsec',["arcsec","logical","physical"]),ParValue("geompar","f","Pixlib geometry file",'geom.par'),ParValue("clobber","b","Clobber files?",False)],
+    }
+
+
+parinfo['mkregmap'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image file",None),ParValue("regions","f","Input stack of regions",None),ParValue("outfile","f","Output map file",None)],
+    'opt': [ParValue("binimg","f","Output binned image",None),ParValue("coord","s","Image coodinate name",'sky'),ParValue("clobber","b","Remove outfile if it already exists?",False),ParRange("verbose","i","Tool chatter level",1,0,5)],
     }
 
 
@@ -3427,6 +3455,13 @@ parinfo['obsid_search_csc'] = {
     'istool': True,
     'req': [ParValue("obsid","s","Chandra Observation ID",None),ParValue("outfile","f","Name of output table (TSV format)",None)],
     'opt': [ParValue("columns","s","List of columns to include",'INDEF'),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2',["csc2","csc1","current"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
+    }
+
+
+parinfo['pathfinder'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image",None),ParValue("outfile","f","Output map image",None)],
+    'opt': [ParValue("minval","r","Minimum pixel value to consider in input image.",0),ParSet("direction","s","Directions to follow gradient",'diagonal',["diagonal","perpendicular"]),ParValue("debugreg","f","Diagnostic region file",None),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove output file if it already exists?",False)],
     }
 
 
@@ -3749,6 +3784,13 @@ parinfo['update_column_range'] = {
     'istool': True,
     'req': [ParValue("infile","f","File to edit",None)],
     'opt': [ParValue("columns","s","Column names (includes vector columns)",'sky'),ParValue("round","b","Should data ranges be rounded to nearest mid-integer?",True),ParRange("verbose","i","Debug Level (0-5)",1,0,5)],
+    }
+
+
+parinfo['vtbin'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image",None),ParValue("outfile","f","Output map",None)],
+    'opt': [ParValue("binimg","f","Output image file",None),ParSet("shape","s","Shape of local max mask",'box',["box","circle"]),ParRange("radius","r","Radius of local max mask",2.5,0,None),ParValue("sitefile","f","Input site file",None),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove outfile if it already exists?",False)],
     }
 
 

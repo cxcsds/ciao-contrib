@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+<ENTRY 
+        context="tools" 
+        key="map2reg" 
+        refkeywords="map mask bin group region convert display" 
+        seealsogroups="dmimgtools"
+        displayseealsogroups="regiontools"
+    >
+    <SYNOPSIS>
+        Convert a map file into a region file.
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+        This script creates a polygon region around each 
+        unique set of pixel values in the input map file.
+        The `dmimglasso' tool is used to identify the 
+        polygons.  The polgyons may contain multiple components
+        if there is a hole in the interior (eg a separate
+        group completely surrounded by another group).
+        </PARA>
+        <PARA>
+        This script assumes that all groups are contiguous.  If 
+        a group is split into multiple disjoint sections then
+        only 1 of those sub-groups will be processed.        
+        </PARA>
+        
+        <PARA>
+        Only pixel values greater than zero (&gt;0) are considered.
+        Pixel values equal to zero are considered as being ungrouped.            
+        </PARA>
+        <PARA>
+        This script runs in parallel; though for a large number of unique
+        map IDs it can still be slow.
+        </PARA>
+
+        <PARA>
+        The map values in the infile are not the same as the
+        COMPONENT values in the output region file.
+        </PARA>
+    </DESC>
+     <QEXAMPLELIST>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+            % map2reg hex.map hex.reg 
+            % ds9 hex.map -region hex.reg
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+            Convert the map file,  hex.map, into an ASC-FITS format
+            region file, hex.reg.  We then use ds9 to display
+            the results.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+     </QEXAMPLELIST>
+
+     <PARAMLIST>
+        <PARAM name="infile" type="file" filetype="input" reqd="yes">
+            <SYNOPSIS>
+            Input map file.
+            </SYNOPSIS>
+            <DESC>
+            <PARA>
+                The map file should contain integer pixel values which
+                represent which pixels are grouped together.
+                Pixel values equal to 0 are ignored (treated as being
+                ungrouped).  
+            </PARA>
+          </DESC>
+        </PARAM>
+        <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+          <SYNOPSIS>Output region file</SYNOPSIS>
+          <DESC>
+            <PARA>
+                The output is stored as an ASC-FITS format region
+                file.  Each map ID in the input image will be output
+                as one or more polygons.  The map ID is 
+                not stored (it is not guaranteed to be the COMPONENT 
+                value).  Each component may have interior polygons
+                excluded if they completely surround another 
+                group (or an ungrouped area).
+            </PARA>
+          </DESC>
+        </PARAM>
+
+      <PARAM name="parallel" type="boolean" def="yes" reqd="no">
+        <SYNOPSIS>Run code in parallel using multiple processors?</SYNOPSIS>
+        <DESC>
+          <PARA>
+            If multiple processors are available, then 
+            this parameter controls whether the tool should 
+            run various underlying tools in parallel.
+          </PARA>
+        </DESC>        
+      </PARAM>
+      
+      <PARAM name="nproc" type="integer" def="INDEF" min="1" reqd="no">
+        <SYNOPSIS>Number of processors to use</SYNOPSIS>
+        <DESC>
+          <PARA>
+            If parallel=yes, then this controls the number of
+            processes to run at once.  The default, INDEF,
+            will use all available processors.  The value
+            cannot be larger than the number of processors.
+          </PARA>
+        </DESC>        
+      </PARAM>
+
+        <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+            <SYNOPSIS>
+            Amount of chatter from the tool.
+            </SYNOPSIS>
+        </PARAM>
+        <PARAM name="clobber" type="boolean" def="no">
+            <SYNOPSIS>
+            Delete outfile if it already exists?
+            </SYNOPSIS>
+        </PARAM>
+    </PARAMLIST>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+
+
+    <BUGS>
+        <PARA>
+            See the
+            <HREF link="http://cxc.harvard.edu/ciao/bugs/index.html">CIAO
+            website</HREF> for an up-to-date listing of known bugs.
+        </PARA>
+    </BUGS>
+    <LASTMODIFIED>August 2023</LASTMODIFIED>
+</ENTRY>
+</cxchelptopics>

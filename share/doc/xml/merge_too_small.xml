@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+<ENTRY 
+        context="tools" 
+        key="merge_too_small" 
+        refkeywords="merge map mask adaptive bin group small area counts" 
+        seealsogroups="dmimgtools"
+    >
+    <SYNOPSIS>
+       Adjust input map file to meet some minimum criteria
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+        The output maps from various adaptive binning routines
+        may contain small, insignificant groups which were 
+        the result of filling in the gaps between neighboring 
+        groups.  The merge_too_small script reassigns these
+        small regions to the largest neighbor.  The 
+        script will identify groups with a small geometric
+        area (ie few pixels), or with low number of counts 
+        (requires imgfile be supplied).
+        </PARA>
+        <PARA>
+        The deficient groups are always merged in to the 
+        largest neighboring group; where largest is the 
+        same metric (largest area or largest counts).
+        </PARA>
+        <PARA>
+        The output is a new map file with the deficient 
+        regions pixel values replaced with the largest neighbor.
+        </PARA>
+        <PARA>
+        With method=area, the minvalue is the minimum number of image 
+        (ie logical) pixels a group can contain.  With method=counts,
+        the minvalue is the minimum sum of pixel values obtained
+        from imgfile.  The imgfile typically will be a counts image; 
+        however, it could also be exposure corrected and|or background
+        subtracted.        
+        </PARA>
+        <PARA>
+        This script does not preserve any morphology imposed by the
+        tool which created the input map.  For example, if the
+        input map was created by following some contours, the
+        output map will not adhere to that constraint.  Similarly, if
+        the input has some geometric shape (circle, square, hexagon,etc)
+        the output will not preserve that geometry.
+        </PARA>
+
+    </DESC>
+
+
+     <QEXAMPLELIST>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+            % merge_too_small scales.map scales_min10px.map method=area minvalue=10
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+                Takes the input map file, scales.map, and identifies 
+                all the groups with 10 or fewer image pixels (ie logical
+                pixels).  Those groups are merged into their neighboring
+                groups with the largest area.  The updated map
+                file is written to the outfile, scales_min10px.map.                
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+            % merge_too_small scales_min10px.map scales_min10px+100cts.map method=counts minvalue=100 imgfile=img.fits
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+            Taking the output from the previous example, we now
+            identify any groups which contain fewer than 100
+            counts and merge them into their neighbor with the 
+            most counts.
+            The imgfile, img.fits, must be supplied so
+            we can obtain the counts.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+     </QEXAMPLELIST>
+
+     <PARAMLIST>
+        <PARAM name="infile" type="file" filetype="input" reqd="yes">
+            <SYNOPSIS>
+            Input map file.
+            </SYNOPSIS>
+            <DESC>
+             <PARA>
+            The input map file should have integer pixel values.
+              The pixel values indicate which pixels are grouped      
+              together by some algorithm.  A pixel value of 0 are pixels
+              which are ungrouped (ie outside the image subspace).                 
+            </PARA>
+            <PARA>
+            The script will identify groups where the area is too
+            small, or the number of counts is too few and will merge
+            those groups into their neighbor with the largest
+            area or counts.
+            </PARA>
+          </DESC>
+        </PARAM>
+
+
+        <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+          <SYNOPSIS>
+            Output map file
+          </SYNOPSIS>
+          <DESC>
+            <PARA>
+              The outfile is a map file containing integer pixel values.
+              The pixel values indicate which pixels are grouped
+              together by the algorithm.  A pixel value of 0 are pixels
+              which are ungrouped (ie outside the image subspace).            
+            </PARA>
+          </DESC>
+        </PARAM>
+        
+        
+        <PARAM name="method" type="string" def="counts">
+          <SYNOPSIS>Metric used for minimum calculation: counts or area</SYNOPSIS>
+          <DESC>
+              <PARA>
+         With method=area, the minvalue is the minimum number of image 
+        (ie logical) pixels a group can contain.  With method=counts,
+        the minvalue is the minimum sum of pixel values obtained
+        from imgfile.  The imgfile typically will be a counts image; 
+        however, it could also be exposure corrected and|or background
+        subtracted.        
+        </PARA>
+          </DESC>
+        </PARAM>
+        
+        
+        <PARAM name="imgfile" type="file" filetype="input">
+          <SYNOPSIS>Optional, input counts image</SYNOPSIS>
+          <DESC>
+            <PARA>
+            The imgfile is used if method=counts to determine 
+            the sum of the pixel values (counts) in each group.
+            The imgfile is also used if binimg is set in 
+            which case the script will apply the new map values,
+            outfile, to the imgfile and produce a binned image.            
+            </PARA>
+          </DESC>
+        </PARAM>
+        
+
+       <PARAM name="binimg" type="file" filetype="output">
+          <SYNOPSIS>Optional, output binned image</SYNOPSIS>
+          <DESC>
+            <PARA>
+                If the binimg file is specified, the script
+                will use the input image and the output map file to
+                create a binned version of the input image.
+            </PARA>          
+          </DESC>
+        </PARAM>
+
+        <PARAM name="minvalue" type="integer" min="0">
+            <SYNOPSIS>The lower limit on counts or area</SYNOPSIS>
+            <DESC>
+                <PARA>
+         With method=area, the minvalue is the minimum number of image 
+        (ie logical) pixels a group can contain.  With method=counts,
+        the minvalue is the minimum sum of pixel values obtained
+        from imgfile.      
+                </PARA>            
+            </DESC>
+        </PARAM>
+
+        <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+            <SYNOPSIS>
+            Amount of chatter from the tool.
+            </SYNOPSIS>
+        </PARAM>
+        <PARAM name="clobber" type="boolean" def="no">
+            <SYNOPSIS>
+            Delete outfile if it already exists?
+            </SYNOPSIS>
+        </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+        <PARA>
+            See the
+            <HREF link="http://cxc.harvard.edu/ciao/bugs/index.html">CIAO
+            website</HREF> for an up-to-date listing of known bugs.
+        </PARA>
+    </BUGS>
+    <LASTMODIFIED>August 2023</LASTMODIFIED>
+</ENTRY>
+</cxchelptopics>

@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+<ENTRY 
+        context="tools" 
+        key="hexgrid" 
+        refkeywords="hex hexagonal map mask adaptive bin grid regular circular approximation" 
+        seealsogroups="dmimgtools"
+    >
+    <SYNOPSIS>
+       Create a regular hexagonal grid and apply to input image
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+        hexgrid creates a uniform grid of hexagonal shaped regions.
+        Hexagons are highest order polygon which can be used to 
+        uniformly tile a plane; thus they are are the closest approximation
+        to a circular grid.
+        All hexagons have the same size and orientation.  Users can
+        specify a center location which centers one of the hexagons;
+        the rest of the field then is shifted to accommodate this 
+        constraint.
+        </PARA>
+
+        <PARA>
+        The output from hexgrid is a map file, where the pixel values
+        indicate to which group each pixel belongs.
+        If a binimg is supplied, hexgrid will apply the 
+        grouping to the infile and the result saved in the binimg file.
+        </PARA>
+
+    </DESC>
+
+     <QEXAMPLELIST>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+  % hexgrid img.fits hex.map sidelen=10 
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+    This example creates an output map file, hex.map, the same size and 
+    dimensions as the input file, img.fits.  Each hexagon 
+    will have a side length=10 pixels (in image or logical pixel).
+    Note: due to quantization, the side length may vary +/-1.
+            </PARA>
+           <PARA>
+    If the input image contains any pixel values that have a value of NaN,
+    or are outside the image's data subspace, then those pixels will
+    be left ungrouped (map values equal to zero).           
+           </PARA>
+            <PARA>
+     The output image contains integer values, where pixels with the same
+     value belong to the same hexagon.  Note that the pixel values
+     do not always start at one (1), nor are they guaranteed to be
+     consecutive.  A pixel value equal to zero (0) means that the
+     pixel is ungrouped.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+  % hexgrid img.fits hex.map sidelen=10 xref=512 yref=512
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>  
+        Same as the previous example; however, a reference location
+        has been specified.  The reference location is specified
+        in logical (image) coordinates.  When these parameters are
+        set, the tool will adjust the starting location of the
+        hexagonal grid such that the reference position is
+        in the center of a hexagon.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+  % hexgrid img.fits hex.map sidelen=10 binimg=hex.img 
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+        Same as first example, except with the binimg parameter
+        specified, the script will apply the grouping scheme
+        in the hex.map output file to the img.fits infile, and
+        output the binned image, hex.img.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+
+
+     </QEXAMPLELIST>
+
+     <PARAMLIST>
+        <PARAM name="infile" type="file" filetype="input" reqd="yes">
+            <SYNOPSIS>
+            Input image.
+            </SYNOPSIS>
+            <DESC>
+           <PARA>
+            Null  and NaN pixels, as well as those pixels outside the
+            image subspace will not be grouped.
+            </PARA>
+
+          </DESC>
+        </PARAM>
+
+        <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+          <SYNOPSIS>
+            Output map file
+          </SYNOPSIS>
+          <DESC>
+            <PARA>
+              The outfile is a map file containing integer pixel values.
+              The pixel values indicate which pixels are grouped
+              together by the algorithm.  A pixel value of 0 are pixels
+              which are ungrouped (ie outside the image subspace).            
+            </PARA>
+          </DESC>
+        </PARAM>
+
+        <PARAM name="sideline" type="real" def="10" min="3" reqd="yes">
+          <SYNOPSIS>The side length of each hexagon</SYNOPSIS>
+          
+          <DESC>
+            <PARA>
+                The side length is expressed in logical (ie image) pixels.
+                The true side lengths may vary by +/- 1 pixel
+                due to quantization effect.  Also due to quantization,
+                the tool has lower limit of 3 image pixels; smaller
+                than that and the hexagons become squares.
+            </PARA>
+          </DESC>
+        
+        </PARAM>
+
+        <PARAM name="binimg" type="file" filetype="output">
+          <SYNOPSIS>Optional, output binned image</SYNOPSIS>
+          <DESC>
+            <PARA>
+                If the binimg file is specified, the script
+                will use the input image and the output map file to
+                create a binned version of the input image.
+            </PARA>          
+          </DESC>
+        </PARAM>
+
+        <PARAM name="xref" type="real" def="0">
+          <SYNOPSIS>X coordinate of the reference location in image coordinates</SYNOPSIS>
+          <DESC>
+            <PARA>
+        The reference location is specified
+        in logical (image) coordinates.  When these parameters are
+        set, the tool will adjust the starting location of the
+        hexagonal grid such that the reference position is
+        in the center of a hexagon.  The exact group 
+        (map ID) where the reference location is located is
+        undetermined.
+            </PARA>
+          
+          </DESC>
+        </PARAM>
+
+        <PARAM name="yref" type="real" def="0">
+          <SYNOPSIS>Y coordinate of the reference location in image coordinates</SYNOPSIS>
+          <DESC>
+            <PARA>
+        The reference location is specified
+        in logical (image) coordinates.  When these parameters are
+        set, the tool will adjust the starting location of the
+        hexagonal grid such that the reference position is
+        in the center of a hexagon.  The exact group 
+        (map ID) where the reference location is located is
+        undetermined.
+            </PARA>
+          
+          </DESC>
+        </PARAM>
+
+
+        <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+            <SYNOPSIS>
+            Amount of chatter from the tool.
+            </SYNOPSIS>
+        </PARAM>
+        <PARAM name="clobber" type="boolean" def="no">
+            <SYNOPSIS>
+            Delete outfile if it already exists?
+            </SYNOPSIS>
+        </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+
+
+    <BUGS>
+        <PARA>
+            See the
+            <HREF link="http://cxc.harvard.edu/ciao/bugs/index.html">CIAO
+            website</HREF> for an up-to-date listing of known bugs.
+        </PARA>
+    </BUGS>
+    <LASTMODIFIED>August 2023</LASTMODIFIED>
+</ENTRY>
+</cxchelptopics>
