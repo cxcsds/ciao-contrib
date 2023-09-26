@@ -18,11 +18,9 @@
 #
 
 toolname = "srcflux"
-__revision__ = "08 March 2023"
+__revision__ = "26 September 2023"
 
 import os
-
-## TODO: replace run_tools with make_tools
 
 import ciao_contrib.logger_wrapper as lw
 lw.initialize_logger(toolname)
@@ -37,7 +35,7 @@ verb5 = lgr.verbose5
 __osuf__ = ".flux"  # output suffix
 
 import sys
-import stk as stk
+import stk
 from ciao_contrib._tools.taskrunner import TaskRunner
 from ciao_contrib.runtool import make_tool
 from pycrates import read_file
@@ -176,6 +174,78 @@ def locate_fovfile( myparams ):
     dot = "" if os.path.isdir(myroot) else "."
     fov = myparams.fovfile if not is_none(myparams.fovfile) else myroot+dot+"fov"
     return(fov)
+
+
+def make_optimized_regions(myparams):
+    '''Create point source optimized regions using new psf_countour and
+    bkg_fixed_counts scripts.      
+    '''
+    from region import CXCRegion
+    
+    fov = locate_fovfile( myparams)
+    
+    verb1("Creating optimized source regions")
+    psf_contour = make_tool("psf_contour")
+    psf_contour.infile = myparams.infile 
+    psf_contour.pos = myparams.outroot+"srcs.fits"
+    psf_contour.outroot = myparams.outroot
+    psf_contour.method = "contour"
+    psf_contour.energy = 1.0
+    psf_contour.fraction = 0.9
+    psf_contour.fovfile= fov
+    psf_contour.marx_root = myparams.marx_root
+    psf_contour.random_seed = myparams.random_seed
+    psf_contour.parallel = myparams.parallel
+    psf_contour.nproc = myparams.nproc if myparams.nproc != 999 else "INDEF"
+    chat = psf_contour(clobber=True)
+    if chat:
+        verb2(chat)
+
+    src_list = myparams.outroot+"src.lis"
+    out_lis = stk.build(myparams.outroot+"_i*_src.reg")
+    out_lis.sort()    
+    with open(src_list, "w") as fptr:
+        for reg_file in out_lis:
+            reg = CXCRegion(reg_file)
+            fptr.write(str(reg)+"\n")
+
+    # For background we use broad band (ACIS) to determine the number
+    # of counts
+    bg_infile = myparams.infile
+    tab = read_file(myparams.outroot+"srcs.fits")
+    inst = tab.get_key_value("INSTRUME")
+    if inst == "ACIS":
+        bg_infile += "[energy=500:7000]"   #  Use broad band for bg 
+
+    verb1("Creating optimized background regions")
+    bkg_fixed = make_tool("bkg_fixed_counts")
+    bkg_fixed.infile = bg_infile
+    bkg_fixed.outroot = myparams.outroot
+    bkg_fixed.pos = myparams.outroot+"srcs.fits"
+    bkg_fixed.min_counts = 50
+    bkg_fixed.src_region = myparams.outroot+"_i*_src.reg"
+    bkg_fixed.fovfile = fov
+    bkg_fixed.inner_ecf = 0.95
+    bkg_fixed.energy = 1.0
+    chat = bkg_fixed(clobber=True)
+    if chat:
+        verb2(chat)
+    
+    bkg_list = myparams.outroot+"bkg.lis"
+    out_lis = stk.build(myparams.outroot+"_i*_bkg.reg")
+    out_lis.sort()    
+    with open(bkg_list, "w") as fptr:
+        for reg_file in out_lis:
+            reg = CXCRegion(reg_file)
+            fptr.write(str(reg)+"\n")
+
+    # Clean up temp files
+    for to_del in out_lis:
+        gorm(to_del)
+        for suffix in [".psf", ".smpsf", "_projrays.fits", "_src.reg"]:
+            gorm(to_del.replace("_bkg.reg", suffix))
+        
+    return f"@-{src_list}", f"@-{bkg_list}"
 
 
 def run_split_roi( myparams ):
@@ -435,10 +505,18 @@ def make_regions( myparams ):
     srcbkg = [is_none( myparams.srcreg ),is_none( myparams.bkgreg )]
 
     if all(srcbkg):
-        src,bkg = run_split_roi( myparams )
+        if myparams.regions == "simple":
+            src,bkg = run_split_roi( myparams )
+        elif myparams.regions == "optimized":
+            src,bkg = make_optimized_regions(myparams)
+        else:
+            raise ValueError("Missing srcreg and bkgreg with regions=user")
     elif any(srcbkg):
         raise ValueError("Either both srcreg and bkgreg must be specified or neither can be specified")
     else:
+        # I could wrap this in a if myparams.regions == "user", but for
+        # back compatibility I'm going to leave this alone and use the same
+        # logic as before.
         src,bkg = validate_src_and_bkg_regions( myroot, myparams.infile, myparams.tmpdir,
             myparams.srcreg, myparams.bkgreg )
         #check_pos_in_srcreg( psfsize_srcs.outfile, src )
@@ -597,8 +675,8 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
             raise IOError("Please setup for saotrace first")
         projector="psf_project_ray"
     elif simulator == 'marx':
-        if 'MARX_ROOT' not in os.environ:
-            raise IOError("Please setup for marx first")
+        if not os.path.exists(myparams.marx_root):
+            raise IOError("Please set marx_root parameter to directory where MARX is installed")
         projector="marx"
     else:
         raise ValueError("Unknown simulator")
@@ -650,6 +728,7 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
         simulate_psf.numiter=1
         simulate_psf.keepiter=False
         simulate_psf.random_seed=myparams.random_seed
+        simulate_psf.marx_root = myparams.marx_root
         simulate_psf.verbose=0
 
         taskrunner.add_task(f"psf_{ii}", "", run_simulate_psf, simulate_psf)
@@ -3211,13 +3290,14 @@ def main():
                    "pluginfile", "fovfile", "asolfile", "mskfile", 
                    "bpixfile", "dtffile", "ecffile", "parallel", 
                    "nproc", "tmpdir", "random_seed", "clobber", 
-                   "verbose")
+                   "verbose", "regions", "marx_root",)
 
     # Load parameters
     from ciao_contrib.param_soaker import get_params
     pars = get_params(toolname, "rw", sys.argv,
                       verbose={"set":lw.set_verbosity, "cmd":verb1},
-                      musthave = __must_have)
+                      musthave = __must_have,
+                      revision=__revision__)
     set_nproc(pars)
 
     if not os.path.isdir( pars["outroot"] ):
