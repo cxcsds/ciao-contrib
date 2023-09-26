@@ -1,6 +1,6 @@
 #
 #  Copyright (C) 2009, 2010, 2015, 2016, 2018, 2019, 2023
-#            Smithsonian Astrophysical Observatory
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -888,14 +888,8 @@ def prof_data(id=None, model=None,
                                 group_snr=group_snr,
                                 label=label)
 
-    try:
-        plot.backend.begin()
+    with plot.backend:
         _prof_data_plot.plot(**kwargs)
-    except Exception:
-        plot.backend.exceptions()
-        raise
-    else:
-        plot.backend.end()
 
 
 def prof_model(id=None, model=None,
@@ -920,14 +914,8 @@ def prof_model(id=None, model=None,
                                  group_snr=group_snr,
                                  label=label)
 
-    try:
-        plot.backend.begin()
+    with plot.backend:
         _prof_model_plot.plot(**kwargs)
-    except Exception:
-        plot.backend.exceptions()
-        raise
-    else:
-        plot.backend.end()
 
 
 def prof_source(id=None, model=None,
@@ -952,14 +940,8 @@ def prof_source(id=None, model=None,
                                   group_snr=group_snr,
                                   label=label)
 
-    try:
-        plot.backend.begin()
+    with plot.backend:
         _prof_source_plot.plot(**kwargs)
-    except Exception:
-        plot.backend.exceptions()
-        raise
-    else:
-        plot.backend.end()
 
 
 def prof_resid(id=None, model=None,
@@ -984,14 +966,8 @@ def prof_resid(id=None, model=None,
                                  group_snr=group_snr,
                                  label=label)
 
-    try:
-        plot.backend.begin()
+    with plot.backend:
         _prof_resid_plot.plot(**kwargs)
-    except Exception:
-        plot.backend.exceptions()
-        raise
-    else:
-        plot.backend.end()
 
 
 def prof_delchi(id=None, model=None,
@@ -1016,14 +992,8 @@ def prof_delchi(id=None, model=None,
                                   group_snr=group_snr,
                                   label=label)
 
-    try:
-        plot.backend.begin()
+    with plot.backend:
         _prof_delchi_plot.plot(**kwargs)
-    except Exception:
-        plot.backend.exceptions()
-        raise
-    else:
-        plot.backend.end()
 
 
 def prof_fit(id=None, model=None,
@@ -1048,14 +1018,8 @@ def prof_fit(id=None, model=None,
                                group_snr=group_snr,
                                label=label)
 
-    try:
-        plot.backend.begin()
+    with plot.backend:
         _prof_fit_plot.plot(**kwargs)
-    except Exception:
-        plot.backend.exceptions()
-        raise
-    else:
-        plot.backend.end()
 
 
 def prof_fit_resid(id=None, model=None,
@@ -1085,16 +1049,10 @@ def prof_fit_resid(id=None, model=None,
     fp = _prof_fit_resid_plot["fitplot"]
     rp = _prof_fit_resid_plot["residplot"]
 
-    try:
-        plot.backend.begin()
+    with plot.backend:
         jp.reset()
         jp.plottop(fp, **kwargs)
         jp.plotbot(rp, **kwargs)
-    except Exception:
-        plot.backend.exceptions()
-        raise
-    else:
-        plot.backend.end()
 
 
 def prof_fit_delchi(id=None, model=None,
@@ -1124,16 +1082,10 @@ def prof_fit_delchi(id=None, model=None,
     fp = _prof_fit_delchi_plot["fitplot"]
     rp = _prof_fit_delchi_plot["residplot"]
 
-    try:
-        plot.backend.begin()
+    with plot.backend:
         jp.reset()
         jp.plottop(fp, **kwargs)
         jp.plotbot(rp, **kwargs)
-    except Exception:
-        plot.backend.exceptions()
-        raise
-    else:
-        plot.backend.end()
 
 
 # Plot preferences
