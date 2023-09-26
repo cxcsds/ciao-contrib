@@ -3332,6 +3332,13 @@ parinfo['make_psf_asymmetry_region'] = {
     }
 
 
+parinfo['map2reg'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input map image",None),ParValue("outfile","f","Output region file",None)],
+    'opt': [ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use (None:use all available)",None),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove output file if it already exists?",False)],
+    }
+
+
 parinfo['mean_energy_map'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input ACIS event file",None),ParValue("outfile","f","Output image file name",None),ParRange("binsize","r","Image binning size",None,0,None)],
