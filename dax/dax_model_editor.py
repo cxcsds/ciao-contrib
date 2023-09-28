@@ -173,6 +173,14 @@ class DaxModelEditor():
     def conf(self):
         'Run confidence command'
         from sherpa.utils.err import EstErr
+
+        if self.check_modified():
+            messagebox.showerror("DAX Model Editor",
+                       "Some values have been modified but not set. "+
+                       "Please set the values by pressing Return and the "+
+                       "text will change color from red to black.")
+            return
+
         if self.conf_command:
             try:
                 self.conf_command()
@@ -182,6 +190,14 @@ class DaxModelEditor():
     def fit(self):
         '''Go ahead and fit the data
         '''
+
+        if self.check_modified():
+            messagebox.showerror("DAX Model Editor",
+                       "Some values have been modified but not set. "+
+                       "Please set the values by pressing Return and the "+
+                       "text will change color from red to black.")
+            return
+
         try:
             self.fit_command()
         except Exception as mybad:
@@ -205,6 +221,15 @@ class DaxModelEditor():
                 modpar.update()
             except:
                 pass
+
+    def check_modified(self):
+        'Check if parameter values have been modified but not set yet'
+        is_modified = False
+        for modpar in self.model_parameters:
+            if modpar.check_modified():
+                is_modified = True
+
+        return is_modified
 
     def cancel(self):
         '''Stop the event loop and set cancel flag'''
@@ -237,6 +262,13 @@ class DaxModelEditor():
     def plot(self):
         '''Plot model with current parameters'''
         import sherpa.astro.ui as sherpa
+
+        if self.check_modified():
+            messagebox.showerror("DAX Model Editor",
+                       "Some values have been modified but not set. "+
+                       "Please set the values by pressing Return and the "+
+                       "text will change color from red to black.")
+            return
 
         if self.xpa is None:
             import matplotlib.pylab as plt
@@ -343,6 +375,17 @@ class DaxModelParameter():
             # ~ to_mod.configure(foreground="black")
             # ~ setattr(self.sherpa_par, field, self.initial_value[field])
 
+    def check_modified(self):
+        """Check if any of the values have been modified by not set"""
+
+        retval = False
+        for field in ['max', 'min', 'val']:
+            to_mod = getattr(self, field)
+            if to_mod.modified is True:
+                retval = True
+
+        return retval
+
     def entry_callback(self, keyevt, field):
         '''ACTION: set the model parameter value when the user
         type <<Return>>.  Otherwise, when user edits value
@@ -374,12 +417,14 @@ class DaxModelParameter():
                 setattr(self.sherpa_par, field, fval)
                 to_mod.configure(foreground="black")
                 to_mod.last_value = to_mod.get()
+                to_mod.modified = False
             except (ValueError, ParameterErr) as val_err:
                 messagebox.showerror("DAX Model Editor", str(val_err))
 
         else:
             if to_mod.get() != to_mod.last_value:
                 to_mod.configure(foreground="red")
+                to_mod.modified = True
 
     def render_ui(self):
         '''Render the parameter UI elements and attach bindings'''
@@ -400,6 +445,7 @@ class DaxModelParameter():
         self.val.delete(0, END)
         self.val.insert(0, self.__format_val(self.sherpa_par.val))
         self.val.last_value = self.val.get()
+        self.val.modified = False
         self.val.bind("<KeyRelease>",
                       lambda x: self.entry_callback(x, field='val'))
 
@@ -421,6 +467,7 @@ class DaxModelParameter():
         self.min.delete(0, END)
         self.min.insert(0, self.__format_val(self.sherpa_par.min))
         self.min.last_value = self.min.get()
+        self.min.modified = False
         self.min.bind("<KeyRelease>",
                       lambda x: self.entry_callback(x, field='min'))
 
@@ -432,6 +479,7 @@ class DaxModelParameter():
         self.max.delete(0, END)
         self.max.insert(0, self.__format_val(self.sherpa_par.max))
         self.max.last_value = self.max.get()
+        self.max.modified = False
         self.max.bind("<KeyRelease>",
                       lambda x: self.entry_callback(x, field='max'))
 
