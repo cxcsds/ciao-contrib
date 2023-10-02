@@ -175,10 +175,6 @@ class DaxModelEditor():
         from sherpa.utils.err import EstErr
 
         if self.check_modified():
-            messagebox.showerror("DAX Model Editor",
-                       "Some values have been modified but not set. "+
-                       "Please set the values by pressing Return and the "+
-                       "text will change color from red to black.")
             return
 
         if self.conf_command:
@@ -192,10 +188,6 @@ class DaxModelEditor():
         '''
 
         if self.check_modified():
-            messagebox.showerror("DAX Model Editor",
-                       "Some values have been modified but not set. "+
-                       "Please set the values by pressing Return and the "+
-                       "text will change color from red to black.")
             return
 
         try:
@@ -228,6 +220,12 @@ class DaxModelEditor():
         for modpar in self.model_parameters:
             if modpar.check_modified():
                 is_modified = True
+
+        if is_modified:
+            messagebox.showerror("DAX Model Editor",
+                       "Some values have been modified but not set. "+
+                       "Please set the values by pressing Return and the "+
+                       "text will change color from red to black.")
 
         return is_modified
 
@@ -264,10 +262,6 @@ class DaxModelEditor():
         import sherpa.astro.ui as sherpa
 
         if self.check_modified():
-            messagebox.showerror("DAX Model Editor",
-                       "Some values have been modified but not set. "+
-                       "Please set the values by pressing Return and the "+
-                       "text will change color from red to black.")
             return
 
         if self.xpa is None:
@@ -364,9 +358,10 @@ class DaxModelParameter():
             to_mod.insert(0, self.__format_val(self.initial_value[field]))
             to_mod.configure(foreground="black")
             setattr(self.sherpa_par, field, self.initial_value[field])
+            to_mod.modified = False
 
     def update(self):
-        """Reset values to original"""
+        """Update values after fit"""
         for field in ['max', 'min', 'val']:
             to_mod = getattr(self, field)
             newval = getattr(self.sherpa_par, field)
