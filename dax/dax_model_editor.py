@@ -198,6 +198,10 @@ class DaxModelEditor():
 
     def quit(self):
         'Continue on with rest of script'
+
+        if self.check_modified():
+            return
+
         self.win.quit()
         self.win.destroy()
 
