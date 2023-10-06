@@ -137,6 +137,12 @@ def check_unique(xpa):
 def save_ds9_image(xpa):
     ds9_file = NamedTemporaryFile(dir=ROOT, suffix="_ds9.fits", delete=False)
 
+
+    cmd = [ 'xpaget', xpa, 'block' ]
+    block = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
+    if int(block) != 1:
+        raise IOError("ERROR: This task requires that the input image be blocked to 1")
+
     cmd = [ 'xpaget', xpa, 'fits' ]
     fits = sp.run( cmd, check=True, stdout=sp.PIPE).stdout    
     open(ds9_file.name,"wb").write(fits)
