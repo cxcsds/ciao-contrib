@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "21 April 2023"
+toolver  = "10 October 2023"
 
 import sys
 import os
@@ -1176,19 +1176,11 @@ def build_module_init(modname, pycode, mdls,
 {warning_str}
 
 from sherpa.models.parameter import {normpar}hugeval
-from sherpa.astro.xspec import {xsnames}, XSParameter, get_xsversion
+from sherpa.astro.xspec import {xsnames}, XSParameter
 
 from . import _models
 
 __all__ = ({mdlnames})
-
-# We need to ensure that the XSPEC model library has been initialized
-# before the model is evaluated. This could be handled in the
-# Python<->C++ bridge, as it is with the XSPEC module that is
-# distributed with CIAO, but here we just ensure that the library
-# has been initialized when this module is imported.
-#
-get_xsversion()
 
 # Provenance
 #
@@ -1221,38 +1213,6 @@ get_xsversion()
 # Class definitions
 #
 '''
-
-    # Fix an error in Sherpa 4.15.0 and earlier.
-    # - replace "{t2}" by "        "
-    #
-    import re
-    conv = re.subn(r"\{t2\}", "        ", pycode)
-    if conv[1] > 0:
-        pycode = conv[0]
-        v2(f"NOTE: had to correct the python code {conv[1]} times [t2 replacement]")
-
-    # Fix an error in Sherpa 4.15.0 and earlier
-    # - warnings.warn string not correctly interpolated when generated.
-    #
-    conv = re.subn(r"warnings.warn\('support for models like {mdl.clname.lower\(\)}",
-                   "warnings.warn(f'support for models like {self.__class__.__name__.lower()}", pycode)
-    if conv[1] > 0:
-        pycode = conv[0]
-        v2(f"NOTE: had to correct the python code {conv[1]} times [warn f-string]")
-
-    # Replace the warning message about "recalculated-per spectrum"
-    # with a change to the _use_caching value. Note that we've just
-    # made a change to this code. Also note that we need to make the
-    # _use_caching call after calling the superclass but the warning
-    # is made before calling things, which complicates the
-    # replacement.
-    #
-    conv = re.subn(r"\n(\s+)warnings.warn\(f'support for models like {self.__class__.__name__.lower\(\)} \(recalculated per spectrum\) is untested.'\)\n([^\n]*)\n",
-                   r"\n\2\n\1self._use_caching = False",
-                   pycode)
-    if conv[1] > 0:
-        pycode = conv[0]
-        v2(f"NOTE: replaced recalulated warning with self._use_caching setting {conv[1]} times")
 
     out += pycode
     save(outfile, out)
@@ -1292,163 +1252,11 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
     if not clobber:
         check_clobber(outfile)
 
-    out = CXX_HEADER
-    out += '''
-// Provide the Python interface to XSPEC local models using Sherpa.
-
-#include <iostream>
-
-#include <xsTypes.h>
-#include <XSFunctions/Utilities/funcType.h>  // defines xsccCall
-
-// What XSPEC version do we support
-'''
-
-    # Declare the XSPEC defines used to control the code; this is a
-    # bit OTT as we know we don't need all of them, but put them all
-    # in for now. This needs to be updated with each CIAO release.
-    #
     xspec_version_str = get_xsversion()
     v1(f"Using XSPEC version: {xspec_version_str}")
 
-    toks = xspec_version_str.split(".")
-    if len(toks) != 3:
-        raise ValueError(f"Unrecognized XSPEC version: {xspec_version_str}")
-
-    # assume the micro version is 1 digit
-    #
-    xspec_version = (int(toks[0]), int(toks[1]), int(toks[2][:1]))
-
-    for v in [(12, 9, 0), (12, 9, 1),
-              (12, 10, 0), (12, 10, 1),
-              (12, 11, 0), (12, 11, 1),
-              (12, 12, 0), (12, 12, 1)]:
-        if v <= xspec_version:
-            out += "#define XSPEC_{}_{}_{}\n".format(*v)
-
-    out += '''
-#include "sherpa/astro/xspec_extension.hh"
-
-'''
-
-    if len(have_cxx) > 0:
-        # cppModelWrapper is defined in XSFunctions/funcWrappers.cxx
-        # so should be available in libXSFunctions. It doesn't appear
-        # to be declared in an include file so we need ot specify it
-        # explicitly.
-        #
-        out += '''void cppModelWrapper(const double* energy, int nFlux, const double* params,
-       int spectrumNumber, double* flux, double* fluxError, const char* initStr,
-       int nPar, void (*cppFunc)(const RealArray&, const RealArray&,
-       int, RealArray&, RealArray&, const string&));
-
-'''
-
-        # Does this ever get closed? Or is it a bug?
-        out += '''extern "C" {
-'''
-
-        for cxxmdl in have_cxx:
-
-            out += f'  void {cxxmdl.funcname}'
-            out += '(const RealArray& energyArray, const RealArray& params, int spectrumNumber, RealArray& flux, RealArray& fluxErr, const string& initString);\n'
-
-            out += f'  void C_{cxxmdl.funcname}'
-            out += '(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr) {\n'
-            out += f'    const size_t nPar = {len(cxxmdl.pars)};\n'
-            out += '    cppModelWrapper(energy, nFlux, params, spectrumNumber, flux, fluxError, initStr, nPar, '
-            out += f'{cxxmdl.funcname});\n'
-            out += '  }\n'
-
-        out += '''
-}
-'''
-
-    # This is needed to wrap relline. Is it needed for other
-    # models? Hopefully it doesn't mess anything up as it's
-    # just declaring symbols.
-    #
-    if len(have_c) > 0:
-        out += 'extern "C" {\n'
-
-        for cmdl in have_c:
-            out += f'  xsccCall {cmdl.funcname};\n'
-
-        out += "}\n"
-
-    # out += cxxcode
-    # This should be fixed in Sherpa but work around it here.
-    # if not cxxcode.endswith(';'):
-    #     out += ';\n'
-
-    # START HACK
-
-    # Argh: it looks like I need to update the sherpa.astro.utils.xspec
-    # code to handle fortran-style models - as the cxxcode has them as
-    #   void x_(float* ear, ...)
-    # but the C++ template wants them to be 'const float* ear ...'.
-    #
-    # We could try and decode cxxcode and extract just the parts we
-    # need, but for now just manually re-create the whole thing.
-    #
-    fmods = []
-    for mdl in mdls:
-        if not mdl.language.startswith("Fortran"):
-            continue
-
-        if mdl.language == "Fortran - single precision":
-            fmods.append(f"xsf77Call {mdl.funcname}_;")
-        elif mdl.language == "Fortran - double precision":
-            # We do not support this type of model at the moment
-            fmods.append(f"xsF77Call {mdl.funcname}_;")
-        else:
-            v1(f"WARNING: unrecognized model style for {mdl.name}/{mdl.funcname}: {mdl.language}")
-
-    if len(fmods) > 0:
-        out += '''// Defines (re-created as sherpa.astro.utils.xspec needs updating)
-
-extern "C" {
-'''
-
-        for fmod in fmods:
-            out += f"  {fmod}\n"
-
-        out += "}\n\n"
-
-    out += '''// Wrapper
-
-static PyMethodDef Wrappers[] = {
-'''
-
-    for mdl in mdls:
-        wrapcode, defcode = xspec.model_to_compiled(mdl)
-        out += f"  {wrapcode}\n"
-
-    out += "  { NULL, NULL, 0, NULL }\n"
-    out += "};\n\n"
-
-    # END HACK
-
-    out += '''static struct PyModuleDef wrapper_module = {
-  PyModuleDef_HEAD_INIT,
-  "_models",
-  NULL,
-  -1,
-  Wrappers,
-};
-
-// Note that we are going to assume that the XSPEC model has
-// already been initialized. The XSPECMODELFCT_C macro/template
-// does not guarantee this (it does when building the Sherpa
-// XSPEC module, but not for external code, since INIT_XSPEC
-// may not be defined).
-//
-PyMODINIT_FUNC PyInit__models(void) {
-  import_array();
-  return PyModule_Create(&wrapper_module);
-}
-'''
-
+    out = CXX_HEADER
+    out += cxxcode
     save(outfile, out)
 
 
