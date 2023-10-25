@@ -53,7 +53,7 @@
 	The simplest option is to just specify the location of the sources,
 	with no source or background regions; that is set the pos argument
 	but not the srcreg and bkgreg ones.
-	In this case a circle is used for each source, centered on each source,
+	By default in this case a circle is used for each source, centered on each source,
 	and the radius is the size of a circle needed to enclose 90% of the PSF at 1.0keV.
       </PARA>
       <PARA title="Using source and background regions">
@@ -71,8 +71,8 @@
         The other options are discussed below in the psfmethod parameter
      and the "PSF Correction" section.
       </PARA>
-      <PARA title='A fully Baysian computation'>
-	This tool is based on aprates, which performs a fully Baysian computation,
+      <PARA title='A fully Bayesian computation'>
+	This tool is based on the aprates tool, which performs a fully Bayesian computation,
 	thus the result is a credible interval (confidence interval
 	for the frequentist calculation), which is CONF parameter.
       </PARA>
@@ -162,8 +162,9 @@ Position                               0.5 - 7.0 keV
                         Mod.Flux       2.73E-13 erg/cm2/s (2.65E-13,2.82E-13)
 </VERBATIM>
 	  <PARA>
+
 	    Since source and background regions are not supplied, the script
-	    creates a circular region that encloses 90% of the PSF at 1.0 keV.
+	    by default creates a circular region that encloses 90% of the PSF at 1.0 keV.
 	  </PARA>
 <VERBATIM>
 &pr; dmlist rhooph_broad.flux"[cols shape,x,y,r]" data,clean
@@ -307,6 +308,120 @@ Position                               0.5 - 7.0 keV
 
 	</DESC>
       </QEXAMPLE>
+
+    <QEXAMPLE>
+      <SYNTAX>
+<LINE>
+      &pr; srcflux acisf00635_repro_evt2.fits "16:27:33.115 -24:41:15.51" rhooph \
+</LINE>
+<LINE>
+      regions=optimized psfmethod=marx
+</LINE>
+      </SYNTAX>
+      <DESC>
+        <VERBATIM>
+        ...
+Summary of source fluxes
+
+      Position                               0.5 - 7.0 keV                           
+                                             Value        90% Conf Interval          
+#0001|16 27 33.11 -24 41 15.5 Rate           0.0281 c/s (0.0271,0.0291)              
+                              Flux           3.83E-13 erg/cm2/s (3.7E-13,3.97E-13)   
+                              Mod.Flux       3.07E-13 erg/cm2/s (2.96E-13,3.18E-13)  
+
+        </VERBATIM>
+        <PARA>
+            This is the similar to the first example but now using
+            the optimized regions option and using MARX to estimate the
+            PSF fraction.
+        </PARA>
+
+<PARA>
+We can see that the source region is now a polygon (in this example with 98 sides)
+</PARA>
+
+<VERBATIM>
+&pr; dmmakereg region="region(rhooph_0001_srcreg.fits)" out=- ker=ascii 
+# Region file format: DS9 version 4.1
+global color=blue dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+physical
+Polygon(3671,3251.34,3670,3251.14,3669,3251.08,3668,3251.35,3667,
+3251.74,3666.65,3252,3666,3252.84,3665.87,3253,3665,3253.52,3664.4,
+3254,3664,3254.5,3663.65,3255,3663.33,3256,3663.41,3257,3663.38,
+3258,3663.02,3259,3663.08,3260,3663.28,3261,3664,3261.99,3664.01,
+3262,3665,3262.8,3665.24,3263,3665.07,3264,3665.5,3265,3666,3265.79,
+3666.17,3266,3667,3266.82,3667.3,3267,3668,3267.32,3669,3267.01,
+3669.04,3267,3670,3266.84,3670.22,3267,3670.25,3268,3670.96,3269,
+3671,3269.02,3672,3269.41,3673,3269.68,3674,3269.8,3675,3269.69,
+3676,3269.23,3676.86,3270,3677,3270.1,3678,3270.48,3679,3270.5,
+3680,3270.47,3681,3270.21,3681.71,3270,3682,3269.94,3682.46,3270,
+3683,3270.08,3684,3270.01,3684.02,3270,3685,3269.77,3686,3269,
+3686,3269,3687,3268.41,3687.87,3268,3688,3267.92,3688.71,3267,
+3688.82,3266,3688.89,3265,3689,3264.81,3689.67,3264,3689.87,3263,
+3689.79,3262,3689.42,3261,3689,3260.31,3688.64,3260,3688.24,3259,
+3688.35,3258,3688,3257.19,3687.89,3257,3687,3256.06,3686.92,3256,
+3686,3255.46,3685,3255.28,3684,3255.25,3683,3255.01,3682.99,3255,
+3683,3254,3682.16,3253,3682,3252.91,3681,3252.56,3680,3252.01,
+3679.98,3252,3679,3251.79,3678.24,3252,3678,3252.06,3677,3252.3,
+3676.69,3252,3676,3251.2,3675.66,3251,3675,3250.71,3674,3250.58,
+3673,3250.52,3672,3250.73,3671.56,3251,3671,3251.34) #
+</VERBATIM>
+
+<PARA>
+And that the background region is an annulus excluding the 
+source polygon
+</PARA>
+
+<VERBATIM>
+&pr; dmmakereg region="region(/pool1/kjg/rhooph_0001_bkgreg.fits)" out=- ker=ascii
+# Region file format: DS9 version 4.1
+global color=blue dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+physical
+Annulus(3676.13,3260.33,16.5786,18.6114) #
+-Polygon(3671,3251.34,3670,3251.14,3669,3251.08,3668,3251.35,3667,
+3251.74,3666.65,3252,3666,3252.84,3665.87,3253,3665,3253.52,3664.4,
+3254,3664,3254.5,3663.65,3255,3663.33,3256,3663.41,3257,3663.38,
+3258,3663.02,3259,3663.08,3260,3663.28,3261,3664,3261.99,3664.01,
+3262,3665,3262.8,3665.24,3263,3665.07,3264,3665.5,3265,3666,3265.79,
+3666.17,3266,3667,3266.82,3667.3,3267,3668,3267.32,3669,3267.01,
+3669.04,3267,3670,3266.84,3670.22,3267,3670.25,3268,3670.96,3269,
+3671,3269.02,3672,3269.41,3673,3269.68,3674,3269.8,3675,3269.69,
+3676,3269.23,3676.86,3270,3677,3270.1,3678,3270.48,3679,3270.5,
+3680,3270.47,3681,3270.21,3681.71,3270,3682,3269.94,3682.46,3270,
+3683,3270.08,3684,3270.01,3684.02,3270,3685,3269.77,3686,3269,
+3686,3269,3687,3268.41,3687.87,3268,3688,3267.92,3688.71,3267,
+3688.82,3266,3688.89,3265,3689,3264.81,3689.67,3264,3689.87,3263,
+3689.79,3262,3689.42,3261,3689,3260.31,3688.64,3260,3688.24,3259,
+3688.35,3258,3688,3257.19,3687.89,3257,3687,3256.06,3686.92,3256,
+3686,3255.46,3685,3255.28,3684,3255.25,3683,3255.01,3682.99,3255,
+3683,3254,3682.16,3253,3682,3252.91,3681,3252.56,3680,3252.01,
+3679.98,3252,3679,3251.79,3678.24,3252,3678,3252.06,3677,3252.3,
+3676.69,3252,3676,3251.2,3675.66,3251,3675,3250.71,3674,3250.58,
+3673,3250.52,3672,3250.73,3671.56,3251,3671,3251.34) #
+</VERBATIM>
+
+<PARA>
+and the background encloses 50 counts because we are using the same
+broad energy band (0.5-7.0keV).
+</PARA>
+
+<VERBATIM>
+&pr; dmlist rhooph_broad.flux"[cols bg_counts,psffrac]" data,clean
+#  BG_COUNTS            PSFFRAC
+                 50.0     0.87110247430974
+</VERBATIM>
+<PARA>
+The PSF fraction is estimated from the PSF simulated at the broad band
+monochromatic energy, 2.3keV, which results in a value slightly less than
+the 90% ECF value used to generate the region at the lower 1.0keV;
+the PSF is larger at higher energies.
+</PARA>
+      </DESC>
+    
+    </QEXAMPLE>
+
+
+
 
       <QEXAMPLE>
 	<SYNTAX>
@@ -461,7 +576,7 @@ Position                               0.3 - 7.0 keV
 </VERBATIM>
 
 	  <PARA>
-            Note:  The processing will happen in a random or on a
+            Note:  The processing will happen in a random order on a
             machine with multiple CPU cores.  Since we chose a
             custom energy range, the output file name
             is now 'rhooph_0.3-7.0.flux'.
@@ -929,6 +1044,53 @@ Summary of merged source fluxes
 	</DESC>
       </PARAM>
 
+    <PARAM name="regions" type="string" reqd="no" def="simple">
+      <SYNOPSIS>Algorithm used to create default source and background regions</SYNOPSIS>
+      <DESC>
+        <PARA>
+        There are three options:
+        </PARA>      
+        <PARA title="'simple'">
+        The default is 'simple'.  This creates circular source regions that 
+        encloses 90% of the PSF at 1.0keV at the input source position;
+        these regions are created by the psfsize_src script.
+        The background region is an annulus located at the source position 
+        with an outer radius equal to 3 times the source radius
+        and an inner radius equal to 1.7 times the source radius.
+        Overlapping sources are excluded from each other, and sources
+        are excluded from any overlapping background. These are created 
+        using the roi tool.
+        </PARA>
+        <PARA title="'optimized'">
+        The second option is the 'optimized' regions; they are optimized
+        specifically for point sources. The source region is a polygon
+        that encloses 90% of the MARX simulated PSF generated at 1.0 keV.
+        Overlapping source regions are shrunk until they no longer overlap
+        (or reach a minimum of 60% of the PSF at which point they are
+        mutually excluded from each other). These regions are created with
+        the psf_contour tool.        
+        The background region is an annulus with an inner radius that excludes
+        95% of the enclosed counts fraction (ECF) of the PSF with an outer
+        radius that encloses 50 counts; for ACIS this is 50 counts in the 
+        0.5 to 7.0keV energy band.  Source regions are excluded from the backgrounds.
+        These regions are created with the bkg_fixed_counts tool.
+        </PARA>
+        <PARA>
+        With both 'simple', and 'optimized' options, the edge of the detector is taken into account
+        in both the source and background regions by including the 
+        observation specific field-of-view (FOV) file.  If 'srcreg'
+        and 'bkgreg' are specified (not blank), then the
+        'simple' and 'optimized' options are ignored.
+        </PARA>
+        <PARA title="'user'">
+        Users can provide their own custom region files by setting
+        regions=user and supplying values for the 'srcreg' and 'bkgreg' parameters.
+        Those regions are used exactly as provided.
+        </PARA>
+
+      </DESC>    
+    </PARAM>
+
       <PARAM name="srcreg" type="string" filetype="input" reqd="no" stacks="yes">
 	<SYNOPSIS>Stack of source regions</SYNOPSIS>
 	<DESC>
@@ -955,11 +1117,6 @@ bounds(region(my.reg))
 	    If multiple source positions are input, then multiple srcreg (and bkgreg)
 	    must be specified and all in the same order.
 	  </PARA>
-	  <PARA>
-	    If srcreg is not specified, the tool will use a circle that encloses 90% of
-	    the PSF at 1.0keV.  If the fovfile is provided, then it will be included
-	    if the region overlaps the edge of the detector.
-	  </PARA>
 	</DESC>
       </PARAM>
 
@@ -976,14 +1133,6 @@ bounds(region(my.reg))
 	    If srcreg is specified, then bkgreg must also be specified.
 	    If multiple source positions are input, then multiple srcreg (and bkgreg)
 	    must be specified and in the same order.
-	  </PARA>
-	  <PARA>
-	    If srcreg is not specified the background is
-	    an annulus created by multiplying the source region by
-	    1 (inner radius) and
-	    5 (outer radius).
-	    Overlapping sources are excluded from both the source and
-        the background region.
 	  </PARA>
 	</DESC>
       </PARAM>
@@ -1277,7 +1426,7 @@ bounds(region(my.reg))
 	<SYNOPSIS>Dead time factors file (HRC only)</SYNOPSIS>
 	<DESC>
 	  <PARA>
-	    Name of the HRC head time file for the observation.
+	    Name of the HRC dead time file for the observation.
 	    If left blank, the tool will attempt to locate the
 	    correct file based on the event file header
 	    information.
@@ -1296,6 +1445,29 @@ bounds(region(my.reg))
 	  </PARA>
 	</DESC>
       </PARAM>
+
+    <PARAM name="marx_root" type="file" reqd="no" def="${MARX_ROOT}">
+        <SYNOPSIS>Directory where MARX is installed</SYNOPSIS>
+        <DESC>
+            <PARA>
+            MARX must be installed for the any of the following srcflux options to 
+            work
+            </PARA>        
+            <LIST>
+              <ITEM>psfmethod=marx</ITEM>
+              <ITEM>regions=optimized</ITEM>
+            </LIST>
+
+            <PARA>
+            The marx_root parameter values must be set to the root directory
+            where marx is installed.  That is the marx executable must be located
+            in $marx_root/bin/marx. 
+            </PARA>
+
+        </DESC>
+    </PARAM>
+
+
 
       <PARAM name="parallel" type="boolean" def="yes" reqd="no">
 	<SYNOPSIS>Run code in parallel using multiple processors?</SYNOPSIS>
@@ -1363,7 +1535,7 @@ bounds(region(my.reg))
         computing properties based on the merged products.
       </PARA>
       <PARA>
-      If source and background regions are not supplied, a circle
+      If source and background regions are not supplied, then by default a circle
       enclosing  90% of the PSF region at 1keV is computed separately
       for each observation.  If regions are supplied, the same regions are
       used for each input event file.
@@ -1377,7 +1549,6 @@ bounds(region(my.reg))
         and weighting by the exposure and PSF fractions.
       </PARA>
     </ADESC>
-
 
 
     <ADESC title="PSF Correction">
@@ -2209,7 +2380,7 @@ for a detailed example.
     <ADESC title="Processing steps">
       <PARA>
 	Given a position and no source and background regions, the
-	script will create a source region that is a circle which
+	script will by default create a source region that is a circle which
 	encloses 90% of the PSF at 1.0keV and
 	will create a co-located background annulus  with inner radius
     equal to the source and outer radius 5 time the source radius.
@@ -2352,7 +2523,28 @@ for a detailed example.
 
     </ADESC>
 
-    <ADESC title="Changes in the scripts 4.15.x (April 2023) release">
+    <ADESC title="Changes in the scripts 4.16.0 (December 2023) release">
+      <PARA title="New 'regions' parameter">
+        The regions parameter has been added.  It allows the user to select 
+        between two options when creating default source and background 
+        regions:  "simple" and "optimized".  
+        See the parameter description for more details on these two options.
+        Either choice is overridden if users specify the srcreg and bkgreg parameters
+         (both must be provided if either is specified).
+      </PARA>
+
+      <PARA title="Bugfix for merged observations">
+        A bug has been fixed that could cause an error when running srcflux
+        with merged datasets where the combined PSF fraction (alpha)
+        would be very, very slightly greater than 1.0 (eg 1.00000001).
+        This can happen due to numerical precision/rounding of certain
+        values. These values are now clipped at 1.0.      
+      </PARA>
+
+    </ADESC>
+
+
+    <ADESC title="Changes in the scripts 4.15.2 (April 2023) release">
       <PARA>
       Fixed a problem where  the script could crash when computing the 
       merged count rates if given particularly bad set of inputs.
@@ -2623,6 +2815,15 @@ for a detailed example.
       </PARA>
     </ADESC>
 
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
 
     <BUGS>
       <PARA>
@@ -2633,6 +2834,6 @@ for a detailed example.
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>January 2023</LASTMODIFIED>
+    <LASTMODIFIED>September 2023</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
