@@ -27,7 +27,66 @@ Using CIAO tools from ds9 (dax)
 
 New scripts
 
-  TODO
+  energy_hue_map
+  
+    A new technique to create true color images from a continuous 
+    energy spectrum rather than traditional tri-color images created
+    using 3 energy bands.  The inputs include a map estimating the
+    median (or mean) energy in each pixel (for example created 
+    using the statmap tool), and an image of the counts or flux.
+
+  The following scripts provide different algorithms to create map
+  files with different morphologies that have been found to be useful
+  when creating the mean|median energy map with a variety of 
+  fields.
+    
+    hexgrid
+
+        Creates a regular grid of hexagonal shaped map regions.
+        Hexagons can best approximate circles as they are the
+        highest order regular polygon that can uniformly tile a plane.
+
+    vtbin
+
+        Creates a map file based on the Voronoi Tessellation of points in
+        the input image.  By default it uses the location of the local maxima
+        or users can supply their own locations (via the sitefile).
+
+    centroid_map
+
+        This script runs vtbin and then computes the centroid of the pixel
+        values in each map region.  It then repeats the Voronoi Tessellation
+        using the centroid values N-many times, where N is the numiter parameter.
+
+    pathfinder
+
+        This script generates map regions based on the local gradient. It
+        follows the steepest ascent to the local maxima.  All pixels that reach
+        the same local maxim are grouped together.  Better for point sources
+        and other "clumpy" emission.
+
+    mkregmap
+
+        Turn a stack of regions into a map file.  Examples include
+        - Stack of region files:  @ciao.lis
+        - Special stack expanders:  pgrid() and rgrid()
+        - Multiple rows in a single region file:  foo.fits[@row=igrid(1:N:1)]
+          "Common" uses would be the output from tools like dmellipse or
+          dmcontour.
+
+    merge_too_small
+
+        Some of these algorithms can create small regions needed to "fill in"
+        the space between other more statistically significant regions.
+        The merge_too_small script will re-assign small groups to the largest
+        neighboring group; where "small" is either area below threshold
+        or counts below threshold.
+
+    map2reg
+
+        A utility tool to take a map file and converts it into a 
+        region file.  This can be useful to overlay the map boundaries
+        on images in ds9.
 
 
 Updated scripts
@@ -78,7 +137,13 @@ Updated scripts
 
 New Python modules
 
-  TODO (if any)
+  crates_contrib/masked_image_crate
+  
+    This new module introduces the MaskedIMAGECrate class.  It is
+    a subclass of the standard crates IMAGECrate class but extends it
+    to include a `valid` method to check if the pixel location is a
+    valid pixel (inside subspace and not NULL/NaN/Inf).  It only
+    supports 2D images.
 
 
 Updated Python modules
