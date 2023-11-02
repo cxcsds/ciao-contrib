@@ -892,25 +892,9 @@ class ParDicts(object):
         """
 
         keys_to_check = ['TITLE', 'OBSERVER', 'OBJECT', 'OBS_ID', 'DS_IDENT']
-        merge_key = []
         for mkey in keys_to_check:
-            if mkey in kwdict:
-                merge_key.append(kwdict[mkey].lower())
-
-        # ~ merge_key = [kwdict["TITLE"].lower(),
-                     # ~ kwdict["OBSERVER"].lower(),
-                     # ~ kwdict["OBJECT"].lower(),
-                     # ~ kwdict["OBS_ID"].lower()]
-
-        # ~ try:
-            # ~ merge_key.append(kwdict["DS_IDENT"].lower())
-        # ~ except KeyError:
-            # ~ pass
-
-        if "merged" in merge_key:
-            raise IOError(f"Merged data sets are unsupported by {toolname}.  Merged events files should not be used for spectral analysis.") # or v1 warning?
-
-        del(merge_key)
+            if mkey in kwdict and kwdict[mkey].lower() == "merged":
+                raise IOError(f"Merged data sets are unsupported by {toolname}.  Merged events files should not be used for spectral analysis.") # or v1 warning?
 
 
     def _check_blanksky(self,headerkeys,srcbkg_kw,bkgresp):
