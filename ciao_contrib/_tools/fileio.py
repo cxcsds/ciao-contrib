@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2019, 2020
+#  Copyright (C) 2010-2016, 2019, 2020, 2023
 #            Smithsonian Astrophysical Observatory
 #
 #
@@ -324,7 +324,7 @@ def validate_asol(infile):
     except KeyError:
         raise IOError("The file {} is missing the CONTENT keyword.".format(infile))
 
-    if content not in ['ASPSOL', 'ASPSOLOBI']:
+    if content not in ['ASPSOL', 'ASPSOLOBI', 'ASPSOL3']:
         raise IOError("Aspect solutions have CONTENT=ASPSOL or ASPSOLOBI, but found {} in\n{}".format(content, infile))
 
     req = ['time', 'ra', 'dec', 'roll']
@@ -654,7 +654,7 @@ def find_output_grid(evtfile, asolfile, maskfile,
     content = contents.pop()
     if content == 'ASPSOLOBI':
         method = 'convexhull'
-    elif content == 'ASPSOL':
+    elif content in ['ASPSOL', 'ASPSOL3']:
         method = 'minmax'
     else:
         raise IOError("Invalid CONTENT={} in aspect solution\n{}".format(content,

@@ -575,7 +575,7 @@ def make_fov(evtfile, asolfiles, msk, outfile):
     content = contents.pop()
     if content == 'ASPSOLOBI':
         method = 'convexhull'
-    elif content == 'ASPSOL':
+    elif content in ['ASPSOL', 'ASPSOL3']:
         method = 'minmax'
     else:
         raise OSError(f"Invalid CONTENT={content} in aspect solution: {asolfiles}")
