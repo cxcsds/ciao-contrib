@@ -188,10 +188,10 @@ class ParDicts(object):
         src_cnt = len(src_stk)
         asptype = self._get_keyvals(asp_stk, "CONTENT")
 
-        if all(["ASPHIST" in asptype, "ASPSOL" in asptype or "ASPSOLOBI" in asptype]):
+        if all(["ASPHIST" in asptype, "ASPSOL" in asptype or "ASPSOLOBI" in asptype or "ASPSOL3" in asptype]):
             raise IOError("A mix of aspect solution and histogram files were entered into 'asp'; please enter one or a list of either type, not both.\n")
 
-        if all(["ASPHIST" not in asptype, "ASPSOL" not in asptype, "ASPSOLOBI" not in asptype]):
+        if all(["ASPHIST" not in asptype, "ASPSOL" not in asptype, "ASPSOLOBI" not in asptype, "ASPSOL3" not in asptype]):
             raise IOError("Neither aspect histogram nor aspect solution files were found in the 'asp' input. Either the ASPHIST/asphist or ASPSOL FITS HDU is not in the expected place - which could cause the CIAO tools invoked by this script to fail - or a filename was entered incorrectly or does not exist. Exiting.\n")
 
         if "ASPHIST" in utils.getUniqueSynset(asptype):
@@ -891,15 +891,21 @@ class ParDicts(object):
         check if the input file has been merged using its header keywords
         """
 
-        merge_key = [kwdict["TITLE"].lower(),
-                     kwdict["OBSERVER"].lower(),
-                     kwdict["OBJECT"].lower(),
-                     kwdict["OBS_ID"].lower()]
+        keys_to_check = ['TITLE', 'OBSERVER', 'OBJECT', 'OBS_ID', 'DS_IDENT']
+        merge_key = []
+        for mkey in keys_to_check:
+            if mkey in kwdict:
+                merge_key.append(kwdict[mkey].lower())
 
-        try:
-            merge_key.append(kwdict["DS_IDENT"].lower())
-        except KeyError:
-            pass
+        # ~ merge_key = [kwdict["TITLE"].lower(),
+                     # ~ kwdict["OBSERVER"].lower(),
+                     # ~ kwdict["OBJECT"].lower(),
+                     # ~ kwdict["OBS_ID"].lower()]
+
+        # ~ try:
+            # ~ merge_key.append(kwdict["DS_IDENT"].lower())
+        # ~ except KeyError:
+            # ~ pass
 
         if "merged" in merge_key:
             raise IOError(f"Merged data sets are unsupported by {toolname}.  Merged events files should not be used for spectral analysis.") # or v1 warning?
