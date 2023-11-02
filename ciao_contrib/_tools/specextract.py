@@ -1408,7 +1408,7 @@ and/or background files. Assuming source and background file lists have a matchi
                 fkey = ",".join(fkey)
 
             try:
-                if all([fkey, fkey.lower() not in [""," ","none"]]):
+                if all([fkey, fkey.lower() not in [""," ","none","/dev/null"]]):
                     stk_dict[key] = stk.build(fkey)
                     self._check_files(stk_dict[key],key)
                     count = len(stk_dict[key])
