@@ -23,7 +23,7 @@
 #
 
 __toolname__ = "blanksky_sample"
-__revision__  = "31 October 2023"
+__revision__  = "03 November 2023"
 
 import os
 import sys
@@ -677,7 +677,8 @@ def doit():
 
     dmcopy = make_tool("dmcopy")
     dmmerge = make_tool("dmmerge")
-
+    dmhedit = make_tool("dmhedit")
+    
     ############
     with new_pfiles_environment(ardlib=False), \
          tempfile.NamedTemporaryFile(dir=tmpdir) as tmpin, \
@@ -826,6 +827,25 @@ def doit():
 
                 dmmerge()
 
+                # undo 'merged' keywords in resulting product
+                dmhedit.punlearn()
+                dmhedit.infile = f"{psf_bkg_outdir}{psf_bkg_out}"
+                dmhedit.operation = "add"
+                dmhedit.verbose = 0
+
+                for tkey in ["DATACLAS","OBSERVER","TITLE","OBS_ID",
+                             "SEQ_NUM","DETNAM","OBJECT","DATAMODE",
+                             "RA_TARG","DEC_TARG",
+                             "RA_PNT","DEC_PNT","ROLL_PNT",
+                             "RA_NOM","DEC_NOM","ROLL_NOM"]:
+                    dmhedit.key = tkey
+                    dmhedit.value = kw_psf[tkey]
+                    dmhedit()
+
+                dmhedit.key = "ASPTYPE"
+                dmhedit.op = "delete"
+                dmhedit()
+                    
             try:
                 add_tool_history(f"{psf_bkg_outdir}{psf_bkg_out}", __toolname__, pars)
             except OSError:
