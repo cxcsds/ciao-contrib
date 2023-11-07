@@ -19,7 +19,7 @@
 #
 
 __toolname__ = "blanksky"
-__revision__  = "31 October 2023"
+__revision__  = "07 November 2023"
 
 
 import os
@@ -224,6 +224,15 @@ def check_tool_par(evt,tool,param):
     par_instance = [par.replace("\"","") for par in par_instance]
 
     return f"{param}=yes" in par_instance
+
+
+
+def _chkvfpha(kw,evt):
+    if kw["DATAMODE"] == "VFAINT":
+        if "CHKVFPHA" in kw.keys():
+            return kw["CHKVFPHA"] # kw introduced in 4.16 to replace fragile 'check_tool_par' approach
+        return check_tool_par(evt=evt,tool="acis_process_events", param="check_vf_pha")
+    return False
 
 
 
@@ -816,12 +825,7 @@ is on ACIS-{aimpoint}, due to exceeding of SIM-Z limit.\n")
 
         # if datamode is VFAINT and ran a_p_e with check_vf_pha=yes,
         # remove background events with non-0 status
-        if False not in (keywords["DATAMODE"] == "VFAINT",
-                         check_tool_par(evt=infile,tool="acis_process_events",
-                                        param="check_vf_pha")):
-        # in CIAO 4.16, replace with:
-        # if keywords["DATAMODE"] == "VFAINT" and keyword["CHKVFPHA"]:
-        # and can remove 'check_tool_par' function
+        if keywords["DATAMODE"] == "VFAINT" and _chkvfpha(keywords,infile):
             dmcopy.punlearn()
 
             dmcopy.infile = f"{bkg_calib.name}[status=0]"
