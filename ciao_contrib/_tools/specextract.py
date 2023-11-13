@@ -27,7 +27,7 @@ Routines to support the specextract tool.
 
 __modulename__ = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "09 November 2023"
+__revision__ = "10 November 2023"
 
 import os
 import sys
@@ -1420,6 +1420,13 @@ and/or background files. Assuming source and background file lists have a matchi
         for key,fkey in stk_dict.items():
             if all([isinstance(fkey,list), "" not in fkey]):
                 fkey = ",".join(fkey)
+
+            # from regtest environment '/dev/null' can inadvertently be expanded
+            # out as '../../../../../../dev/null' leading to erroneous failures
+            if isinstance(fkey,str) and \
+               fkey.lower().endswith("/dev/null") and \
+               fkey.lower().startswith("../"):
+                fkey = "/dev/null"
 
             try:
                 if all([fkey, fkey.lower() not in [""," ","none","/dev/null"]]):
