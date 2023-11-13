@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021
+# Copyright (C) 2018-2023
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -22,39 +22,41 @@
 # 02110-1301 USA.
 #
 
-toolname = "blanksky_sample"
-__revision__  = "30 July 2021"
+__toolname__ = "blanksky_sample"
+__revision__  = "03 November 2023"
 
-import os, sys, paramio, tempfile, numpy
+import os
+import sys
+import tempfile
 
+import paramio
 import stk
 import pycrates as pcr
+
+from ciao_contrib._tools import fileio, utils
 
 from ciao_contrib.param_wrapper import open_param_file
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
 
-from ciao_contrib._tools import fileio, utils
+from ciao_contrib.runtool import make_tool, new_pfiles_environment, add_tool_history
 
-from ciao_contrib.runtool import dmcopy, dmhedit, dmlist, dmmerge, dmsort, dmtcalc, reproject_events, add_tool_history, dmhistory
-
+from ciao_contrib.parallel_wrapper import parallel_pool_futures
 from sherpa.utils import parallel_map
-from ciao_contrib.parallel_wrapper import parallel_pool
 from multiprocessing import cpu_count
-from ciao_contrib.runtool import new_pfiles_environment
 
 #############################################################################
 #############################################################################
 
 # Set up the logging/verbose code
-initialize_logger(toolname)
+initialize_logger(__toolname__)
 
 # Use v<n> to display messages at the given verbose level.
-v0 = make_verbose_level(toolname, 0)
-v1 = make_verbose_level(toolname, 1)
-v2 = make_verbose_level(toolname, 2)
-v3 = make_verbose_level(toolname, 3)
-v4 = make_verbose_level(toolname, 4)
-v5 = make_verbose_level(toolname, 5)
+v0 = make_verbose_level(__toolname__, 0)
+v1 = make_verbose_level(__toolname__, 1)
+v2 = make_verbose_level(__toolname__, 2)
+v3 = make_verbose_level(__toolname__, 3)
+v4 = make_verbose_level(__toolname__, 4)
+v5 = make_verbose_level(__toolname__, 5)
 
 
 class ScriptError(RuntimeError):
@@ -66,14 +68,12 @@ class ScriptError(RuntimeError):
     pass
 
 
-def error_out(msg):
-    "Throw a ScriptError with msg as the message."
-    raise ScriptError(msg)
+###############################################
 
 
 def get_par(argv):
     """ Get data_products parameters from parameter file """
-    pfile = open_param_file(argv,toolname=toolname)["fp"]
+    pfile = open_param_file(argv,toolname=__toolname__)["fp"]
 
     # Common parameters:
     params = {}
@@ -100,67 +100,74 @@ def get_par(argv):
 
     ## error out if there are spaces in absolute paths of various parameters
     if " " in os.path.abspath(params["infile"]):
-        raise IOError("The absolute path for the source events file, '{}', cannot contain any spaces".format(os.path.abspath(params["infile"])))
+        raise IOError(f"The absolute path for the source events file, \
+'{os.path.abspath(params['infile'])}', cannot contain any spaces")
 
     if " " in os.path.abspath(params["bkgfile"]):
-        raise IOError("The absolute path for the blanksky background file, '{}', cannot contain any spaces".format(os.path.abspath(params["bkgfile"])))
+        raise IOError(f"The absolute path for the blanksky background file, \
+'{os.path.abspath(params['bkgfile'])}', cannot contain any spaces")
 
     if " " in os.path.abspath(params["bkgout"]):
-        raise IOError("The absolute path for the sampled background output file, '{}', cannot contain any spaces".format(os.path.abspath(params["bkgout"])))
+        raise IOError(f"The absolute path for the sampled background output file, \
+'{os.path.abspath(params['bkgout'])}', cannot contain any spaces")
 
     if " " in os.path.abspath(params["psf_bkg_out"]):
-        raise IOError("The absolute path for the PSF+background output file, '{}', cannot contain any spaces".format(os.path.abspath(params["psf_bkg_out"])))
+        raise IOError(f"The absolute path for the PSF+background output file, \
+'{os.path.abspath(params['psf_bkg_out'])}', cannot contain any spaces")
 
     for asol in params["asol"]:
         if " " in os.path.abspath(asol):
-            raise IOError("The absolute path for the asol file, '{}', cannot contain any spaces".format(os.path.abspath(asol)))
+            raise IOError(f"The absolute path for the asol file, '{os.path.abspath(asol)}', \
+cannot contain any spaces")
 
     if " " in os.path.abspath(params["regionfile"]):
-        raise IOError("The absolute path for the region file, '{}', cannot contain any spaces".format(os.path.abspath(params["regionfile"])))
+        raise IOError(f"The absolute path for the region file, \
+'{os.path.abspath(params['regionfile'])}', cannot contain any spaces")
 
     if " " in os.path.abspath(params["fill_out"]):
-        raise IOError("The absolute path for the events substituted output file, '{}', cannot contain any spaces".format(os.path.abspath(params["fill_out"])))
+        raise IOError(f"The absolute path for the events substituted output file, \
+'{os.path.abspath(params['fill_out'])}', cannot contain any spaces")
 
     # check if produced "dmfilth"ed events file will be made
-    if params["regionfile"] != "":
-        if params["fill_out"] == "":
-            error_out("input 'regionfile' specified, an output 'fill_out' file must be specified")
+    if params["regionfile"] != "" and params["fill_out"] == "":
+        raise ScriptError("input 'regionfile' specified, an output 'fill_out' \
+file must be specified")
 
-    else:
-        if params["fill_out"] != "":
-            error_out("'fill_out' output file specified, an input 'regionfile' must also be specified")
+    if params["regionfile"] == "" and params["fill_out"] != "":
+        raise ScriptError("'fill_out' output file specified, an input 'regionfile' \
+must also be specified")
 
     # input PSF file
     if params["infile"] == "":
-        error_out("Input events file must be specified.")
-    elif params["infile"].startswith("@"):
-        error_out("'infile' does not support stacks.")
-    else:
-        params["infile_filter"] = fileio.get_filter(params["infile"])
-        params["infile"] = fileio.get_file(params["infile"])
+        raise ScriptError("Input events file must be specified.")
+    if params["infile"].startswith("@"):
+        raise ScriptError("'infile' does not support stacks.")
+
+    params["infile_filter"] = fileio.get_filter(params["infile"])
+    params["infile"] = fileio.get_file(params["infile"])
 
     # input blanksky background file
     if params["bkgfile"] == "":
-        error_out("Input blanksky background file must be specified.")
-    elif params["bkgfile"].startswith("@"):
-        error_out("Input blanksky background stacks not supported.")
-    else:
-        params["bkgfile_filter"] = fileio.get_filter(params["bkgfile"])
-        params["bkgfile"] = fileio.get_file(params["bkgfile"])
+        raise ScriptError("Input blanksky background file must be specified.")
+    if params["bkgfile"].startswith("@"):
+        raise ScriptError("Input blanksky background stacks not supported.")
+
+    params["bkgfile_filter"] = fileio.get_filter(params["bkgfile"])
+    params["bkgfile"] = fileio.get_file(params["bkgfile"])
 
     # output blanksky sampled file name
     if params["bkgout"] == "":
-        error_out("Please specify an output background file name.")
+        raise ScriptError("Please specify an output background file name.")
+
+    params["bkgoutdir"],bkgoutfile = utils.split_outroot(params["bkgout"])
+
+    if params["bkgout"].endswith("_"):
+        params["bkgout"] = bkgoutfile
     else:
-        params["bkgoutdir"],bkgoutfile = utils.split_outroot(params["bkgout"])
+        params["bkgout"] = bkgoutfile.rstrip("_")
 
-        if params["bkgout"].endswith("_"):
-            params["bkgout"] = bkgoutfile
-        else:
-            params["bkgout"] = bkgoutfile.rstrip("_")
-
-        # check if output directory is writable
-        fileio.validate_outdir(params["bkgoutdir"])
+    # check if output directory is writable
+    fileio.validate_outdir(params["bkgoutdir"])
 
     # output PSF+bkg file name
     if params["psf_bkg_out"] != "":
@@ -199,9 +206,10 @@ def get_par(argv):
     # close parameters block after validation
     paramio.paramclose(pfile)
 
-    v3("  Parameters: {0}".format(params))
+    v3(f"  Parameters: {params}")
 
     return params,pars
+
 
 
 def _get_nevt(fn):
@@ -211,27 +219,28 @@ def _get_nevt(fn):
 
     nevt = cr.get_nrows()
 
-    cr.__del__()
+    del cr
 
     return nevt
+
 
 
 def _cols2int4(fn,tmpdir):
     """Convert the PI and PHA columns in the blanksky file from Int2 to Int4 data types"""
 
+    dmcopy = make_tool("dmcopy")
+    dmtcalc = make_tool("dmtcalc")
+
     # check that column datatype
-    cr = pcr.read_file("{}[cols pi,pha][#row=1]".format(fn))
+    cr = pcr.read_file(f"{fn}[cols pi,pha][#row=0]")
 
     pi_type = cr.get_column("pi").values.dtype.name
     pha_type = cr.get_column("pha").values.dtype.name
 
-    cr.__del__()
+    del cr
 
     if False in [pi_type=="int64",pha_type=="int64"]:
         v2("Converting PI and PHA column integer type for compatibility...")
-
-        tmp1 = tempfile.NamedTemporaryFile(dir=tmpdir)
-        tmp2 = tempfile.NamedTemporaryFile(dir=tmpdir)
 
         if [True,True] == [pi_type!="int64",pha_type!="int64"]:
             convert_col = "tmppha=(long)pha,tmppi=(long)pi"
@@ -250,216 +259,175 @@ def _cols2int4(fn,tmpdir):
                 col_replace = "[cols -pha]"
                 tmpcol_del = "[cols -tmppha]"
 
-        dmtcalc.punlearn()
-        dmtcalc.infile = fn
-        dmtcalc.outfile = tmp1.name
-        dmtcalc.expression = convert_col
-        dmtcalc.verbose = "0"
-        dmtcalc.clobber= "yes"
-        dmtcalc()
+        with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp1, tempfile.NamedTemporaryFile(dir=tmpdir) as tmp2:
+            dmtcalc.punlearn()
+            dmtcalc.infile = fn
+            dmtcalc.outfile = tmp1.name
+            dmtcalc.expression = convert_col
+            dmtcalc.verbose = 0
+            dmtcalc.clobber= True
+            dmtcalc()
 
-        dmtcalc.punlearn()
-        dmtcalc.infile = "{0}{1}".format(tmp1.name,col_replace)
-        dmtcalc.outfile = tmp2.name
-        dmtcalc.expression = tmpcol
-        dmtcalc.verbose = "0"
-        dmtcalc.clobber= "yes"
-        dmtcalc()
+            dmtcalc.punlearn()
+            dmtcalc.infile = f"{tmp1.name}{col_replace}"
+            dmtcalc.outfile = tmp2.name
+            dmtcalc.expression = tmpcol
+            dmtcalc.verbose = 0
+            dmtcalc.clobber= True
+            dmtcalc()
 
-        tmp1.close()
+            dmcopy.punlearn()
+            dmcopy.infile = f"{tmp2.name}{tmpcol_del}"
+            dmcopy.outfile = fn
+            dmcopy.verbose = 0
+            dmcopy.clobber = True
+            dmcopy()
 
-        dmcopy.punlearn()
-        dmcopy.infile = "{0}{1}".format(tmp2.name,tmpcol_del)
-        dmcopy.outfile = fn
-        dmcopy.verbose = "0"
-        dmcopy.clobber = "yes"
-        dmcopy()
-
-        tmp2.close()
 
 
 def _convert_ppr_cols(infile,outfile,instrument,tmpdir):
-    tmp1 = tempfile.NamedTemporaryFile(dir=tmpdir)
-    tmp2 = tempfile.NamedTemporaryFile(dir=tmpdir)
+    dmcopy = make_tool("dmcopy")
+    dmtcalc = make_tool("dmtcalc")
+    dmhedit = make_tool("dmhedit")
 
-    # copy the DETPOS column to a new DET column, for merging purposes
-    dmtcalc.punlearn()
-    dmtcalc.infile = infile
-    dmtcalc.outfile = tmp1.name
-    dmtcalc.expression = "tmpx=(float)x,tmpy=(float)y,tmpdetx=(float)detx,tmpdety=(float)dety,tmpchipx=(short)chipx,tmpchipy=(short)chipy"
-    dmtcalc.verbose = "0"
-    dmtcalc.clobber= "yes"
-    dmtcalc()
+    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp1, \
+         tempfile.NamedTemporaryFile(dir=tmpdir) as tmp2:
 
-    dmtcalc.punlearn()
-    dmtcalc.infile = "{}[cols -sky,-chip,-detpos]".format(tmp1.name)
-    dmtcalc.outfile = tmp2.name
-    dmtcalc.expression = "x=tmpx,y=tmpy,detx=tmpdetx,dety=tmpdety,chipx=tmpchipx,chipy=tmpchipy"
-    dmtcalc.verbose = "0"
-    dmtcalc.clobber= "yes"
-    dmtcalc()
-
-    dmhedit.punlearn()
-    dmhedit.infile = tmp2.name
-    dmhedit.operation = "add"
-    dmhedit.key = "MTYPE1"
-    dmhedit.value = "chip"
-    dmhedit.verbose = "0"
-    dmhedit()
-
-    dmhedit.punlearn()
-    dmhedit.infile = tmp2.name
-    dmhedit.operation = "add"
-    dmhedit.key = "MFORM1"
-    dmhedit.value = "chipx,chipy"
-    dmhedit.verbose = "0"
-    dmhedit()
-
-    dmhedit.punlearn()
-    dmhedit.infile = tmp2.name
-    dmhedit.operation = "add"
-    dmhedit.key = "MTYPE2"
-    dmhedit.value = "det"
-    dmhedit.verbose = "0"
-    dmhedit()
-
-    dmhedit.punlearn()
-    dmhedit.infile = tmp2.name
-    dmhedit.operation = "add"
-    dmhedit.key = "MFORM2"
-    dmhedit.value = "detx,dety"
-    dmhedit.verbose = "0"
-    dmhedit()
-
-    dmhedit.punlearn()
-    dmhedit.infile = tmp2.name
-    dmhedit.operation = "add"
-    dmhedit.key = "MTYPE3"
-    dmhedit.value = "sky"
-    dmhedit.verbose = "0"
-    dmhedit()
-
-    dmhedit.punlearn()
-    dmhedit.infile = tmp2.name
-    dmhedit.operation = "add"
-    dmhedit.key = "MFORM3"
-    dmhedit.value = "x,y"
-    dmhedit.verbose = "0"
-    dmhedit()
-
-    for key in ["X","Y","DETX","DETY"]:
-        keynum = _structural_kw(tmp2.name,key,tmpdir)
-
-        if keynum != None:
-            dmhedit.punlearn()
-            dmhedit.infile = tmp2.name
-            dmhedit.operation = "add"
-            dmhedit.key = "TLMIN{}".format(keynum)
-            dmhedit.value = "0.5"
-            dmhedit.verbose = "0"
-            dmhedit()
-
-            dmhedit.punlearn()
-            dmhedit.infile = tmp2.name
-            dmhedit.operation = "add"
-            dmhedit.key = "TLMAX{}".format(keynum)
-            dmhedit.value = "8192.5"
-            dmhedit.verbose = "0"
-            dmhedit()
-
-    if instrument == "HRC":
-        # ppr output columns is agnostic on instrument and just uses CCD_ID, which
-        # isn't appropriate for HRC data, which uses CHIP_ID
-
+        # copy the DETPOS column to a new DET column, for merging purposes
         dmtcalc.punlearn()
-        dmtcalc.infile = tmp2.name
+        dmtcalc.infile = infile
         dmtcalc.outfile = tmp1.name
-        dmtcalc.expression = "chip_id=ccd_id"
-        dmtcalc.verbose = "0"
-        dmtcalc.clobber= "yes"
+        dmtcalc.expression = "tmpx=(float)x,tmpy=(float)y,tmpdetx=(float)detx,tmpdety=(float)dety,tmpchipx=(short)chipx,tmpchipy=(short)chipy"
+        dmtcalc.verbose = 0
+        dmtcalc.clobber= True
         dmtcalc()
 
-        dmcopy.punlearn()
-        dmcopy.infile = "{}[cols -ccd_id]".format(tmp1.name)
-        dmcopy.outfile = outfile
-        dmcopy.verbose = "0"
-        dmcopy.clobber = "yes"
-        dmcopy()
+        dmtcalc.punlearn()
+        dmtcalc.infile = f"{tmp1.name}[cols -sky,-chip,-detpos]"
+        dmtcalc.outfile = tmp2.name
+        dmtcalc.expression = "x=tmpx,y=tmpy,detx=tmpdetx,dety=tmpdety,chipx=tmpchipx,chipy=tmpchipy"
+        dmtcalc.verbose = 0
+        dmtcalc.clobber= True
+        dmtcalc()
 
-    else:
-        dmcopy.punlearn()
-        dmcopy.infile = "{}".format(tmp2.name)
-        dmcopy.outfile = outfile
-        dmcopy.verbose = "0"
-        dmcopy.clobber = "yes"
-        dmcopy()
+        dmhedit.punlearn()
+        dmhedit.infile = tmp2.name
+        dmhedit.operation = "add"
+        dmhedit.key = "MTYPE1"
+        dmhedit.value = "chip"
+        dmhedit.verbose = 0
+        dmhedit()
 
-    tmp1.close()
-    tmp2.close()
+        dmhedit.punlearn()
+        dmhedit.infile = tmp2.name
+        dmhedit.operation = "add"
+        dmhedit.key = "MFORM1"
+        dmhedit.value = "chipx,chipy"
+        dmhedit.verbose = 0
+        dmhedit()
+
+        dmhedit.punlearn()
+        dmhedit.infile = tmp2.name
+        dmhedit.operation = "add"
+        dmhedit.key = "MTYPE2"
+        dmhedit.value = "det"
+        dmhedit.verbose = 0
+        dmhedit()
+
+        dmhedit.punlearn()
+        dmhedit.infile = tmp2.name
+        dmhedit.operation = "add"
+        dmhedit.key = "MFORM2"
+        dmhedit.value = "detx,dety"
+        dmhedit.verbose = 0
+        dmhedit()
+
+        dmhedit.punlearn()
+        dmhedit.infile = tmp2.name
+        dmhedit.operation = "add"
+        dmhedit.key = "MTYPE3"
+        dmhedit.value = "sky"
+        dmhedit.verbose = 0
+        dmhedit()
+
+        dmhedit.punlearn()
+        dmhedit.infile = tmp2.name
+        dmhedit.operation = "add"
+        dmhedit.key = "MFORM3"
+        dmhedit.value = "x,y"
+        dmhedit.verbose = 0
+        dmhedit()
+
+        for key in ["X","Y","DETX","DETY"]:
+            keynum = _structural_kw(tmp2.name,key)
+
+            if keynum is not None:
+                dmhedit.punlearn()
+                dmhedit.infile = tmp2.name
+                dmhedit.operation = "add"
+                dmhedit.key = f"TLMIN{keynum}"
+                dmhedit.value = "0.5"
+                dmhedit.verbose = 0
+                dmhedit()
+
+                dmhedit.punlearn()
+                dmhedit.infile = tmp2.name
+                dmhedit.operation = "add"
+                dmhedit.key = f"TLMAX{keynum}"
+                dmhedit.value = "8192.5"
+                dmhedit.verbose = 0
+                dmhedit()
+
+        if instrument == "HRC":
+            # ppr output columns is agnostic on instrument and just uses CCD_ID, which
+            # isn't appropriate for HRC data, which uses CHIP_ID
+
+            dmtcalc.punlearn()
+            dmtcalc.infile = tmp2.name
+            dmtcalc.outfile = tmp1.name
+            dmtcalc.expression = "chip_id=ccd_id"
+            dmtcalc.verbose = 0
+            dmtcalc.clobber= True
+            dmtcalc()
+
+            dmcopy.punlearn()
+            dmcopy.infile = f"{tmp1.name}[cols -ccd_id]"
+            dmcopy.outfile = outfile
+            dmcopy.verbose = 0
+            dmcopy.clobber = True
+            dmcopy()
+
+        else:
+            dmcopy.punlearn()
+            dmcopy.infile = f"{tmp2.name}"
+            dmcopy.outfile = outfile
+            dmcopy.verbose = 0
+            dmcopy.clobber = True
+            dmcopy()
 
 
-def _structural_kw(fn,keyval,tmpdir):
-    # import shutil
 
-    # tmp_dmlist = tempfile.NamedTemporaryFile(dir=tmpdir)
-    # tmp1 = tempfile.NamedTemporaryFile(dir=tmpdir)
-    # tmp2 = tempfile.NamedTemporaryFile(dir=tmpdir)
+def _structural_kw(fn,keyval):
 
-    # with open(tmp1.name, "w") as text_file:
-    #     text_file.write("#")
-
-    # dmlist.punlearn()
-    # dmlist.infile = fn
-    # dmlist.outfile = tmp2.name
-    # dmlist.opt = "header,raw"
-    # dmlist.verbose = "0"
-    # dmlist()
-
-    # # concatentate
-    # with open(tmp_dmlist.name,'wb') as wfd:
-    #     for f in [tmp1.name,tmp2.name]:
-    #         with open(f,'rb') as fd:
-    #             shutil.copyfileobj(fd,wfd)
-
-    # tmp1.close()
-    # tmp2.close()
-
-    # ## strip empty lines
-    # #open(filename_out, "w").write(open(filename_in).read().strip())
-
-    # cr = pcr.read_file("{}[exclude #row=1:3]".format(tmp_dmlist.name))
-    # tmp_dmlist.close()
-
-    # col = cr.get_column("col1").values
+    dmlist = make_tool("dmlist")
 
     dmlist.punlearn()
     dmlist.infile = fn
     dmlist.opt = "keys,raw"
-    dmlist.verbose = "0"
+    dmlist.verbose = 0
 
     col = dmlist()
-    col = col.split("\n")[5:]
-    col = [ln for ln in col if "TTYPE" in ln]
-    col = [j for j in [i.split("=") for i in col]]
+    col = [ln for ln in col.split("\n") if "TTYPE" in ln]
+    col = [i.split("=") for i in col]
 
-    dict = {}
+    col_dict = { d[0].replace(" ","").split("*")[-1] : d[1].replace(" ","").split("/")[0] for d in col }
 
-    for d in col:
-        dict[d[0][d[0].find("*")+1:].replace(" ","")] = d[1][:d[1].find("/")]
+    for k,v in col_dict.items():
+        if v.lower() == keyval.lower():
+            return  int(k.replace("TTYPE",""))
 
-    del(col)
+    return None
 
-    keys = dict.keys()
-
-    for key in keys:
-        if dict[key].strip(" ").lower() == keyval.lower():
-            keynum = key.lstrip("TTYPE")
-
-    try:
-        return keynum.strip(" ")
-
-    except UnboundLocalError:
-        return None
 
 
 def _evt_type(fn):
@@ -489,13 +457,16 @@ def _evt_type(fn):
     return evt_type
 
 
-#def num_pick((bkg,outfile,bkgscale,tmpdir,verbose)):
-def _num_pick(args): # P3
+
+def _num_pick(args):
     """Pick number of photons to add to the simulation"""
 
-    (bkg,outfile,bkgscale,bkgmeth,tobs,tbsky,randomseed,tmpdir,verbose) = args # P3
+    bkg,outfile,bkgscale,bkgmeth,tobs,tbsky,randomseed,tmpdir,verbose = args
 
-    with new_pfiles_environment(ardlib=True,copyuser=False):
+    dmcopy = make_tool("dmcopy")
+    dmtcalc = make_tool("dmtcalc")
+
+    with new_pfiles_environment(ardlib=False,copyuser=False), tempfile.NamedTemporaryFile(dir=tmpdir) as def_rand:
 
         ## get total number of events; the NAXIS2/__NROWS keyword aren't updated if
         ## evt file is filtered
@@ -505,17 +476,15 @@ def _num_pick(args): # P3
 
         # these generate random values between 0 and 1, inclusive
         if randomseed > 0:
-            randseed = "#rand({})".format(randomseed)
+            randseed = f"#rand({randomseed})"
         else:
             randseed = "#trand"
-
-        def_rand = tempfile.NamedTemporaryFile(dir=tmpdir)
 
         dmtcalc.punlearn()
         dmtcalc.infile = bkg
         dmtcalc.outfile = def_rand.name
         dmtcalc.verbose = verbose
-        dmtcalc.clobber = "yes"
+        dmtcalc.clobber = True
 
         if bkgmeth.lower() == "particle-rate":
             # # get HE filter
@@ -536,20 +505,19 @@ def _num_pick(args): # P3
             # ntot = _get_nevt(bkg)
             # nhe = _get_nevt("{0}{1}".format(bkg,efilt))
 
-            dmtcalc.expression = "randnum={0}*({1}/({2}*{3}))".format(randseed,tbsky,tobs,bkgscale)
+            dmtcalc.expression = f"randnum={randseed}*({tbsky}/({tobs}*{bkgscale}))"
         else:
-            dmtcalc.expression = "randnum={0}/{1}".format(randseed,bkgscale)
+            dmtcalc.expression = f"randnum={randseed}/{bkgscale}"
 
         dmtcalc()
 
         dmcopy.punlearn()
-        dmcopy.infile = "{}[randnum=0:1]".format(def_rand.name)
+        dmcopy.infile = f"{def_rand.name}[randnum=0:1]"
         dmcopy.outfile = outfile # sampled event will have RANDNUM value less than 1
-        dmcopy.clobber = "yes"
+        dmcopy.clobber = True
 
         dmcopy()
 
-        def_rand.close()
 
 
 def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
@@ -562,40 +530,41 @@ def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
     t0_corr = t0 + 0.5*(1-dtcor)*(t1-t0)
     t1_corr = t1 - 0.5*(1-dtcor)*(t1-t0)
 
-    time_rand = tempfile.NamedTemporaryFile(dir=tmpdir)
+    dmtcalc = make_tool("dmtcalc")
+    dmsort = make_tool("dmsort")
+    dmhedit = make_tool("dmhedit")
 
-    if randomseed > 0:
-        randseed = "#rand({})".format(randomseed)
-    else:
-        randseed = "#trand"
+    with tempfile.NamedTemporaryFile(dir=tmpdir) as time_rand:
+        if randomseed > 0:
+            randseed = f"#rand({randomseed})"
+        else:
+            randseed = "#trand"
 
-    dmtcalc.punlearn()
+        dmtcalc.punlearn()
 
-    dmtcalc.infile = bkg_rand
-    dmtcalc.outfile = time_rand.name
-    #dmtcalc.expression = "time={0}+({1}-{0})*{2}".format(t0,t1,randseed)
-    dmtcalc.expression = f"time={t0_corr}+({t1_corr}-{t0_corr})*{randseed}"
-    dmtcalc.clobber = "yes"
-    dmtcalc.verbose = verbose
+        dmtcalc.infile = bkg_rand
+        dmtcalc.outfile = time_rand.name
+        #dmtcalc.expression = "time={0}+({1}-{0})*{2}".format(t0,t1,randseed)
+        dmtcalc.expression = f"time={t0_corr}+({t1_corr}-{t0_corr})*{randseed}"
+        dmtcalc.clobber = True
+        dmtcalc.verbose = verbose
 
-    dmtcalc()
+        dmtcalc()
 
-    dmsort.punlearn()
+        dmsort.punlearn()
 
-    dmsort.infile = time_rand.name
-    dmsort.outfile = time_sorted_outfile
-    dmsort.keys = "TIME"
-    dmsort.clobber = "yes"
+        dmsort.infile = time_rand.name
+        dmsort.outfile = time_sorted_outfile
+        dmsort.keys = "TIME"
+        dmsort.clobber = True
 
-    dmsort()
-
-    time_rand.close()
+        dmsort()
 
     # update time-related header keywords of the sampled file
     dmhedit.punlearn()
     dmhedit.infile = time_sorted_outfile
     dmhedit.operation = "add"
-    dmhedit.verbose = "0"
+    dmhedit.verbose = 0
 
     for tkey in ["ONTIME","LIVETIME","EXPOSURE","TSTART","TSTOP","DTCOR"]:
         dmhedit.key = tkey
@@ -606,20 +575,25 @@ def assign_time(bkg_rand,time_sorted_outfile,kw,randomseed,tmpdir,verbose):
         chips = fileio.get_ccds(bkg_rand)
 
         for chip in chips:
-            dmhedit.key = "ONTIME{}".format(chip)
-            dmhedit.value = kw["ONTIME{}".format(chip)]
+            dmhedit.key = f"ONTIME{chip}"
+            dmhedit.value = kw[f"ONTIME{chip}"]
             dmhedit()
 
-            dmhedit.key = "LIVTIME{}".format(chip)
-            dmhedit.value = kw["LIVTIME{}".format(chip)]
+            dmhedit.key = f"LIVTIME{chip}"
+            dmhedit.value = kw[f"LIVTIME{chip}"]
             dmhedit()
 
-            dmhedit.key = "EXPOSUR{}".format(chip)
-            dmhedit.value = kw["EXPOSUR{}".format(chip)]
+            dmhedit.key = f"EXPOSUR{chip}"
+            dmhedit.value = kw[f"EXPOSUR{chip}"]
             dmhedit()
+
 
 
 def sample_chip(bkg,infile,outfile,kw,randomseed,tmpdir,verbose):
+    """
+    randomly sample the number of events for each chip, proportional to 1/BKGSCALn
+    """
+
     instrument = kw["INSTRUME"]
     bkgmeth = kw["BKGMETH"]
 
@@ -638,18 +612,20 @@ def sample_chip(bkg,infile,outfile,kw,randomseed,tmpdir,verbose):
         bkg_sample = []
         bkg_tmp = []
 
+        dmmerge = make_tool("dmmerge")
+
         try:
             for chip in chips:
-                bkgtmp = tempfile.NamedTemporaryFile(suffix=".bkg{}".format(chip),dir=tmpdir)
-                bkgscale = kw["BKGSCAL{}".format(chip)]
-                bkgchipstr = "{0}[ccd_id={1}]".format(bkg,chip)
+                bkgtmp = tempfile.NamedTemporaryFile(suffix=f".bkg{chip}",dir=tmpdir)
+                bkgscale = kw[f"BKGSCAL{chip}"]
+                bkgchipstr = f"{bkg}[ccd_id={chip}]"
 
-                tobs = fileio.get_keys_from_file(infile)["LIVTIME{}".format(chip)]
+                tobs = fileio.get_keys_from_file(infile)[f"LIVTIME{chip}"]
                 try:
-                    tbsky = kw["LIVTIME{}".format(chip)]
+                    tbsky = kw[f"LIVTIME{chip}"]
                 except KeyError:
                     try:
-                        tbsky = kw["LIVETIM{}".format(chip)]
+                        tbsky = kw[f"LIVETIM{chip}"]
                     except KeyError:
                         tbsky = kw["LIVETIME"]
 
@@ -658,7 +634,7 @@ def sample_chip(bkg,infile,outfile,kw,randomseed,tmpdir,verbose):
                 bkg_tmp.append(bkgtmp)
 
             if len(chips) > cpu_count():
-                parallel_pool(_num_pick,bkg_sample)
+                parallel_pool_futures(_num_pick,bkg_sample)
             else:
                 parallel_map(_num_pick,bkg_sample)
 
@@ -667,7 +643,7 @@ def sample_chip(bkg,infile,outfile,kw,randomseed,tmpdir,verbose):
 
             dmmerge.infile = [bg.name for bg in bkg_tmp]
             dmmerge.outfile = outfile
-            dmmerge.clobber = "yes"
+            dmmerge.clobber = True
             dmmerge.verbose = verbose
 
             dmmerge()
@@ -676,13 +652,14 @@ def sample_chip(bkg,infile,outfile,kw,randomseed,tmpdir,verbose):
                 fn.close()
 
 
-@handle_ciao_errors(toolname,__revision__)
+
+@handle_ciao_errors(__toolname__,__revision__)
 def doit():
     params,pars = get_par(sys.argv)
 
     # print script info
     set_verbosity(params["verbose"])
-    utils.print_version(toolname, __revision__)
+    utils.print_version(__toolname__, __revision__)
 
     infile = params["infile"]
     bkgfile = params["bkgfile"]
@@ -698,229 +675,229 @@ def doit():
     clobber = params["clobber"]
     verbose = params["verbose"]
 
+    dmcopy = make_tool("dmcopy")
+    dmmerge = make_tool("dmmerge")
+    dmhedit = make_tool("dmhedit")
+    
     ############
+    with new_pfiles_environment(ardlib=False), \
+         tempfile.NamedTemporaryFile(dir=tmpdir) as tmpin, \
+         tempfile.NamedTemporaryFile(dir=tmpdir) as get_rand, \
+         tempfile.NamedTemporaryFile(dir=tmpdir) as time_sorted:
 
-    get_rand = tempfile.NamedTemporaryFile(dir=tmpdir)
-    time_sorted = tempfile.NamedTemporaryFile(dir=tmpdir)
+        kw_psf = fileio.get_keys_from_file(f"{infile}{params['infile_filter']}")
+        kw_bkg = fileio.get_keys_from_file(bkgfile)
 
-    kw_psf = fileio.get_keys_from_file(infile+params["infile_filter"])
-    kw_bkg = fileio.get_keys_from_file(bkgfile)
+        instrument = kw_bkg["INSTRUME"]
 
-    instrument = kw_bkg["INSTRUME"]
+        etype = _evt_type(infile)
 
-    etype = _evt_type(infile)
+        # filter CCDs if input is a PSF to what's available in the BKG, since PPR contains
+        # all CCD_IDs and MARX is strictly defined between ACIS-I and ACIS-S
+        with tempfile.NamedTemporaryFile(dir=tmpdir) as tmpbkg:
+            if etype != "obs" and instrument == "ACIS":
 
-    # filter CCDs if input is a PSF to what's available in the BKG, since PPR contains
-    # all CCD_IDs and MARX is strictly defined between ACIS-I and ACIS-S
-    if etype != "obs":
-        if instrument == "ACIS":
+                ccd_psf = fileio.get_ccds(infile)
+                ccd_bkg = fileio.get_ccds(bkgfile)
 
-            tmpin = tempfile.NamedTemporaryFile(dir=tmpdir)
-            tmpbkg = tempfile.NamedTemporaryFile(dir=tmpdir)
+                ccd = set(ccd_psf) & set(ccd_bkg)
+                ccd = ",".join([str(i) for i in sorted(ccd)])
 
-            ccd_psf = fileio.get_ccds(infile)
-            ccd_bkg = fileio.get_ccds(bkgfile)
-
-            ccd = set(ccd_psf) & set(ccd_bkg)
-            ccd = ",".join([str(i) for i in sorted(ccd)])
-
-            dmcopy.punlearn()
-            dmcopy.infile = "{0}[ccd_id={1}]".format(infile,ccd)
-            dmcopy.outfile = tmpin.name
-            dmcopy.verbose = "0"
-            dmcopy.clobber = "yes"
-            dmcopy()
-
-            dmcopy.punlearn()
-            dmcopy.infile = "{0}[ccd_id={1}]".format(bkgfile,ccd)
-            dmcopy.outfile = tmpbkg.name
-            dmcopy.verbose = "0"
-            dmcopy.clobber = "yes"
-            dmcopy()
-
-            infile = tmpin.name
-            bkgfile = tmpbkg.name
-
-    # check for background CALDB version; any ACIS background before 4.7.5.1
-    # will need to convert the PHA and PI datatype which were short integers
-    # (Int16/Int2) and match the event files with long integers (Int64/Int4)
-    cr_bkg = pcr.read_file("{}[#row=1]".format(bkgfile))
-
-    if True in [cr_bkg.pi.values.dtype != "int64",cr_bkg.pha.values.dtype != "int64"]:
-        bkg_old = True
-    else:
-        bkg_old = False
-
-    cr_bkg.__del__()
-
-    # sample background file and assign times to each event
-    sample_chip(bkgfile,infile,get_rand.name,kw_bkg,seed,tmpdir,verbose)
-    assign_time(get_rand.name,time_sorted.name,kw_psf,seed,tmpdir,verbose)
-
-    get_rand.close()
-
-    try:
-        tmpbkg.close()
-    except NameError:
-        pass
-
-    if etype != "ppr":
-        if instrument == "ACIS":
-            if bkg_old:
-                _cols2int4(time_sorted.name,tmpdir) # convert PHA and PI columns to Int4 to match observed evt
-
-    if reproject == "yes":
-        # Reproject the blank sky fields to the same position on the sky as the marx simulation.
-        reproject_events.punlearn()
-
-        if instrument == "ACIS":
-            reproject_events.infile = "{}[cols ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status,time]".format(time_sorted.name)
-        else:
-            reproject_events.infile = "{}[cols chip_id,chip,det,sky,pha,pi,status,time]".format(time_sorted.name)
-
-        reproject_events.outfile = bkgoutdir+bkgout
-        reproject_events.aspect = asol
-        reproject_events.match = infile
-        reproject_events.random = seed
-        reproject_events.clobber = "yes"
-        reproject_events.verbose = verbose
-
-        reproject_events()
-
-    else:
-        # if the blank sky file is already reprojected or if the blanksky script was used
-        dmcopy.punlearn()
-
-        if instrument == "ACIS":
-            dmcopy.infile = "{}[cols ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status,time]".format(time_sorted.name)
-        else:
-            dmcopy.infile = "{}[cols chip_id,chip,det,sky,pha,pi,status,time]".format(time_sorted.name)
-
-        dmcopy.outfile = bkgoutdir+bkgout
-        dmcopy.clobber = clobber
-        dmcopy()
-
-    time_sorted.close()
-
-    try:
-        add_tool_history(bkgoutdir+bkgout,toolname,pars)
-    except OSError:
-        pass
-
-    ## Merge marx simulation and blank sky fields into a single fits table.
-    if psf_bkg_out != "":
-
-        psf_bkg_outdir = params["psf_bkg_outdir"]
-
-        dmmerge.punlearn()
-
-        tmppsf = tempfile.NamedTemporaryFile(dir=tmpdir)
-
-        if etype == "ppr":
-            _convert_ppr_cols(infile,tmppsf.name,instrument,tmpdir)
-            dmmerge.infile = "{0},{1}".format(tmppsf.name,bkgoutdir+bkgout)
-
-        elif etype in ["obs","marx"]:
-            if (True,True) == (etype=="obs",instrument=="ACIS"):
-                dmmerge.infile = "{0},{1}".format(infile,bkgoutdir+bkgout)
-
-            else:
-                # first need to convert data type for PI and PHA columns
                 dmcopy.punlearn()
-                dmcopy.infile = infile
-                dmcopy.outfile = tmppsf.name
-                dmcopy.verbose = "0"
-                dmcopy.clobber = "yes"
+                dmcopy.infile = f"{infile}[ccd_id={ccd}]"
+                dmcopy.outfile = tmpin.name
+                dmcopy.verbose = 0
+                dmcopy.clobber = True
                 dmcopy()
 
-                _cols2int4(tmppsf.name,tmpdir)
-                dmmerge.infile = "{0},{1}".format(tmppsf.name,bkgoutdir+bkgout)
+                dmcopy.punlearn()
+                dmcopy.infile = f"{bkgfile}[ccd_id={ccd}]"
+                dmcopy.outfile = tmpbkg.name
+                dmcopy.verbose = 0
+                dmcopy.clobber = True
+                dmcopy()
+
+                infile = tmpin.name
+                bkgfile = tmpbkg.name
+
+            # check for background CALDB version; any ACIS background before 4.7.5.1
+            # will need to convert the PHA and PI datatype which were short integers
+            # (Int16/Int2) and match the event files with long integers (Int64/Int4)
+            cr_bkg = pcr.read_file(f"{bkgfile}[#row=0]")
+
+            bkg_old = (True in (cr_bkg.pi.values.dtype != "int64",
+                                cr_bkg.pha.values.dtype != "int64"))
+
+            del cr_bkg
+
+            # sample background file and assign times to each event
+            sample_chip(bkgfile,infile,get_rand.name,kw_bkg,seed,tmpdir,verbose)
+            assign_time(get_rand.name,time_sorted.name,kw_psf,seed,tmpdir,verbose)
+
+        if etype != "ppr":
+            if instrument == "ACIS":
+                if bkg_old:
+                    _cols2int4(time_sorted.name,tmpdir) # convert PHA and PI columns to Int4 to match observed evt
+
+        if reproject == "yes":
+            reproject_events = make_tool("reproject_events")
+
+            # Reproject the blank sky fields to the same position on the sky as the marx simulation.
+            reproject_events.punlearn()
+
+            if instrument == "ACIS":
+                reproject_events.infile = f"{time_sorted.name}[cols ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status,time]"
+            else:
+                reproject_events.infile = f"{time_sorted.name}[cols chip_id,chip,det,sky,pha,pi,status,time]"
+
+            reproject_events.outfile = f"{bkgoutdir}{bkgout}"
+            reproject_events.aspect = asol
+            reproject_events.match = infile
+            reproject_events.random = seed
+            reproject_events.clobber = True
+            reproject_events.verbose = verbose
+
+            reproject_events()
 
         else:
-            v3("'infile' has unrecognized creator")
+            # if the blank sky file is already reprojected or if the blanksky script was used
+            dmcopy.punlearn()
 
-
-        if etype == "ppr":
             if instrument == "ACIS":
-                dmmerge.columnList = "ccd_id,chip,det,sky,energy"
+                dmcopy.infile = f"{time_sorted.name}[cols ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status,time]"
             else:
-                dmmerge.columnList = "chip_id,chip,det,sky"
+                dmcopy.infile = f"{time_sorted.name}[cols chip_id,chip,det,sky,pha,pi,status,time]"
 
-        else:
-            if instrument == "ACIS":
-                dmmerge.columnList = "time,ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status"
-            else:
-                dmmerge.columnList = "time,chip_id,chip,det,sky,pha,status"
-
-        dmmerge.outfile = psf_bkg_outdir+psf_bkg_out
-        dmmerge.clobber = clobber
-        dmmerge.verbose = verbose
-
-        dmmerge()
+            dmcopy.outfile = bkgoutdir+bkgout
+            dmcopy.clobber = clobber
+            dmcopy()
 
         try:
-            add_tool_history(psf_bkg_outdir+psf_bkg_out,toolname,pars)
+            add_tool_history(bkgoutdir+bkgout,__toolname__,pars)
         except OSError:
             pass
 
-    if fill_out != "":
+        ## Merge MARX simulation and blank sky fields into a single fits table.
+        if psf_bkg_out != "":
 
-        fill_outdir = params["fill_outdir"]
+            psf_bkg_outdir = params["psf_bkg_outdir"]
 
-        dmmerge.punlearn()
+            dmmerge.punlearn()
 
-        dmmerge.outfile = fill_outdir+fill_out
-        dmmerge.clobber = clobber
-        dmmerge.verbose = verbose
+            with tempfile.NamedTemporaryFile(dir=tmpdir) as tmppsf:
+                if etype == "ppr":
+                    _convert_ppr_cols(infile,tmppsf.name,instrument,tmpdir)
+                    dmmerge.infile = f"{tmppsf.name},{bkgoutdir}{bkgout}"
 
-        if etype == "ppr":
-            if psf_bkg_out == "":
-                tmppsf = tempfile.NamedTemporaryFile(dir=tmpdir)
+                elif etype in ["obs","marx"]:
+                    if (True,True) == (etype=="obs",instrument=="ACIS"):
+                        dmmerge.infile = f"{infile},{bkgoutdir}{bkgout}"
 
-                _convert_ppr_cols(infile,tmppsf.name,instrument,tmpdir)
+                    else:
+                        # first need to convert data type for PI and PHA columns
+                        dmcopy.punlearn()
+                        dmcopy.infile = infile
+                        dmcopy.outfile = tmppsf.name
+                        dmcopy.verbose = 0
+                        dmcopy.clobber = True
+                        dmcopy()
 
-                dmmerge.infile = "{0}[exclude sky=region({2})],{1}[sky=region({2})]".format(tmppsf.name+params["infile_filter"],bkgoutdir+bkgout+params["infile_filter"],regionfile)
+                        _cols2int4(tmppsf.name,tmpdir)
+                        dmmerge.infile = f"{tmppsf.name},{bkgoutdir}{bkgout}"
 
-            else:
-                dmmerge.infile = "{0}[exclude sky=region({2})],{1}[sky=region({2})]".format(tmppsf.name+params["infile_filter"],bkgoutdir+bkgout+params["infile_filter"],regionfile)
-
-            if instrument == "ACIS":
-                dmmerge.columnList = "ccd_id,chip,det,sky,energy"
-            else:
-                dmmerge.columnList = "chip_id,chip,det,sky"
-
-        else:
-            dmmerge.infile = "{0}[exclude sky=region({2})],{1}[sky=region({2})]".format(infile+params["infile_filter"],bkgoutdir+bkgout+params["infile_filter"],regionfile)
-
-            if instrument == "ACIS":
-                dmmerge.columnList = "ccd_id,node_id,chip,det,sky,PHA,energy,PI,fltgrade,grade,status,time"
-            else:
-                if etype == "obs":
-                    dmmerge.columnList = "chip_id,chip,det,sky,pha,pi,status,TIME"
-                elif etype == "marx":
-                    dmmerge.columnList = "chip_id,chip,det,sky,pha,status,TIME"
                 else:
                     v3("'infile' has unrecognized creator")
 
-        dmmerge()
 
-        try:
-            add_tool_history(fill_outdir+fill_out,toolname,pars)
-        except OSError:
-            pass
+                if etype == "ppr":
+                    if instrument == "ACIS":
+                        dmmerge.columnList = "ccd_id,chip,det,sky,energy"
+                    else:
+                        dmmerge.columnList = "chip_id,chip,det,sky"
 
-    try:
-        tmppsf.close()
-    except NameError:
-        pass
+                else:
+                    if instrument == "ACIS":
+                        dmmerge.columnList = "time,ccd_id,node_id,chip,det,sky,pha,energy,pi,fltgrade,grade,status"
+                    else:
+                        dmmerge.columnList = "time,chip_id,chip,det,sky,pha,status"
 
-    try:
-        tmpin.close()
-    except NameError:
-        pass
+                dmmerge.outfile = f"{psf_bkg_outdir}{psf_bkg_out}"
+                dmmerge.clobber = clobber
+                dmmerge.verbose = verbose
 
-    # if 'tmppsf' in locals():
-    #     tmppsf.close()
+                dmmerge()
+
+                # undo 'merged' keywords in resulting product
+                dmhedit.punlearn()
+                dmhedit.infile = f"{psf_bkg_outdir}{psf_bkg_out}"
+                dmhedit.operation = "add"
+                dmhedit.verbose = 0
+
+                for tkey in ["DATACLAS","OBSERVER","TITLE","OBS_ID",
+                             "SEQ_NUM","DETNAM","OBJECT","DATAMODE",
+                             "RA_TARG","DEC_TARG",
+                             "RA_PNT","DEC_PNT","ROLL_PNT",
+                             "RA_NOM","DEC_NOM","ROLL_NOM"]:
+                    dmhedit.key = tkey
+                    dmhedit.value = kw_psf[tkey]
+                    dmhedit()
+
+                dmhedit.key = "ASPTYPE"
+                dmhedit.op = "delete"
+                dmhedit()
+                    
+            try:
+                add_tool_history(f"{psf_bkg_outdir}{psf_bkg_out}", __toolname__, pars)
+            except OSError:
+                pass
+
+        if fill_out != "":
+
+            fill_outdir = params["fill_outdir"]
+
+            dmmerge.punlearn()
+
+            dmmerge.outfile = fill_outdir+fill_out
+            dmmerge.clobber = clobber
+            dmmerge.verbose = verbose
+
+            if etype == "ppr":
+                with tempfile.NamedTemporaryFile(dir=tmpdir) as tmppsf:
+                    if psf_bkg_out == "":
+                        _convert_ppr_cols(infile,tmppsf.name,instrument,tmpdir)
+
+                        dmmerge.infile = f"{tmppsf.name}{params['infile_filter']}[exclude sky=region({regionfile})],{bkgoutdir}{bkgout}{params['infile_filter']}[sky=region({regionfile})]"
+
+                    else:
+                        dmmerge.infile = f"{tmppsf.name}{params['infile_filter']}[exclude sky=region({regionfile})],{bkgoutdir}{bkgout}{params['infile_filter']}[sky=region({regionfile})]"
+
+                    if instrument == "ACIS":
+                        dmmerge.columnList = "ccd_id,chip,det,sky,energy"
+                    else:
+                        dmmerge.columnList = "chip_id,chip,det,sky"
+
+                    dmmerge()
+
+            else:
+                dmmerge.infile = f"{infile}{params['infile_filter']}[exclude sky=region({regionfile})],{bkgoutdir}{bkgout}{params['infile_filter']}[sky=region({regionfile})]"
+
+                if instrument == "ACIS":
+                    dmmerge.columnList = "ccd_id,node_id,chip,det,sky,PHA,energy,PI,fltgrade,grade,status,time"
+                else:
+                    if etype == "obs":
+                        dmmerge.columnList = "chip_id,chip,det,sky,pha,pi,status,TIME"
+                    elif etype == "marx":
+                        dmmerge.columnList = "chip_id,chip,det,sky,pha,status,TIME"
+                    else:
+                        v3("'infile' has unrecognized creator")
+
+                dmmerge()
+
+            try:
+                add_tool_history(f"{fill_outdir}{fill_out}", __toolname__, pars)
+            except OSError:
+                pass
+
 
 
 if __name__  == "__main__":
