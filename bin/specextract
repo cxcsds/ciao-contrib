@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2011-2022
+# Copyright (C) 2011-2023
 #        Smithsonian Astrophysical Observatory
 #
 #
@@ -31,15 +31,16 @@ Script:
 	command line, within the CIAO environment.
 """
 
-__version__ = "CIAO 4.15"
+__version__ = "CIAO 4.16"
 __toolname__ = "specextract"
-__revision__ = "18 August 2023"
+__revision__ = "26 October 2023"
 
 ##########################################################################
 #
 # This script requires a parameter file for itself and for its underlying
-# tools:  dmextract, mkrmf, mkacisrmf, mkwarf, mkarf, sky2tdet, acis_fef_lookup,
-# dmgroup, dmhedit, calquiz, asphist, and acis_set_ardlib.
+# tools: dmextract, dmcopy, asphist, mkrmf, mkacisrmf, mkwarf, mkarf,
+# arfcorr, sky2tdet, acis_fef_lookup, dmgroup, dmhedit, acis_set_ardlib,
+# ardlib, dmmakereg,  dmimgthresh, dmhistory, combine_spectra
 #
 ##########################################################################
 
@@ -64,11 +65,10 @@ from ciao_contrib._tools import fileio, utils
 from ciao_contrib.param_wrapper import open_param_file
 from ciao_contrib.cxcdm_wrapper import get_info_from_file
 from ciao_contrib.runtool import make_tool, new_pfiles_environment, add_tool_history
-from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors, get_verbosity
+from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors
 
+from ciao_contrib.parallel_wrapper import parallel_pool_futures, progressbar_iter, _use_unicode, _check_tty
 from sherpa.utils import parallel_map
-from ciao_contrib.parallel_wrapper import parallel_pool, parallel_pool_futures, progressbar_iter, _use_unicode, _check_tty
-
 
 # Set up the logging/verbose code
 initialize_logger(__toolname__)
@@ -99,6 +99,7 @@ def make_combined_outroot(outroot: str, label: str) -> str:
     # behavior, so we can just be explicit.
     #
     elabel = f"_{label}"
+
     if outroot.endswith(elabel):
         return outroot[:-len(elabel)]
 
@@ -151,7 +152,8 @@ def readout_streak_spec(specfile,infile,src_x,src_y):
 
     xfer_time = 4e-5 # ACIS frame transfer time ~40 usec/row[/frame]
 
-    reg = region.CXCRegion(pcr.read_file(f"{specfile}[#row=0]").get_subspace_data(1,"sky").region) # use subspace since the region is always transformed into physical coordinates
+    # use subspace since the region is always transformed into physical coordinates
+    reg = region.CXCRegion(pcr.read_file(f"{specfile}[#row=0]").get_subspace_data(1,"sky").region)
 
     nrows = []
 
@@ -196,14 +198,18 @@ def readout_streak_spec(specfile,infile,src_x,src_y):
             reg_area = R.area()
             ext_area = (ext["x1"] - ext["x0"]) * (ext["y1"] - ext["y0"])
 
-            if numpy.isclose(ext_area,reg_area,rtol=1e-6,atol=0.5): #ext_area == reg_area: ## if readout streak is directly along either sky x or y axes. ##
+            ## if readout streak is directly along either sky x or y axes. ##
+            if numpy.isclose(ext_area,reg_area,rtol=1e-6,atol=0.5): #ext_area == reg_area:
                 if (extent["x1"] - extent["x0"]) < (extent["y1"] - extent["y0"]):
                     dr = ext["y1"] - ext["y0"]
                 else:
                     dr = ext["x1"] - ext["x0"]
 
             else:
-                if all([x_min < src_x, y_min < src_y, x_max < src_x, y_max < src_y]) or all([x_max > src_x, y_max > src_y, x_min > src_x, y_min > src_y]) or all([x[y.index(y_min)] < src_x, y[x.index(x_min)] < src_y, x[y.index(y_max)] > src_x, y[x.index(x_max)] > src_y]): # (/)
+                if all([x_min < src_x, y_min < src_y, x_max < src_x, y_max < src_y]) \
+                   or all([x_max > src_x, y_max > src_y, x_min > src_x, y_min > src_y]) \
+                   or all([x[y.index(y_min)] < src_x, y[x.index(x_min)] < src_y, \
+                           x[y.index(y_max)] > src_x, y[x.index(x_max)] > src_y]): # (/)
 
                     indmin1 = x.index(x_min)
                     indmax1 = y.index(y_max)
@@ -211,7 +217,10 @@ def readout_streak_spec(specfile,infile,src_x,src_y):
                     indmin2 = y.index(y_min)
                     indmax2 = x.index(x_max)
 
-                elif all([x_min < src_x, y_max > src_y, x_max < src_x, y_min > src_y]) or all([x_max > src_x, y_min < src_y, x_min > src_x, y_max < src_y]) or all([x[y.index(y_max)] < src_x, y[x.index(x_min)] > src_y, x[y.index(y_min)] > src_x, y[x.index(x_max)] < src_y]): # (\)
+                elif all([x_min < src_x, y_max > src_y, x_max < src_x, y_min > src_y]) \
+                     or all([x_max > src_x, y_min < src_y, x_min > src_x, y_max < src_y]) \
+                     or all([x[y.index(y_max)] < src_x, y[x.index(x_min)] > src_y, \
+                             x[y.index(y_min)] > src_x, y[x.index(x_max)] < src_y]): # (\)
 
                     indmin1 = x.index(x_min)
                     indmax1 = y.index(y_min)
@@ -267,13 +276,15 @@ def readout_streak_spec(specfile,infile,src_x,src_y):
 
     nframes = numpy.ceil(exposure/exptime)
 
-    del(cr_ccd)
+    del cr_ccd
 
     streak_exposure = nframes * nrows * xfer_time
 
-    v1(f"The readout streak extraction region encompasses {nrows} pixel rows of ACIS-{ccd_id[0]} with an effective exposure time of {streak_exposure:.12} [s].")
+    v1(f"The readout streak extraction region encompasses {nrows} pixel \
+rows of ACIS-{ccd_id[0]} with an effective exposure time of \
+{streak_exposure:.12} [s].")
 
-    edit_headers(0,specfile,"EXPOSURE",f"{streak_exposure:.12}",unit="s",
+    edit_headers(0, specfile, "EXPOSURE", f"{streak_exposure:.12}", unit="s",
                  comment="effective readout streak exposure time")
 
     edit_headers(0,specfile,"NROW_STRK",nrows,
@@ -284,7 +295,6 @@ def readout_streak_spec(specfile,infile,src_x,src_y):
 def create_arf_ps(full_outroot, evt_filename, asp_param, ebin,
                   clobber, verbose, dafile, mskfile,
                   ccd_id, skyx, skyy, infostr):
-
     """
     Run mkarf to create an unweighted ARF.
 
@@ -336,7 +346,6 @@ def create_arf_ps(full_outroot, evt_filename, asp_param, ebin,
 
 def create_arf_ext(full_outroot, ebin, verbose, dafile, mskfile,
                    tdetwmap, infostr, weightfile=None):
-
     """
     Run mkwarf to create a weighted ARF.
 
@@ -380,7 +389,10 @@ def create_arf_ext(full_outroot, ebin, verbose, dafile, mskfile,
         mkwarf()
 
     except Exception as exc:
-        raise IOError(f"Failure to create weighted ARF.  Possible causes include: zero counts in the input region; a memory allocation error; or corrupt ARDLIB.  Try running {__toolname__} with weight=no, binarfmap!=1, or punlearn ardlib.") from exc
+        raise IOError(f"Failure to create weighted ARF.  Possible causes \
+include: zero counts in the input region; a memory allocation error; \
+or corrupt ARDLIB.  Try running {__toolname__} with weight=no, \
+binarfmap!=1, or punlearn ardlib.") from exc
 
     return arffile
 
@@ -398,7 +410,7 @@ def correct_arf(full_outroot, infile, evt_filename, orig_arf,
     Return the name of the corrected ARF file.
     """
 
-    gz_input = os.path.exists(evt_filename+".gz")
+    gz_input = os.path.exists(f"{evt_filename}.gz")
     guz_input = os.path.exists(evt_filename)
 
     if not infile.endswith(".gz") and not guz_input:
@@ -407,7 +419,8 @@ def correct_arf(full_outroot, infile, evt_filename, orig_arf,
 
             infile = infile.replace(evt_filename, evt_filename_gz)
 
-            v1(f"NOTE: {evt_filename} does not exist, but {evt_filename}.gz does; using the latter as input to arfcorr for the ARF correction.\n")
+            v1(f"NOTE: {evt_filename} does not exist, but {evt_filename}.gz does; \
+using the latter as input to arfcorr for the ARF correction.\n")
 
     # arfcorr required input image:
     reg_image  = f"{infile}[bin sky={binarfcorr}]"
@@ -442,13 +455,16 @@ def _determine_rmf_tool(infile,rmffile,evtfile):
     v2("Searching for P2_RESP calibration file...")
 
     c = caldb4.Caldb(infile=f"{infile}[WMAP]",product="SC_MATRIX")
-    c.CCD_ID = rmffile.split("=")[-1].strip("\)")
+    c.CCD_ID = rmffile.split("=")[-1].rstrip(")")
     calresult = c.search
 
     if len(calresult) == 0:
         v3("Cannot use mkacisrmf because no P2_RESP files were found.\n")
 
-        v1(f"{infile.split('/')[-1]}: Please reprocess {evtfile} with acis_process_events if you wish to use mkacisrmf, unless the focal plane temperature is greater than -109C and the observation is taken in graded-mode or the extraction region is on a front-illuminated CCD.\n")
+        v1(f"{infile.split('/')[-1]}: Please reprocess {evtfile} with \
+acis_process_events if you wish to use mkacisrmf, unless the focal \
+plane temperature is greater than -109C and the observation is taken \
+in graded-mode or the extraction region is on a front-illuminated CCD.\n")
 
         vprogress("Using mkrmf...\n")
 
@@ -468,6 +484,10 @@ def _determine_rmf_tool(infile,rmffile,evtfile):
 
 
 def get_rmf_tool(args):
+    """
+    Return the RMF tool to use using '_determine_rmf_tool'
+    """
+
     key_id = args["key_id"]
     instrument = args["instrument"]
     phafile = args["phafile"]
@@ -486,6 +506,9 @@ def get_rmf_tool(args):
 def run_mkrmf(infile=None,outfile=None,weights=None,
               ebin=None,rmfbin=None,
               clobber="yes",verbose=0):
+    """
+    use 'mkrmf'
+    """
 
     if verbose == 2:
         verbose = 1
@@ -510,6 +533,9 @@ def run_mkrmf(infile=None,outfile=None,weights=None,
 def run_mkacisrmf(infile=None,outfile=None,energy=None,channel=None,chantype=None,
                   obsfile=None,wmap=None,ccd_id="0",chipx=None,chipy=None,
                   clobber="yes",verbose=0):
+    """
+    use 'mkacisrmf'
+    """
 
     if verbose == 2:
         verbose = 1
@@ -541,7 +567,6 @@ def run_mkacisrmf(infile=None,outfile=None,energy=None,channel=None,chantype=Non
 def build_rmf_ps(rmftool, evt_filename, ptype, full_outroot,
                  ebin, rmfbin, clobber, verbose, specfile,
                  feffile, ccd_id, chipx, chipy, infostr):
-
     """
     Run either mkrmf or mkacisrmf depending on input conditions.
     For mkrmf: input FEF file and no weights file and return RMF name.
@@ -582,7 +607,6 @@ def build_rmf_ps(rmftool, evt_filename, ptype, full_outroot,
 
 def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose,
                   specfile, weightfile, wmap_clip, wmap_sky2tdet, infostr):
-
     """
     Run either mkrmf or mkacisrmf depending on input conditions.
     For mkrmf: input CALDB and weight file and return RMF name.
@@ -645,7 +669,9 @@ def create_hrc_resp(specfile,rmf_file,full_outroot,
         rmf = caldb4.Caldb(infile=specfile,product="MATRIX").search
 
         if len(rmf) == 0:
-            raise IOError(f"{specfile} is an invalid HRC spectral file, as non-SAMP responses are no longer supported by the CALDB.  Please reprocess the dataset or re-download the observation from the archive.")
+            raise IOError(f"{specfile} is an invalid HRC spectral file, as \
+non-SAMP responses are no longer supported by the CALDB.  Please \
+reprocess the dataset or re-download the observation from the archive.")
 
         if len(rmf) > 1:
             # this should not happen
@@ -710,7 +736,7 @@ def create_hrc_resp(specfile,rmf_file,full_outroot,
 
 
 
-def set_badpix(evtfile, bpixfile, instrument, verbose):
+def set_badpix(evtfile, bpixfile, instrument, verbose, dobpix):
     """
     set a different bad pixel file in ARDLIB for each
     observation in an input source or background stack
@@ -724,35 +750,45 @@ def set_badpix(evtfile, bpixfile, instrument, verbose):
 
     ardlib.read_params()
 
-    if instrument == "ACIS":
-        bpixfile = ",".join(stk.build(bpixfile))
+    if dobpix:
+        if instrument == "ACIS":
+            bpixfile = ",".join(stk.build(bpixfile))
 
-        acis_set_ardlib.punlearn()
+            acis_set_ardlib.punlearn()
 
-        acis_set_ardlib.badpixfile = bpixfile
-        acis_set_ardlib.verbose = verbose
+            acis_set_ardlib.badpixfile = bpixfile
+            acis_set_ardlib.verbose = verbose
 
-        acis_set_ardlib()
-        ardlib.write_params()
-
-        try:
             acis_set_ardlib()
-            #print(f"Updated ARDLib: {ardlib}") # verify for testing
-        except OSError as exc:
-            raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.") from exc
-
-    else:
-        detnam = fileio.get_keys_from_file(evtfile)["DETNAM"].replace("-","_")
-        bpixpar = f"AXAF_{detnam}_BADPIX_FILE"
-        bpix = f"{bpixfile}[BADPIX]"
-
-        try:
-            setattr(ardlib,bpixpar,bpix)
             ardlib.write_params()
 
-        finally:
-            if not os.path.isfile(bpixfile) or getattr(ardlib,bpixpar).replace("[BADPIX]","") != bpixfile:
-                raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.")
+            try:
+                acis_set_ardlib()
+                #print(f"Updated ARDLib: {ardlib}") # verify for testing
+            except OSError as exc:
+                raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.") from exc
+
+        else:
+            detnam = fileio.get_keys_from_file(evtfile)["DETNAM"].replace("-","_")
+            bpixpar = f"AXAF_{detnam}_BADPIX_FILE"
+            bpix = f"{bpixfile}[BADPIX]"
+
+            try:
+                setattr(ardlib,bpixpar,bpix)
+                ardlib.write_params()
+
+            finally:
+                if not os.path.isfile(bpixfile) or getattr(ardlib,bpixpar).replace("[BADPIX]","") != bpixfile:
+                    raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.")
+
+    else:
+        setattr(ardlib, "AXAF_HRC_I_BADPIX_FILE", "NONE")
+        setattr(ardlib, "AXAF_HRC_S_BADPIX_FILE", "NONE")
+
+        for ccd in range(10):
+            setattr(ardlib,f"AXAF_ACIS{ccd}_BADPIX_FILE","NONE")
+
+        ardlib.write_params()
 
 
 
@@ -764,7 +800,8 @@ def convert_region(infile, evt_filename, outfile, clobber, verbose):
     physical coordinates has no effect other than converting CIAO region
     format to DS9 format.
     """
-    ## Output region name
+
+    ## Output region name ##
 
     if verbose == 2:
         verbose = 1
@@ -850,7 +887,7 @@ def clip_wmap(wmapfile,threshold,tmpdir):
     im = cr.get_image().values
     threshold = float(threshold)
 
-    del(cr)
+    del cr
 
     ## sort pixel values
 
@@ -906,19 +943,15 @@ def clip_wmap(wmapfile,threshold,tmpdir):
 
         threshfile.close()
 
-    del(im)
-    del(im_sort)
-    del(flux_dist)
-    del(flux_dist_thresh)
+    del im, im_sort, flux_dist, flux_dist_thresh
 
 
 
-def group_spectrum(ptype, full_outroot, val, spec, gtype,
+def group_spectrum(ptype, full_outroot, val, binspec, gtype,
                    clobber, verbose, phafile):
     """
     Optionally group output spectrum
     """
-
 
     # grouped spectrum name
     grpout = f"{full_outroot}_grp.{ptype.lower()}"
@@ -933,7 +966,7 @@ def group_spectrum(ptype, full_outroot, val, spec, gtype,
 
         dmgroup.infile = f"{phafile}[SPECTRUM]"
         dmgroup.outfile = grpout
-        dmgroup.binspec = spec
+        dmgroup.binspec = binspec
         dmgroup.grouptype = gtype
         dmgroup.grouptypeval = val
         dmgroup.ycolumn = "counts"
@@ -1085,11 +1118,10 @@ def build_acis_arf(args):
 
     tdetwmap = args["tdetwmap"]
 
-    if dobpix:
-        try:
-            bpix = args["bpix"]
-        except KeyError:
-            bpix = None
+    try:
+        bpix = args["bpix"]
+    except KeyError:
+        bpix = None
 
     try:
         da = args["da"]
@@ -1108,8 +1140,7 @@ def build_acis_arf(args):
     ###########################
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
-        if dobpix:
-            set_badpix(filename,bpix,instrument,verbose)
+        set_badpix(filename, bpix, instrument, verbose, dobpix)
 
         infostr = f"Creating {srcbkg} ARF {iteminfostr}"
 
@@ -1203,13 +1234,12 @@ def build_acis_rmf(args):
     ###########################
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
-        if dobpix:
-            set_badpix(filename,bpix,instrument,verbose)
+        set_badpix(filename, bpix, instrument, verbose, dobpix)
 
         infostr = f"Creating {srcbkg} RMF {iteminfostr}"
 
         if null_rmffile:
-            vprogress(f"WARNING: Setting rmffile parameter (and calquiz calfile) to '{rmffile_ccd}'.\n")
+            vprogress(f"WARNING: Setting rmffile parameter to '{rmffile_ccd}'.\n")
 
         try:
             if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
@@ -1242,6 +1272,12 @@ def build_acis_rmf(args):
 ##########################################################################
 
 def spectra(args):
+    """
+    Extract spectrum, write Galactic nH info to header, and set up
+    arguments for the downstream response generation for the
+    spectrum returned by this function.
+    """
+
     key_id = args["key_id"]
     srcbkg = args["srcbkg"]
     fullfile = args["fullfile"]
@@ -1264,11 +1300,10 @@ def spectra(args):
 
     outreg = args["outreg"]
 
-    if dobpix:
-        try:
-            bpix = args["bpix"]
-        except KeyError:
-            bpix = None
+    try:
+        bpix = args["bpix"]
+    except KeyError:
+        bpix = None
 
     try:
         nrao_nh = args["nrao_nh"]
@@ -1289,7 +1324,8 @@ def spectra(args):
 
         if dobpix:
             v3(f"Setting bad pixel file for {srcbkg} {iteminfostr}")
-            set_badpix(filename, bpix, instrument, verbose)
+
+        set_badpix(filename, bpix, instrument, verbose, dobpix)
 
         #####################################
         #
@@ -1301,7 +1337,9 @@ def spectra(args):
         if weight == "no":
             if correct == "yes" and srcbkg == "src":
                 if not spec.get_region_filter(fullfile)[0]:
-                    v0(f"WARNING: The ARF generated for {fullfile} cannot be corrected as no supported spatial region filter was detected for this file, which is required input for this step.\n")
+                    v0(f"WARNING: The ARF generated for {fullfile} cannot be \
+corrected as no supported spatial region filter was detected \
+for this file, which is required input for this step.\n")
 
                     correct = "no"
 
@@ -1332,12 +1370,13 @@ def spectra(args):
                 raise IOError(f"Unable to read from file {fullfile}")
 
             if not cr.column_exists("tdet"):
-                v1(f"WARNING: No TDET column found in {filename}; the 'wmap' parameter of dmextract will be set to use DET coordinates instead.\n")
+                v1(f"WARNING: No TDET column found in {filename}; the 'wmap' \
+parameter of dmextract will be set to use DET coordinates instead.\n")
 
                 binwmap_val = binwmap.split("=")[1]
                 binwmap = f"det={binwmap_val}"
 
-                del(cr)
+                del cr
 
         try:
             phafile = extract_spectra(full_outroot,fullfile,ptype,channel,
@@ -1404,12 +1443,12 @@ def spectra(args):
 
                 bkgscale = fileio.get_keys_from_file(fullfile)[f"BKGSCAL{ccdid}"]
 
-                edit_headers(verbose, phafile, "AREASCAL", 1/bkgscale, comment=f"1/BKGSCAL{ccdid} using the scaling factor from the 'blanksky' script") #, set to 1.0 if subtracting background")
+                edit_headers(verbose, phafile, "AREASCAL", 1/bkgscale,
+                             comment=f"1/BKGSCAL{ccdid} using the 'blanksky' scaling factor") #, set to 1.0 if subtracting background")
 
-                v1(f"{phafile} AREASCAL keyword set to the inverse of the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling or for background subtraction.")
-
-                
-#                v1(f"{phafile} AREASCAL keyword set to the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum scaling while spectral modeling.  Set AREASCAL to 1.0 if 'blanksky' spectrum is being used for background subtraction.")
+                v1(f"{phafile} AREASCAL keyword set to the inverse of \
+the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum \
+scaling while spectral modeling or for background subtraction.")
 
     try:
         return pardict
@@ -1440,11 +1479,10 @@ def _resps_preprocess_wrapper(args_dict):
         asphist = args_dict["asphist"]
         asolstat = False
 
-    if dobpix:
-        try:
-            bpix = args_dict["bpix"]
-        except KeyError:
-            bpix = None
+    try:
+        bpix = args_dict["bpix"]
+    except KeyError:
+        bpix = None
 
     try:
         dtf = args_dict["dtf"]
@@ -1454,8 +1492,7 @@ def _resps_preprocess_wrapper(args_dict):
     kdict = {}
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
-        if dobpix:
-            set_badpix(filename,bpix,instrument,verbose)
+        set_badpix(filename, bpix, instrument, verbose, dobpix)
 
         if asolstat:
             #########################################
@@ -1523,24 +1560,34 @@ def _build_resps(args):
     verbose = args["verbose"]
     iteminfostr = args["iteminfostr"]
 
-    if dobpix:
-        try:
-            bpix = args["bpix"]
-        except KeyError:
-            bpix = None
-
     try:
-        dtf = args["dtf"]
+        bpix = args["bpix"]
+
     except KeyError:
-        dtf = None
+        bpix = None
+
+    # try:
+    #     dtf = args["dtf"]
+    # except KeyError:
+    #     dtf = None
 
     try:
         da = args["da"]
+
+        if da in ["", None]:
+            da = "NONE"
+            args["da"] = "NONE"
+
     except KeyError:
         da = None
 
     try:
         msk = args["msk"]
+
+        if msk in ["", None]:
+            msk = "NONE"
+            args["msk"] = "NONE"
+
     except KeyError:
         msk = None
 
@@ -1555,8 +1602,7 @@ def _build_resps(args):
         rmffile = args["rmffile"]
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
-        if dobpix:
-            set_badpix(filename,bpix,instrument,verbose)
+        set_badpix(filename, bpix, instrument, verbose, dobpix)
 
         if instrument == "ACIS":
 
@@ -1587,7 +1633,7 @@ def _build_resps(args):
                         infostr = f"Creating {srcbkg} RMF {iteminfostr}"
 
                         if null_rmffile:
-                            v1(f"WARNING: Setting rmffile parameter (and calquiz calfile) to '{rmffile_ccd}'.\n")
+                            v1(f"WARNING: Setting rmffile parameter to '{rmffile_ccd}'.\n")
 
                         respfile = build_rmf_ext(rmftool,ptype,full_outroot,
                                                  ebin,rmfbin,clobber,verbose,
@@ -1644,6 +1690,7 @@ def _build_resps(args):
         return {key_id : {"RMF" : respfile}}
 
     assert mkresp == "ARF+RMF", f"Unknown 'mkresp={mkresp}'"
+
     return {key_id : {"ARF" : ancrfile,
                       "RMF" : respfile}}
 
@@ -1758,30 +1805,24 @@ def groupspec(args):
     except KeyError:
         bgbinspec = None
 
-    if all([srcbkg == "src", dogroup]):
+    try:
         v3(f"Grouping {srcbkg} spectrum {iteminfostr}")
+        grpfile = None
 
-        try:
+        if all([srcbkg == "src", dogroup]):
             grpfile = group_spectrum(ptype,full_outroot,
                                      gval,binspec,gtype,
                                      clobber,verbose,phafile)
 
-            return {key_id : {"grpfile" : grpfile}}
-
-        except OSError as exc:
-            raise IOError(f"Failed to group spectrum for {phafile}") from exc
-
-    if all([srcbkg == "bkg", bgdogroup]):
-        v3(f"Grouping {srcbkg} spectrum {iteminfostr}")
-
-        try:
+        if all([srcbkg == "bkg", bgdogroup]):
             grpfile = group_spectrum(ptype,full_outroot,
                                      bggval,bgbinspec,bggtype,
                                      clobber,verbose,phafile)
-            return {key_id : {"grpfile" : grpfile}}
 
-        except OSError as exc:
-            raise IOError(f"Failed to group spectrum for {phafile}") from exc
+    except OSError as exc:
+        raise IOError(f"Failed to group spectrum for {phafile}") from exc
+
+    return {key_id : {"grpfile" : grpfile}}
 
 
 
@@ -1799,6 +1840,10 @@ def add_history_scriptver(fn,toolname,params,toolversion,modname,modversion):
 
 
 def add_header_keys(args):
+    """
+    Write relevant associated file header keywords to the generated output files
+    """
+
     key_id = args["key_id"]
     srcbkg = args["srcbkg"]
     phafile = args["phafile"]
@@ -1857,19 +1902,11 @@ def add_header_keys(args):
 
                 # If the source or background spectrum was grouped, add the respfile
                 # and ancrfile keys there, too.
-                if srcbkg == "src" and dogroup:
-                    fn = grpfile
-                    v2(f"Updating header of {fn} with RESPFILE and ANCRFILE keywords.\n")
+                if all([srcbkg == "src", dogroup]) or all([srcbkg == "bkg", bgdogroup]):
+                    v2(f"Updating header of {grpfile} with RESPFILE and ANCRFILE keywords.\n")
 
-                    edit_headers(verbose, fn, "RESPFILE", os.path.basename(respfile))
-                    edit_headers(verbose, fn, "ANCRFILE", os.path.basename(ancrfile))
-
-                if srcbkg == "bkg" and bgdogroup:
-                    fn = grpfile
-                    v2(f"Updating header of {fn} with RESPFILE and ANCRFILE keywords.\n")
-
-                    edit_headers(verbose, fn, "RESPFILE", os.path.basename(respfile))
-                    edit_headers(verbose, fn, "ANCRFILE", os.path.basename(ancrfile))
+                    edit_headers(verbose, grpfile, "RESPFILE", os.path.basename(respfile))
+                    edit_headers(verbose, grpfile, "ANCRFILE", os.path.basename(ancrfile))
 
         except Exception as exc:
             print(exc)
@@ -1892,20 +1929,14 @@ def add_header_keys(args):
                 if dogroup:
                     # If the background is grouped, use the
                     # grouped background spectrum filename.
+                    # Otherwise, if the background is not grouped,
+                    # use the ungrouped background spectrum filename.
+
                     if bgdogroup:
-                        fn = grpfile
-                        backphagrp = args["specdicts"][key_id.replace("src","bkg")]["grpfile"]
+                        backpha = args["specdicts"][key_id.replace("src","bkg")]["grpfile"]
 
-                        v2(f"Updating header of {fn} with BACKFILE keyword.\n")
-                        edit_headers(verbose, fn, "BACKFILE", os.path.basename(backphagrp))
-
-                    else:
-                        # If the background is not grouped, use the
-                        # ungrouped background spectrum filename.
-                        fn = grpfile
-
-                        v2(f"Updating header of {grpfile} with BACKFILE keyword.\n")
-                        edit_headers(verbose, fn, "BACKFILE", os.path.basename(backpha))
+                    v2(f"Updating header of {grpfile} with BACKFILE keyword.\n")
+                    edit_headers(verbose, grpfile, "BACKFILE", os.path.basename(backpha))
 
         except Exception as exc:
             print(exc)
@@ -1924,7 +1955,8 @@ def coadd(outroot,spec_src_stk,spec_bkg_stk,
     """
 
     if len(spec_src_stk) < 2:
-        v1("Warning: There are fewer than two source event files specified in the 'infile' parameter; the 'combine=yes' setting will be ignored.\n")
+        v1("Warning: There are fewer than two source event files specified \
+in the 'infile' parameter; the 'combine=yes' setting will be ignored.\n")
         return
 
     #################################################
@@ -1936,7 +1968,10 @@ def coadd(outroot,spec_src_stk,spec_bkg_stk,
 
     nsrcs = set([len(spec_src_stk), len(arf_src_stk), len(rmf_src_stk)])
     if len(nsrcs) > 1:
-        v1("Output spectra and responses were not combined because spectra and/or responses were not created for every item in the input stack(s) of files.")
+        v1("Output spectra and responses were not combined \
+because spectra and/or responses were not created for every \
+item in the input stack(s) of files.")
+
         return
 
     if verbose == 2:
@@ -1972,7 +2007,9 @@ def coadd(outroot,spec_src_stk,spec_bkg_stk,
         vprogress(combine_infostr)
 
     except OSError as exc:
-        v1("Failed to combine output spectra and responses, please do so manually or with 'combine_spectra'.")
+        v1("Failed to combine output spectra and responses, please do so manually or \
+with 'combine_spectra'.")
+
         v2(f"Error: {exc}")
 
 
@@ -2142,7 +2179,7 @@ def get_par(args):
     if params["outroot"].startswith("@"):
         stackfile = stk.build(params["outroot"])
         out_roots = [st.replace(" ","").strip("\n") for st in stackfile]
-        del(stackfile)
+        del stackfile
 
     else:
         out_roots = params["outroot"].replace(" ","").split(",")
@@ -2242,8 +2279,10 @@ def run_specextract(args):
     # error out if there are spaces in absolute paths of the various parameters
     for parname in ["infile","outroot","bkgfile","asp",
                     "dtffile","mskfile","rmffile","bpixfile","dafile"]:
+
         if " " in os.path.abspath(params[parname]):
-            raise IOError(f"The absolute path for the {parname}, '{os.path.abspath(params[parname])}', cannot contain any spaces")
+            raise IOError(f"The absolute path for the {parname}, '{os.path.abspath(params[parname])}', \
+cannot contain any spaces")
 
     specdicts = spec.ParDicts(params).specextract_dict()
 
@@ -2263,7 +2302,6 @@ def run_specextract(args):
 
         elif len(specextract_args) > nproc:
             def parallelize(func,args,numcores=nproc,progress=None,prefix=None):
-                #return parallel_pool(func,args,ncores=numcores)
                 return parallel_pool_futures(func,args,ncores=numcores,progress=False)
 
         else:
@@ -2277,6 +2315,7 @@ def run_specextract(args):
                 for stat in status:
                     if isinstance(stat,Exception):
                         raise stat
+
                 return status
 
     else:
@@ -2284,8 +2323,8 @@ def run_specextract(args):
             def parallelize(func,args,numcores=nproc,progress=True,prefix=""):
                 if progress:
                     return [func(arg) for arg in progressbar_iter(args,use_unicode=_use_unicode(),prefix=prefix)]
-                else:
-                    return [func(arg) for arg in args]
+
+                return [func(arg) for arg in args]
         else:
             def parallelize(func,args,numcores=nproc,progress=None,prefix=None):
                 return [func(arg) for arg in args]
@@ -2320,7 +2359,7 @@ def run_specextract(args):
     ## clean up converted region stack ##
     for key in outreg_tmp.keys():
         outreg_tmp[key].close()
-    del(outreg_name)
+    del outreg_name
 
     ###########################
     #
