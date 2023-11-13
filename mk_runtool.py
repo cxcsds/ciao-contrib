@@ -44,12 +44,11 @@ be handled more sensibly.
 """
 
 import glob
-from io import TextIOWrapper
 import os
+import os.path
 import re
 import subprocess
 import sys
-from tempfile import TemporaryFile
 from typing import Any
 
 import paramio as pio  # type: ignore
@@ -89,40 +88,6 @@ language_keywords = [
 language_keywords_lower = [k.lower() for k in language_keywords]
 
 
-ERR_BUFFER = TemporaryFile(mode="w+b")
-ERR_BUFFER_OPEN = True
-
-ORIG_STDERR = sys.stderr.fileno()
-ORIG_STDERR_DUP = os.dup(ORIG_STDERR)
-
-
-def pget(handle, value):
-    """A value of pget that hides any stderr output from the paramio library.
-
-    To avoid having too many temporary files open this relies on
-    a global instance.
-
-    Needed for CIAO 4.16.
-
-    """
-
-    sys.stderr.flush()
-    os.dup2(ERR_BUFFER.fileno(), ORIG_STDERR)
-    sys.stderr = TextIOWrapper(os.fdopen(ORIG_STDERR, 'wb'))
-
-    try:
-        retval = pio.pget(handle, value)
-
-    except ValueError:
-        retval = ""
-
-    finally:
-        sys.stderr.flush()
-        os.dup2(ORIG_STDERR_DUP,  ORIG_STDERR)
-
-    return retval
-
-
 class Param:
     """A parameter from a tool."""
 
@@ -148,12 +113,22 @@ class Param:
 
         # The paramio module is quite chatty when it fails. However
         # we can not use contextlib,redirect_stderr to hide this
-        # from the user so, for now, we are stuck with using the
-        # "manual" pget routine.
+        # from the user so, for now, we are stuck with it.
         #
-        self.minval = pget(fh, f"{parname}.p_min")
-        self.maxval = pget(fh, f"{parname}.p_max")
-        self.info = pget(fh, f"{parname}.p_prompt").strip()
+        try:
+            self.minval = pio.pget(fh, f"{parname}.p_min")
+        except ValueError:
+            self.minval = ""
+
+        try:
+            self.maxval = pio.pget(fh, f"{parname}.p_max")
+        except ValueError:
+            self.maxval = ""
+
+        try:
+            self.info = pio.pget(fh, f"{parname}.p_prompt").strip()
+        except ValueError:
+            self.info = ""
 
         # Use a case-insensitive check
         #
@@ -250,11 +225,11 @@ class Param:
         if self.set:
             ptype = "ParSet"
             if self.type in "sf":
-                args += ",[{}]".format(",".join([f'"{o}"'
+                args += ",[{}]".format(",".join(['"{}"'.format(o)
                                                  for o in self.opts]))
             else:
                 # assume no INDEF in the list of options here
-                args += ",[{}]".format(",".join([f"{o}"
+                args += ",[{}]".format(",".join(["{}".format(o)
                                                  for o in self.opts]))
 
         elif (self.minval is not None) or (self.maxval is not None):
@@ -481,7 +456,7 @@ def doit() -> None:
         print_module_section(ofh, MODULE_FOOTER)
 
     print("")
-    print(f"Created: {oname}")
+    print("Created: {}".format(oname))
     print("")
 
     # Has it changed?
@@ -513,8 +488,4 @@ if __name__ == "__main__":
         sys.stderr.write(f"Usage: python {sys.argv[0]}\n")
         sys.exit(1)
 
-    try:
-        doit()
-    finally:
-        ERR_BUFFER.close()
-        ERR_BUFFER_OPEN = False
+    doit()
