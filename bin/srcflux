@@ -2996,16 +2996,23 @@ def check_parameters( myparams ):
 
 def check_nom_keywords(evt_files):
     """If there is more than 1 event files, then they must have the 
-    same tangent point.  Check the RA and DEC_NOM values in the headers"""
+    same tangent point.  Check the RA and DEC_NOM values in the headers.
+    
+    But, this is only true if regions are in physical coords. If celestial
+    then OK.  Unfortunately we don't know the coord sys so we have to
+    make this a warning not an error.
+    """
 
     def _check_key(nom_key, nom_val):
         key_val = tab.get_key_value(nom_key)        
         if nom_val is None:
             nom_val = key_val
         if nom_val != key_val:
-            raise ValueError(f"ERROR: {nom_key} values differ.  All observations must be reprojected to the same tangent point")
+            verb0(f"WARNING: {nom_key} values differ in input event " +
+                  "files; the values should be equal if regions are " +
+                  "in physical coordinates.")
         return nom_val
-    
+
     ra_nom = None
     dec_nom = None
     
