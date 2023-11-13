@@ -43,19 +43,12 @@ be handled more sensibly.
 
 """
 
-import glob
-from io import TextIOWrapper
 import os
+import os.path
 import re
 import subprocess
 import sys
-from tempfile import TemporaryFile
-from typing import Any
-
-import paramio as pio  # type: ignore
-
-
-FuncInfo = tuple[str, str, bool]
+import glob
 
 
 MODULE_HEADER = "mk_runtool.header"
@@ -89,42 +82,12 @@ language_keywords = [
 language_keywords_lower = [k.lower() for k in language_keywords]
 
 
-ERR_BUFFER = TemporaryFile(mode="w+b")
-ERR_BUFFER_OPEN = True
-
-ORIG_STDERR = sys.stderr.fileno()
-ORIG_STDERR_DUP = os.dup(ORIG_STDERR)
-
-
-def pget(handle, value):
-    """A value of pget that hides any stderr output from the paramio library.
-
-    To avoid having too many temporary files open this relies on
-    a global instance.
-
-    Needed for CIAO 4.16.
-
-    """
-
-    sys.stderr.flush()
-    os.dup2(ERR_BUFFER.fileno(), ORIG_STDERR)
-    sys.stderr = TextIOWrapper(os.fdopen(ORIG_STDERR, 'wb'))
-
-    try:
-        retval = pio.pget(handle, value)
-
-    except ValueError:
-        retval = ""
-
-    finally:
-        sys.stderr.flush()
-        os.dup2(ORIG_STDERR_DUP,  ORIG_STDERR)
-
-    return retval
-
-
 class Param:
-    """A parameter from a tool."""
+    """A parameter from a tool, as parsed from an input line.
+
+    The constructor will throw an IOError if there was a problem
+    parsing the line.
+    """
 
     python_type_map = {
         "s": "string",
@@ -133,32 +96,65 @@ class Param:
         "r": "number",
         "b": "bool"}
 
-    # Typing of the return value of paramio.paramopen is tricky.
-    #
-    def __init__(self, fh: Any, toolname: str, parname: str) -> None:
+    def __init__(self, toolname, txt):
+        "Parse a parameter line (txt) for the given tool."
 
         self.toolname = toolname
-        self.name = parname
+        self.input_line = txt
 
-        self.type = pio.pget(fh, f"{parname}.p_type")
-        self.python_type = self.python_type_map[self.type]
-        self.mode = pio.pget(fh, f"{parname}.p_mode")
-        # The value is before any expansion or redirection
-        self.value = pio.pget(fh, f"{parname}.p_value")
-
-        # The paramio module is quite chatty when it fails. However
-        # we can not use contextlib,redirect_stderr to hide this
-        # from the user so, for now, we are stuck with using the
-        # "manual" pget routine.
+        # Can not just split on "," since the default value may contain
+        # commas - e.g. stdlev1 of acis_process_events
         #
-        self.minval = pget(fh, f"{parname}.p_min")
-        self.maxval = pget(fh, f"{parname}.p_max")
-        self.info = pget(fh, f"{parname}.p_prompt").strip()
+        # At present assume no need to handle \ for protecting string
+        # characters.
+        #
+        toks = [""]
+        in_string = False
+        expect_comma = False
+        for c in txt:
+
+            if expect_comma:
+                if c == ",":
+                    expect_comma = False
+                else:
+                    raise IOError(f"Expected a comma after a quote, found {c} in [{txt}], tool={toolname}")
+
+            # Assume that only " is used for start/end of a string
+            if c == '"':
+                if in_string:
+                    in_string = False
+                    expect_comma = True
+                else:
+                    in_string = True
+                continue
+
+            if c == "," and not in_string:
+                toks.append("")
+                continue
+
+            toks[-1] += c
+
+        nt = len(toks)
+        if nt < 4:
+            print(f"DBG: len toks = {nt}")
+            print(f"DBG:     toks = {toks}")
+            raise IOError(f"Unable to process parameter line '{txt}' for {toolname}")
+
+        elif nt < 7:
+            toks.extend(["" for i in range(nt, 7)])
+
+        self.name = toks[0]
+        self.type = toks[1]
+        self.python_type = self.python_type_map[self.type]
+        self.mode = toks[2]
+        self.value = toks[3]
+        self.minval = toks[4]
+        self.maxval = toks[5]
+        self.info = toks[6].strip()
 
         # Use a case-insensitive check
-        #
         if self.name.lower() in language_keywords_lower:
-            print(f"WARNING: [{self.toolname}] parameter name clashes with Python reserved word:\n  {self.name}")
+            print(f"WARNING: [{self.toolname}] parameter name clashes with Python reserved word:\n  {txt}")
 
         # This is just a warning as the ParameterInfo object does the
         # remapping.
@@ -169,11 +165,12 @@ class Param:
         if re.match(identifier, self.name) is None:
             nname = self.name.replace("-", "_")
             if re.match(identifier, nname) is None:
-                print(f"WARNING: [{self.toolname}] parameter name is not a valid Python identifier and does not transform '-' -> '_': {self.name}")
+                print(f"WARNING: [{self.toolname}] parameter name is not a valid Python identifier and does not transform '-' -> '_': {txt}")
                 self.skip = True
                 return  # will this work?
 
-            print(f"Note: converting {self.name} -> {nname}")
+            else:
+                print(f"Note: converting {self.name} -> {nname}")
 
         if "INDEF" in self.info:
             self.info = self.info.replace("INDEF", "None")
@@ -182,7 +179,7 @@ class Param:
         # are noted as a reminder.
         #
         if "INDEF" in [self.minval, self.maxval]:
-            print(f"Note: minval/maxval is INDEF in\n  {self.toolname}.{self.name}")
+            print(f"Note: minval/maxval is INDEF in\n  {txt}")
 
         # We hide the complexity of the mode (e.g. values of
         # h or hl or l) and just make this binary distinction
@@ -226,10 +223,13 @@ class Param:
         if self.skip and self.required:
             raise IOError("Found a required parameter that is to be skipped!")
 
-    def __str__(self) -> str:
-        return self.describe("")
+    def __repr__(self):
+        return f"{self.__class__.__name__}('{self.toolname}', '{self.input_line}')"
 
-    def describe(self, sep: str) -> str:
+    def __str__(self):
+        return self.input_line
+
+    def describe(self, sep):
         """Return a string of a tuple describing this parameter
         in the format needed by the ParameterInfo object.
 
@@ -250,11 +250,11 @@ class Param:
         if self.set:
             ptype = "ParSet"
             if self.type in "sf":
-                args += ",[{}]".format(",".join([f'"{o}"'
+                args += ",[{}]".format(",".join(['"{}"'.format(o)
                                                  for o in self.opts]))
             else:
                 # assume no INDEF in the list of options here
-                args += ",[{}]".format(",".join([f"{o}"
+                args += ",[{}]".format(",".join(["{}".format(o)
                                                  for o in self.opts]))
 
         elif (self.minval is not None) or (self.maxval is not None):
@@ -277,24 +277,27 @@ class Param:
         return f"{sep}{ptype}({args})"
 
 
-def get_param_list(dirname: str,
-                   toolname: str) -> tuple[list[Param], list[Param]]:
+def get_param_list(dirname, toolname):
     """Return a tuple of required and parameter values,
     where each entry is a list (which can be empty).
     Each list entry is a dictionary containing information
     on that parameter.
     """
 
-    # Unfortunately the paramio interface can be a  bit noisy.
+    # Unfortunately the Python paramio module does not provide
+    # all of the functionality of the S-Lang version (e.g.
+    # plist_names) so we have to parse the parameter file
     #
     pname = os.path.join(dirname, f"{toolname}.par")
-    fh = pio.paramopen(pname, "rH")
-    try:
+    with open(pname, "r") as pf:
         req_params = []
         opt_params = []
+        for l in pf.readlines():
+            l = l.strip()
+            if len(l) == 0 or l.startswith("#"):
+                continue
 
-        for pname in pio.plist(fh):
-            p = Param(fh, toolname, pname)
+            p = Param(toolname, l)
             if p.skip:
                 continue
 
@@ -303,15 +306,10 @@ def get_param_list(dirname: str,
             else:
                 opt_params.append(p)
 
-    finally:
-        pio.paramclose(fh)
-
     return (req_params, opt_params)
 
 
-def create_output(dirname: str,
-                  toolname: str,
-                  istool: bool = True) -> str:
+def create_output(dirname, toolname, istool=True):
     """Return Python code for the given tool.
 
     Parameters
@@ -347,8 +345,7 @@ def create_output(dirname: str,
     return out.replace("\t", "    ")
 
 
-def add_output(funcinfo: dict[str, FuncInfo],
-               parname: str) -> None:
+def add_output(funcinfo, parname):
     """Store information on the tool for later use.
 
     It is assumed that the "installed" version is processed
@@ -393,19 +390,17 @@ def add_output(funcinfo: dict[str, FuncInfo],
     funcinfo[toolname] = (dirname, toolname, istool)
 
 
-def print_module_section(ofh, filename: str) -> None:
+def print_module_section(ofh, filename):
     "Add contents of filename to ofh"
 
-    with open(filename, "r", encoding="UTF-8") as f:
+    with open(filename, "r") as f:
         for l in f.readlines():
             ofh.write(l)
 
     ofh.flush()
 
 
-def add_par_files(parinfo: dict[str, FuncInfo],
-                  dirname: str,
-                  pardir: str = 'param') -> None:
+def add_par_files(parinfo, dirname, pardir='param'):
     """Update parinfo with .par files in dirname.
 
     Parameters
@@ -434,7 +429,7 @@ def add_par_files(parinfo: dict[str, FuncInfo],
         add_output(parinfo, fname)
 
 
-def doit() -> None:
+def doit():
 
     ascds_install = os.getenv("ASCDS_INSTALL")
     if ascds_install is None:
@@ -460,9 +455,9 @@ def doit() -> None:
 
     print(f"Input directores:\n  {ascds_install}\n  {ascds_contrib}\n")
 
-    with open(oname, "w", encoding="UTF-8") as ofh:
+    with open(oname, "w") as ofh:
         print_module_section(ofh, MODULE_HEADER)
-        tools: dict[str, FuncInfo] = {}
+        tools = {}
 
         add_par_files(tools, ascds_install)
         add_par_files(tools, ascds_contrib)
@@ -481,7 +476,7 @@ def doit() -> None:
         print_module_section(ofh, MODULE_FOOTER)
 
     print("")
-    print(f"Created: {oname}")
+    print("Created: {}".format(oname))
     print("")
 
     # Has it changed?
@@ -513,8 +508,4 @@ if __name__ == "__main__":
         sys.stderr.write(f"Usage: python {sys.argv[0]}\n")
         sys.exit(1)
 
-    try:
-        doit()
-    finally:
-        ERR_BUFFER.close()
-        ERR_BUFFER_OPEN = False
+    doit()
