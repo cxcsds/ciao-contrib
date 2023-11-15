@@ -13,7 +13,7 @@ Output:
 
 Will oftern be used
   ./make_versions_file > ciao_versions.dat
-  
+
 """
 
 import os
@@ -32,7 +32,7 @@ def read_vfile(fname):
     # may have blank lines
     cts = [l.strip() for l in cts if l.strip() != ""]
     if len(cts) != 1:
-        raise IOError("Expected 1 line for {0} but read in:\n{1}".format(fname, cts))
+        raise IOError(f"Expected 1 line for {fname} but read in:\n{cts}")
 
     return cts[0]
 
@@ -41,7 +41,7 @@ def package_name(fname):
 
     if fname == "VERSION":
         return "CIAO"
-    
+
     elif fname == "contrib/VERSION.CIAO_scripts":
         return "contrib"
 
@@ -49,7 +49,7 @@ def package_name(fname):
         return fname.split("_")[-1]
 
     else:
-        raise ValueError("Unrecognized file name: {0}".format(fname))
+        raise ValueError(f"Unrecognized file name: {fname}")
 
 def doit():
     """Run the code."""
@@ -65,7 +65,7 @@ def doit():
     vbase = glob.glob(ciao + "/VERSION")
     if vbase == []:
         raise IOError("Unable to find $ASCDS_INSTALL/VERSION")
-        
+
     vfiles = glob.glob(ciao + "/VERSION_*")
     if vfiles == []:
         raise IOError("Unable to find $ASCDS_INSTALL/VERSION_*")
@@ -74,15 +74,15 @@ def doit():
     # later
     cfile = glob.glob(ciao + "/contrib/VERSION*")
     if len(cfile) > 1:
-        raise IOError("Expected 1 entry for contrib VERSION file, found: {0}".format(cfile))
+        raise IOError(f"Expected 1 entry for contrib VERSION file, found: {cfile}")
 
     l = len(ciao) + 1
     for vfile in vbase + vfiles + cfile:
         v = read_vfile(vfile)
 
-        print("{0} {1}".format(package_name(vfile[l:]), v))
-    
+        pname = package_name(vfile[l:])
+        print(f"{pname} {v}")
+
 
 if __name__ == "__main__":
     doit()
-    
