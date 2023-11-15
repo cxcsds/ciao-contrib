@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2011, 2014, 2015, 2016, 2019, 2020, 2021
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2011, 2014, 2015, 2016, 2019, 2020, 2021, 2023
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -265,7 +265,6 @@ def get_latest_versions(timeout=None, system=None):
             raise he
 
         return res.read().decode('utf-8')
-
 
     try:
         rsp = download(system_url)
