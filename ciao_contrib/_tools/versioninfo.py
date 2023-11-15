@@ -313,7 +313,7 @@ def check_conda_versions(ciao):
         out = subprocess.run(["conda", "list", "--json"], check=True,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except FileNotFoundError as fe:
-        raise IOError("Unable to run the conda tool. Was CIAO installed with conda?") from fe
+        raise IOError("Unable to run the conda tool to find out what is installed.") from fe
 
     js = json.loads(out.stdout)
 
