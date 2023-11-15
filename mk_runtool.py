@@ -468,6 +468,11 @@ def doit():
         toolnames = list(tools.keys())
         toolnames.sort()
         for tname in toolnames:
+
+            # special case CIAO 4.16 development snafu
+            if tname == "spec2rdb":
+                continue
+
             (dirname, toolname, istool) = tools[tname]
             ofh.write(create_output(dirname, toolname, istool=istool))
             ofh.write("\n")
