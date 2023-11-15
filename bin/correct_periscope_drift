@@ -44,7 +44,7 @@ from sherpa import plot
 
 
 TOOLNAME = "correct_periscope_drift"
-VERSION = "28 March 2023"
+VERSION = "26 September 2023"
 
 # Set up the logging/verbose code
 initialize_logger(TOOLNAME)
@@ -365,16 +365,10 @@ def make_fit_plot(evt_times, fit_data, mp, ax):
     mplot.x = mp.x / 1000
     mplot.y = mp.y
 
-    try:
-        plot.backend.begin()
+    with plot.backend:
         dplot.plot()
         mplot.plot(overplot=True)
         ylimits(-1 * fit_ymax, fit_ymax)
-    except Exception:
-        plot.backend.exceptions()
-        raise
-    else:
-        plot.backend.end()
 
 
 def make_data_plot(dset, model, fit_data, ax):
@@ -400,15 +394,9 @@ def make_data_plot(dset, model, fit_data, ax):
     dplot.ylabel = 'Position offset from mean, {} (arcsec)'.format(ax)
     dplot.title = 'Raw data and fit in {}'.format(ax)
 
-    try:
-        plot.backend.begin()
+    with plot.backend:
         fplot.plot()
         ylimits(-1 * data_ymax, data_ymax)
-    except Exception:
-        plot.backend.exceptions()
-        raise
-    else:
-        plot.backend.end()
 
 
 def ylimits(ymin, ymax):
@@ -424,15 +412,11 @@ def ylimits(ymin, ymax):
     functionality. As of CIAO 4.12 this is not really needed.
     """
 
-    if plot.backend.name == 'pylab':
-        from matplotlib import pyplot as plt
-        plt.ylim(ymin, ymax)
+    if plot.backend.name != 'pylab':
+        return
 
-    else:
-        # unlike hardcopy, we do not tell the user if the backend
-        # is unknown, as this is a cosmetic change.
-        #
-        pass
+    from matplotlib import pyplot as plt
+    plt.ylim(ymin, ymax)
 
 
 def hardcopy(filename):
@@ -458,14 +442,14 @@ def hardcopy(filename):
     if plot.backend.name == 'pylab':
         from matplotlib import pyplot as plt
         plt.savefig(filename)
+        return
 
-    else:
-        # could check if this has already been created, but if this
-        # does happen we want the user to know, so a repeated message
-        # is not a bad thing.
-        #
-        print('WARNING: No hardcopy - unrecognized Sherpa setting: ' +
-              'plot_pkg={}'.format(plot.backend.name))
+    # could check if this has already been created, but if this
+    # does happen we want the user to know, so a repeated message
+    # is not a bad thing.
+    #
+    print('WARNING: No hardcopy - unrecognized Sherpa setting: '
+          f'plot_pkg={plot.backend.name}')
 
 
 # The '@handle_ciao_errors' decorator will catch any error thrown and
@@ -530,7 +514,7 @@ def main(opt):
         if plot.backend.name == 'pylab':
             import matplotlib as mpl
             mpl.use('Agg')
-        
+
     # Store comments to print in block after all of the sherpa fit output
     fit_comments = []
     plot_list = []

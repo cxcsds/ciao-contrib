@@ -70,14 +70,15 @@ identifier = re.compile("^[a-zA-Z_][a-zA-Z0-9_]*$")
 # From
 # https://docs.python.org/3/reference/lexical_analysis.html#keywords
 #
+# Updated for Python 3.12
 language_keywords = [
-    "False",      "class",      "finally",    "is",         "return",
-    "None",       "continue",   "for",        "lambda",     "try",
-    "True",       "def",        "from",       "nonlocal",   "while",
-    "and",        "del",        "global",     "not",        "with",
-    "as",         "elif",       "if",         "or",         "yield",
-    "assert",     "else",       "import",     "pass",
-    "break",      "except",     "in",         "raise"]
+    "False",      "await",      "else",       "import",     "pass",
+    "None",       "break",      "except",     "in",         "raise",
+    "True",       "class",      "finally",    "is",         "return",
+    "and",        "continue",   "for",        "lambda",     "try",
+    "as",         "def",        "from",       "nonlocal",   "while",
+    "assert",     "del",        "global",     "not",        "with",
+    "async",      "elif",       "if",         "or",         "yield"]
 language_keywords_lower = [k.lower() for k in language_keywords]
 
 
@@ -467,6 +468,11 @@ def doit():
         toolnames = list(tools.keys())
         toolnames.sort()
         for tname in toolnames:
+
+            # special case CIAO 4.16 development snafu
+            if tname == "spec2rdb":
+                continue
+
             (dirname, toolname, istool) = tools[tname]
             ofh.write(create_output(dirname, toolname, istool=istool))
             ofh.write("\n")

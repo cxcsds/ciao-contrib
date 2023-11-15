@@ -2600,7 +2600,7 @@ parinfo['apowerspectrum'] = {
 parinfo['apply_fov_limits'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input event file",None),ParValue("outfile","f","Output image",None)],
-    'opt': [ParRange("binsize","r","Image binning factor",None,0,None),ParValue("fovfile","f","Input FOV file",None),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Debug Level (0-5)",1,0,5)],
+    'opt': [ParRange("binsize","r","Image binning factor",None,0,None),ParValue("fovfile","f","Input FOV file",None),ParSet("datatype","s","Data type for outfile",'i4',["i2","i4"]),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Debug Level (0-5)",1,0,5)],
     }
 
 
@@ -2692,6 +2692,13 @@ parinfo['celldetect'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input file",None),ParValue("outfile","f","Output source list",None)],
     'opt': [ParValue("psffile","f","single psf file or list of psf files",None),ParValue("expstk","f","list of exposure map files",None),ParValue("regfile","f","ASCII regions file",'none'),ParValue("clobber","b","Overwrite exiting outputs?",False),ParValue("thresh","r","Source threshold",3),ParRange("snr_diminution","r","Diminution on SNR threshold - range (< 0 to 1) - Allows fine grained cell sliding",1.0,0,1),ParValue("findpeaks","b","Find local peaks?",True),ParValue("centroid","b","Compute source centroids?",True),ParValue("ellsigma","r","Size of output source ellipses (in sigmas)",3),ParValue("expratio","r","cutoff ratio for source cell exposure variation",0),ParValue("fixedcell","i","Fixed cell size to use (0 for variable cell)",0),ParValue("xoffset","i","Offset of x axis from data center",None),ParValue("yoffset","i","Offset of y axis from data center",None),ParValue("cellfile","f","Output cell size image stack name",None),ParValue("maxlogicalwindow","i","Max logical window",8192),ParValue("bkgfile","f","Background file name",None),ParValue("bkgvalue","r","Background count/pixel",0),ParValue("bkgerrvalue","r","Background error",0),ParValue("convolve","b","Use convolution?",False),ParValue("snrfile","f","SNR output file name (for convolution only)",None),ParRange("verbose","i","Log verbosity level",0,0,5),ParValue("log","b","Make a celldetect.log file?",False)],
+    }
+
+
+parinfo['centroid_map'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input counts image",None),ParValue("outfile","f","Output map file",None)],
+    'opt': [ParRange("numiter","i","Number of centroid iterations",1,1,None),ParValue("sitefile","f","Input initial site locations",None),ParSet("scale","s","Scaling applied to pixel values when computing centroid",'linear',["linear","sqrt","squared","asinh"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove outfile if it already exists?",True)],
     }
 
 
@@ -3150,6 +3157,13 @@ parinfo['eff2evt'] = {
     }
 
 
+parinfo['energy_hue_map'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input counts image",None),ParValue("energymap","f","Input energy map image",None),ParValue("outroot","f","Output directory+root name",None)],
+    'opt': [ParSet("colorsys","s","Color system",'hsv',["hsv","hls","hisv"]),ParValue("min_energy","r","Minimum energy value",None),ParValue("max_energy","r","Maximum energy value",None),ParValue("min_counts","r","Minimum counts value",None),ParValue("max_counts","r","Maximum counts value",None),ParSet("energy_scale","s","Energy scaling function",'linear',["linear","log","asinh","sqrt","square"]),ParSet("counts_scale","s","Counts scaling function",'asinh',["linear","log","asinh","sqrt","square"]),ParRange("min_hue","r","Minimum hue",0,0,1),ParRange("max_hue","r","Maximum hue, 0.833=purple",0.833,0,1),ParRange("min_sat","r","Minimum saturation",0,0,1),ParRange("max_sat","r","Maximum saturation",1,0,1),ParRange("contrast","r","Contrast in intensity",1,0,10),ParRange("bias","r","Bias in intensity",0.5,0,1),ParValue("show_plot","b","Display plot with image?",False),ParValue("clobber","b","Remove output files if they already exist?",False),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
+    }
+
+
 parinfo['evalpos'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input image files",None),ParValue("ra","s","Input right ascension",None),ParValue("dec","s","Input declination",None)],
@@ -3241,6 +3255,13 @@ parinfo['gti_align'] = {
     }
 
 
+parinfo['hexgrid'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image",None),ParValue("outfile","f","Output hexagon grid image",None),ParRange("sidelen","r","Side length of hexagons",10,3,None)],
+    'opt': [ParValue("binimg","f","Output image file",None),ParValue("xref","r","X coordinate of reference point (image coordinates)",0),ParValue("yref","r","Y coordinate of reference point (image coordinates)",0),ParRange("verbose","i","Tool chatter level",0,0,5),ParValue("clobber","b","Remove outfile if it already exists?",False)],
+    }
+
+
 parinfo['hrc_bkgrnd_lookup'] = {
     'istool': True,
     'req': [ParValue("infile","f","The file for which you want a background file",None),ParSet("caltype","s","What type of background file?",'event',["event","spectrum"])],
@@ -3311,6 +3332,13 @@ parinfo['make_psf_asymmetry_region'] = {
     }
 
 
+parinfo['map2reg'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input map image",None),ParValue("outfile","f","Output region file",None)],
+    'opt': [ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use (None:use all available)",None),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove output file if it already exists?",False)],
+    }
+
+
 parinfo['mean_energy_map'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input ACIS event file",None),ParValue("outfile","f","Output image file name",None),ParRange("binsize","r","Image binning size",None,0,None)],
@@ -3322,6 +3350,13 @@ parinfo['merge_obs'] = {
     'istool': True,
     'req': [ParValue("infiles","s","Input events files",None),ParValue("outroot","f","Root of output files",None)],
     'opt': [ParValue("bands","s","Energy bands, comma-separated list, min:max:center in keV or ultrasoft, soft, medium, hard, broad, wide, CSC",'default'),ParValue("xygrid","s","xygrid for output or filename",None),ParRange("maxsize","i","Maximum image width or height in pixels",None,1,None),ParRange("binsize","r","Image binning factor",None,0,None),ParValue("asolfiles","s","Input aspect solutions",None),ParValue("badpixfiles","s","Input bad pixel files",None),ParValue("maskfiles","s","Input mask files",None),ParValue("dtffiles","s","Input dtf files for HRC observations",None),ParValue("refcoord","s","Reference coordinates or evt2 file",None),ParSet("units","s","Units for the exposure map",'default',["default","area","time"]),ParValue("expmapthresh","s","Remove low-exposure regions? '2%' excludes pixels where exposure is < 2% of the maximum",'1.5%'),ParSet("background","s","Method for background removal (HRC-I)",'default',["default","time","particle","none"]),ParValue("bkgparams","s","Optional argument for background subtraction",'[pi=300:500]'),ParRange("psfecf","r","If set, create PSF map with this ECF",None,0,1),ParSet("psfmerge","s","How are the PSF maps combined?",'min',["exptime","expmap","min","max","mean","median","mid"]),ParRange("random","i","random seed (0 = use time dependent seed)",0,0,None),ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use",None),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("cleanup","b","Delete intermediary files?",True),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Verbosity level",1,0,5)],
+    }
+
+
+parinfo['merge_too_small'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input map",None),ParValue("outfile","f","Output map",None)],
+    'opt': [ParSet("method","s","Apply minval threshold to area of region or counts in region?",'counts',["counts","area"]),ParValue("imgfile","f","Input counts image file, required for method=counts",None),ParValue("binimg","f","Optional output image file",None),ParRange("minvalue","i","Minimum counts or area (logical pixels)",0,0,None),ParRange("verbose","i","Tool chatter level",0,0,5),ParValue("clobber","b","Remove outfile if it already exists?",False)],
     }
 
 
@@ -3371,6 +3406,13 @@ parinfo['mkpsfmap'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input image file name",None),ParValue("outfile","f","Output image file name",None),ParValue("energy","r","Energy of PSF to lookup [keV]",None),ParValue("spectrum","f","Spectrum file [keV vs weight] if energy=None",None),ParRange("ecf","r","ECF of PSF to lookup",None,0,1)],
     'opt': [ParValue("psffile","f","PSF Calibration file",'CALDB'),ParSet("units","s","Units of output image",'arcsec',["arcsec","logical","physical"]),ParValue("geompar","f","Pixlib geometry file",'geom.par'),ParValue("clobber","b","Clobber files?",False)],
+    }
+
+
+parinfo['mkregmap'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image file",None),ParValue("regions","f","Input stack of regions",None),ParValue("outfile","f","Output map file",None)],
+    'opt': [ParValue("binimg","f","Output binned image",None),ParValue("coord","s","Image coodinate name",'sky'),ParValue("clobber","b","Remove outfile if it already exists?",False),ParRange("verbose","i","Tool chatter level",1,0,5)],
     }
 
 
@@ -3427,6 +3469,13 @@ parinfo['obsid_search_csc'] = {
     'istool': True,
     'req': [ParValue("obsid","s","Chandra Observation ID",None),ParValue("outfile","f","Name of output table (TSV format)",None)],
     'opt': [ParValue("columns","s","List of columns to include",'INDEF'),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2',["csc2","csc1","current"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
+    }
+
+
+parinfo['pathfinder'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image",None),ParValue("outfile","f","Output map image",None)],
+    'opt': [ParValue("minval","r","Minimum pixel value to consider in input image.",0),ParSet("direction","s","Directions to follow gradient",'diagonal',["diagonal","perpendicular"]),ParValue("debugreg","f","Diagnostic region file",None),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove output file if it already exists?",False)],
     }
 
 
@@ -3608,7 +3657,7 @@ parinfo['srcextent'] = {
 parinfo['srcflux'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input event file",None),ParValue("pos","s","Input source position: filename or RA,Dec",None),ParValue("outroot","f","Output root name",None)],
-    'opt': [ParValue("bands","s","Energy bands",'default'),ParValue("srcreg","f","Stack of source regions",None),ParValue("bkgreg","f","Stack of background regions",None),ParValue("bkgresp","b","Create background ARF and RMF?",True),ParSet("psfmethod","s","PSF calibration method",'ideal',["ideal","psffile","arfcorr","quick","marx"]),ParValue("psffile","f","Input psf image",None),ParRange("conf","r","Confidence interval",0.9,0,1),ParRange("binsize","r","Image bin sizes",1,0,None),ParValue("rmffile","f","RMF file, if blank or none will be created with specextract",None),ParValue("arffile","f","ARF file, if blank or none will be created with specextract",None),ParValue("model","s","Sherpa model definition string",'xspowerlaw.pow1'),ParValue("paramvals","s","';' delimited string of (parameter=value) pairs",'pow1.PhoIndex=2.0'),ParValue("absmodel","s","Absorption model for calculating unabsorbed flux",'xsphabs.abs1'),ParValue("absparams","s","';' delimited string of (parameter=value) pairs for absorption model used to calculate unabsorbed flux",'abs1.nH=%GAL%'),ParSet("abund","s","set XSpec solar abundance",'angr',["angr","feld","aneb","grsa","wilm","lodd"]),ParValue("pluginfile","f","User plugin file name",None),ParValue("fovfile","f","Field of view file",None),ParValue("asolfile","f","Aspect solution file(s)",None),ParValue("mskfile","f","Mask file",None),ParValue("bpixfile","f","Bad pixel file",None),ParValue("dtffile","f","Live Time Correction List Files for HRC",None),ParValue("ecffile","f","REEF calibration file",'CALDB'),ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use",None),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("random_seed","i","PSF random seed, -1: current time",-1),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Verbosity level",1,0,5)],
+    'opt': [ParValue("bands","s","Energy bands",'default'),ParSet("regions","s","Method to determine regions",'simple',["simple","optimized","user"]),ParValue("srcreg","f","Stack of source regions",None),ParValue("bkgreg","f","Stack of background regions",None),ParValue("bkgresp","b","Create background ARF and RMF?",True),ParSet("psfmethod","s","PSF calibration method",'ideal',["ideal","psffile","arfcorr","quick","marx"]),ParValue("psffile","f","Input psf image",None),ParRange("conf","r","Confidence interval",0.9,0,1),ParRange("binsize","r","Image bin sizes",1,0,None),ParValue("rmffile","f","RMF file, if blank or none will be created with specextract",None),ParValue("arffile","f","ARF file, if blank or none will be created with specextract",None),ParValue("model","s","Sherpa model definition string",'xspowerlaw.pow1'),ParValue("paramvals","s","';' delimited string of (parameter=value) pairs",'pow1.PhoIndex=2.0'),ParValue("absmodel","s","Absorption model for calculating unabsorbed flux",'xsphabs.abs1'),ParValue("absparams","s","';' delimited string of (parameter=value) pairs for absorption model used to calculate unabsorbed flux",'abs1.nH=%GAL%'),ParSet("abund","s","set XSpec solar abundance",'angr',["angr","feld","aneb","grsa","wilm","lodd"]),ParValue("pluginfile","f","User plugin file name",None),ParValue("fovfile","f","Field of view file",None),ParValue("asolfile","f","Aspect solution file(s)",None),ParValue("mskfile","f","Mask file",None),ParValue("bpixfile","f","Bad pixel file",None),ParValue("dtffile","f","Live Time Correction List Files for HRC",None),ParValue("ecffile","f","REEF calibration file",'CALDB'),ParValue("marx_root","f","Directory where MARX is installed",'${MARX_ROOT}'),ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use",None),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("random_seed","i","PSF random seed, -1: current time",-1),ParValue("clobber","b","OK to overwrite existing output file?",False),ParRange("verbose","i","Verbosity level",1,0,5)],
     }
 
 
@@ -3749,6 +3798,13 @@ parinfo['update_column_range'] = {
     'istool': True,
     'req': [ParValue("infile","f","File to edit",None)],
     'opt': [ParValue("columns","s","Column names (includes vector columns)",'sky'),ParValue("round","b","Should data ranges be rounded to nearest mid-integer?",True),ParRange("verbose","i","Debug Level (0-5)",1,0,5)],
+    }
+
+
+parinfo['vtbin'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image",None),ParValue("outfile","f","Output map",None)],
+    'opt': [ParValue("binimg","f","Output image file",None),ParSet("shape","s","Shape of local max mask",'box',["box","circle"]),ParRange("radius","r","Radius of local max mask",2.5,0,None),ParValue("sitefile","f","Input site file",None),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove outfile if it already exists?",False)],
     }
 
 

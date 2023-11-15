@@ -67,6 +67,13 @@ mkdir -p $DAX_OUTDIR
 
 echo "  (1/3) Getting data"
 
+blk=`xpaget $ds9 block`
+if test $blk -ne 1
+then
+    echo "ERROR: This task requires that the image be blocked to 1"
+    exit 1
+fi
+
 xpaget $ds9 fits > ${DAX_OUTDIR}/img.fits 
 
 echo "  (2/3) Getting moments to provide better guess"

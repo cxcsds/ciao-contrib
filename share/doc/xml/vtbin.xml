@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+<ENTRY 
+        context="Tools::Image" 
+        key="vtbin" 
+        refkeywords="cell voronoi grow localmax max site map mask adaptive bin group grow max tessellation" 
+        seealsogroups="dmimgtools"
+    >
+    <SYNOPSIS>
+       Create adaptive bin image using Voronoi Tessellation
+    </SYNOPSIS>
+    <DESC>
+        <PARA>
+            vtbin starts by identifying the local maxima in 
+            the input image.  Each local max is assigned a unique
+            identification number. It then computes the Voronoi Tessellation
+            around the location of the local maxima (sites) and 
+            assigns all pixels within the Voronoi cells to the group. 
+        </PARA>
+        <PARA>
+            Users can override the initial site location by supplying 
+            their own sitefile.  If not, then the input image should
+            be smoothed on a scale larger than the local-max
+            search size as specified by the shape and radius parameters.
+            (default is a 5x5 box)
+        </PARA>
+
+        <PARA title="See also: centroid_map">
+          Users may also want to consider the centroid_map tool.  It
+          runs vtbin repeatedly adjusting the input sites 
+          to be the centroid of each cell.        
+        </PARA>
+
+    </DESC>
+
+
+     <QEXAMPLELIST>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+            % vtbin sm_img.fits vt.map 
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+            Here a smoothed image is input.  With the default 
+            parameters, the tool will then identify all the 
+            local maxima in a 5x5 square neighborhood in the image.
+            The Voronoi tessellation of the location of those maxima 
+            will then computed and the map created.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+            % dmimgfilt sm_img.fits points.img "max" "box(0,0,3,1)+box(0,0,1,3)"
+            % dmimgblob points.img point.map srconly=yes thresh=0.5
+            % vtbin sm_img.fits vt.map sitefile=points.map
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+            In this example we show how a user might create an
+            input sitefile.  We use the dmimgfilt too to identify
+            local maxima in a plus (+) shape region (instead of the
+            box or circle available in this tool).  We then label
+            each local maxima using the dmimgblob tool.            
+            With the sitefile specified, the script will use the
+            locations in that file for the tessellation.   
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+            % vtbin sm_img.fits vt.map shape=circle radius=4 binimg=vt.img 
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+            In this example the local maximum search is changed to
+            use a circular region with a radius of 4 logical pixels. 
+            In addition we choose to output the binned image by
+            specifying the binimg parameter.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+     </QEXAMPLELIST>
+
+     <PARAMLIST>
+        <PARAM name="infile" type="file" filetype="input" reqd="yes">
+            <SYNOPSIS>
+            Input image.
+            </SYNOPSIS>
+            <DESC>
+            <PARA>The image to be grouped.  Generally this 
+            algorithm works better if it is slightly smoothed.
+            </PARA>
+            <PARA>
+            Null  and NaN pixels, as well as those pixels outside the
+            image subspace will not be grouped.
+            </PARA>
+          </DESC>
+        </PARAM>
+        <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+          <SYNOPSIS>
+            Output map file
+          </SYNOPSIS>
+          <DESC>
+            <PARA>
+              The outfile is a map file containing integer pixel values.
+              The pixel values indicate which pixels are grouped
+              together by the algorithm.  A pixel value of 0 are pixels
+              which are ungrouped.
+            </PARA>
+          </DESC>
+        </PARAM>
+
+
+        <PARAM name="binimg" type="file" filetype="output">
+          <SYNOPSIS>Optional, output binned image</SYNOPSIS>
+          <DESC>
+            <PARA>
+                If the binimg file is specified, the script
+                will use the input image and the output map file to
+                create a binned version of the input image.
+            </PARA>          
+          </DESC>
+        </PARAM>
+        
+        
+        <PARAM name="shape" type="string" def="box">
+          <SYNOPSIS>Shape of local max search region.</SYNOPSIS>
+          <DESC>
+            <PARA>The shape and radius parameters specify
+            the region to use when searching for "local" maxima.
+            The radius is expressed in logical (image) pixels.
+            </PARA>
+          </DESC>
+        </PARAM>
+        
+        <PARAM name="radius" type="real" def="2.5">
+          <SYNOPSIS>Shape of local max search region.</SYNOPSIS>
+          <DESC>
+            <PARA>The shape and radius parameters specify
+            the region to use when searching for "local" maxima.
+            The radius is expressed in logical (image) pixels.
+            </PARA>
+          </DESC>
+        </PARAM>
+        
+        <PARAM name="sitefile" type="file" filetype="input">
+          <SYNOPSIS>Input site map file</SYNOPSIS>
+          <DESC>
+            <PARA>
+            If the sitefile is specified, then the local max
+            search specified by the shape and radius parameters
+            is not performed.  The sitefile must have the 
+            same shape/size as the input image.  The pixel values
+            should be integers; values not equal to zero are 
+            used for the tessellation and the values 
+            must be unique.  Typically there should be
+            a few hundred to maybe a few thousand sites (based on
+            the image sizes).             
+            </PARA>
+          </DESC>
+        </PARAM>
+
+        
+        <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+            <SYNOPSIS>
+            Amount of chatter from the tool.
+            </SYNOPSIS>
+        </PARAM>
+        <PARAM name="clobber" type="boolean" def="no">
+            <SYNOPSIS>
+            Delete outfile if it already exists?
+            </SYNOPSIS>
+        </PARAM>
+    </PARAMLIST>
+
+
+
+    <ADESC title="Relation to weighted Voronoi Tesselation binning">
+      <PARA>Users of this tool should also be 
+      familiar with Diehl &amp; Statler's the weighted Voronoi 
+      tessellation binning tool,
+      <HREF link="https://doi.org/10.1111/j.1365-2966.2006.10125.x">wvt_bin</HREF> .   
+      </PARA>    
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+ 
+
+    <BUGS>
+        <PARA>
+            See the
+            <HREF link="https://cxc.harvard.edu/ciao/bugs/index.html">CIAO
+            website</HREF> for an up-to-date listing of known bugs.
+        </PARA>
+    </BUGS>
+    <LASTMODIFIED>August 2023</LASTMODIFIED>
+</ENTRY>
+</cxchelptopics>
