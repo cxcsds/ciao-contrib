@@ -30,6 +30,7 @@ import glob
 import json
 import os
 import subprocess
+from typing import Optional, Sequence
 
 from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
@@ -46,10 +47,10 @@ v3 = lgr.verbose3
 v4 = lgr.verbose4
 
 
-def read_vfile(fname):
+def read_vfile(fname: str) -> str:
     "Reads the version string from a CIAO version file"
 
-    with open(fname, 'r') as fh:
+    with open(fname, 'r', encoding="utf-8") as fh:
         cts = fh.readlines()
 
     # Just take the first line, in case there are any extra new lines
@@ -57,7 +58,7 @@ def read_vfile(fname):
     return cts[0].strip()
 
 
-def package_name(fname):
+def package_name(fname: str) -> str:
     """Return the package name for the given file name"""
 
     if fname == "VERSION":
@@ -72,7 +73,7 @@ def package_name(fname):
     raise ValueError(f"Unrecognized file name: {fname}")
 
 
-def get_installed_versions(ciao):
+def get_installed_versions(ciao: str) -> Optional[dict[str, str]]:
     """Return a dictionary of (name, version) pairs for the installed
     CIAO packages, where ciao is the base of the CIAO installation
     (i.e. the value of the $ASCDS_INSTALL environment variable).
@@ -102,7 +103,7 @@ def get_installed_versions(ciao):
             for vfile in vbase + vfiles + cfile}
 
 
-def parse_version_file(lines):
+def parse_version_file(lines: Sequence[str]) -> dict[str, str]:
     """Given a list of lines, return the parsed contents,
     assuming each line is either empty or
 
@@ -159,7 +160,7 @@ def parse_version_file(lines):
 #     return text.strip()
 
 
-def find_ciao_system():
+def find_ciao_system() -> str:
     """Return the CIAO system value.
 
     Returns
@@ -175,15 +176,20 @@ def find_ciao_system():
     contents of $ASCDS_INSTALL/ciao-type are used.
     """
 
-    # assume that ASCDS_INSTALL is defined
-    filename = os.path.join(os.getenv("ASCDS_INSTALL"), "ciao-type")
-    with open(filename, "r") as fh:
+    path = os.getenv("ASCDS_INSTALL")
+    if path is None:
+        raise OSError("ASCDS_INSTALL environment variable is not set!")
+
+    filename = os.path.join(path, "ciao-type")
+    with open(filename, "r", encoding="utf-8") as fh:
         cts = fh.read()
 
     return cts.strip()
 
 
-def get_latest_versions(timeout=None, system=None):
+def get_latest_versions(timeout: Optional[float] = None,
+                        system: Optional[str] = None
+                        ) -> dict[str, str]:
     """Return the latest-released version of CIAO packages.
 
     This call requires internet access and the ability to
@@ -285,17 +291,17 @@ def get_latest_versions(timeout=None, system=None):
     return parse_version_file(rsp.splitlines())
 
 
-def read_latest_versions(filename):
+def read_latest_versions(filename: str) -> dict[str, str]:
     """Read the versions of the latest CIAO packages from the input
     file. The return value is an array of (name, version) strings.
 
     """
 
-    with open(filename, "r") as fh:
+    with open(filename, "r", encoding="utf-8") as fh:
         return parse_version_file(fh.readlines())
 
 
-def check_conda_versions(ciao):
+def check_conda_versions(ciao: str) -> bool:
     """Is the conda environment up to date?
 
     This is *experimental* and is assumed to be run in an environment
@@ -304,16 +310,37 @@ def check_conda_versions(ciao):
     Returns True if the environmant is up to date, or False if it needs
     an update. This is **only** for the base CIAO packages, and does
     not refer to other packages (e.g. openssl).
+
+    This is complicated by the need to support alternative package
+    managers to conda, such as mamba/micromamba.
+
     """
 
-    # Assume we are in a conda environment
+    # Assume we are in a conda environment, but we need to work out
+    # what tool to run. We can have multiple env vars present at once,
+    # so just pick the first.
     #
-    v3("About to run 'conda list'")
+    v3("Finding conda package manager")
+    for envname in ["CONDA_EXE", "MAMBA_EXE"]:
+        path = os.getenv(envname)
+        if path is None:
+            continue
+
+        manager = envname[:-4]
+        v3(f"  - found {manager} / {path}")
+        break
+
+    if path is None:
+        v3(" -> defaulting to conda")
+        manager = "CONDA"
+        path = "conda"
+
+    v3(f"About to query the {manager} environment")
     try:
-        out = subprocess.run(["conda", "list", "--json"], check=True,
+        out = subprocess.run([path, "list", "--json"], check=True,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except FileNotFoundError as fe:
-        raise IOError("Unable to run the conda tool to find out what is installed.") from fe
+        raise IOError(f"Unable to run the {manager} tool to find out what is installed.") from fe
 
     js = json.loads(out.stdout)
 
@@ -368,11 +395,17 @@ def check_conda_versions(ciao):
     # functionality are likely to want to know just if the CIAO packages
     # need updating, not any dependency.
     #
-    command = ["conda", "update", "--json", "--dry-run", "--no-update-deps"] + \
-              channels + names
-    v3(f"Trying to run {command}")
+    command = [path, "update", "--json", "--dry-run"]
 
-    # we've already run conda so assume it is still around
+    # Unfortunately the API is not valid across applications.
+    #
+    if manager != "MAMBA":
+        command.append("--no-update-deps")
+
+    command += channels + names
+
+    v3(f"Trying to run {' '.join(command)}")
+
     out = subprocess.run(command, check=True, stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE)
 
@@ -383,9 +416,9 @@ def check_conda_versions(ciao):
         v3(f"- call failed: {js}")
         msg = js.get('message', None)
         if msg is None:
-            raise IOError("Unable to run conda dependency check")
+            raise IOError(f"Unable to run {manager} dependency check")
 
-        raise IOError(f"Unable to run conda dependency check:\n{msg}")
+        raise IOError(f"Unable to run {manager} dependency check:\n{msg}")
 
     # perhaps could just check to see message exists, since if it does
     # it *probably* indicates success, which would be a simpler check
@@ -421,6 +454,7 @@ def check_conda_versions(ciao):
             v3(f"   - {n} {v}")
 
     # Report on the updates
+    #
     fetch = actions.get('FETCH', None)
     if fetch is None:
         v3(f" - unable to find actions/FETCH in {js}")
@@ -458,11 +492,16 @@ def check_conda_versions(ciao):
 
     spacing = "       "
 
+    # We assume that the tool is in the path so we can drop the full
+    # path here.
+    #
+    tool = os.path.basename(path)
+
     print("")
     print("The update can be checked with:")
     print("")
     tokens = " ".join([n[0] for n in names])
-    print(f"  conda update {tokens} --no-deps \\")
+    print(f"  {tool} update {tokens} --no-deps \\")
 
     # use a set to ensure we don't repeat the same channel
     all_channels = {v['channel'] for v in found.values()}
