@@ -48,7 +48,7 @@ import sys
 from optparse import OptionParser
 
 toolname = "check_ciao_version"
-version = "15 November 2023"
+version = "15 December 2023"
 
 try:
     from ciao_contrib import logger_wrapper as lw
@@ -136,6 +136,10 @@ def compare_versions(ciao, latest, installed):
     for (ik, iv) in installed.items():
         if ik == "CIAO":
             continue
+
+        # It is unlikely that ik is not a member of lates,
+        # so do not bother worrying about it.
+        #
         lv = latest[ik]
         if iv != lv:
             updates.append((ik, iv, lv))
@@ -249,7 +253,7 @@ def doit():
 
     installed = versioninfo.get_installed_versions(ciao)
     if installed is None:
-        raise OSError("Unable to find any $ASCDS_INSTALL/VERSION_* files")
+        raise OSError("Unable to find any $ASCDS_INSTALL/VERSION* files")
 
     if nargs == 1:
         latest = versioninfo.read_latest_versions(args[0])

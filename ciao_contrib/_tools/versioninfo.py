@@ -29,6 +29,7 @@ the CXC website.
 import glob
 import json
 import os
+import platform
 import subprocess
 from typing import Optional, Sequence
 
@@ -64,11 +65,11 @@ def package_name(fname: str) -> str:
     if fname == "VERSION":
         return "CIAO"
 
-    if fname == "contrib/VERSION.CIAO_scripts":
+    if fname == "VERSION.CIAO_scripts":
         return "contrib"
 
-    if fname.find("_") != -1:
-        return fname.split("_")[-1]
+    # if fname.find("_") != -1:
+    #     return fname.split("_")[-1]
 
     raise ValueError(f"Unrecognized file name: {fname}")
 
@@ -78,25 +79,29 @@ def get_installed_versions(ciao: str) -> Optional[dict[str, str]]:
     CIAO packages, where ciao is the base of the CIAO installation
     (i.e. the value of the $ASCDS_INSTALL environment variable).
 
-    Returns None if no version files can be found (is there is
-    either no $ASCDS_INSTALL/VERSION or $ASCDS_INSTALL/VERSION_*)
-    which is likely to indicate a conda install.
+    Returns None if no version files can be found (is there is either
+    no $ASCDS_INSTALL/VERSION) which is likely to indicate a conda
+    install.
 
+    This has changed in CIAO 4.16 so it's not clear how well this
+    will work in the future. It should follow the logic of
+    the make_versions_file.
     """
 
     vbase = glob.glob(ciao + "/VERSION")
     if vbase == []:
         return None
 
-    # assume there is at least one installed package
+    # There are no longer additional "packages" to worry about.
     #
-    vfiles = glob.glob(ciao + "/VERSION_*")
-    if vfiles == []:
-        return None
+    # vfiles = glob.glob(ciao + "/VERSION_*")
+    # if vfiles == []:
+    #     return None
+    vfiles = []
 
     # do not require the contrib package
     #
-    cfile = glob.glob(ciao + "/contrib/VERSION*")
+    cfile = glob.glob(ciao + "/VERSION.CIAO_scripts")
 
     l = len(ciao) + 1
     return {package_name(vfile[l:]): read_vfile(vfile)
@@ -131,35 +136,6 @@ def parse_version_file(lines: Sequence[str]) -> dict[str, str]:
     return out
 
 
-# def find_ciao_system():
-#     """Return the CIAO system value.
-#
-#     Returns
-#     -------
-#     system : str
-#         The system type. This matches the SYS field from the
-#         ciao-control file used by ciao-install.
-#
-#     Notes
-#     -----
-#     This is just a simple wrapper around the ciao-type tool.
-#     """
-#
-#     ans = sbp.Popen(["ciao-type"], stdout=sbp.PIPE)
-#     ans.wait()
-#     if ans.returncode != 0:
-#         # is this necessary?
-#         raise IOError("Unable to run ciao-type")
-#
-#     text = ans.stdout.read()
-#
-#     # Ugly code; what is the better way to do this
-#     if not isinstance(text, str):
-#         text = text.decode('utf8')
-#
-#     return text.strip()
-
-
 def find_ciao_system() -> str:
     """Return the CIAO system value.
 
@@ -171,20 +147,15 @@ def find_ciao_system() -> str:
 
     Notes
     -----
-    The ciao-type tool does not seem to return the Python version,
-    i.e. it does not distinguish the "P3*" variants. So the
-    contents of $ASCDS_INSTALL/ciao-type are used.
+    This used to use the ciao-type script/tool but this is no
+    longer present, so just use the python script (we could
+    use $OSTYPE or some other environment variable). The return
+    value now includes the "system" name and "machine" name.
     """
 
-    path = os.getenv("ASCDS_INSTALL")
-    if path is None:
-        raise OSError("ASCDS_INSTALL environment variable is not set!")
-
-    filename = os.path.join(path, "ciao-type")
-    with open(filename, "r", encoding="utf-8") as fh:
-        cts = fh.read()
-
-    return cts.strip()
+    sysname = platform.system()
+    machine = platform.machine()
+    return f"{sysname}-{machine}"
 
 
 def get_latest_versions(timeout: Optional[float] = None,
@@ -201,9 +172,9 @@ def get_latest_versions(timeout: Optional[float] = None,
         The timeout parameter for the urlopen call; if not
         None then the value is in seconds.
     system : optional
-        The system to check for (e.g. "Linux64", "LinuxU",
-        "osxSierra", ...). It should match the SYS value from the
-        ciao-control file used by ciao-install. If set to None then
+        The system to check for (e.g. "Linux-x86_64", "Darwin-arm"),
+        that is the output of find_ciao_system().  (the list of
+        supported names has changed in CIAO 4.16). If set to None then
         the system from the CIAO installation is used.
 
     Returns
@@ -233,6 +204,7 @@ def get_latest_versions(timeout: Optional[float] = None,
         <package> <version> <day>, <month> <day of month>, <year>
 
     where <version> has the form "a.b" or "a.b.c".
+
     """
 
     import ssl
