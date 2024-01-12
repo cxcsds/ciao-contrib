@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2014-2023 Smithsonian Astrophysical Observatory
+# Copyright (C) 2014-2024 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ import numpy as np
 
 
 __toolname__ = "merge_too_small"
-__revision__ = "24 August 2023"
+__revision__ = "12 January 2023"
 
 import ciao_contrib.logger_wrapper as lw
 verb0 = lw.initialize_logger(__toolname__).verbose0
@@ -82,7 +82,9 @@ def purge_too_small(mask, minarea, counts):
 
         am = list(zip(area, maskid))
         am.sort()
-        am = [x for x in am if x[0] > 0 and x[0] not in skiplist]
+
+        am = [x for x in am if x[0] not in skiplist]
+        am = [x for x in am if x[1] in mask]
 
         if am[0][0] > minarea:
             # When all the mapvals are above the threshold we break out
@@ -102,7 +104,7 @@ def purge_too_small(mask, minarea, counts):
         zz.sort()
 
         zz = [x for x in zz
-              if (x[1] != am[0][1]) and (x[0] > 0) and (x[1] not in skiplist)]
+              if (x[1] != am[0][1]) and (x[1] not in skiplist) and (x[1] in mask)]
 
         if len(zz) > 0:
             replace_val = int(zz[0][1])
