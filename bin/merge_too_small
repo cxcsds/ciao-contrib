@@ -44,18 +44,19 @@ def find_neighbors(mask, maskval):
     # For each pixel with a given maskval value
     for ee in zip(xxyy[1], xxyy[0]):
 
-        # Go +/- 1 in Y direction
-        for dy in [ee[1]-1, ee[1], ee[1]+1]:
+        # Go +/- 1 in Y and X directions
+        for dy, dx in [(ee[1]-1, ee[0]),
+                       (ee[1]+1, ee[0]),
+                       (ee[1], ee[0]-1),
+                       (ee[1], ee[0]+1)]:
+
             if dy < 0 or dy >= mask.shape[0]:
                 continue
+            if dx < 0 or dx >= mask.shape[1]:
+                continue
 
-            # Go +/- 1 in the X direction
-            for dx in [ee[0]-1, ee[0], ee[0]+1]:
-                if dx < 0 or dx >= mask.shape[1]:
-                    continue
-
-                if mask[dy, dx] != maskval:
-                    retvals.append(int(mask[dy, dx]))
+            if mask[dy, dx] != maskval and mask[dy, dx] != 0:
+                retvals.append(int(mask[dy, dx]))
 
     retvals = set(retvals)
     return list(retvals)
@@ -67,6 +68,8 @@ def purge_too_small(mask, minarea, counts):
     mask value.  If it is below the threshold then the map value
     is reassigned to the neighbor with the smallest area/counts.
     """
+
+    mask_ids = list(np.unique(mask))
     mask_max = int(np.max(mask))
     skiplist = []   # The list of maskidvals that have been reassigned
 
@@ -78,39 +81,41 @@ def purge_too_small(mask, minarea, counts):
         hh = np.histogram(mask, bins=mask_max, range=(1, mask_max+1),
                           weights=counts)
         area = hh[0]
-        maskid = hh[1][:-1]
+        maskid = hh[1][:-1].astype(int)
 
         am = list(zip(area, maskid))
-        am.sort()
+        am = [x for x in am if x[1] not in skiplist]
+        am = [x for x in am if x[1] in mask_ids]
 
-        am = [x for x in am if x[0] not in skiplist]
-        am = [x for x in am if x[1] in mask]
+        working_on = min(am)
 
-        if am[0][0] > minarea:
+        if working_on[0] > minarea:
             # When all the mapvals are above the threshold we break out
             # and return.
             break
 
-        verb2(f"Working on mask_id {am[0][1]} with value {am[0][0]}")
-        nn = find_neighbors(mask, am[0][1])
-
+        verb2(f"Working on mask_id {working_on[1]} with value {working_on[0]}")
+        nn = find_neighbors(mask, working_on[1])
         if len(nn) == 0:
-            # If area is 0, then skip it.
-            skiplist.append(am[0][1])
+            # If there are no neighbors, then continue
+            mask_ids.remove(working_on[1])
             continue
 
         nn = [i-1 for i in nn]  # convert mapvalue to histogram index
-        zz = list(zip(area[nn], maskid[nn]))
-        zz.sort()
 
+        zz = list(zip(area[nn], maskid[nn]))
         zz = [x for x in zz
-              if (x[1] != am[0][1]) and (x[1] not in skiplist) and (x[1] in mask)]
+              if (x[1] != working_on[1]) and (x[1] not in skiplist) and (x[1] in mask_ids)]
 
         if len(zz) > 0:
-            replace_val = int(zz[0][1])
-            mask[np.where(mask == int(am[0][1]))] = replace_val
+            smallest_index = min(zz)
+            replace_val = int(smallest_index[1])
+            mask[np.where(mask == int(working_on[1]))] = replace_val
+            verb2(f"Replacing {working_on[1]} with {replace_val}")
         else:
-            skiplist.append(am[0][0])  # There are no pixel with this mapval
+            skiplist.append(working_on[1])  # There are no pixel with this mapval
+
+        mask_ids.remove(working_on[1])
 
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
@@ -130,7 +135,7 @@ def main():
 
     import pycrates as pc
     inimg = pc.read_file(pars["infile"])
-    mask = inimg.get_image().values  # mask pointing to data in the crate
+    mask = inimg.get_image().values.astype(int)
 
     if "counts" == pars["method"]:
         counts = pc.read_file(pars["imgfile"]).get_image().values
@@ -141,6 +146,7 @@ def main():
 
     purge_too_small(mask, int(pars["minvalue"]), counts)
 
+    inimg.get_image().values = mask
     pc.write_file(inimg, pars["outfile"], clobber=pars["clobber"])
 
     from ciao_contrib.runtool import add_tool_history
