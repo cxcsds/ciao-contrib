@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/soft/miniconda/envs/contrib_test/bin/python3.11
 #
-# Copyright (C) 2019, 2023 Smithsonian Astrophysical Observatory
+# Copyright (C) 2019, 2024 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@ from region import CXCRegion
 
 
 __toolname__ = "map2reg"
-__revision__ = "09 September 2023"
+__revision__ = "13 January 2024"
 
 __lgr__ = lw.initialize_logger(__toolname__)
 verb0 = __lgr__.verbose0
@@ -55,7 +55,7 @@ def set_nproc(pars):
         return
 
     if pars["nproc"] == "INDEF":
-        # parallel_map doesn't limit to number of CPU's like 
+        # parallel_map doesn't limit to number of CPU's like
         # taskRunner does so we have to set the actual number
         import multiprocessing
         pars["nproc"] = multiprocessing.cpu_count()
@@ -98,10 +98,14 @@ def get_region(n_at):
 
     lasso_reg = CXCRegion(tmpfile.name)
 
+    if lasso_reg is None or len(lasso_reg) == 0:
+        verb0(f"Warning: {n_at} map is empty")
+
     # CXCRegion object's can't be pickled so we have to pass back the
     # string representation.
 
-    return str(lasso_reg)
+    retval = str(lasso_reg)
+    return retval
 
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
@@ -136,20 +140,12 @@ def main():
     outreg = parallel_map(get_region, uniq_vals,
                           numcores=int(pars["nproc"]))
 
-    # Original version adding CXCRegion objects, but it ended up
-    # consuming a huge amount of memory and was slow.  Writing to
-    # an ASCII region file and then reading back in as a single
-    # CXCRegion is much faster
+    # Unfortunately writing all out to an ascii file sometimes fails
+    # so we go with the more memory intense way:
+    myreg = CXCRegion()
+    for oreg in outreg:
+        myreg += CXCRegion(oreg)
 
-    # Combine into single region file
-    tmpfile = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
-                                 suffix=".reg", delete=True)
-    with open(tmpfile.name, "w") as outfile:
-        for myreg in outreg:
-            outfile.write(myreg+"\n")
-
-    # Write output
-    myreg = CXCRegion(tmpfile.name)
     myreg.write(pars["outfile"], fits=True, clobber=True)
 
     from ciao_contrib.runtool import add_tool_history
