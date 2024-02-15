@@ -16,19 +16,21 @@
         may contain small, insignificant groups which were 
         the result of filling in the gaps between neighboring 
         groups.  The merge_too_small script reassigns these
-        small regions to the largest neighbor.  The 
+        small regions to the smallest neighbor (by default).  The 
         script will identify groups with a small geometric
         area (ie few pixels), or with low number of counts 
         (requires imgfile be supplied).
         </PARA>
         <PARA>
-        The deficient groups are always merged in to the 
-        largest neighboring group; where largest is the 
-        same metric (largest area or largest counts).
+        The deficient groups are merged in to the 
+        smallest neighboring group by default; where smallest is the 
+        same metric (smallest area or fewest counts).  The join parameter
+        can be used to change the logic and assign deficient groups to the
+        largest neighboring group.
         </PARA>
         <PARA>
         The output is a new map file with the deficient 
-        regions pixel values replaced with the largest neighbor.
+        regions pixel values replaced with the largest or smallest neighbor.
         </PARA>
         <PARA>
         With method=area, the minvalue is the minimum number of image 
@@ -81,6 +83,21 @@
             most counts.
             The imgfile, img.fits, must be supplied so
             we can obtain the counts.
+            </PARA>
+          </DESC>
+        </QEXAMPLE>
+        <QEXAMPLE>
+          <SYNTAX>
+            <LINE>
+            % merge_too_small scales_min10px.map scales_min10px+100cts_min.map join=max method=counts minvalue=100 imgfile=img.fits
+            </LINE>
+          </SYNTAX>
+          <DESC>
+            <PARA>
+            This is the same as the previous example with the addition of
+            setting the parameter join=max.  With this change, deficient
+            groups are assigned to the largest adjacent neighbor rather
+            than the largest.
             </PARA>
           </DESC>
         </QEXAMPLE>
@@ -175,6 +192,18 @@
             </DESC>
         </PARAM>
 
+        <PARAM name="join" type="string" def="min">
+            <SYNOPSIS>Logic to use when joining neighboring groups</SYNOPSIS>
+            <DESC>
+                <PARA>
+                With join=min (default), deficient groups are assigned
+                to the smallest adjacent neighbor (using the same counts or
+                area metric determined by the method parameter).  With join=max,
+                deficient groups are assigned to the largest adjacent neighbor.
+                </PARA>            
+            </DESC>
+        </PARAM>
+
         <PARAM name="verbose" type="integer" def="1" min="0" max="5">
             <SYNOPSIS>
             Amount of chatter from the tool.
@@ -188,12 +217,25 @@
     </PARAMLIST>
 
     <ADESC title="Changes in scripts 4.16.1 (Q1 2024) release">
-      <PARA>
+      <PARA title="Zero counts">
         When using method=counts, the tool would skip regions with
-        0 counts. This has been fixed.   The tool now only
+        0 counts. This has been fixed.  
+      </PARA>
+      <PARA title="join parameter">
+        Added the join parameter to control the logic to use when
+        assigning small regions to neighbors: largest neighbor (max)
+        or smallest neighbor (min, default).  The help file for the
+        initial release of the tool indicated that it was using the
+        join=max logic; however, the actual code was using the
+        equivalent of the join=min logic.
+      </PARA>
+      <PARA title="Neighbor Rules">
+         The tool now only
         considers pixels that share an edge to be neighbors, instead
-        of treating diagonally touching pixel to be neighbors.  Also
-        some internal speed improvements.
+        of treating diagonally touching pixel to be neighbors. 
+      </PARA>
+      <PARA title="Performance">
+        Some internal changes to improve runtime speed.
       </PARA>    
     </ADESC>
     

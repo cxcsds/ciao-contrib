@@ -22,12 +22,12 @@
 
 import sys
 import numpy as np
-
-
-__toolname__ = "merge_too_small"
-__revision__ = "12 January 2023"
+import pycrates as pc
 
 import ciao_contrib.logger_wrapper as lw
+__toolname__ = "merge_too_small"
+__revision__ = "14 February 2024"
+
 verb0 = lw.initialize_logger(__toolname__).verbose0
 verb1 = lw.initialize_logger(__toolname__).verbose1
 verb2 = lw.initialize_logger(__toolname__).verbose2
@@ -62,7 +62,7 @@ def find_neighbors(mask, maskval):
     return list(retvals)
 
 
-def purge_too_small(mask, minarea, counts):
+def purge_too_small(mask, minarea, counts, joinfunc):
     """
     The idea is to check the area or total counts of each
     mask value.  If it is below the threshold then the map value
@@ -108,14 +108,36 @@ def purge_too_small(mask, minarea, counts):
               if (x[1] != working_on[1]) and (x[1] not in skiplist) and (x[1] in mask_ids)]
 
         if len(zz) > 0:
-            smallest_index = min(zz)
-            replace_val = int(smallest_index[1])
+            join_index = joinfunc(zz)
+            replace_val = int(join_index[1])
             mask[np.where(mask == int(working_on[1]))] = replace_val
             verb2(f"Replacing {working_on[1]} with {replace_val}")
         else:
             skiplist.append(working_on[1])  # There are no pixel with this mapval
 
         mask_ids.remove(working_on[1])
+
+
+def parse_parameters(pars):
+    '''
+    Parse the input parameters that need parsing:
+
+    '''
+    if "counts" == pars["method"]:
+        counts = pc.read_file(pars["imgfile"]).get_image().values
+    elif "area" == pars["method"]:
+        counts = None
+    else:
+        raise ValueError("Unknown value for method parameter")
+
+    if "min" == pars["join"]:
+        joinfunc = min
+    elif "max" == pars["join"]:
+        joinfunc = max
+    else:
+        raise ValueError("Unknown value for join parameter")
+
+    return counts, joinfunc
 
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
@@ -133,18 +155,12 @@ def main():
     outfile_clobber_checks(pars["clobber"], pars["outfile"])
     outfile_clobber_checks(pars["clobber"], pars["binimg"])
 
-    import pycrates as pc
     inimg = pc.read_file(pars["infile"])
     mask = inimg.get_image().values.astype(int)
 
-    if "counts" == pars["method"]:
-        counts = pc.read_file(pars["imgfile"]).get_image().values
-    elif "area" == pars["method"]:
-        counts = None
-    else:
-        raise ValueError("Unknown value for method parameter")
+    counts, joinfunc = parse_parameters(pars)
 
-    purge_too_small(mask, int(pars["minvalue"]), counts)
+    purge_too_small(mask, int(pars["minvalue"]), counts, joinfunc)
 
     inimg.get_image().values = mask
     pc.write_file(inimg, pars["outfile"], clobber=pars["clobber"])
