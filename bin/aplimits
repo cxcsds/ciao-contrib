@@ -332,8 +332,8 @@ def aplimits(prob_false_detection=.1, prob_missed_detection=.5, T_s=1, A_s=1,
     parameters prob_false_detection and prob_missed_detection, while Kashyap et al. (2010) call
     them alpha and beta, which might be confusing because aplimits uses
     alpha and beta for different concepts. Similarly, Kashyap et al. (2010)
-    only have an error ratio "r", while in CIAO we measure source and
-    background areas.
+    only have an area ratio "r", while in CIAO we measure source and
+    background areas separately.
 
     Parameters
     ----------
@@ -413,7 +413,7 @@ def aplimits(prob_false_detection=.1, prob_missed_detection=.5, T_s=1, A_s=1,
         limitfinder= APLimits(lamb=bkg_rate * A_s, taus=T_s, taub=T_b, r=A_b / A_s,
                               maxfev=maxfev)
     else:
-        v2(f'background unknown. Marginalizing over background rate.')
+        v2('background unknown. Marginalizing over background rate.')
         v2(f'bkg counts {m} in {T_b} exposure time and {A_b} area.')
         limitfinder = APLimitsMarginalize(nb=m, taus=T_s, taub=T_b, r=A_b / A_s,
                                           maxfev=maxfev)
@@ -437,7 +437,7 @@ def main():
                          bkg_rate=None if pars["bkg_rate"] == 'INDEF' else float(pars["bkg_rate"]),
                          T_s=float(pars["T_s"]),
                          A_s=float(pars["A_s"]),
-                         m=int(pars["m"]),
+                         m=None if pars["m"] == 'INDEF' else int(pars["m"]),
                          T_b=float(pars["T_b"]),
                          A_b=float(pars["A_b"]),
                          max_counts=int(pars["max_counts"]),
