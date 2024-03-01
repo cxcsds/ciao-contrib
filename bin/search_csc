@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2013, 2018, 2019, 2022, 2023 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013, 2018, 2019, 2022, 2023, 2024
+# Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,7 +19,7 @@
 #
 
 toolname = "search_csc"
-__revision__ = "14 August 2023"
+__revision__ = "01 March 2023"
 
 import sys
 import os
@@ -83,18 +84,18 @@ def parse_inputs( pars ):
         if len(retval["mybands"]) == 0:
             raise ValueError("No recognized energy band supplied")
 
-    ## TODO: eventually replace with actual token
-    if "csc2" == pars["catalog"]:
-        pars["catalog"] = "csc2"
-
-    retval["limsens"] = ("yes" == pars["sensitivity"] )
-    if "csc2" == pars["catalog"] and retval["limsens"] is True:
-        retval["limsens"] = False
-        verb0("WARNING: limiting sensitivity data is not available via this interface for CSC 2")
+    # ~ ## TODO: eventually replace with actual token
+    # ~ if "csc2" == pars["catalog"]:
+        # ~ pars["catalog"] = "csc2"
 
     #~ if "csc2" == pars["catalog"] and "none" != pars["download"]:
         #~ pars["download"] = "none"
         #~ verb0("WARNING: files cannot yet be retrieved using the current catalog release")
+
+    retval["limsens"] = ("yes" == pars["sensitivity"] )
+    if pars["catalog"] in ["csc2", "csc2.1", "current"] and retval["limsens"] is True:
+        retval["limsens"] = False
+        verb0(f"WARNING: limiting sensitivity data is not available via this interface for {pars["catalog"]}")
 
     if "none" == pars["download"]:
         retval["getfiles"] = False
