@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2021-2023
+#  Copyright (C) 2021, 2023
 #        Smithsonian Astrophysical Observatory
 #
 #
@@ -443,7 +443,7 @@ data with chandra_repro or add the keywords to the event file(s) with r4_header_
         if counts == "0":
             try:
                 if refcoord_check.lower() in ["","none","indef"]:
-                    raise IOError(f"{file} has zero counts. Check that the region format is in sky pixels coordinates.")
+                    raise IOError(f"{file} has zero counts. Check that the region correct (e.g. wrong region, coordinates not in sky pixels or degrees).")
 
                 if weights_check:
                     v1("WARNING: Unweighted responses will be created at the 'refcoord' position.\n")
