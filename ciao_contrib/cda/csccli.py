@@ -121,6 +121,7 @@ fileTypes_cur = {
     "stkregevt"   : { "extn" : "regevt3", "filetype" : "stkregevt3", "prodlevel" : "stk", "obilevel" : False, "bands" : False,  "acisonly" : False },
     "stksrcreg"   : { "extn" : "reg3",    "filetype" : "stksrcreg",  "prodlevel" : "stk", "obilevel" : False, "bands" : False,  "acisonly" : False },
     "stkregimg"   : { "extn" : "regimg3", "filetype" : "stkregimg",  "prodlevel" : "stk", "obilevel" : False, "bands" : True,   "acisonly" : False },
+    "stkregimg_jpg"   : { "extn" : "regimg3", "filetype" : "stkregimg_jpg",  "prodlevel" : "stk", "obilevel" : False, "bands" : False,   "acisonly" : False },
     "stkregexp"   : { "extn" : "regexp3", "filetype" : "stkregexp",  "prodlevel" : "stk", "obilevel" : False, "bands" : True,   "acisonly" : False },
     "stkdraws"    : { "extn" : "draws3",  "filetype" : "stkdraws",   "prodlevel" : "stk", "obilevel" : False, "bands" : True,   "acisonly" : False },
     "stkaperphot" : { "extn" : "phot3",   "filetype" : "stkaperphot","prodlevel" : "stk", "obilevel" : False, "bands" : True,   "acisonly" : False },
@@ -130,8 +131,6 @@ fileTypes_cur = {
     "bayesblks"   : { "extn" : "blocks3", "filetype" : "bayesblks",  "prodlevel" : "mst", "obilevel" : False, "bands" : False,   "acisonly" : False },
     "srcaperphot" : { "extn" : "phot3",   "filetype" : "srcaperphot","prodlevel" : "mst", "obilevel" : False, "bands" : True,    "acisonly" : False },
     "srcpoly"     : { "extn" : "poly3",   "filetype" : "srcpoly3",   "prodlevel" : "mst", "obilevel" : False, "bands" : False,   "acisonly" : False },
-
-
 }
 
 fileTypes = {
@@ -312,7 +311,7 @@ csc1_columns = {
 
 
 csc2_columns = {
-  'master_source_basic_summary' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w'.split(","),
+  'master_source_basic_summary' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w'.split(","),                                   
   'master_source_summary' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,m.extent_flag,m.hard_hm,m.hard_hm_lolim,m.hard_hm_hilim,m.hard_ms,m.hard_ms_lolim,m.hard_ms_hilim,m.var_intra_index_b,m.var_inter_index_b,m.var_intra_index_w,m.var_inter_index_w'.split(","),
   'master_source_photometry' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,m.flux_aper_s,m.flux_aper_lolim_s,m.flux_aper_hilim_s,m.flux_aper_m,m.flux_aper_lolim_m,m.flux_aper_hilim_m,m.flux_aper_h,m.flux_aper_lolim_h,m.flux_aper_hilim_h,m.flux_powlaw_aper_b,m.flux_powlaw_aper_lolim_b,m.flux_powlaw_aper_hilim_b,m.flux_powlaw_aper_w,m.flux_powlaw_aper_lolim_w,m.flux_powlaw_aper_hilim_w,m.flux_bb_aper_b,m.flux_bb_aper_lolim_b,m.flux_bb_aper_hilim_b,m.flux_bb_aper_w,m.flux_bb_aper_lolim_w,m.flux_bb_aper_hilim_w'.split(","),
   'master_source_variability' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,m.var_intra_prob_b,m.var_intra_index_b,m.var_inter_prob_b,m.var_inter_index_b,m.var_intra_prob_w,m.var_intra_index_w,m.var_inter_prob_w,m.var_inter_index_w,m.var_intra_prob_s,m.var_intra_index_s,m.var_inter_prob_s,m.var_inter_index_s,m.var_intra_prob_m,m.var_intra_index_m,m.var_inter_prob_m,m.var_inter_index_m,m.var_intra_prob_h,m.var_intra_index_h,m.var_inter_prob_h,m.var_inter_index_h'.split(","),
@@ -322,6 +321,19 @@ csc2_columns = {
   'source_observation_photometry' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,o.obsid,o.obi,o.region_id,o.theta,o.phi,o.livetime,o.conf_code,o.sat_src_flag,o.flux_significance_b,o.flux_significance_w,o.cnts_aper_b,o.cnts_aper_w,o.cnts_aper_s,o.cnts_aper_m,o.cnts_aper_h,o.src_rate_aper_b,o.src_rate_aper_w,o.src_rate_aper_s,o.src_rate_aper_m,o.src_rate_aper_h,o.flux_aper_b,o.flux_aper_lolim_b,o.flux_aper_hilim_b,o.flux_aper_w,o.flux_aper_lolim_w,o.flux_aper_hilim_w,o.flux_aper_s,o.flux_aper_lolim_s,o.flux_aper_hilim_s,o.flux_aper_m,o.flux_aper_lolim_m,o.flux_aper_hilim_m,o.flux_aper_h,o.flux_aper_lolim_h,o.flux_aper_hilim_h'.split(","),
   'source_observation_variability' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,o.obsid,o.obi,o.region_id,o.theta,o.phi,o.livetime,o.conf_code,o.sat_src_flag,o.flux_significance_b,o.flux_significance_w,o.dither_warning_flag,o.ks_prob_b,o.kp_prob_b,o.var_prob_b,o.var_index_b,o.var_mean_b,o.var_sigma_b,o.ks_prob_w,o.kp_prob_w,o.var_prob_w,o.var_index_w,o.var_mean_w,o.var_sigma_w,o.ks_prob_s,o.kp_prob_s,o.var_prob_s,o.var_index_s,o.var_mean_s,o.var_sigma_s,o.ks_prob_m,o.kp_prob_m,o.var_prob_m,o.var_index_m,o.var_mean_m,o.var_sigma_m,o.ks_prob_h,o.kp_prob_h,o.var_prob_h,o.var_index_h,o.var_mean_h,o.var_sigma_h'.split(",")
 }
+
+csc21_columns = {
+    'master_source_basic_summary': 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.err_ellipse_r1,m.err_ellipse_ang,m.significance,m.likelihood_class,m.conf_flag,m.sat_src_flag,m.streak_src_flag,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,m.flux_aper_avg_b,m.flux_aper_avg_lolim_b,m.flux_aper_avg_hilim_b,m.flux_aper_avg_w,m.flux_aper_avg_lolim_w,m.flux_aper_avg_hilim_w'.split(','),
+    'master_source_summary' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.err_ellipse_r1,m.err_ellipse_ang,m.significance,m.likelihood,m.likelihood_class,m.conf_flag,m.extent_flag,m.sat_src_flag,m.streak_src_flag,m.var_flag,m.var_inter_hard_flag,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,m.flux_aper_avg_b,m.flux_aper_avg_lolim_b,m.flux_aper_avg_hilim_b,m.flux_aper_avg_w,m.flux_aper_avg_lolim_w,m.flux_aper_avg_hilim_w,m.hard_hm,m.hard_hm_lolim,m.hard_hm_hilim,m.hard_ms,m.hard_ms_lolim,m.hard_ms_hilim,m.var_intra_index_b,m.var_intra_index_w,m.var_inter_index_b,m.var_inter_index_w,m.var_inter_hard_prob_hm,m.var_inter_hard_prob_ms,m.acis_time,m.hrc_time'.split(','),
+    'master_source_photometry' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.err_ellipse_r1,m.err_ellipse_ang,m.significance,m.likelihood,m.likelihood_class,m.conf_flag,m.sat_src_flag,m.streak_src_flag,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_h,m.flux_aper_lolim_h,m.flux_aper_hilim_h,m.flux_aper_m,m.flux_aper_lolim_m,m.flux_aper_hilim_m,m.flux_aper_s,m.flux_aper_lolim_s,m.flux_aper_hilim_s,m.flux_aper_u,m.flux_aper_lolim_u,m.flux_aper_hilim_u,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,m.flux_aper_avg_b,m.flux_aper_avg_lolim_b,m.flux_aper_avg_hilim_b,m.flux_aper_avg_h,m.flux_aper_avg_lolim_h,m.flux_aper_avg_hilim_h,m.flux_aper_avg_m,m.flux_aper_avg_lolim_m,m.flux_aper_avg_hilim_m,m.flux_aper_avg_s,m.flux_aper_avg_lolim_s,m.flux_aper_avg_hilim_s,m.flux_aper_avg_u,m.flux_aper_avg_lolim_u,m.flux_aper_avg_hilim_u,m.flux_aper_avg_w,m.flux_aper_avg_lolim_w,m.flux_aper_avg_hilim_w,m.flux_powlaw_aper_b,m.flux_powlaw_aper_lolim_b,m.flux_powlaw_aper_hilim_b,m.flux_powlaw_aper_w,m.flux_powlaw_aper_lolim_w,m.flux_powlaw_aper_hilim_w,m.flux_bb_aper_b,m.flux_bb_aper_lolim_b,m.flux_bb_aper_hilim_b,m.flux_bb_aper_w,m.flux_bb_aper_lolim_w,m.flux_bb_aper_hilim_w,m.flux_brems_aper_b,m.flux_brems_aper_lolim_b,m.flux_brems_aper_hilim_b,m.flux_brems_aper_w,m.flux_brems_aper_lolim_w,m.flux_brems_aper_hilim_w'.split(','),
+    'master_source_variability' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.err_ellipse_r1,m.err_ellipse_ang,m.significance,m.likelihood,m.likelihood_class,m.conf_flag,m.dither_warning_flag,m.sat_src_flag,m.streak_src_flag,m.var_flag,m.var_inter_hard_flag,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,m.var_intra_index_b,m.var_intra_index_h,m.var_intra_index_m,m.var_intra_index_s,m.var_intra_index_u,m.var_intra_index_w,m.var_intra_prob_b,m.var_intra_prob_h,m.var_intra_prob_m,m.var_intra_prob_s,m.var_intra_prob_u,m.var_intra_prob_w,m.var_inter_index_b,m.var_inter_index_h,m.var_inter_index_m,m.var_inter_index_s,m.var_inter_index_u,m.var_inter_index_w,m.var_inter_prob_b,m.var_inter_prob_h,m.var_inter_prob_m,m.var_inter_prob_s,m.var_inter_prob_u,m.var_inter_prob_w,m.var_inter_hard_prob_hm,m.var_inter_hard_prob_hs,m.var_inter_hard_prob_ms'.split(','),
+    'stack_source_summary' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.err_ellipse_r1,m.err_ellipse_ang,m.likelihood_class,s.detect_stack_id,s.region_id,s.theta_mean,s.flux_significance_b,s.flux_significance_w,s.likelihood_b,s.likelihood_w,s.conf_code,s.extent_code,s.sat_src_flag,s.streak_src_flag,s.var_flag,s.var_inter_hard_flag,s.major_axis_b,s.minor_axis_b,s.pos_angle_b,s.major_axis_w,s.minor_axis_w,s.pos_angle_w,s.src_cnts_aper_b,s.src_cnts_aper_w,s.src_rate_aper_b,s.src_rate_aper_w,s.flux_aper_b,s.flux_aper_lolim_b,s.flux_aper_hilim_b,s.flux_aper_w,s.flux_aper_lolim_w,s.flux_aper_hilim_w,s.hard_hm,s.hard_hm_lolim,s.hard_hm_hilim,s.hard_ms,s.hard_ms_lolim,s.hard_ms_hilim,s.var_intra_index_b,s.var_intra_index_w,s.var_inter_index_b,s.var_inter_index_w'.split(','),
+    'stack_source_photometry' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.err_ellipse_r1,m.err_ellipse_ang,m.likelihood_class,s.detect_stack_id,s.region_id,s.theta_mean,s.flux_significance_b,s.flux_significance_h,s.flux_significance_m,s.flux_significance_s,s.flux_significance_u,s.flux_significance_w,s.likelihood_b,s.likelihood_h,s.likelihood_m,s.likelihood_s,s.likelihood_u,s.likelihood_w,s.conf_code,s.extent_code,s.sat_src_flag,s.streak_src_flag,s.var_flag,s.src_cnts_aper_b,s.src_cnts_aper_h,s.src_cnts_aper_m,s.src_cnts_aper_s,s.src_cnts_aper_u,s.src_cnts_aper_w,s.src_rate_aper_b,s.src_rate_aper_h,s.src_rate_aper_m,s.src_rate_aper_s,s.src_rate_aper_u,s.src_rate_aper_w,s.flux_aper_b,s.flux_aper_lolim_b,s.flux_aper_hilim_b,s.flux_aper_h,s.flux_aper_lolim_h,s.flux_aper_hilim_h,s.flux_aper_m,s.flux_aper_lolim_m,s.flux_aper_hilim_m,s.flux_aper_s,s.flux_aper_lolim_s,s.flux_aper_hilim_s,s.flux_aper_u,s.flux_aper_lolim_u,s.flux_aper_hilim_u,s.flux_aper_w,s.flux_aper_lolim_w,s.flux_aper_hilim_w '.split(','),
+    'source_observation_summary' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.err_ellipse_r1,m.err_ellipse_ang,m.likelihood_class,o.obsid,o.obi,o.gti_obs,o.gti_end,o.region_id,o.theta,o.phi,o.flux_significance_b,o.flux_significance_w,o.likelihood_b,o.likelihood_w,o.conf_code,o.extent_code,o.sat_src_flag,o.streak_src_flag,o.var_code,o.major_axis_b,o.minor_axis_b,o.pos_angle_b,o.major_axis_w,o.minor_axis_w,o.pos_angle_w,o.cnts_aper_b,o.cnts_aper_w,o.src_cnts_aper_b,o.src_cnts_aper_w,o.src_rate_aper_b,o.src_rate_aper_w,o.flux_aper_b,o.flux_aper_lolim_b,o.flux_aper_hilim_b,o.flux_aper_w,o.flux_aper_lolim_w,o.flux_aper_hilim_w,o.hard_hm,o.hard_hm_lolim,o.hard_hm_hilim,o.hard_ms,o.hard_ms_lolim,o.hard_ms_hilim,o.var_index_b,o.var_index_w,o.livetime,o.detector'.split(','),
+    'source_observation_photometry' :  'm.name,m.ra,m.dec,m.err_ellipse_r0,m.err_ellipse_r1,m.err_ellipse_ang,m.likelihood_class,o.obsid,o.obi,o.gti_obs,o.gti_end,o.region_id,o.theta,o.phi,o.flux_significance_b,o.flux_significance_h,o.flux_significance_m,o.flux_significance_s,o.flux_significance_u,o.flux_significance_w,o.likelihood_b,o.likelihood_h,o.likelihood_m,o.likelihood_s,o.likelihood_u,o.likelihood_w,o.conf_code,o.extent_code,o.sat_src_flag,o.streak_src_flag,o.var_code,o.cnts_aper_b,o.cnts_aper_h,o.cnts_aper_m,o.cnts_aper_s,o.cnts_aper_u,o.cnts_aper_w,o.src_cnts_aper_b,o.src_cnts_aper_h,o.src_cnts_aper_m,o.src_cnts_aper_s,o.src_cnts_aper_u,o.src_cnts_aper_w,o.src_rate_aper_b,o.src_rate_aper_h,o.src_rate_aper_m,o.src_rate_aper_s,o.src_rate_aper_u,o.src_rate_aper_w,o.flux_aper_b,o.flux_aper_lolim_b,o.flux_aper_hilim_b,o.flux_aper_h,o.flux_aper_lolim_h,o.flux_aper_hilim_h,o.flux_aper_m,o.flux_aper_lolim_m,o.flux_aper_hilim_m,o.flux_aper_s,o.flux_aper_lolim_s,o.flux_aper_hilim_s,o.flux_aper_u,o.flux_aper_lolim_u,o.flux_aper_hilim_u,o.flux_aper_w,o.flux_aper_lolim_w,o.flux_aper_hilim_w,o.flux_powlaw_aper_b,o.flux_powlaw_aper_lolim_b,o.flux_powlaw_aper_hilim_b,o.flux_powlaw_aper_w,o.flux_powlaw_aper_lolim_w,o.flux_powlaw_aper_hilim_w,o.flux_bb_aper_b,o.flux_bb_aper_lolim_b,o.flux_bb_aper_hilim_b,o.flux_bb_aper_w,o.flux_bb_aper_lolim_w,o.flux_bb_aper_hilim_w,o.flux_brems_aper_b,o.flux_brems_aper_lolim_b,o.flux_brems_aper_hilim_b,o.flux_brems_aper_w,o.flux_brems_aper_lolim_w,o.flux_brems_aper_hilim_w '.split(','),
+    'source_observation_variability' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.err_ellipse_r1,m.err_ellipse_ang,m.likelihood_class,o.obsid,o.obi,o.gti_obs,o.gti_end,o.region_id,o.theta,o.phi,o.flux_significance_b,o.flux_significance_w,o.likelihood_b,o.likelihood_w,o.conf_code,o.dither_warning_flag,o.extent_code,o.sat_src_flag,o.streak_src_flag,o.var_code,o.flux_aper_b,o.flux_aper_lolim_b,o.flux_aper_hilim_b,o.flux_aper_w,o.flux_aper_lolim_w,o.flux_aper_hilim_w,o.var_index_b,o.var_index_h,o.var_index_m,o.var_index_s,o.var_index_u,o.var_index_w,o.var_prob_b,o.var_prob_h,o.var_prob_m,o.var_prob_s,o.var_prob_u,o.var_prob_w,o.ks_prob_b,o.ks_prob_h,o.ks_prob_m,o.ks_prob_s,o.ks_prob_u,o.kp_prob_w,o.var_sigma_b,o.var_sigma_h,o.var_sigma_m,o.var_sigma_s,o.var_sigma_u,o.var_sigma_w,o.var_mean_b,o.var_mean_h,o.var_mean_m,o.var_mean_s,o.var_mean_u,o.var_mean_w,o.var_min_b,o.var_min_h,o.var_min_m,o.var_min_s,o.var_min_u,o.var_min_w,o.var_max_b,o.var_max_h,o.var_max_m,o.var_max_s,o.var_max_u,o.var_max_w'.split(','),
+}
+
 
 
 required_cols = """
@@ -1369,16 +1381,8 @@ def expand_standard_cols( cols, cat_version=None ):
     The catalog contains some default column definitions.  These
     are avialable as tokens
     """
-    check_list = { "MSBS" : csc1_columns["master_source_basic_summary"] ,
-                   "MSS"  : csc1_columns["master_source_summary"],
-                   "MSP"  : csc1_columns["master_source_photometry"],
-                   "MSV"  : csc1_columns["master_source_variability"],
-                   "SOS"  : csc1_columns["source_observation_summary"],
-                   "SOP"  : csc1_columns["source_observation_photometry"],
-                   "SOV"  : csc1_columns["source_observation_variability"]
-                   }
 
-    if cat_version in ["csc2", "csc2.1", "current"]:
+    if cat_version in ["csc2"]:
         check_list = { "MSBS" : csc2_columns["master_source_basic_summary"] ,
                        "MSS"  : csc2_columns["master_source_summary"],
                        "MSP"  : csc2_columns["master_source_photometry"],
@@ -1388,6 +1392,26 @@ def expand_standard_cols( cols, cat_version=None ):
                        "SOV"  : csc2_columns["source_observation_variability"],
                        "SSS"  : csc2_columns["stack_source_summary"],
                        "SSP"  : csc2_columns["stack_source_photometry"]
+                       }
+    elif cat_version in ["csc2.1", "current"]:
+        check_list = { "MSBS" : csc21_columns["master_source_basic_summary"] ,
+                       "MSS"  : csc21_columns["master_source_summary"],
+                       "MSP"  : csc21_columns["master_source_photometry"],
+                       "MSV"  : csc21_columns["master_source_variability"],
+                       "SOS"  : csc21_columns["source_observation_summary"],
+                       "SOP"  : csc21_columns["source_observation_photometry"],
+                       "SOV"  : csc21_columns["source_observation_variability"],
+                       "SSS"  : csc21_columns["stack_source_summary"],
+                       "SSP"  : csc21_columns["stack_source_photometry"]
+                       }
+    else:
+        check_list = { "MSBS" : csc1_columns["master_source_basic_summary"] ,
+                       "MSS"  : csc1_columns["master_source_summary"],
+                       "MSP"  : csc1_columns["master_source_photometry"],
+                       "MSV"  : csc1_columns["master_source_variability"],
+                       "SOS"  : csc1_columns["source_observation_summary"],
+                       "SOP"  : csc1_columns["source_observation_photometry"],
+                       "SOV"  : csc1_columns["source_observation_variability"]
                        }
 
     retval = []
