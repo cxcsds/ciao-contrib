@@ -84,18 +84,12 @@ def parse_inputs( pars ):
         if len(retval["mybands"]) == 0:
             raise ValueError("No recognized energy band supplied")
 
-    # ~ ## TODO: eventually replace with actual token
-    # ~ if "csc2" == pars["catalog"]:
-        # ~ pars["catalog"] = "csc2"
-
-    #~ if "csc2" == pars["catalog"] and "none" != pars["download"]:
-        #~ pars["download"] = "none"
-        #~ verb0("WARNING: files cannot yet be retrieved using the current catalog release")
-
     retval["limsens"] = ("yes" == pars["sensitivity"] )
+
+    # TODO: Just comment out this condition to enable limsens
     if pars["catalog"] in ["csc2", "csc2.1", "current"] and retval["limsens"] is True:
         retval["limsens"] = False
-        verb0(f"WARNING: limiting sensitivity data is not available via this interface for {pars["catalog"]}")
+        verb0(f"WARNING: limiting sensitivity data is not available via this interface for {pars['catalog']}")
 
     if "none" == pars["download"]:
         retval["getfiles"] = False
@@ -140,10 +134,27 @@ def summarize_sensitivity( ra, dec, bands ):
             verb0("  "+b+' band : {} [{}]'.format( vals[b], units ))
     
     
-
+def summarize_sensitivity_2( ra, dec, release, bands ):
+    """
     
-
+    """
+    from coords.format import sex2deg
+    ra_deg,dec_deg = sex2deg(ra, dec ) 
     
+    page = csc.query_csc2_limsens( ra_deg, dec_deg, release )
+    
+    try:
+        vals = csc.parse_limsens_2( page )
+    except RuntimeError as rte:
+        verb0("Error in contacting CSC sensitivity server")
+        return
+
+    verb0("CSC Sensitivity for position: {},{}".format(ra,dec))
+    for b in bands.split(","):
+        _b = b[0]
+        for key in vals:
+            if key.endswith(_b):
+                verb0(f"  {key} : {vals[key][0]}")
     
 
 #
@@ -173,8 +184,11 @@ def main():
     # Print results
     #
     if pp["limsens"]:
-        summarize_sensitivity( pp["ra_deg"], pp["dec_deg"], pp["mybands"])
 
+        if pp["catalog"] == "csc1":
+            summarize_sensitivity( pp["ra_deg"], pp["dec_deg"], pp["mybands"])
+        else:
+            summarize_sensitivity_2( pp["ra_deg"], pp["dec_deg"], pp["catalog"], pp["mybands"])
 
     mysrcs = csc.parse_csc_result( mypage )
     xtra = csc.extra_cols_to_summarize( mysrcs, pars["columns"], pp["catalog"])

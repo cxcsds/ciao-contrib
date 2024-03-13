@@ -1462,6 +1462,54 @@ def query_csc1_limsens( ra, dec ):
     return page
 
 
+def query_csc2_limsens(ra, dec, release):
+    ''
+    resource = "http://cda.cfa.harvard.edu/csclimsen/limsen"
+    vals = {
+      "RA" : str(ra),
+      "DEC" : str(dec),
+      "version" : __csc_version[release],
+      "SR" : str(1.0/3600.),    # 1 arcsec, smaller than helpix size
+      }
+
+    page = make_URL_request( resource, vals )
+    page = page.decode("ascii")
+    return page
+
+
+def parse_limsens_2(page):
+    """
+    Parse the VOTable returned by csclimsen
+    """
+    import xml.dom.minidom
+
+    xml_doc = xml.dom.minidom.parseString(page)
+
+    root = xml_doc.documentElement
+
+    cols = xml_doc.getElementsByTagName('FIELD')
+    column_names = [col.getAttribute("name") for col in cols]
+    column_units = [col.getAttribute("unit") for col in cols]
+
+    data = {col: [] for col in column_names}
+
+    rows = xml_doc.getElementsByTagName("TR")
+    for row in rows:
+
+        cols = row.getElementsByTagName("TD")
+        for index, col in enumerate(cols):
+            cname = column_names[index]
+            cunit = column_units[index]
+            cdata = col.childNodes[0].data
+            if cdata.endswith("E38"):  # Null values are 3.xE38
+                cdata = "NULL"
+            else:
+                cdata += " "+cunit
+            data[cname].append(cdata)
+
+    return data   # units
+
+
 def parse_limsens( page ):
     """
     Usage:
