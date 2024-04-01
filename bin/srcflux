@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2013-2023 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2024 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "02 November 2023"
+__revision__ = "29 March 2024"
 
 import os
 
@@ -207,6 +207,8 @@ def make_optimized_regions(myparams):
     with open(src_list, "w") as fptr:
         for reg_file in out_lis:
             reg = CXCRegion(reg_file)
+            if len(reg) == 0:
+                reg = "point(0,0)"
             fptr.write(str(reg)+"\n")
 
     # For background we use broad band (ACIS) to determine the number
@@ -2993,6 +2995,10 @@ def check_parameters( myparams ):
                 raise ValueError("Cannot locate HRC dead time factors file.  Please specify 'dtffile' parameter.")
         elif "none" == myparams.dtffile.lower():
             verb0("\nWARNING: dead time factors file parmater set to 'none'; DTF information will not be use.  This may lead to inaccuracies in the results\n")
+    
+    if myparams.regions == "optimized" and myparams.psfmethod == "quick":
+        raise ValueError("ERROR: Invalid parameter combination. psfmethod=quick requires circular source regions, however, regions=optimized creates polygon shaped regions. These two options cannot be used together.")
+
 
 def check_nom_keywords(evt_files):
     """If there is more than 1 event files, then they must have the 
