@@ -41,6 +41,8 @@ scripts = list_files("bin/*")
 data_files = [("param", list_files("param/*.par")),
               ("share/doc/xml", list_files("share/doc/xml/*.xml")),
               ("share/xspec/install", list_files("share/xspec/install/*cxx")),
+              ("share/sherpa/notebooks",
+               list_files("share/sherpa/notebooks/*ipynb")),
               ("config", list_files("config/*")),
               ("data", list_files("data/*")),
               (".", ["Changes.CIAO_scripts"])
