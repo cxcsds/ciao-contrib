@@ -191,6 +191,11 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir,params):
             v1("No boresight correction update to asol file is needed.")
         return content_values["ASPSOLOBI"]
 
+    if "OBCSOL" in content_values:
+        if params["asol_update"]:
+            v1("No boresight correction update to asol file is needed.")
+        return content_values["OBCSOL"]
+
     if "ASPSOL" in content_values:
         new_asol = update_aspsol_to_aspsolobi(content_values["ASPSOL"], 
                                               mydir, params)
@@ -1051,7 +1056,7 @@ def get_inputs(params):
             check_name_in_hdr( "msk1", params["msk1_file"], params["hdr_maskfile"] )
 
         ### find ACIS mtl files ###
-        elif params["instrume"] == 'ACIS' and re.search(".*"+cycle+"mtl1.fits.*",ff):
+        elif re.search(".*"+cycle+"mtl1.fits.*",ff):
 
             if params["mtl1_file"]:
                 error_out(params,"Multiple input mtl1 files found, please select one and restart. If this is a multi-obi OBS_ID, try running the splitobs script first.",'input error')
@@ -1212,6 +1217,8 @@ def get_inputs(params):
         error_out(params,"Could not locate pbk0 fits file in: " + params["secondarydir"],'input error')
     if not os.path.isfile(params["bias0_file"]) and params["instrume"] == 'ACIS' and params["badpixel"] == True:
         error_out(params,"Could not locate bias0 fits file in: " + params["secondarydir"],'input error')
+    if not os.path.isfile(params["mtl1_file"]) and params["__obc_mode__"] is True:
+        error_out(params,"Could not locate mtl1 fits file in OBC mode")
 
     #!### Verify asol1 list exists and is in chronological order ###
     v5("Asol1 file before verify list: " + params["asol1_file"])
@@ -2729,7 +2736,8 @@ def choose_skyfov_method( asolfiles ):
     from pycrates import read_file
     import stk as stk
 
-    skyfov_choices={ 'ASPSOLOBI' : 'convexhull' , 'ASPSOL' : 'minmax' }
+    skyfov_choices={ 'ASPSOLOBI' : 'convexhull' , 'ASPSOL' : 'minmax',
+                     'OBCSOL': 'minmax'}
     if asolfiles is None: 
         return skyfov_choices["ASPSOL"]
 
