@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2022  Smithsonian Astrophysical Observatory
+# Copyright (C) 2010-2024  Smithsonian Astrophysical Observatory
 #
 #
 #
@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "22 January 2023"
+version = "07 April 2024"
 
 # import standard python modules as required
 #
@@ -2787,7 +2787,7 @@ def process_sso(pars, is_gratings=False):
     Run sso_freeze to add solar system object coordinates to the 
     event file and the aspect solution file.    
     """
-    from ciao_contrib.runtool import sso_freeze
+    from ciao_contrib.runtool import sso_freeze, dmmerge
 
     sso_eph = pars["sso_file"]
     if sso_eph is None:
@@ -2802,27 +2802,43 @@ def process_sso(pars, is_gratings=False):
 
     evt1=pars[evt]
     eph1=pars["eph1_file"]
-    asol1="@"+pars["asol1_file"]
+
         
     if len(eph1) == 0:
         v0("WARNING: Could not find definitive orbit ephemeris file, orbit*eph1.fits, skipping sso_freeze")
+        return
 
     tab = pyc.read_file(sso_eph)
     obj = tab.get_key_value("OBJECT")        
     v1("\nRunning sso_freeze to add solar system coordinates for object: "+obj)
+    
+    asol1="@"+pars["asol1_file"]
+    dmmerge.punlearn()
+    dmmerge.infile = asol1
+    dmmerge.outfile = os.path.join(pars["outdir"], pars["root"] + '_tmp_asol1.fits')
+    out = dmmerge()
+    v5(out)
+    pars["cleanup_files"].append(dmmerge.outfile)
     
     out_asol1 = os.path.join(pars["outdir"], pars["root"] + '_repro_sso_asol1.fits')
 
     sso_freeze.infile = evt1
     sso_freeze.scephemfile = eph1
     sso_freeze.ssoephemfile = sso_eph
-    sso_freeze.asolfile = asol1
+    sso_freeze.asolfile = dmmerge.outfile
     sso_freeze.outfile = out_evt1
     sso_freeze.ocsolfile = out_asol1
     sso_freeze.clobber = pars["clobber"]
     sso_freeze.verbose = pars["verbose"]
-    out = sso_freeze()
-    
+
+    try:
+        out = sso_freeze()
+        pars[evt] = out_evt1
+    except Exception as failed:
+        v0("WARNING: Could not run sso_freeze to compute solar system centered coordinates; skipping it. Error message:")
+        v0(str(failed))
+        return
+        
     v5("sso_freeze returned")
     v5(out)
     
