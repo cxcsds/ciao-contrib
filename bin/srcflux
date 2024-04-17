@@ -437,10 +437,9 @@ def check_pos_in_srcreg( infile, srcs ):
 
 def save_regions( myparams, regions, flavor ):
     """
-        !!! TODO: Use new region module in ciao4.10 instead of dmmakereg
-
+    Save regions to FITS format
     """
-    dmmakereg = make_tool("dmmakereg")
+    from region import CXCRegion
 
     # CIAO 4.10 changes to NULL regions no longer creates a fake
     # "point(0,0)" -- I'm using that so we'll put it back.
@@ -455,19 +454,12 @@ def save_regions( myparams, regions, flavor ):
         for ii in range( len(ss)):
             outfile = "{}{:04d}_{}reg.fits".format(myparams.outroot, ii+1, flavor)
 
-            tmpreg = NamedTemporaryFile( dir=myparams.tmpdir, delete=False, suffix=f"_{flavor}.reg" )
-            tmpreg.close()
+            if len(ss[ii]) == 0:
+                myreg = CXCRegion("point(0,0)")
+            else:
+                myreg = CXCRegion(ss[ii])
 
-            with open(tmpreg.name, "w") as fp:
-                fp.write( ss[ii].replace("|","\n") )
-
-            dmmakereg.region="region({})".format(tmpreg.name)
-            dmmakereg.outfile=outfile
-            dmmakereg.clobber=True
-            dmmakereg.kernel="FITS"
-            dmmakereg()
-
-            gorm(tmpreg.name)
+            myreg.write(outfile, clobber=True, fits=True)
 
             oo.write( "region({})\n".format(outfile))
 
