@@ -18,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "29 March 2024"
+__revision__ = "17 April 2024"
 
 import os
 
@@ -2290,10 +2290,22 @@ def merge_modelflux( stk_params, myparams ):
         if vv:
             verb2(vv)
 
-        verb2("Running model_flux")
         out_arf = combine_spectra.outroot+"_src.arf"
         out_rmf = combine_spectra.outroot+"_src.rmf"
         out_pi = combine_spectra.outroot+"_src.pi"
+
+        # Ugh, c_s uses different file names for gratings files :(
+        check = [os.path.exists(xx) for xx in [out_pi, out_rmf, out_arf]]
+        if not all(check):
+            out_arf = combine_spectra.outroot+".arf"
+            out_rmf = combine_spectra.outroot+".rmf"
+            out_pi = combine_spectra.outroot+".pha"
+            check = [os.path.exists(xx) for xx in [out_pi, out_rmf, out_arf]]
+            if not all(check):
+                raise RuntimeError("Cannot locate combined spectra")
+
+        verb2("Running model_flux")
+
         for at_energy in bands:
             myroot = get_root( myparams, at_energy )
             outroot = myroot+"_{:04d}.dat".format(snum+1)
