@@ -49,7 +49,7 @@ or
 
 """
 
-__revision__ = "02 May 2024"
+__revision__ = "03 May 2024"
 
 import os
 import warnings
@@ -148,12 +148,15 @@ class EGrid:
         self.subchan = nchan
         self.chantype = chantype
 
-        self.elo,self.ehi,self.offset = self.get_egrid(telescope = telescope,
-                                                       instrument = instrument,
-                                                       detnam = detector,
-                                                       instfilter = instfilter,
-                                                       subchan = nchan,
-                                                       chantype = chantype)
+        if telescope.lower() == "chandra":
+            self.elo,self.ehi,self.offset = self.get_acis_egrid(chantype=chantype)
+        else:
+            self.elo,self.ehi,self.offset = self.get_egrid(telescope = telescope,
+                                                           instrument = instrument,
+                                                           detnam = detector,
+                                                           instfilter = instfilter,
+                                                           subchan = nchan,
+                                                           chantype = chantype)
 
 
     def _set_chantype_none(self, telescope: str = "",
@@ -167,6 +170,9 @@ class EGrid:
             return chantype
 
         if telescope.lower() == "xmm" and instrument.lower() == "epic":
+            return chantype
+
+        if telescope.lower() == "xrism" and instrument.lower() == "resolve":
             return chantype
 
         if telescope.lower() in ["chandra","calet"]:
@@ -189,6 +195,36 @@ class EGrid:
         blkname = f"{instrument}{detstr}{filtstr}{nchanstr}{chantypestr}"
 
         return blkname
+
+
+    def get_acis_egrid(self, chantype: str = "PI") -> tuple[npt.NDArray, npt.NDArray, int]:
+        """
+        return energy grid and channel offset for Chandra/ACIS detector
+        """
+
+        offset: int = 1
+
+        chan = chantype.upper()
+
+        if chan not in ["PI","PHA","PHA_no-CTIcorr"]:
+            logger = getLogger(__name__)
+            logger.warning("Warning: An invalid 'chantype' provided!  Assuming ACIS PI spectral channel type...")
+
+        if chan.startswith("PHA"):
+            detchans: int = 4096
+
+            if chan == "PHA":
+                ebin: float = 4.460 # eV CTI corrected
+            else:
+                ebin: float = 4.485 # eV non-CTI corrected
+        else:
+            detchans: int = 1024
+            ebin: float = 14.6 # eV
+
+        emin = arange(detchans) * (ebinkeV := ebin/1000) # in keV
+        emax = emin + ebinkeV # in keV
+
+        return emin, emax, offset
 
 
     def get_egrid(self, telescope: str = "",
@@ -251,41 +287,14 @@ class EGrid:
 
 
 
-def _get_acis_egrid(chantype: str = "PI") -> tuple[npt.NDArray, npt.NDArray, int]:
+def _check_and_update_instrument_info(telescope: str = "",
+                                      instrument: str|None = None,
+                                      detnam: str|None = None,
+                                      instfilter: str|None = None):
     """
-    return energy grid and channel offset for Chandra/ACIS detector
+    revise telescope/instrument configuration information to the
+    minimal parameters required to obtain the necessary energy grid
     """
-
-    offset: int = 1
-
-    chan = chantype.upper()
-
-    if chan not in ["PI","PHA","PHA_no-CTIcorr"]:
-        logger = getLogger(__name__)
-        logger.warning("Warning: An invalid 'chantype' provided!  Assuming ACIS PI spectral channel type...")
-
-    if chan.startswith("PHA"):
-        detchans: int = 4096
-
-        if chan == "PHA":
-            ebin: float = 4.460 # eV CTI corrected
-        else:
-            ebin: float = 4.485 # eV non-CTI corrected
-    else:
-        detchans: int = 1024
-        ebin: float = 14.6 # eV
-
-    emin = arange(detchans) * (ebinkeV := ebin/1000) # in keV
-    emax = emin + ebinkeV # in keV
-
-    return emin, emax, offset
-
-
-
-def _update_instrument_info(telescope: str = "",
-                            instrument: str|None = None,
-                            detnam: str|None = None,
-                            instfilter: str|None = None):
 
     if telescope == "" or telescope is None:
         raise ValueError("'telescope' parameter must be specified!")
@@ -300,6 +309,12 @@ def _update_instrument_info(telescope: str = "",
         telescope = "SRG"
 
 
+    ### check for Chandra/HRC, which is barely suitable for crude hardness ratio estimates ###
+    if telescope.lower() == "chandra" and instrument.upper() == "HRC":
+        raise RuntimeWarning("non-grating HRC data has insufficient spectral resolution to be suitable for spectral fitting!")
+
+
+    ### update telescopes with unique energy grid, even if there are multiple instruments ###
     if telescope.lower() == "cos-b":
         instrument = "COS-B"
 
@@ -623,47 +638,47 @@ def mkdiagresp(telescope: str = "Chandra",
         chantype = speckw.get("CHANTYPE")
 
 
-    if telescope.lower() == "chandra":
-        if instrument.upper() == "HRC":
-            raise RuntimeWarning("non-grating HRC does not have sufficient spectral resolution for suitable spectral fitting!")
+    if telescope.lower() == "chandra" and chantype.lower() not in ["pi","pha","pha_no-cticorr"]:
+        raise ValueError("Chandra/ACIS requires 'chantype' argument to be set to 'PI', 'PHA', or 'PHA_no-CTIcorr'.")
 
-        if chantype.lower() not in ["pi","pha","pha_no-cticorr"]:
-            raise ValueError("Chandra/ACIS requires 'chantype' argument to be set to 'PI', 'PHA', or 'PHA_no-CTIcorr'.")
+    if telescope.lower() == "calet" and chantype.lower() not in ["gain_lo","gain_hi"]:
+        raise ValueError("CALET requires 'chantype' argument to be set to 'GAIN_HI' or 'GAIN_LO'.")
 
-        elo,ehi,offset = _get_acis_egrid(chantype)
-
-    else:
-        if telescope.lower() == "calet":
-            if chantype.lower() not in ["gain_lo","gain_hi"]:
-                raise ValueError("CALET requires 'chantype' argument to be set to 'GAIN_HI' or 'GAIN_LO'.")
-
-        if telescope.lower() == "xrism" and instrument.lower() == "resolve":
-            if chantype.lower() not in ["lo-res","mid-res","hi-res"]:
-                raise ValueError("XRISM RESOLVE requires 'chantype' argument to be set to 'lo-res', 'mid-res', or 'hi-res'.")
+    if telescope.lower() == "xrism" and instrument.lower() == "resolve" and chantype.lower() not in ["lo-res","mid-res","hi-res"]:
+        raise ValueError("XRISM RESOLVE requires 'chantype' argument to be set to 'lo-res', 'mid-res', or 'hi-res'.")
 
 
-        telescope, instrument, detector, instfilter = _update_instrument_info(telescope=telescope,
-                                                                              instrument=instrument,
-                                                                              detnam=detector,
-                                                                              instfilter=instfilter)
+    ### run arguments check and update parameters to minimal information needed ###
+    telescope, instrument, detector, instfilter = _check_and_update_instrument_info(telescope=telescope,
+                                                                                    instrument=instrument,
+                                                                                    detnam=detector,
+                                                                                    instfilter=instfilter)
 
-        ### instruments/detectors with more than one channel binning scheme ###
-        multichan_resps_max = {"asca sis" : 1024,
-                               "asca gis" : 1024,
-                               "rosat pspc" : 256,
-                               "rxte pca" : 256,
-                               "bepposax pds" : 256
-        }
 
-        key = f"{telescope} {''.join(i for i in instrument if not i.isdigit())}".lower()
+    ### instruments/detectors with more than one channel binning scheme ###
+    multichan_resps_max = {"asca sis" : 1024,
+                           "asca gis" : 1024,
+                           "rosat pspc" : 256,
+                           "rxte pca" : 256,
+                           "bepposax pds" : 256
+    }
 
-        if all([(chantest := multichan_resps_max.get(key)) is not None, chantest == nchan]) or key not in multichan_resps_max.keys():
-            nchan = None
+    key = f"{telescope} {''.join(i for i in instrument if not i.isdigit())}".lower()
 
-        egrid = EGrid(telescope,instrument,detector,instfilter,nchan,chantype)
-        elo = egrid.elo
-        ehi = egrid.ehi
-        offset = egrid.offset
+    if any([
+            (chantest := multichan_resps_max.get(key)) is not None and chantest == nchan,
+            key not in multichan_resps_max
+    ]):
+        nchan = None
+
+
+    ### return energy grid and first enumerated spectral channel ###
+    egrid = EGrid(telescope, instrument, detector,
+                  instfilter, nchan, chantype)
+
+    elo = egrid.elo
+    ehi = egrid.ehi
+    offset = egrid.offset
 
 
     return build_resp(emin=elo, emax=ehi, offset=offset, ethresh=ethresh)
