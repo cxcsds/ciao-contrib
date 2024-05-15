@@ -32,7 +32,7 @@ MIN_FRACTION = 0.6
 FRACTION_STEP = 0.1
 
 toolname = "psf_contour"
-__revision__ = "29 March 2024"
+__revision__ = "15 May 2024"
 
 lw.initialize_logger(toolname)
 verb0 = lw.get_logger(toolname).verbose0
@@ -400,7 +400,7 @@ def get_cli():
     marx_exe = os.path.join(pars["marx_root"], "bin", "marx")
     if not os.path.isfile(marx_exe):
         raise ValueError(f"ERROR: Cannot find marx executable in '{marx_exe}'" +
-                          "; check the marx_root parameter")
+                         "; check the marx_root parameter")
 
     return pars
 
@@ -446,10 +446,13 @@ def shrink_psfs(first_psf, second_psf):
     # If that's the case, then we stop shrinking regions and just exclude
     # them from each other.
 
-    new_first = CXCRegion(first_psf.outfile) - CXCRegion(second_psf.outfile)
+    first_reg = CXCRegion(first_psf.outfile)
+    second_reg = CXCRegion(second_psf.outfile)
+
+    new_first = first_reg - second_reg[0]
     new_first.write(first_psf.outfile, fits=True, clobber=True)
 
-    new_second = CXCRegion(second_psf.outfile) - CXCRegion(first_psf.outfile)
+    new_second = second_reg - first_reg[0]
     new_second.write(second_psf.outfile, fits=True, clobber=True)
 
 
