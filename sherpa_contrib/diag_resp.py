@@ -49,7 +49,7 @@ or
 
 """
 
-__revision__ = "03 May 2024"
+__revision__ = "24 May 2024"
 
 import os
 import warnings
@@ -62,7 +62,6 @@ from ciao_contrib._tools.fileio import get_keys_from_file
 from sherpa.astro.data import DataPHA, Data1DInt
 from sherpa.astro.ui import create_rmf as shpmkrmf
 from sherpa.astro.ui import create_arf as shpmkarf
-from sherpa.astro.io import read_table as shp_readtab
 
 
 
@@ -238,6 +237,8 @@ class EGrid:
         and instrument configuration
         """
 
+        from sherpa.astro.io import backend as shp_backend
+
         fn = f"{os.environ['ASCDS_INSTALL']}/data/ebounds-lut/{telescope.lower()}-ebounds-lut.fits"
 
         chantype = self._set_chantype_none(telescope=telescope,
@@ -251,19 +252,32 @@ class EGrid:
                                         chantype=chantype)
 
         try:
-            data = shp_readtab(f"{fn}[{blkname}]",
-                               ncols=3,
-                               colkeys=["CHANNEL", "E_MIN","E_MAX"],
-                               dstype=Data1DInt)
+            if "pyfits" in shp_backend.__name__:
+                from astropy.io import fits as aspy_fits
+
+                with aspy_fits.open(fn) as hdul:
+                    data = hdul[blkname].data
+
+                    chan = data.CHANNEL
+                    emin = data.E_MIN
+                    emax = data.E_MAX
+
+            else:
+                from pycrates import read_file as pcr_readfile
+
+                data = pcr_readfile(f"{fn}[{blkname}]")
+
+                chan = data.CHANNEL.values.astype(int)
+                emin = data.E_MIN.values.astype(float)
+                emax = data.E_MAX.values.astype(float)
+
         except FileNotFoundError:
             raise ValueError("The specified 'telescope' parameter value is invalid; no corresponding lookup table is available.")
 
-        chan = data.xlo.astype(int)
-        emin = data.xhi.astype(float)
-        emax = data.y.astype(float)
 
         offset = min(chan)
 
+        del(shp_backend)
         del(data)
 
         egrid_unit = get_keys_from_file(f"{fn}[{blkname}]")["EUNIT"]
