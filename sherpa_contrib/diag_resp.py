@@ -49,7 +49,7 @@ or
 
 """
 
-__revision__ = "24 May 2024"
+__revision__ = "06 June 2024"
 
 import os
 import warnings
@@ -652,7 +652,7 @@ def mkdiagresp(telescope: str = "Chandra",
         chantype = speckw.get("CHANTYPE")
 
 
-    if telescope.lower() == "chandra" and chantype.lower() not in ["pi","pha","pha_no-cticorr"]:
+    if telescope.lower() == "chandra" and instrument.lower() == "acis" and chantype.lower() not in ["pi","pha","pha_no-cticorr"]:
         raise ValueError("Chandra/ACIS requires 'chantype' argument to be set to 'PI', 'PHA', or 'PHA_no-CTIcorr'.")
 
     if telescope.lower() == "calet" and chantype.lower() not in ["gain_lo","gain_hi"]:
