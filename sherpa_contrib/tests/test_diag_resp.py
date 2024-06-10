@@ -23,6 +23,7 @@
 Test routines for the diag_resp code
 """
 
+import os
 from collections import namedtuple
 import pytest
 
@@ -40,7 +41,7 @@ try:
 except (ImportError,ModuleNotFoundError) as exc:
     astropy_status = False
 
-from sherpa_contrib.diag_resp import mkdiagresp, build_resp, EGrid
+from sherpa_contrib.diag_resp import mkdiagresp, build_resp, EGrid, _get_random_string
 
 
 
@@ -266,7 +267,7 @@ def test_instconfig_crates(telescope,instconfig,backend=backend):
             print(f'{telescope}/{config.instrument}-{config.detector} passed.')
 
 
-#backend = crates_backend
+backend = crates_backend
 
 ####################################################################################################
 
@@ -292,6 +293,20 @@ def test_diagresp(args):
     print(f"Running {msgconfig}...", end="\n\n")
 
     assert mkdiagresp(**args._asdict()), f"{msgconfig} test failed!"
+
+
+
+@pytest.mark.xfail
+@pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
+@pytest.mark.parametrize("telescope",["erosita","ixpe","nustar"])
+def test_broken_lut_path(telescope):
+    ascds_install = os.environ["ASCDS_INSTALL"]
+    os.environ["ASCDS_INSTALL"] = _get_random_string(strlen=32)
+
+    try:
+        assert mkdiagresp(telescope), "Failed to locate EBOUNDS LUT files..."
+    finally:
+        os.environ["ASCDS_INSTALL"] = ascds_install
 
 
 
@@ -324,6 +339,17 @@ def test_chandra_hrc():
         print(exc)
     finally:
         print(f"~~~~~~~~~~ This test should fail! {msgconfig} should be invalid. ~~~~~~~~~~", end="\n\n")
+
+
+
+@pytest.mark.xfail
+def test_chandra_hrc2():
+    '''
+    Test that Chandra/HRC fails correctly
+    '''
+    args = telescope_config("Chandra","HRC",None,None)
+
+    assert not mkdiagresp(**args._asdict()), "This test should fail for Chandra/HRC."
 
 
 
