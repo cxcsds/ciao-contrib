@@ -23,7 +23,8 @@
 Test routines for the diag_resp code
 """
 
-import os
+from os import environ
+from random import choice
 from collections import namedtuple
 import pytest
 
@@ -42,6 +43,20 @@ except (ImportError,ModuleNotFoundError) as exc:
     astropy_status = False
 
 from sherpa_contrib.diag_resp import mkdiagresp, build_resp, EGrid, _get_random_string
+
+
+
+def _randomize_case(string: str = "") -> str:
+    """
+    return randomized case for a given alphabetical string
+    """
+
+    upper = string.upper()
+    lower = string.lower()
+
+    randomize = (choice(s) for s in zip(lower,upper))
+
+    return "".join(randomize)
 
 
 
@@ -267,7 +282,42 @@ def test_instconfig_crates(telescope,instconfig,backend=backend):
             print(f'{telescope}/{config.instrument}-{config.detector} passed.')
 
 
+
 backend = crates_backend
+
+####################################################################################################
+
+@pytest.mark.filterwarnings("ignore:.*ENERG_LO value < 0:UserWarning")
+@pytest.mark.filterwarnings("ignore:.*ENERG_HI < ENERG_LO:UserWarning")
+@pytest.mark.filterwarnings("ignore:.*has a non-monotonic.*array:UserWarning")
+@pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
+@pytest.mark.parametrize("telescope,instconfig",
+                         [(tscope,config) for tscope,config in _instrument_configs({}).items()])
+def test_instconfig_randomcase(telescope,instconfig,backend=backend):
+    """
+    Test argument case does not matter 
+    """
+    for config in instconfig:
+
+        randomize_arg_case = config._asdict()
+
+        for key,val in randomize_arg_case.items():
+            if isinstance(val,str):
+                randomize_arg_case[key] = _randomize_case(val)
+
+        try:
+            rmf,arf = mkdiagresp(telescope,**randomize_arg_case)
+        except Warning as exc:
+            print(f'{telescope}/{config.instrument} threw a warning: "{exc}"')
+            continue
+
+        except (ValueError,RuntimeError) as exc:
+            print(f'{telescope}/{config.instrument} threw an error: {exc}')
+            continue
+        else:
+            print(f'{telescope}/{config.instrument}-{config.detector} passed.')
+
+
 
 ####################################################################################################
 
@@ -300,13 +350,13 @@ def test_diagresp(args):
 @pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
 @pytest.mark.parametrize("telescope",["erosita","ixpe","nustar"])
 def test_broken_lut_path(telescope):
-    ascds_install = os.environ["ASCDS_INSTALL"]
-    os.environ["ASCDS_INSTALL"] = _get_random_string(strlen=32)
+    ascds_install = environ["ASCDS_INSTALL"]
+    environ["ASCDS_INSTALL"] = _get_random_string(strlen=32)
 
     try:
         assert mkdiagresp(telescope), "Failed to locate EBOUNDS LUT files..."
     finally:
-        os.environ["ASCDS_INSTALL"] = ascds_install
+        environ["ASCDS_INSTALL"] = ascds_install
 
 
 
