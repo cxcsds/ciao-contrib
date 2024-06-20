@@ -295,7 +295,7 @@ backend = crates_backend
                          [(tscope,config) for tscope,config in _instrument_configs({}).items()])
 def test_instconfig_randomcase(telescope,instconfig,backend=backend):
     """
-    Test argument case does not matter 
+    Test argument case does not matter
     """
     for config in instconfig:
 
@@ -418,3 +418,30 @@ def test_channel_offset():
     rmf,_ = build_resp(elo, ehi, offset=startchan)
 
     assert (fchan_min := min(rmf.f_chan)) == startchan, f"Testing with channel offset of {startchan}... minimum 'f_chan' value in the returned RMF object is {fchan_min}.  It is expected that the values should be equal!"
+
+
+
+@pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
+def test_reference_spec_file():
+    spec = f"{environ['ASCDS_INSTALL']}/test/smoke/data/tools-specextract1.pi"
+
+    rmf,arf = mkdiagresp(refspec=spec)
+
+
+
+@pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
+def test_reference_spec_instance():
+    from sherpa.astro.ui import load_data, get_data
+
+    spec = f"{environ['ASCDS_INSTALL']}/test/smoke/data/tools-specextract1.pi"
+    dataid = _get_random_string(strlen=16)
+    load_data(dataid,spec)
+    specinstance = get_data(dataid)
+
+    rmf,arf = mkdiagresp(refspec=specinstance)
+
+
+
+@pytest.mark.xfail
+def test_ethresh_none():
+    rmf,arf = mkdiagresp(telescope="nustar", ethresh=None)
