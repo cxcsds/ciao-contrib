@@ -33,7 +33,7 @@ from region import CXCRegion
 
 
 __toolname__ = "map2reg"
-__revision__ = "13 January 2024"
+__revision__ = "28 June 2024"
 
 __lgr__ = lw.initialize_logger(__toolname__)
 verb0 = __lgr__.verbose0
@@ -43,8 +43,8 @@ verb3 = __lgr__.verbose3
 verb5 = __lgr__.verbose5
 
 # Okay, I don't like globals, but better than passing around
-img = None
-infile = None
+IMG = None
+INFILE = None
 
 
 def set_nproc(pars):
@@ -74,7 +74,7 @@ def get_region(n_at):
     """
     verb2(n_at)
 
-    pixels = np.argwhere(img.get_image().values == n_at)
+    pixels = np.argwhere(IMG.get_image().values == n_at)
 
     if len(pixels) == 0:
         return None
@@ -85,7 +85,7 @@ def get_region(n_at):
                                  suffix="lasso.reg", delete=True)
 
     lasso = make_tool("dmimglasso")
-    lasso.infile = infile
+    lasso.infile = INFILE
     lasso.outfile = tmpfile.name
     lasso.clobber = True
     lasso.low_value = n_at - 0.5
@@ -108,6 +108,73 @@ def get_region(n_at):
     return retval
 
 
+def write_output(regions, pars):
+    """Unfortunately between memory usage and strlen, resort to home
+    grown output routine"""
+
+    def unpack_regions(col):
+        "unpack values from region object"
+        retval = []
+        for reg in regions:
+            for shape in CXCRegion(reg).shapes:
+                vals = getattr(shape, col)
+                retval.append(vals)
+        return retval
+
+    def make_output_shapes():
+        "Set the output shape name based on inclusion flag"
+        retval = []
+        for shape, inc in zip(shapes, incl):
+            val = f"{inc.str}{shape}"
+            retval.append(val)
+        return retval
+
+    def make_output_component():
+        "Create component values"
+        retval = []
+        val = 0
+        for lgc in logic:
+            val += lgc.val
+            retval.append(val)
+        return retval
+
+    def pad_to_max(col):
+        "nan pad arrays to max length"
+        maxlen = max([len(xx) for xx in col])
+        retval = []
+        for val in col:
+            tmp = [np.nan]*maxlen
+            tmp[0:len(val)] = val
+            retval.append(tmp)
+        return retval
+
+    xpos = unpack_regions("xpoints")
+    ypos = unpack_regions("ypoints")
+    xpos = pad_to_max(xpos)
+    ypos = pad_to_max(ypos)
+
+    shapes = unpack_regions("name")
+    incl = unpack_regions("include")
+    out_shapes = make_output_shapes()
+
+    logic = unpack_regions("logic")
+    component = make_output_component()
+
+    radii = [np.nan for val in xpos]
+    angle = [np.nan for val in xpos]
+
+    from crates_contrib.utils import write_columns
+    col_names = ['x', 'y', 'shape', 'r', 'rotang', 'component']
+
+    write_columns(pars["outfile"], np.array(xpos), np.array(ypos), out_shapes,
+                  np.array(radii), np.array(angle), np.array(component),
+                  colnames=col_names, format="fits", clobber=True)
+
+    from ciao_contrib.runtool import add_tool_history
+    add_tool_history(pars["outfile"], __toolname__, pars,
+                     toolversion=__revision__)
+
+
 @lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
     """
@@ -126,13 +193,13 @@ def main():
 
     # Load map file
     from pycrates import read_file
-    global img
-    global infile
-    infile = pars["infile"]
-    img = read_file(infile)
+    global IMG               # pylint: disable=global-statement
+    global INFILE            # pylint: disable=global-statement
+    INFILE = pars["infile"]
+    IMG = read_file(INFILE)
 
     # Get list values to iterate over
-    uniq_vals = np.unique(img.get_image().values)
+    uniq_vals = np.unique(IMG.get_image().values)
     uniq_vals = uniq_vals[uniq_vals > 0]
 
     # Create regions
@@ -140,17 +207,7 @@ def main():
     outreg = parallel_map(get_region, uniq_vals,
                           numcores=int(pars["nproc"]))
 
-    # Unfortunately writing all out to an ascii file sometimes fails
-    # so we go with the more memory intense way:
-    myreg = CXCRegion()
-    for oreg in outreg:
-        myreg += CXCRegion(oreg)
-
-    myreg.write(pars["outfile"], fits=True, clobber=True)
-
-    from ciao_contrib.runtool import add_tool_history
-    add_tool_history(pars["outfile"], __toolname__, pars,
-                     toolversion=__revision__)
+    write_output(outreg, pars)
 
 
 if __name__ == "__main__":
