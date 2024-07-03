@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021, 2022, 2023
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2020, 2021, 2022, 2023, 2024
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "3 July 2024"
+toolver  = "4 July 2024"
 
 import sys
 import os
@@ -88,8 +88,9 @@ from sherpa.astro.utils import xspec
 from sherpa.astro.xspec import get_xsversion
 
 # Do we need this (other than to make sure this is a CIAO environment?)
-#
+# -yes, being used for the 4.17 transition
 import ciao_version
+ciaover = ciao_version.get_ciao_version()
 
 import ciao_contrib.logger_wrapper as lw
 
@@ -758,7 +759,7 @@ def build_setup(modname, sources, fortransources, extrafiles,
         v2(f"   - found: {head:8s}  {matches[0]}")
         out = Path(matches[0]).stem
         return out[3:]  # drop the "lib" prefix
-
+    
     hdsp_version = find_libname("hdsp")
     ccfits_version = find_libname("CCfits")
 
@@ -790,6 +791,7 @@ from numpy.distutils import fcompiler
 this_incpath = os.getcwd()
 numpy_incpath = numpy.get_include()
 sherpa_incpath = "{sherpa_include}"
+ciaover = "{ciaover}"
 
 # Where do we take the XSPEC includes from?
 #
@@ -827,8 +829,11 @@ libs = []
 #   https://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/
 # - looking at the link line created by XSPEC initpackage
 #
-libnames = ["XSFunctions", "XSUtil", "XS",
+libnames = ["XSModel", "XSFunctions", "XSUtil", "XS",
             "{hdsp_version}", "{ccfits_version}", "cfitsio"]
+
+if not ciaover.startswith("4.16"):
+    libnames.remove("XSModel")
 
 # What FORTRAN code needs compiling?
 #
