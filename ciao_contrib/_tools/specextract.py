@@ -27,7 +27,7 @@ Routines to support the specextract tool.
 
 __modulename__ = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "13 November 2023"
+__revision__ = "8 July 2024"
 
 import os
 import sys
@@ -1341,7 +1341,7 @@ and/or background files. Assuming source and background file lists have a matchi
             ewmap_range_check = args["ewmap_range_check"]
 
             try:
-                if not weights_check:
+                if isinstance(weights_check,bool) and not weights_check:
                     return self._check_event_stats(file,
                                                    refcoord_check=refcoord_check,
                                                    weights_check=False)
