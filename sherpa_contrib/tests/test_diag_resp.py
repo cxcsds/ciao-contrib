@@ -241,6 +241,10 @@ def _instrument_configs(fdict: dict) -> dict[tuple[namedtuple]]:
 @pytest.mark.parametrize("telescope,instconfig",
                          [(tscope,config) for tscope,config in _instrument_configs({}).items()])
 def test_instconfig_pyfits(telescope,instconfig,backend=backend):
+    """
+    Check that all available instrument configurations are usable using astropy pyfits file I/O backend
+    """
+
     backend = pyfits_backend
 
     for config in instconfig:
@@ -266,6 +270,10 @@ def test_instconfig_pyfits(telescope,instconfig,backend=backend):
 @pytest.mark.parametrize("telescope,instconfig",
                          [(tscope,config) for tscope,config in _instrument_configs({}).items()])
 def test_instconfig_crates(telescope,instconfig,backend=backend):
+    """
+    Check that all available instrument configurations are usable using CIAO's crates file I/O backend
+    """
+
     backend = crates_backend
 
     for config in instconfig:
@@ -326,7 +334,12 @@ telescope_config = namedtuple("telescopeconfig", ["telescope","instrument","dete
 telescope_args = [ telescope_config("Chandra","ACIS",None,"PHA"),
                    telescope_config("Chandra","ACIS",None,"PI"),
                    telescope_config("XMM","RGS",None,None),
-                   telescope_config("Suzaku","XIS",None,None) ]
+                   telescope_config("Suzaku","XIS",None,None),
+                   telescope_config("NuSTAR",None,None,None),
+                   telescope_config("eRosita",None,None,None),
+                   telescope_config("SRG",None,None,None),
+                   telescope_config("NICER",None,None,None),
+                   telescope_config("IXPE",None,None,None) ]
 
 telescope_args_fails = [ telescope_config("XMM","EPIC","PN",None),
                          telescope_config("XMM","EPIC","MOS",None) ]
@@ -336,6 +349,9 @@ telescope_args_fails = [ telescope_config("XMM","EPIC","PN",None),
 @pytest.mark.parametrize("args", telescope_args)
 @pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
 def test_diagresp(args):
+    """
+    Test for configuration where a full set of arguments is unnecessary
+    """
 
     msgconfig = _get_configstr(*args)
 
@@ -350,6 +366,11 @@ def test_diagresp(args):
 @pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
 @pytest.mark.parametrize("telescope",["erosita","ixpe","nustar"])
 def test_broken_lut_path(telescope):
+    """
+    The tool should error out if the energy grid lookup table files are not found in the
+    $ASCDS_INSTALL/data/ebounds-lut directory
+    """
+
     ascds_install = environ["ASCDS_INSTALL"]
     environ["ASCDS_INSTALL"] = _get_random_string(strlen=32)
 
@@ -363,7 +384,10 @@ def test_broken_lut_path(telescope):
 @pytest.mark.xfail
 @pytest.mark.parametrize("args", telescope_args_fails)
 def test_diagresp_fails(args):
-
+    """
+    Test that arguments provided, which neglects to set a required parameter for the
+    instrument configuration, will fail.  If it runs to completion, then the test fails.
+    """
     msgconfig = _get_configstr(*args)
 
     assert not mkdiagresp(**args._asdict()), f"{msgconfig} test should be expected to fail!"
@@ -371,9 +395,9 @@ def test_diagresp_fails(args):
 
 
 def test_chandra_hrc():
-    '''
+    """
     Test that Chandra/HRC fails correctly
-    '''
+    """
     args = telescope_config("Chandra","HRC",None,None)
 
     try:
@@ -394,9 +418,9 @@ def test_chandra_hrc():
 
 @pytest.mark.xfail
 def test_chandra_hrc2():
-    '''
+    """
     Test that Chandra/HRC fails correctly
-    '''
+    """
     args = telescope_config("Chandra","HRC",None,None)
 
     assert not mkdiagresp(**args._asdict()), "This test should fail for Chandra/HRC."
@@ -405,9 +429,9 @@ def test_chandra_hrc2():
 
 @pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
 def test_channel_offset():
-    '''
-    test a large channel offset value
-    '''
+    """
+    Test a large channel offset value
+    """
 
     print("*" * 80)
     print("Testing 'EGrid' class and defining an energy grid for generating a non-standard spectral channel offset...", end="\n\n")
@@ -415,7 +439,7 @@ def test_channel_offset():
 
     startchan = 25
 
-    rmf,_ = build_resp(elo, ehi, offset=startchan)
+    rmf,arf = build_resp(elo, ehi, offset=startchan)
 
     assert (fchan_min := min(rmf.f_chan)) == startchan, f"Testing with channel offset of {startchan}... minimum 'f_chan' value in the returned RMF object is {fchan_min}.  It is expected that the values should be equal!"
 
@@ -423,6 +447,11 @@ def test_channel_offset():
 
 @pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
 def test_reference_spec_file():
+    """
+    Test that using a reference (Chandra) spectrum file instead of explicitly
+    specifying instrument setup will pick up header keywords and generate responses
+    """
+
     spec = f"{environ['ASCDS_INSTALL']}/test/smoke/data/tools-specextract1.pi"
 
     rmf,arf = mkdiagresp(refspec=spec)
@@ -431,6 +460,10 @@ def test_reference_spec_file():
 
 @pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
 def test_reference_spec_instance():
+    """
+    Test that using a reference spectrum PHA object sets up instrument setup
+    """
+
     from sherpa.astro.ui import load_data, get_data
 
     spec = f"{environ['ASCDS_INSTALL']}/test/smoke/data/tools-specextract1.pi"
@@ -444,4 +477,9 @@ def test_reference_spec_instance():
 
 @pytest.mark.xfail
 def test_ethresh_none():
+    """
+    Check that not modifying zero-valued energy bin edges with small-valued 'ethresh'
+    is working without throwing an error when set to 'None'
+    """
+
     rmf,arf = mkdiagresp(telescope="nustar", ethresh=None)
