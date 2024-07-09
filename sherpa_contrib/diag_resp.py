@@ -54,6 +54,7 @@ __revision__ = "20 June 2024"
 import os
 import warnings
 from logging import getLogger
+from functools import wraps
 
 import numpy.typing as npt
 from numpy import arange
@@ -73,6 +74,7 @@ def _reformat_wmsg(func):
     where Sherpa warning message is being thrown for replacing 0s with ethresh.
     """
 
+    @wraps(func)
     def run_func(*args, **kwargs):
         warnings_reset = warnings.formatwarning
         warnings.formatwarning = lambda msg, *args_warn, **kwargs_warn: f'Warning: {msg}\n'
@@ -515,7 +517,7 @@ def build_resp(emin, emax, offset: int, ethresh: float|None=1e-12):
 
     except Exception as exc:
         if repr(exc).find("value <= 0") != -1:
-            
+
             raise RuntimeError(f"{exc.args[0]}.  Set 'ethresh' to a float value greater than zero and not None.") from None
 
         logger.warning(exc)
@@ -542,7 +544,7 @@ def mkdiagresp(telescope: str = "Chandra",
                ethresh: float|None = 1e-12):
     """
     Return a diagonal RMF and flat ARF data objects with matching energy grid for a specified instrument/detector.
-    Use set_rmf and set_arf on the respective instances.  Use 'build_resp' for a non-instrument specific [or generalzied] energy-grid configuration.
+    Use set_rmf and set_arf on the respective instances.  Use 'build_resp' for a non-instrument specific [or generalized] energy-grid configuration.
 
     "PI" channel-type is the default, assumed spectral type.
 
