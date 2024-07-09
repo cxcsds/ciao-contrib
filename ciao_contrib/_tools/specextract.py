@@ -443,7 +443,7 @@ data with chandra_repro or add the keywords to the event file(s) with r4_header_
         if counts == "0":
             try:
                 if refcoord_check.lower() in ["","none","indef"]:
-                    raise IOError(f"{file} has zero counts. Check that the region correct (e.g. wrong region, coordinates not in sky pixels or degrees) or use parameter='refcoord'.")
+                    raise IOError(f"{file} has zero counts. Check that the region formatting is correct (e.g. wrong region, coordinates not in sky pixels or degrees) or use the 'refcoord' parameter.")
 
                 if weights_check:
                     v1("WARNING: Unweighted responses will be created at the 'refcoord' position.\n")
