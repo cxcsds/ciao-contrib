@@ -108,7 +108,7 @@ def get_region(n_at):
     return retval
 
 
-def write_region_output(regions, outfile, fmt="fits", clobber=True):
+def write_region_output(regions, outfile, clobber=True):
     """Unfortunately between memory usage and strlen, resort to home
     grown output routine"""
 
@@ -116,6 +116,8 @@ def write_region_output(regions, outfile, fmt="fits", clobber=True):
         "unpack values from region object"
         retval = []
         for reg in regions:
+            if reg is None or len(reg) == 0:
+                continue
             for shape in CXCRegion(reg).shapes:
                 vals = getattr(shape, col)
                 if vals is None:
@@ -160,12 +162,26 @@ def write_region_output(regions, outfile, fmt="fits", clobber=True):
     radii = unpack_regions('radii')
     angle = unpack_regions('angles')
 
-    from crates_contrib.utils import write_columns
-    col_names = ['x', 'y', 'shape', 'r', 'rotang', 'component']
+    from crates_contrib.utils import make_table_crate
+    from pycrates import set_key
 
-    write_columns(outfile, np.array(xpos), np.array(ypos), out_shapes,
-                  np.array(radii), np.array(angle), np.array(component),
-                  colnames=col_names, format=fmt, clobber=clobber)
+    col_names = ['X', 'Y', 'SHAPE', 'R', 'ROTANG', 'COMPONENT']
+
+    tab = make_table_crate(np.array(xpos), np.array(ypos), out_shapes,
+                           np.array(radii), np.array(angle),
+                           np.array(component), colnames=col_names)
+
+    set_key(tab, "MTYPE1", "POS")
+    set_key(tab, "MFORM1", "X,Y")
+    set_key(tab, "CONTENT", "REGION")
+    set_key(tab, "HDUDOC", "ASC-FITS-REGION-1.2: Rots, McDowell: FITS REGION Binary Table Design")
+    set_key(tab, "HDUVERS", "1.2.0")
+    set_key(tab, "HDUCLASS", "ASC")
+    set_key(tab, "HDUCLAS1", "REGION")
+    set_key(tab, "HDUCLAS2", "STANDARD")
+    set_key(tab, "CREATOR", __toolname__)
+    tab.name = "REGION"
+    tab.write(outfile, clobber=clobber)
 
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
@@ -185,14 +201,23 @@ def main():
     set_nproc(pars)
 
     # Load map file
-    from pycrates import read_file
+    from crates_contrib.masked_image_crate import MaskedIMAGECrate
     global IMG               # pylint: disable=global-statement
     global INFILE            # pylint: disable=global-statement
     INFILE = pars["infile"]
-    IMG = read_file(INFILE)
+    IMG = MaskedIMAGECrate(INFILE)
 
     # Get list values to iterate over
-    uniq_vals = np.unique(IMG.get_image().values)
+    vals = IMG.get_image().values
+    ylen, xlen = vals.shape
+
+    for yy in range(ylen):
+        for xx in range(xlen):
+            if not IMG.valid(xx,yy):
+                vals[yy][xx] = 0
+    IMG.get_image().values = vals
+
+    uniq_vals = np.unique(vals)
     uniq_vals = uniq_vals[uniq_vals > 0]
 
     # Create regions
