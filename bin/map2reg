@@ -108,7 +108,7 @@ def get_region(n_at):
     return retval
 
 
-def write_region_output(regions, outfile, clobber=True):
+def write_region_output(regions, outfile, stdhdr=None, clobber=True):
     """Unfortunately between memory usage and strlen, resort to home
     grown output routine"""
 
@@ -171,6 +171,20 @@ def write_region_output(regions, outfile, clobber=True):
                            np.array(radii), np.array(angle),
                            np.array(component), colnames=col_names)
 
+    def get_version():
+        # ~ from ciao_contrib._tools import versioninfo
+        # ~ vers = versioninfo.get_latest_versions()
+        # ~ ciao_vers = vers['CIAO']
+        # ~ retval = " ".join(ciao_vers.split()[0:2])
+
+        from ciao_version import get_ciao_version        
+        number = get_ciao_version()
+        retval = f"CIAO {number}"
+        return retval
+
+    if stdhdr:
+        tab.put_stdhdr(stdhdr)
+
     set_key(tab, "MTYPE1", "POS")
     set_key(tab, "MFORM1", "X,Y")
     set_key(tab, "CONTENT", "REGION")
@@ -180,6 +194,7 @@ def write_region_output(regions, outfile, clobber=True):
     set_key(tab, "HDUCLAS1", "REGION")
     set_key(tab, "HDUCLAS2", "STANDARD")
     set_key(tab, "CREATOR", __toolname__)
+    set_key(tab, "ASCDSVER", get_version())
     tab.name = "REGION"
     tab.write(outfile, clobber=clobber)
 
@@ -225,7 +240,9 @@ def main():
     outreg = parallel_map(get_region, uniq_vals,
                           numcores=int(pars["nproc"]))
 
-    write_region_output(outreg, pars["outfile"], clobber=pars["clobber"])
+    stdhdr = IMG.get_stdhdr("BASIC", add_missing=False)
+    write_region_output(outreg, pars["outfile"], stdhdr=stdhdr,
+                        clobber=pars["clobber"])
 
     from ciao_contrib.runtool import add_tool_history
     add_tool_history(pars["outfile"], __toolname__, pars,
