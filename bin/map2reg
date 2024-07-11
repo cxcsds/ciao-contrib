@@ -125,6 +125,8 @@ def write_region_output(regions, outfile, fmt="fits", clobber=True):
 
     def make_output_shapes():
         "Set the output shape name based on inclusion flag"
+        shapes = unpack_regions("name")
+        incl = unpack_regions("include")
         retval = []
         for shape, inc in zip(shapes, incl):
             val = f"{inc.str}{shape}"
@@ -133,6 +135,7 @@ def write_region_output(regions, outfile, fmt="fits", clobber=True):
 
     def make_output_component():
         "Create component values"
+        logic = unpack_regions("logic")
         retval = []
         val = 0
         for lgc in logic:
@@ -150,18 +153,10 @@ def write_region_output(regions, outfile, fmt="fits", clobber=True):
             retval.append(tmp)
         return retval
 
-    xpos = unpack_regions("xpoints")
-    ypos = unpack_regions("ypoints")
-    xpos = pad_to_max(xpos)
-    ypos = pad_to_max(ypos)
-
-    shapes = unpack_regions("name")
-    incl = unpack_regions("include")
+    xpos = pad_to_max(unpack_regions("xpoints"))
+    ypos = pad_to_max(unpack_regions("ypoints"))
     out_shapes = make_output_shapes()
-
-    logic = unpack_regions("logic")
     component = make_output_component()
-
     radii = unpack_regions('radii')
     angle = unpack_regions('angles')
 
