@@ -72,13 +72,32 @@ class MaskedIMAGECrate(IMAGECrate):
             #  warning()
             return
 
-        try:
-            xform = self.get_axis(sky).get_transform()
-            subspace = self.get_subspace_data(1, sky)
-            assert subspace.region is not None, "No region in subpsace"
-        except Exception as bad:
-            #  warnings
-            return
+        xform = self.get_axis(sky).get_transform()
+        subspace = self.get_subspace_data(1, sky)
+
+        xcol = 'x'
+        ycol = 'y'
+        def get_col_range(col_name):
+            'Get column range'
+            col_range = self.get_subspace_data(1, col_name)
+            if col_range:
+                my_range = (col_range.range_min, col_range.range_max)
+            else:
+                my_range = None
+            return my_range
+
+        def check_col_range(col_range, col_val):
+            'Check if val is in ranges'
+            if col_range is None or len(col_range) == 0:
+                return 1
+
+            for low, hi in zip(*col_range):
+                if low <= col_val and col_val < hi:
+                    return 1
+            return 0
+
+        xrange_vals = get_col_range(xcol)
+        yrange_vals = get_col_range(ycol)
 
         # We need to check regInside using physical coords. Compute 'em all.
         ylen, xlen = self._pix.shape
@@ -99,7 +118,20 @@ class MaskedIMAGECrate(IMAGECrate):
             j = int(ij[1])-1
             x = xy[0]
             y = xy[1]
-            self._mask[j][i] = 1 if old.regInsideRegion(subspace.region, x, y) else 0
+
+            if not check_col_range(xrange_vals, x):
+                self._mask[j][i] = 0
+                continue
+
+            if not check_col_range(yrange_vals, y):
+                self._mask[j][i] = 0
+                continue
+
+            if subspace.region and not old.regInsideRegion(subspace.region, x, y):
+                self._mask[j][i] = 0
+                continue
+
+            self._mask[j][i] = 1
 
     def __make_valid_mask(self):
         """
