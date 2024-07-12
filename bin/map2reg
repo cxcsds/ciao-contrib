@@ -81,22 +81,22 @@ def get_region(n_at):
 
     ypos, xpos = pixels[0] + 1  # Image coords are +1 from array index
 
-    tmpfile = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
-                                 suffix="lasso.reg", delete=True)
+    with NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
+                            suffix="lasso.reg", delete=True) as tmpfile:
 
-    lasso = make_tool("dmimglasso")
-    lasso.infile = INFILE
-    lasso.outfile = tmpfile.name
-    lasso.clobber = True
-    lasso.low_value = n_at - 0.5
-    lasso.high_value = n_at + 0.5
-    lasso.value = "absolute"
-    lasso.coord = "logical"
-    lasso.xpos = xpos
-    lasso.ypos = ypos
-    lasso()
+        lasso = make_tool("dmimglasso")
+        lasso.infile = INFILE
+        lasso.outfile = tmpfile.name
+        lasso.clobber = True
+        lasso.low_value = n_at - 0.5
+        lasso.high_value = n_at + 0.5
+        lasso.value = "absolute"
+        lasso.coord = "logical"
+        lasso.xpos = xpos
+        lasso.ypos = ypos
+        lasso()
 
-    lasso_reg = CXCRegion(tmpfile.name)
+        lasso_reg = CXCRegion(tmpfile.name)
 
     if lasso_reg is None or len(lasso_reg) == 0:
         verb0(f"Warning: {n_at} map is empty")
@@ -112,7 +112,7 @@ def write_region_output(regions, outfile, stdhdr=None, clobber=True):
     """Unfortunately between memory usage and strlen, resort to home
     grown output routine"""
 
-    def unpack_regions(col):
+    def _unpack_regions(col):
         "unpack values from region object"
         retval = []
         for reg in regions:
@@ -125,19 +125,19 @@ def write_region_output(regions, outfile, stdhdr=None, clobber=True):
                 retval.append(vals)
         return retval
 
-    def make_output_shapes():
+    def _make_output_shapes():
         "Set the output shape name based on inclusion flag"
-        shapes = unpack_regions("name")
-        incl = unpack_regions("include")
+        shapes = _unpack_regions("name")
+        incl = _unpack_regions("include")
         retval = []
         for shape, inc in zip(shapes, incl):
             val = f"{inc.str}{shape}"
             retval.append(val)
         return retval
 
-    def make_output_component():
+    def _make_output_component():
         "Create component values"
-        logic = unpack_regions("logic")
+        logic = _unpack_regions("logic")
         retval = []
         val = 0
         for lgc in logic:
@@ -145,9 +145,9 @@ def write_region_output(regions, outfile, stdhdr=None, clobber=True):
             retval.append(val)
         return retval
 
-    def pad_to_max(col):
+    def _pad_to_max(col):
         "nan pad arrays to max length"
-        maxlen = max([len(xx) for xx in col])
+        maxlen = max(len(xx) for xx in col)
         retval = []
         for val in col:
             tmp = [np.nan]*maxlen
@@ -155,47 +155,46 @@ def write_region_output(regions, outfile, stdhdr=None, clobber=True):
             retval.append(tmp)
         return retval
 
-    xpos = pad_to_max(unpack_regions("xpoints"))
-    ypos = pad_to_max(unpack_regions("ypoints"))
-    out_shapes = make_output_shapes()
-    component = make_output_component()
-    radii = unpack_regions('radii')
-    angle = unpack_regions('angles')
+    def _update_header():
+        'Add standard headers'
+
+        def _get_version():
+            'Get version number'
+            from ciao_version import get_ciao_version
+            number = get_ciao_version()
+            retval = f"CIAO {number}"
+            return retval
+
+        if stdhdr:
+            tab.put_stdhdr(stdhdr)
+
+        keywords = (("MTYPE1", "POS"), ("MFORM1", "X,Y"),
+                    ("CONTENT", "REGION"),
+                    ("HDUDOC", "ASC-FITS-REGION-1.2: Rots, McDowell: FITS REGION Binary Table Design"),
+                    ("HDUVERS", "1.2.0"), ("HDUCLASS", "ASC"),
+                    ("HDUCLAS1", "REGION"), ("HDUCLAS2", "STANDARD"),
+                    ("CREATORE", __toolname__), ("ASCDSVER", _get_version()),
+                    )
+
+        from pycrates import set_key
+        for kwrd, val in keywords:
+            set_key(tab, kwrd, val)
+        tab.name = "REGION"
 
     from crates_contrib.utils import make_table_crate
-    from pycrates import set_key
+
+    xpos = _pad_to_max(_unpack_regions("xpoints"))
+    ypos = _pad_to_max(_unpack_regions("ypoints"))
+    out_shapes = _make_output_shapes()
+    component = _make_output_component()
+    radii = _unpack_regions('radii')
+    angle = _unpack_regions('angles')
 
     col_names = ['X', 'Y', 'SHAPE', 'R', 'ROTANG', 'COMPONENT']
-
     tab = make_table_crate(np.array(xpos), np.array(ypos), out_shapes,
                            np.array(radii), np.array(angle),
                            np.array(component), colnames=col_names)
-
-    def get_version():
-        # ~ from ciao_contrib._tools import versioninfo
-        # ~ vers = versioninfo.get_latest_versions()
-        # ~ ciao_vers = vers['CIAO']
-        # ~ retval = " ".join(ciao_vers.split()[0:2])
-
-        from ciao_version import get_ciao_version        
-        number = get_ciao_version()
-        retval = f"CIAO {number}"
-        return retval
-
-    if stdhdr:
-        tab.put_stdhdr(stdhdr)
-
-    set_key(tab, "MTYPE1", "POS")
-    set_key(tab, "MFORM1", "X,Y")
-    set_key(tab, "CONTENT", "REGION")
-    set_key(tab, "HDUDOC", "ASC-FITS-REGION-1.2: Rots, McDowell: FITS REGION Binary Table Design")
-    set_key(tab, "HDUVERS", "1.2.0")
-    set_key(tab, "HDUCLASS", "ASC")
-    set_key(tab, "HDUCLAS1", "REGION")
-    set_key(tab, "HDUCLAS2", "STANDARD")
-    set_key(tab, "CREATOR", __toolname__)
-    set_key(tab, "ASCDSVER", get_version())
-    tab.name = "REGION"
+    _update_header()
     tab.write(outfile, clobber=clobber)
 
 
@@ -228,7 +227,7 @@ def main():
 
     for yy in range(ylen):
         for xx in range(xlen):
-            if not IMG.valid(xx,yy):
+            if not IMG.valid(xx, yy):
                 vals[yy][xx] = 0
     IMG.get_image().values = vals
 
