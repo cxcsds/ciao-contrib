@@ -77,6 +77,7 @@ class MaskedIMAGECrate(IMAGECrate):
 
         xcol = 'x'
         ycol = 'y'
+
         def get_col_range(col_name):
             'Get column range'
             col_range = self.get_subspace_data(1, col_name)
@@ -89,12 +90,12 @@ class MaskedIMAGECrate(IMAGECrate):
         def check_col_range(col_range, col_val):
             'Check if val is in ranges'
             if col_range is None or len(col_range) == 0:
-                return 1
+                return True
 
             for low, hi in zip(*col_range):
-                if low <= col_val and col_val < hi:
-                    return 1
-            return 0
+                if low <= col_val < hi:
+                    return True
+            return False
 
         xrange_vals = get_col_range(xcol)
         yrange_vals = get_col_range(ycol)
