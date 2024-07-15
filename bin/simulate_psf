@@ -101,7 +101,13 @@ def check_setup( pars ):
         
     if "marx" in [pars["simulator"], pars["projector"]]:
         if is_none( pars["marx_root"]):
-            raise Exception("MARX_ROOT is not provided in parameter marx_root")
+            from shutil import which
+            marx = which('marx')
+            if marx is None:
+                raise Exception("ERROR: Cannot determine marx_root. Please specify marx installation directory.")
+
+            bindir = os.path.dirname(marx)               # ie ".."
+            pars["marx_root"] = os.path.dirname(bindir)  # another ".."
 
     if "yes" == pars["pileup"]:
         verb1("\n# {0} ({1}): Pileup warning:  PSF images are not correctly normalized when pileup=yes is used.\n".format(toolname,__revision__))
