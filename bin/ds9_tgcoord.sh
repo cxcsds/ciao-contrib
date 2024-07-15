@@ -127,7 +127,7 @@ do
             
             echo "point $ex $ey # "point=circle text="{${energy},L${order}}"
             echo "point $ex $ey # "point=circle text="{${energy},L${order}}" | \
-              xpaset ${ds9} regions
+              xpaset ${ds9} regions -format ds9 -system physical
           
         else # HETG, do both
 
@@ -139,7 +139,7 @@ do
             
             echo "point $ex $ey # "point=circle text="{${energy},H${order}}"
             echo "point $ex $ey # "point=circle text="{${energy},H${order}}" | \
-              xpaset ${ds9} regions
+              xpaset ${ds9} regions format ds9 -system physical
 
             punlearn dmcoords
             dmcoords "${f}" op=cel ra=$razo dec=$deczo energy=$energy order=$order \
@@ -149,7 +149,7 @@ do
             
             echo "point $ex $ey # "point=circle text="{${energy},M${order}}"
             echo "point $ex $ey # "point=circle text="{${energy},M${order}}" | \
-              xpaset ${ds9} regions
+              xpaset ${ds9} regions format ds9 -system physical
 
         fi
 

@@ -56,7 +56,7 @@ fi
 new=`pget dmstat out_cntrd_phys`
 
 xpaset -p $ds9 regions delete all
-cat $DAX_OUTDIR/$$_all.reg | sed "s/$old/$new/" | xpaset $ds9 regions
+cat $DAX_OUTDIR/$$_all.reg | sed "s/$old/$new/" | xpaset $ds9 regions -format ds9 -system physical
 \rm -f  $DAX_OUTDIR/$$_all.reg
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2014-2023 Smithsonian Astrophysical Observatory
+# Copyright (C) 2014-2024 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,12 +22,12 @@
 
 import sys
 import numpy as np
-
-
-__toolname__ = "merge_too_small"
-__revision__ = "24 August 2023"
+import pycrates as pc
 
 import ciao_contrib.logger_wrapper as lw
+__toolname__ = "merge_too_small"
+__revision__ = "14 February 2024"
+
 verb0 = lw.initialize_logger(__toolname__).verbose0
 verb1 = lw.initialize_logger(__toolname__).verbose1
 verb2 = lw.initialize_logger(__toolname__).verbose2
@@ -44,29 +44,32 @@ def find_neighbors(mask, maskval):
     # For each pixel with a given maskval value
     for ee in zip(xxyy[1], xxyy[0]):
 
-        # Go +/- 1 in Y direction
-        for dy in [ee[1]-1, ee[1], ee[1]+1]:
+        # Go +/- 1 in Y and X directions
+        for dy, dx in [(ee[1]-1, ee[0]),
+                       (ee[1]+1, ee[0]),
+                       (ee[1], ee[0]-1),
+                       (ee[1], ee[0]+1)]:
+
             if dy < 0 or dy >= mask.shape[0]:
                 continue
+            if dx < 0 or dx >= mask.shape[1]:
+                continue
 
-            # Go +/- 1 in the X direction
-            for dx in [ee[0]-1, ee[0], ee[0]+1]:
-                if dx < 0 or dx >= mask.shape[1]:
-                    continue
-
-                if mask[dy, dx] != maskval:
-                    retvals.append(int(mask[dy, dx]))
+            if mask[dy, dx] != maskval and mask[dy, dx] != 0:
+                retvals.append(int(mask[dy, dx]))
 
     retvals = set(retvals)
     return list(retvals)
 
 
-def purge_too_small(mask, minarea, counts):
+def purge_too_small(mask, minarea, counts, joinfunc):
     """
     The idea is to check the area or total counts of each
     mask value.  If it is below the threshold then the map value
     is reassigned to the neighbor with the smallest area/counts.
     """
+
+    mask_ids = list(np.unique(mask))
     mask_max = int(np.max(mask))
     skiplist = []   # The list of maskidvals that have been reassigned
 
@@ -78,37 +81,63 @@ def purge_too_small(mask, minarea, counts):
         hh = np.histogram(mask, bins=mask_max, range=(1, mask_max+1),
                           weights=counts)
         area = hh[0]
-        maskid = hh[1][:-1]
+        maskid = hh[1][:-1].astype(int)
 
         am = list(zip(area, maskid))
-        am.sort()
-        am = [x for x in am if x[0] > 0 and x[0] not in skiplist]
+        am = [x for x in am if x[1] not in skiplist]
+        am = [x for x in am if x[1] in mask_ids]
 
-        if am[0][0] > minarea:
+        working_on = min(am)
+
+        if working_on[0] > minarea:
             # When all the mapvals are above the threshold we break out
             # and return.
             break
 
-        verb2(f"Working on mask_id {am[0][1]} with value {am[0][0]}")
-        nn = find_neighbors(mask, am[0][1])
-
+        verb2(f"Working on mask_id {working_on[1]} with value {working_on[0]}")
+        nn = find_neighbors(mask, working_on[1])
         if len(nn) == 0:
-            # If area is 0, then skip it.
-            skiplist.append(am[0][1])
+            # If there are no neighbors, then continue
+            mask_ids.remove(working_on[1])
             continue
 
         nn = [i-1 for i in nn]  # convert mapvalue to histogram index
-        zz = list(zip(area[nn], maskid[nn]))
-        zz.sort()
 
+        zz = list(zip(area[nn], maskid[nn]))
         zz = [x for x in zz
-              if (x[1] != am[0][1]) and (x[0] > 0) and (x[1] not in skiplist)]
+              if (x[1] != working_on[1]) and (x[1] not in skiplist) and (x[1] in mask_ids)]
 
         if len(zz) > 0:
-            replace_val = int(zz[0][1])
-            mask[np.where(mask == int(am[0][1]))] = replace_val
+            join_index = joinfunc(zz)
+            replace_val = int(join_index[1])
+            mask[np.where(mask == int(working_on[1]))] = replace_val
+            verb2(f"Replacing {working_on[1]} with {replace_val}")
         else:
-            skiplist.append(am[0][0])  # There are no pixel with this mapval
+            skiplist.append(working_on[1])  # There are no pixel with this mapval
+
+        mask_ids.remove(working_on[1])
+
+
+def parse_parameters(pars):
+    '''
+    Parse the input parameters that need parsing:
+
+    '''
+    if "counts" == pars["method"]:
+        counts = pc.read_file(pars["imgfile"]).get_image().values
+    elif "area" == pars["method"]:
+        counts = None
+    else:
+        raise ValueError("Unknown value for method parameter")
+
+    if "min" == pars["join"]:
+        joinfunc = min
+    elif "max" == pars["join"]:
+        joinfunc = max
+    else:
+        raise ValueError("Unknown value for join parameter")
+
+    return counts, joinfunc
 
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
@@ -126,19 +155,14 @@ def main():
     outfile_clobber_checks(pars["clobber"], pars["outfile"])
     outfile_clobber_checks(pars["clobber"], pars["binimg"])
 
-    import pycrates as pc
     inimg = pc.read_file(pars["infile"])
-    mask = inimg.get_image().values  # mask pointing to data in the crate
+    mask = inimg.get_image().values.astype(int)
 
-    if "counts" == pars["method"]:
-        counts = pc.read_file(pars["imgfile"]).get_image().values
-    elif "area" == pars["method"]:
-        counts = None
-    else:
-        raise ValueError("Unknown value for method parameter")
+    counts, joinfunc = parse_parameters(pars)
 
-    purge_too_small(mask, int(pars["minvalue"]), counts)
+    purge_too_small(mask, int(pars["minvalue"]), counts, joinfunc)
 
+    inimg.get_image().values = mask
     pc.write_file(inimg, pars["outfile"], clobber=pars["clobber"])
 
     from ciao_contrib.runtool import add_tool_history

@@ -3356,7 +3356,7 @@ parinfo['merge_obs'] = {
 parinfo['merge_too_small'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input map",None),ParValue("outfile","f","Output map",None)],
-    'opt': [ParSet("method","s","Apply minval threshold to area of region or counts in region?",'counts',["counts","area"]),ParValue("imgfile","f","Input counts image file, required for method=counts",None),ParValue("binimg","f","Optional output image file",None),ParRange("minvalue","i","Minimum counts or area (logical pixels)",0,0,None),ParRange("verbose","i","Tool chatter level",0,0,5),ParValue("clobber","b","Remove outfile if it already exists?",False)],
+    'opt': [ParSet("method","s","Apply minval threshold to area of region or counts in region?",'counts',["counts","area"]),ParValue("imgfile","f","Input counts image file, required for method=counts",None),ParValue("binimg","f","Optional output image file",None),ParRange("minvalue","i","Minimum counts or area (logical pixels)",0,0,None),ParSet("join","s","Join deficient region with which neighbor?",'min',["min","max"]),ParRange("verbose","i","Tool chatter level",0,0,5),ParValue("clobber","b","Remove outfile if it already exists?",False)],
     }
 
 

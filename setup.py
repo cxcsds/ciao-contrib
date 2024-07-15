@@ -43,7 +43,7 @@ data_files = [("param", list_files("param/*.par")),
               ("share/xspec/install", list_files("share/xspec/install/*cxx")),
               ("config", list_files("config/*")),
               ("data", list_files("data/*")),
-              (".", ["Changes.CIAO_scripts", "README_CIAO_scripts"])
+              (".", ["Changes.CIAO_scripts"])
 ]
 
 setup(version=VERSION,
