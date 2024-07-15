@@ -678,6 +678,14 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
             raise IOError("Please setup for saotrace first")
         projector="psf_project_ray"
     elif simulator == 'marx':
+        if myparams.marx_root == '':
+            from shutil import which
+            marx = which('marx')
+            if marx is None:
+                raise IOError("Please set marx_root parameter to directory where MARX is installed")
+            bindir = os.path.dirname(marx)               # ie ".."
+            myparams.marx_root = os.path.dirname(bindir)  # another ".."
+
         if not os.path.exists(myparams.marx_root):
             raise IOError("Please set marx_root parameter to directory where MARX is installed")
         projector="marx"
@@ -770,8 +778,8 @@ def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
     if simulate is None:
         psf_stk = stk.build( myparams.psffile )
     elif simulate == "marx":
-        if 'MARX_ROOT' not in os.environ:
-            raise RuntimeError("Please setup for MARX before using this option")
+        # ~ if 'MARX_ROOT' not in os.environ:
+            # ~ raise RuntimeError("Please setup for MARX before using this option")
         psf_stk = simulate_psfs( myparams, at_energy, src, bkg, simulator="marx" )
     else:
         raise NotImplementedError("Unknown simulator={}".format(simulate))
