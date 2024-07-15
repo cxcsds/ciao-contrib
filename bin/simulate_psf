@@ -1024,6 +1024,10 @@ def get_obi_info( pars ):
     obi_info["date-obs"] = get_dm_key( tab, "date-obs")
 
     if "ACIS" == obi_info["instrume"]:
+
+        if get_dm_key(tab, "readmode") == "CONTINUOUS":
+            raise ValueError("ERROR: Unable to simulate a PSF for Continuous Clocking Mode observations")    
+
         ## This should be OK for interleaved mode since
         # TIMEDEL should equal A or B depedning on P/S
         obi_info["exptime"] = get_dm_key(tab, "exptime")
