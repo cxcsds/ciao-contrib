@@ -26,7 +26,7 @@ import sys
 import subprocess
 
 toolname = "simulate_psf"
-__revision__ = "09 March 2023"
+__revision__ = "15 July 2024"
 
 
 from cxcdm import *
@@ -1119,6 +1119,9 @@ def get_xygrid( pars, use_root, src_info):
         mm = int(int( pars["minsize"] ) / 2.0 )
         mlen = max( mlen, mm )
 
+    if "INDEF" != pars["maxsize"]:
+        mm = int(int( pars["maxsize"] ) / 2.0 )
+        mlen = min( mlen, mm )
 
     # TODO integer / half-pixel ize?
     xl = xx - mlen
@@ -1361,7 +1364,16 @@ def main():
     from ciao_contrib.param_soaker import get_params
 
     pars = get_params("simulate_psf", "rw", sys.argv,
-                      verbose={"set":logWrap.set_verbosity, "cmd":verb1} )
+                      verbose={"set":logWrap.set_verbosity, "cmd":verb1},
+                      musthave=("infile","outroot","ra","dec",
+                                "spectrumfile","monoenergy","flux",
+                                "simulator","rayfile","projector",
+                                "random_seed","blur","readout_streak",
+                                "pileup","ideal","extended","binsize",
+                                "numsig","minsize","maxsize","numiter",
+                                "numrays","keepiter","asolfile",
+                                "marx_root","verbose",)                      
+                      )
 
     # Hard code these for now, restore w/o underscore when ready
     pars["_saotrace_install"] = ""
