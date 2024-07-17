@@ -32,7 +32,7 @@ MIN_FRACTION = 0.6
 FRACTION_STEP = 0.1
 
 toolname = "psf_contour"
-__revision__ = "15 May 2024"
+__revision__ = "15 July 2024"
 
 lw.initialize_logger(toolname)
 verb0 = lw.get_logger(toolname).verbose0
@@ -390,8 +390,13 @@ def get_cli():
         pars[to_real] = float(pars[to_real])
 
     if pars["marx_root"] == '':
-        raise ValueError("ERROR: marx_root parameter cannot be blank;" +
-                         " set to the directory where MARX is installed")
+        from shutil import which
+        marx = which('marx')
+        if marx is None:
+            raise ValueError("ERROR: marx_root parameter cannot be blank;" +
+                             " set to the directory where MARX is installed")
+        bindir = os.path.dirname(marx)               # ie ".."
+        pars["marx_root"] = os.path.dirname(bindir)  # another ".."
 
     if not os.path.isdir(pars["marx_root"]):
         raise ValueError("ERROR: marx_root parameter must be set to " +
