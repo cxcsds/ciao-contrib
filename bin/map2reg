@@ -155,6 +155,20 @@ def write_region_output(regions, outfile, stdhdr=None, clobber=True):
             retval.append(tmp)
         return retval
 
+    def _update_columns():
+        'Add units and comments to columns'
+        coldefs = {'X': {'unit': 'pixel', 'desc': 'Position'},
+                   'Y': {'unit': 'pixel', 'desc': 'Position'},
+                   'R': {'unit': 'pixel', 'desc': 'Radius'},
+                   'ROTANG': {'unit': 'deg', 'desc': 'Angle'},
+                   'SHAPE': {'unit': '', 'desc': 'Region shape type'},
+                   'COMPONENT': {'unit': '', 'desc': 'Component number'},
+                   }
+        for cols in coldefs:
+            col = tab.get_column(cols)
+            col.unit = coldefs[cols]['unit']
+            col.desc = coldefs[cols]['desc']
+
     def _update_header():
         'Add standard headers'
 
@@ -194,6 +208,7 @@ def write_region_output(regions, outfile, stdhdr=None, clobber=True):
     tab = make_table_crate(np.array(xpos), np.array(ypos), out_shapes,
                            np.array(radii), np.array(angle),
                            np.array(component), colnames=col_names)
+    _update_columns()
     _update_header()
     tab.write(outfile, clobber=clobber)
 
