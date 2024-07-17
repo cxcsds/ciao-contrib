@@ -1,3 +1,122 @@
+
+## 4.16.2 - July 2024
+
+Updated scripts
+
+  chandra_repro
+  
+    Now supports processing On Board Computer (OBC) aspect solution
+    mode used for observations of the Earth and Moon.
+    
+    Addressed a problem running sso_freeze with datasets that use
+    multiple aspect solution files.
+    
+    Fixes a problem where older datasets with invalid good time
+    intervals would fail.
+
+  combine_grating_spectra
+
+    Fixes problem when Type:II PHA files do not contain background
+    spectra (eg some dataset from tgcat archive).
+
+  dax
+  
+    Removed the obsolete 'ds9_region_expand.awk' script. 
+    Users were probably not using but if so, should switch to the 
+    convert_ds9_region_to_ciao_stack script.
+
+  download_chandra_obsid
+  
+    Corrects a problem preventing it from working correctly with
+    mirror archives.
+
+  map2reg
+  
+    Large number of regions could lead to excessively long run-times
+    due to how the data were being written out.  Rewrote the 
+    output file routine to improve performance. 
+
+  psf_contour
+  
+    Update logic when overlapping regions cannot be shrunk any
+    further. Simplifies the region logic (previous complex logic
+    could lead to excessively long run-times).
+    
+    If marx_root parameter is blank (eg the MARX_ROOT environment variable 
+    is not set), the script will now try to use the location of the 
+    marx executable as the marx_root.
+  
+
+  search_csc / obsid_search_csc
+  
+    Added support for catalog=latest to access the latest released
+    catalog version. This differs from catalog=current which accesses 
+    the current catalog database that may change before it is officially
+    released.
+
+  simulate_psf
+  
+    Added maxsize parameter to control the maximum allowed size of
+    the PSF image. 
+    
+    Added a check for ACIS Continuous Clocking (CC) mode.
+    
+    If marx_root parameter is blank (eg the MARX_ROOT environment variable 
+    is not set), the script will now try to use the location of the 
+    marx executable as the marx_root.
+    
+    
+  srcflux
+
+    Fix for filename convention when merging results from multiple
+    gratings 0th order datasets.
+    
+    Update to how region information is passed around when very
+    long/complex regions are used (eg as can be created using the new
+    "optimized" option).
+    
+    If marx_root parameter is blank (eg the MARX_ROOT environment variable 
+    is not set), the script will now try to use the location of the 
+    marx executable as the marx_root.
+    
+Updated modules
+
+  ciao_contrib/parse_pos
+  
+    Fixed problem parsing sexagesimal coordinates in an input file.
+    Used by the following scripts:
+      - srcflux
+      - psfsize_srcs
+      - psf_contour
+      - bkg_fixed_counts
+
+  crates_contrib/masked_image_crate
+  
+    In addition to checking the region subspace, the module will
+    now also check the valid axis ranges.  This matches a recent
+    change to several of the C/C++ tools.  For some filter/binning
+    combinations this may lead to the top row and right column of the image
+    being considered bad/outside of the subspace.  This is used
+    by the following scripts:
+      - centroid_map
+      - hexgrid
+      - map2reg
+      - mkregmap
+      - pathfinder
+      - vtbin
+
+  ciao_contrib/_tools/fileio.py and ciao_contrib/_tools/merging.py
+  
+    No longer using dmcopy opt=all due to the bug affecting the
+    GTIs (https://cxc.cfa.harvard.edu/ciao/ahelp/dmcopy.html#bugs).
+    This is used by 
+      - fluximage
+      - flux_obs
+      - merge_obs
+      - reproject_obs
+    
+
+
 ## 4.16.1 - April 2024
 
 The Chandra Source Catalog 2.1 has been released:
