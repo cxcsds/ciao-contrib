@@ -49,7 +49,7 @@ or
 
 """
 
-__revision__ = "11 July 2024"
+__revision__ = "19 July 2024"
 
 import os
 import warnings
@@ -123,9 +123,9 @@ def _get_random_string(strlen: int = 16) -> str:
 
 
 
-def _arg_case(arg: str|None=None,
+def _arg_case(arg: str|int|None=None,
               lower: bool=False) -> str|None:
-    if arg is None:
+    if not isinstance(arg,str):
         return arg
 
     if lower:
@@ -163,7 +163,7 @@ class EGrid:
         self.subchan = nchan
         self.chantype = chantype
 
-        if self.telescope == "chandra":
+        if self.telescope == "chandra" and self.instrument == "ACIS" and self.detnam is None:
             self.elo,self.ehi,self.offset = self.get_acis_egrid(chantype = self.chantype)
         else:
             self.elo,self.ehi,self.offset = self.get_egrid(telescope = telescope,
@@ -190,7 +190,10 @@ class EGrid:
         if telescope == "xrism" and instrument == "RESOLVE":
             return chantype
 
-        if telescope in ["chandra","calet"]:
+        if telescope == "calet":
+            return chantype
+
+        if telescope == "chandra" and instrument == "ACIS" and self.detnam is None:
             return chantype
 
         return None
@@ -203,7 +206,7 @@ class EGrid:
                          chantype: str|None = None) -> str:
 
         detstr = f"{detnam:->{len(detnam)+1}}" if detnam is not None else ""
-        filtstr = f"{instfilter:/>{len(instfilter)+1}}" if instfilter is not None else ""
+        filtstr = f"{instfilter:/>{len(str(instfilter))+1}}" if instfilter is not None else ""
         nchanstr = f"{subchan:_>{len(str(subchan))+1}}chan" if subchan is not None else ""
         chantypestr = f"_{chantype}" if chantype is not None else ""
 
@@ -293,8 +296,8 @@ class EGrid:
 
         offset = min(chan)
 
-        del(shp_backend)
-        del(data)
+        del shp_backend
+        del data
 
         egrid_unit = get_keys_from_file(f"{fn}[{blkname}]")["EUNIT"]
 
@@ -317,56 +320,41 @@ class EGrid:
 
 
 
-def _check_and_update_instrument_info(telescope: str = "",
-                                      instrument: str|None = None,
-                                      detnam: str|None = None,
-                                      instfilter: str|None = None):
+class Check_and_Update_Info:
     """
     revise telescope/instrument configuration information to the
     minimal parameters required to obtain the necessary energy grid
     """
 
-    if telescope == "" or telescope is None:
-        raise ValueError("'telescope' parameter must be specified!")
+    def __init__(self, telescope, instrument, detnam, instfilter, chantype):
+
+        ### update telescopes with alternate names and validate parameter setting ###
+        telescope = self.check_tscope(telescope)
 
 
-    telescope = telescope.lower()
+        ### check for Chandra/HRC, which is barely suitable for crude hardness ratio estimates ###
+        if telescope == "chandra" and instrument == "HRC":
+            raise RuntimeWarning("non-grating HRC data has insufficient spectral resolution to be suitable for spectral fitting!")
+
+        chantype = self.check_chantype(telescope,instrument,detnam,chantype)
 
 
-    ### update telescopes with alternate names ###
-    alt_tscope_name = { "xte" : "rxte",
-                        "sax" : "bepposax",
-                        "erosita" : "srg"
-    }
-
-    if telescope in alt_tscope_name:
-        telescope = alt_tscope_name.get(telescope)
+        ### check 'instrument' and 'detector' arguments ###
+        instrument, detnam = self.check_inst_det(telescope,instrument,detnam)
 
 
-    ### check for Chandra/HRC, which is barely suitable for crude hardness ratio estimates ###
-    if telescope == "chandra" and instrument == "HRC":
-        raise RuntimeWarning("non-grating HRC data has insufficient spectral resolution to be suitable for spectral fitting!")
+        ### check 'instfilter' argument ###
+        instfilter, detnam = self.set_instfilter(telescope,instrument,detnam,instfilter)
 
 
-    ### update telescopes with unique energy grid, even if there are multiple instruments ###
-    unique_inst_egrid = { "cos-b" : "COS-B",
-                          "exosat" : "CMA",
-                          "halosat" : "SDD",
-                          "ixpe" : "GPD",
-                          "maxi" : "GSC",
-                          "nicer" : "XTI",
-                          "rosat" : "PSPC",
-                          "srg" : "eROSITA",
-                          "nustar" : "FPM"
-    }
-
-    if telescope in unique_inst_egrid:
-        instrument = unique_inst_egrid.get(telescope)
+        self.telescope = telescope
+        self.instrument = instrument
+        self.detector = detnam
+        self.instfilter = instfilter
+        self.chantype = chantype
 
 
-    ### set detector value to None for telescopes with only a single instrument ###
-
-    def _varcheck(var: str = "", varcheck: list[str] = None,
+    def _varcheck(self, var: str = "", varcheck: list[str] = None,
                   tscopestr: str = "", parname: str = "instrument",
                   inststr: None|str = None, stripnum: bool = False):
         """
@@ -382,116 +370,274 @@ def _check_and_update_instrument_info(telescope: str = "",
             raise ValueError(f"'telescope={tscopestr}' requires '{parname}' argument to be {'|'.join(varcheck)}")
 
 
-    if telescope in ["nustar","einstein","cos-b",
-                     "exosat","halosat","ixpe",
-                     "maxi","nicer","rosat","srg"]:
-        detnam = None
+    def check_tscope(self, telescope: str=""):
+        """
+        check telescope parameter and update with alternate names if needed
+        """
+
+        if telescope == "" or telescope is None:
+            raise ValueError("'telescope' parameter must be specified!")
 
 
-    if telescope == "einstein":
-        _varcheck(instrument, ["HRI","IPC","SSS","MPC"], tscopestr="Einstein")
+        ### update telescopes with alternate names ###
+        alt_tscope_name = { "xte" : "rxte",
+                            "sax" : "bepposax",
+                            "erosita" : "srg" }
+
+        if telescope in alt_tscope_name:
+            telescope = alt_tscope_name.get(telescope)
 
 
-    if telescope == "asca":
-        _varcheck(instrument, ["GIS","SIS0","SIS1"], tscopestr="ASCA")
+        ### check telescopes are supported ###
+        valid_tscopes = { "asca" : "ASCA",
+                          "bepposax" : "BeppoSAX",
+                          "calet" : "CALET",
+                          "chandra" : "Chandra",
+                          "cos-b" : "COS-B",
+                          "einsten" : "Einstein",
+                          "exosat" : "EXOSAT",
+                          "halosat" : "HALOSAT",
+                          "ixpe" : "IXPE",
+                          "maxi" : "MAXI",
+                          "nicer" : "NICER",
+                          "nustar" : "NuSTAR",
+                          "rosat" : "ROSAT",
+                          "rxte" : "RXTE",
+                          "srg" : "SRG",
+                          "suzaku" : "Suzaku",
+                          "swift" : "Swift",
+                          "xmm" : "XMM",
+                          "xrism" : "XRISM" }
 
-        if instrument.startswith("SIS"):
-            _varcheck(detnam, ["CCD0","CCD1","CCD2","CCD3"],
-                      tscopestr="ASCA", inststr="SIS0|SIS1", parname="detector")
+        if telescope not in valid_tscopes:
+            estr = '|'.join([f"'{v}'" for v in valid_tscopes.values()])
+            raise ValueError(f"The provided 'telescope' value is not supported. Valid string values are: {estr}")
+
+
+        return telescope
+
+
+    def set_instfilter(self, telescope: str = "",
+                       instrument: str|None = None,
+                       detnam: str|None = None,
+                       instfilter: str|int|None = None):
+        """
+        setup 'instfilter' argument; only Swift/UVOT and Chandra/gratings
+        energy-grids are dependent on this quantity
+        """
+
+        if telescope == "swift" and instrument == "UVOT":
+            self._varcheck(detnam, ["B","V","U","UVM2","UVW1","UVW2","WHITE"],
+                           tscopestr="Swift", inststr="UVOT", parname="instfilter")
+
+        elif telescope == "chandra" and instrument == "ACIS" and detnam is not None:
+            if instfilter is not None and int(instfilter) == 0:
+                instfilter = None
+                detnam = None
+
+            if detnam not in ["HEG","MEG","LEG",None]:
+                raise ValueError("ACIS gratings arm is set with 'detector' argument 'HEG'|'MEG'|'LEG'")
+
+            if detnam is not None and instfilter is not None:
+                emsg = "ACIS gratings arm diffraction order is defined by 'instfilter' parameter with integer values: 1|2|3|4|5|6|-6|-5|-4|-3|-2|-1"
+
+                if isinstance(instfilter,str) and not instfilter.lstrip("-").isdigit():
+                    raise ValueError(emsg)
+
+                instfilter = abs(int(instfilter))
+
+                if instfilter not in range(1,7):
+                    raise ValueError(emsg)
 
         else:
+            instfilter = None
+
+
+        return instfilter, detnam
+
+
+    def check_inst_det(self, telescope: str = "",
+                       instrument: str|None = None,
+                       detnam: str|None = None):
+
+        """
+        check validity of "instrument" and "detector" arguments and set to None when the arguments will go unused
+        """
+
+        ### set detector value to None for telescopes with only a single instrument ###
+        if telescope in ("nustar","einstein","cos-b",
+                         "exosat","halosat","ixpe",
+                         "maxi","nicer","rosat","srg"):
+            detnam = None
+
+        if telescope == "chandra" and instrument == "ACIS" and detnam is not None and detnam.startswith(instrument):
             detnam = None
 
 
-    if telescope == "bepposax":
-        _varcheck(instrument, ["PDS","HPGSPC","LECS","MECS","WFC1","WFC2"], "BeppoSAX|SAX")
+        ### update telescopes with unique energy grid, even if there are multiple instruments ###
+        unique_inst_egrid = { "cos-b" : "COS-B",
+                              "exosat" : "CMA",
+                              "halosat" : "SDD",
+                              "ixpe" : "GPD",
+                              "maxi" : "GSC",
+                              "nicer" : "XTI",
+                              "rosat" : "PSPC",
+                              "srg" : "eROSITA",
+                              "nustar" : "FPM" }
 
-        if instrument == "MECS":
-            _varcheck(detnam, ["M1","M2","M3"],
-                      tscopestr="BeppoSAX|SAX", inststr="MECS", parname="detector")
+        if telescope in unique_inst_egrid:
+            instrument = unique_inst_egrid.get(telescope)
+
+
+        ### check all other instrument and detector setups ###
+        checks = { "einstein" : self._check_einstein,
+                   "asca" : self._check_asca,
+                   "bepposax" : self._check_bepposax,
+                   "calet" : self._check_calet,
+                   "rxte" : self._check_rxte,
+                   "suzaku" : self._check_suzaku,
+                   "swift" : self._check_swift,
+                   "xmm" : self._check_xmm }
+
+
+        runchecks = checks.get(telescope)
+
+        if runchecks is not None:
+            instrument,detnam = runchecks(instrument,detnam)
+
+        return instrument, detnam
+
+
+    def _check_einstein(self,inst,det):
+        self._varcheck(inst, ["HRI","IPC","SSS","MPC"], tscopestr="Einstein")
+
+        return inst,det
+
+
+    def _check_asca(self,inst,det):
+        self._varcheck(inst, ["GIS","SIS0","SIS1"], tscopestr="ASCA")
+
+        if inst.startswith("SIS"):
+            self._varcheck(det, ["CCD0","CCD1","CCD2","CCD3"],
+                           tscopestr="ASCA", inststr="SIS0|SIS1", parname="detector")
 
         else:
-            detnam = None
+            det = None
+
+        return inst,det
 
 
-    if telescope == "calet":
-        instrument = "GGBM"
+    def _check_bepposax(self,inst,det):
+        self._varcheck(inst, ["PDS","HPGSPC","LECS","MECS","WFC1","WFC2"], "BeppoSAX|SAX")
 
-        if detnam is not None and detnam.startswith("HXM"):
-            detnam = "HXM"
-
-        _varcheck(detnam, ["HXM","SGM"], tscopestr="CALET", parname="detector")
-
-
-    if telescope == "rxte":
-        _varcheck(instrument, ["HEXTE","PCA"], tscopestr="RXTE|XTE")
-
-        if instrument == "HEXTE":
-            _varcheck(detnam, ["PWA","PWB"],
-                      tscopestr="RXTE|XTE", inststr="MECS", parname="detector")
+        if inst == "MECS":
+            self._varcheck(det, ["M1","M2","M3"],
+                           tscopestr="BeppoSAX|SAX", inststr="MECS", parname="detector")
 
         else:
-            detnam = None
+            det = None
+
+        return inst,det
 
 
-    if telescope == "suzaku":
-        _varcheck(instrument, ["HXD","XRS","XIS","XIS0","XIS1","XIS2","XIS3"],
-                  tscopestr="Suzaku", stripnum=True)
+    def _check_calet(self,inst,det):
+        inst = "GGBM"
 
-        if instrument.startswith("XIS"):
-            instrument = "XIS"
+        if det is not None and det.startswith("HXM"):
+            det = "HXM"
 
-        if instrument == "HXD":
-            _varcheck(detnam, ["WELL_GSO","WELL_PIN"],
-                      tscopestr="Suzaku", inststr="HXD", parname="detector")
+        self._varcheck(det, ["HXM","SGM"], tscopestr="CALET", parname="detector")
+
+        return inst,det
+
+
+    def _check_rxte(self,inst,det):
+        self._varcheck(inst, ["HEXTE","PCA"], tscopestr="RXTE|XTE")
+
+        if inst == "HEXTE":
+            self._varcheck(det, ["PWA","PWB"],
+                           tscopestr="RXTE|XTE", inststr="MECS", parname="detector")
 
         else:
-            detnam = None
+            det = None
+
+        return inst,det
 
 
-    if telescope == "xmm":
-        if instrument is None or instrument not in ["RGS","EPIC","EPN","EMOS1","EMOS2"]:
+    def _check_suzaku(self,inst,det):
+        self._varcheck(inst, ["HXD","XRS","XIS","XIS0","XIS1","XIS2","XIS3"],
+                       tscopestr="Suzaku", stripnum=True)
+
+        if inst.startswith("XIS"):
+            inst = "XIS"
+
+        if inst == "HXD":
+            self._varcheck(det, ["WELL_GSO","WELL_PIN"],
+                           tscopestr="Suzaku", inststr="HXD", parname="detector")
+
+        else:
+            det = None
+
+        return inst,det
+
+
+    def _check_xmm(self,inst,det):
+        if inst is None or inst not in ["RGS","EPIC","EPN","EMOS1","EMOS2"]:
             raise ValueError("'telescope=XMM' requires 'instrument' argument to be EPIC|RGS")
 
-        if instrument == "EPIC":
-            if detnam is None or all([detnam != "PN", not detnam.startswith("MOS")]):
+        if inst == "EPIC":
+            if det is None or all([det != "PN", not det.startswith("MOS")]):
                 raise ValueError("'telescope=XMM' with 'instrument=EPIC' requires the 'detector' argument to be PN|MOS")
 
-            if detnam.startswith("MOS"):
-                detnam = "MOS"
+            if det.startswith("MOS"):
+                det = "MOS"
 
-        if instrument == "RGS":
-            detnam = None
+        if inst == "RGS":
+            det = None
 
-        if instrument.startswith("EMOS"):
-            instrument = "EPIC"
-            detnam = "MOS"
+        if inst.startswith("EMOS"):
+            inst = "EPIC"
+            det = "MOS"
 
-        if instrument.startswith("EPN"):
-            instrument = "EPIC"
-            detnam = "PN"
+        if inst.startswith("EPN"):
+            inst = "EPIC"
+            det = "PN"
+
+        return inst,det
 
 
-    if telescope == "swift":
-        if instrument not in ["XRT","BAT","UVOTA","UVOT"]:
+    def _check_swift(self,inst,det):
+        if inst not in ["XRT","BAT","UVOTA","UVOT"]:
             raise ValueError("'telescope=Swift' requires 'instrument' argument to be XRT|BAT|UVOT")
 
-        if instrument.startswith("UVOT"):
-            instrument = "UVOT"
+        if inst.startswith("UVOT"):
+            inst = "UVOT"
 
-        detnam  = None
+        det  = None
 
-
-    ### setup 'instfilter' argument; only Swift/UVOT energy-grid is dependent on this quantity ###
-    if telescope == "swift" and instrument == "UVOT":
-        _varcheck(detnam, ["B","V","U","UVM2","UVW1","UVW2","WHITE"],
-                  tscopestr="Swift", inststr="UVOT", parname="instfilter")
-
-    else:
-        instfilter = None
+        return inst,det
 
 
-    return telescope, instrument, detnam, instfilter
+    def check_chantype(self,telescope,instrument,detector,chantype):
+        _chantype_lower = _arg_case(chantype,lower=True)
+
+        ### set Chandra/ACIS gratings channel ###
+        if telescope == "chandra" and instrument == "ACIS" and detector is not None and _chantype_lower != "pi":
+            logger_tmp = getLogger(__name__)
+            logger_tmp.info("Note: Assuming PI spectral channel type for ACIS gratings data set...")
+            chantype = "PI"
+            _chantype_lower = "pi"
+
+        if telescope == "chandra" and instrument == "ACIS" and detector is None and _chantype_lower not in ["pi","pha","pha_no-cticorr"]:
+            raise ValueError("Chandra/ACIS requires 'chantype' argument to be set to 'PI', 'PHA', or 'PHA_no-CTIcorr'.")
+
+        if telescope == "calet" and _chantype_lower not in ["gain_lo","gain_hi"]:
+            raise ValueError("CALET requires 'chantype' argument to be set to 'GAIN_HI' or 'GAIN_LO'.")
+
+        if telescope == "xrism" and instrument == "RESOLVE" and _chantype_lower not in ["lo-res","mid-res","hi-res"]:
+            raise ValueError("XRISM RESOLVE requires 'chantype' argument to be set to 'lo-res', 'mid-res', or 'hi-res'.")
+
+        return chantype
 
 
 
@@ -533,7 +679,6 @@ def build_resp(emin, emax, offset: int, ethresh: float|None=1e-12):
         raise RuntimeError(exc) from exc
 
 
-
     wmsg = "RMF and ARF data objects returned; use 'set_rmf' and 'set_arf' to set the respective instances to dataset ID."
 
     logger.warning("%s", f"\n{wmsg:>{len(wmsg)+4}}")
@@ -546,7 +691,7 @@ def build_resp(emin, emax, offset: int, ethresh: float|None=1e-12):
 def mkdiagresp(telescope: str = "Chandra",
                instrument: str = "ACIS",
                detector: str|None = None,
-               instfilter: str|None = None,
+               instfilter: str|int|None = None,
                refspec: str|DataPHA|None = None,
                chantype: str = "PI",
                nchan: int|None = None,
@@ -563,6 +708,11 @@ def mkdiagresp(telescope: str = "Chandra",
         telescope="Chandra"
             instrument="ACIS"
             chantype="PI"|"PHA"|"PHA_no-CTIcorr"
+
+            instrument="ACIS"
+            detector="HEG"|"MEG"|"LEG" # HETG or LETG grating arm
+            instfilter=1|2|3|4|5|6|-6|-5|-4|-3|-2|-1 # grating diffraction order
+            chantype="PI"
 
         telescope="ASCA"
             instrument="GIS"
@@ -674,37 +824,49 @@ def mkdiagresp(telescope: str = "Chandra",
         nchan = speckw.get("DETCHANS")
         chantype = speckw.get("CHANTYPE")
 
+        grating = speckw.get("GRATING")
+
+        if telescope.lower() == "chandra" and grating not in [None,"NONE","None","none"]:
+            chandra_TG_PART = { 1 : "HEG",
+                                2 : "MEG",
+                                3 : "LEG",
+                                0 : "zeroth" }
+
+            tg_m = speckw.get("TG_M")
+            tg_part = speckw.get("TG_PART")
+
+            if tg_m in chandra_TG_PART and tg_part is not None:
+                detector = chandra_TG_PART[tg_part] if tg_part != 0 else None
+                instfilter = tg_m if tg_m != 0 else None
+
+            if (tg_m is None and tg_part is None) or grating.lower() == "none":
+                detector = None
+                instfilter = None
+
+
     telescope = _arg_case(telescope,lower=True)
     instrument = _arg_case(instrument)
     detector = _arg_case(detector)
     instfilter = _arg_case(instfilter)
-    _chantype_lower = _arg_case(chantype,lower=True)
-
-
-    if telescope == "chandra" and instrument == "ACIS" and _chantype_lower not in ["pi","pha","pha_no-cticorr"]:
-        raise ValueError("Chandra/ACIS requires 'chantype' argument to be set to 'PI', 'PHA', or 'PHA_no-CTIcorr'.")
-
-    if telescope == "calet" and _chantype_lower not in ["gain_lo","gain_hi"]:
-        raise ValueError("CALET requires 'chantype' argument to be set to 'GAIN_HI' or 'GAIN_LO'.")
-
-    if telescope == "xrism" and instrument == "RESOLVE" and _chantype_lower not in ["lo-res","mid-res","hi-res"]:
-        raise ValueError("XRISM RESOLVE requires 'chantype' argument to be set to 'lo-res', 'mid-res', or 'hi-res'.")
 
 
     ### run arguments check and update parameters to minimal information needed ###
-    telescope, instrument, detector, instfilter = _check_and_update_instrument_info(telescope=telescope,
-                                                                                    instrument=instrument,
-                                                                                    detnam=detector,
-                                                                                    instfilter=instfilter)
+    update_args = Check_and_Update_Info(telescope=telescope, instrument=instrument,
+                                        detnam=detector, instfilter=instfilter, chantype=chantype)
+
+    telescope = update_args.telescope
+    instrument = update_args.instrument
+    detector = update_args.detector
+    instfilter = update_args.instfilter
+    chantype = update_args.chantype
 
 
     ### instruments/detectors with more than one channel binning scheme ###
-    multichan_resps_max = {"asca sis" : 1024,
-                           "asca gis" : 1024,
-                           "rosat pspc" : 256,
-                           "rxte pca" : 256,
-                           "bepposax pds" : 256
-    }
+    multichan_resps_max = { "asca sis" : 1024,
+                            "asca gis" : 1024,
+                            "rosat pspc" : 256,
+                            "rxte pca" : 256,
+                            "bepposax pds" : 256 }
 
     key = f"{telescope} {''.join(i for i in instrument if not i.isdigit())}".lower()
 

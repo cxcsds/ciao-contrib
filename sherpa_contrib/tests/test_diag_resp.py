@@ -5,13 +5,13 @@
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# General Public License for more details.
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
@@ -344,6 +344,48 @@ telescope_args = [ telescope_config("Chandra","ACIS",None,"PHA"),
 telescope_args_fails = [ telescope_config("XMM","EPIC","PN",None),
                          telescope_config("XMM","EPIC","MOS",None) ]
 
+gratings_config = namedtuple("gratingsconfig", ["telescope","instrument","detector","instfilter"])
+
+chandra_gratings_args = [ gratings_config("Chandra","ACIS","HEG",1),
+                          gratings_config("Chandra","ACIS","MEG",1),
+                          gratings_config("Chandra","ACIS","LEG",1),
+                          gratings_config("Chandra","ACIS","HEG",2),
+                          gratings_config("Chandra","ACIS","MEG",2),
+                          gratings_config("Chandra","ACIS","LEG",2),
+                          gratings_config("Chandra","ACIS","HEG",3),
+                          gratings_config("Chandra","ACIS","MEG",3),
+                          gratings_config("Chandra","ACIS","LEG",3),
+                          gratings_config("Chandra","ACIS","HEG",4),
+                          gratings_config("Chandra","ACIS","MEG",4),
+                          gratings_config("Chandra","ACIS","LEG",4),
+                          gratings_config("Chandra","ACIS","HEG",5),
+                          gratings_config("Chandra","ACIS","MEG",5),
+                          gratings_config("Chandra","ACIS","LEG",5),
+                          gratings_config("Chandra","ACIS","HEG",6),
+                          gratings_config("Chandra","ACIS","MEG",6),
+                          gratings_config("Chandra","ACIS","LEG",6),
+                          gratings_config("Chandra","ACIS","HEG",0),
+                          gratings_config("Chandra","ACIS","zeroth","0"),
+                          gratings_config("Chandra","ACIS","ACIS-7",0),
+                          gratings_config("Chandra","ACIS","HEG","-6"),
+                          gratings_config("Chandra","ACIS","MEG",-6),
+                          gratings_config("Chandra","ACIS","LEG",-6),
+                          gratings_config("Chandra","ACIS","HEG",-5),
+                          gratings_config("Chandra","ACIS","MEG","-5"),
+                          gratings_config("Chandra","ACIS","LEG",-5),
+                          gratings_config("Chandra","ACIS","HEG",-4),
+                          gratings_config("Chandra","ACIS","MEG","-4"),
+                          gratings_config("Chandra","ACIS","LEG",-4),
+                          gratings_config("Chandra","ACIS","HEG",-3),
+                          gratings_config("Chandra","ACIS","MEG",-3),
+                          gratings_config("Chandra","ACIS","LEG","-3"),
+                          gratings_config("Chandra","ACIS","HEG",-2),
+                          gratings_config("Chandra","ACIS","MEG",-2),
+                          gratings_config("Chandra","ACIS","LEG",-2),
+                          gratings_config("Chandra","ACIS","HEG",-1),
+                          gratings_config("Chandra","ACIS","MEG",-1),
+                          gratings_config("Chandra","ACIS","LEG",-1) ]
+
 
 
 @pytest.mark.parametrize("args", telescope_args)
@@ -483,3 +525,19 @@ def test_ethresh_none():
     """
 
     rmf,arf = mkdiagresp(telescope="nustar", ethresh=None)
+
+
+
+@pytest.mark.parametrize("args", chandra_gratings_args)
+@pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
+def test_chandra_gratings(args):
+    """
+    Test for configuration with Chandra gratings arm and diffraction orders
+    """
+
+    msgconfig = f"{args.telescope} {args.instrument}/{args.detector}, diffraction order: {args.instfilter}"
+
+    print("*" * 80)
+    print(f"Running {msgconfig}...", end="\n\n")
+
+    assert mkdiagresp(**args._asdict()), f"{msgconfig} test failed!"
