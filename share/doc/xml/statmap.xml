@@ -77,6 +77,32 @@ dmnautilus, dmradar, or another adaptive binning tool.
     </PARA>
   </DESC>
   </QEXAMPLE>
+  <QEXAMPLE>
+    <SYNTAX>
+      <LINE>unix% eff2evt "acis_evt.fits[energy=500:7000]" fluxed_acis_evt.fits</LINE>
+      <LINE>unix% statmap fluxed_acis_evt.fits abin.map wmedian_energy.map \
+          stat=wmedian column=energy xcol=x ycol=y wcol=flux</LINE>
+    </SYNTAX>
+    <DESC>
+      <PARA>
+          In this example the eff2evt tool is used to compute the 
+          flux per event as determined by the energy of the event,
+          the mirrors effective area, and the detector efficiency. 
+          The statmap tool is then used to compute a weighted median 
+          of the energy column using the flux values as weights.
+          This may be important for very large energy bands where the
+          efficiency of the detectors and/or mirrors changes significantly within
+          the band.
+      </PARA>
+      <PARA>
+          Other weighted options include the weighted average (wmean),
+          weighted max (the energy with the max flux), weighted min
+          (the energy with the min flux), and the weighted sum (sum 
+          of energy multiplied by flux). 
+      </PARA>
+
+    </DESC>
+  </QEXAMPLE>
 </QEXAMPLELIST>
 
 <PARAMLIST>
@@ -147,6 +173,11 @@ dmnautilus, dmradar, or another adaptive binning tool.
       <ITEM>max : The maximum value in the column.</ITEM>
       <ITEM>sum : The sum of the values in the column.</ITEM>
       <ITEM>counts : The number of value in the column.</ITEM>
+      <ITEM>wmedian: The weighted median based on the wcolumn weights</ITEM>
+      <ITEM>wmean: The weighted mean or average values (sum(w*column)/sum(w))</ITEM>
+      <ITEM>wmin: The column value with the minimum weight</ITEM>
+      <ITEM>wmax: The column values with the maximum weight</ITEM>
+      <ITEM>wsum: The sum of the product of column multiplied by weight.</ITEM>
     </LIST>
     </DESC>
   </PARAM>
@@ -159,20 +190,35 @@ dmnautilus, dmradar, or another adaptive binning tool.
     <SYNOPSIS>The column name to use for the Y-coordinate</SYNOPSIS>  
   </PARAM>
 
-       <PARAM name="verbose" type="integer" def="1" min="0" max="5">
-            <SYNOPSIS>
-            Amount of chatter from the tool.
-            </SYNOPSIS>
-        </PARAM>
-        
+  <PARAM name="wcolumn" type="string" def="">
+    <SYNOPSIS>The column name to use for the weights</SYNOPSIS>  
+    <DESC>
+      <PARA>This is only used if the statistic is wmedian, 
+      wmean, wmin, wmax, or wsum.</PARA>
+    </DESC>
+  </PARAM>
+
         <PARAM name="clobber" type="boolean" def="no">
             <SYNOPSIS>
             Delete outfile if it already exists?
             </SYNOPSIS>
         </PARAM>
 
+       <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+            <SYNOPSIS>
+            Amount of chatter from the tool.
+            </SYNOPSIS>
+        </PARAM>        
+
 </PARAMLIST>
 
+  <ADESC title="Changes in the scripts 4.16.2 (Q3 2024) release">
+    <PARA>
+        Added new weighted median, mean, min, max, and sum statistics together
+        with the new wcolumn parameter to specify which column in the input
+        table to use for weights.
+    </PARA>
+  </ADESC>
 
 
 
@@ -192,6 +238,6 @@ dmnautilus, dmradar, or another adaptive binning tool.
             website</HREF> for an up-to-date listing of known bugs.
         </PARA>
     </BUGS>
-    <LASTMODIFIED>December 2022</LASTMODIFIED>
+    <LASTMODIFIED>July 2024</LASTMODIFIED>
 </ENTRY>
 </cxchelptopics>
