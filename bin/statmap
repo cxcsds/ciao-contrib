@@ -63,10 +63,21 @@ class CIAONamedTemporaryFile():
 def weighted_median(vals, weights):
     'Weighted median'
     # from :https://stackoverflow.com/questions/20601872/numpy-or-scipy-to-calculate-weighted-median
+
+    if len(vals) == 1:
+        return vals
+
+    if len(vals) == 2:
+        return np.average(vals)
+
     quantiles = 0.5  # median
     idx = np.argsort(vals)
     csum = np.cumsum(weights[idx])
     quant = np.searchsorted(csum, quantiles * csum[-1])
+
+    if quant == len(vals)-1:
+        return vals[-1]
+
     return np.where(csum[quant]/csum[-1] == quantiles,
                     0.5 * (vals[idx[quant]] + vals[idx[quant+1]]),
                     vals[idx[quant]])
