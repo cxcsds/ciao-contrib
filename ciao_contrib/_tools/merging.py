@@ -516,7 +516,7 @@ def _copy_region_block(infile, outfile):
     in_ds = inblk.get_dataset()
     try:
         regblk = in_ds.get_crate("REGION")
-    except IndexError as no_region:
+    except IndexError:
         return
 
     dmappend(f"{infile}[REGION][subspace -time]", outfile)
