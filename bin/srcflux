@@ -18,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "29 March 2024"
+__revision__ = "17 April 2024"
 
 import os
 
@@ -437,10 +437,9 @@ def check_pos_in_srcreg( infile, srcs ):
 
 def save_regions( myparams, regions, flavor ):
     """
-        !!! TODO: Use new region module in ciao4.10 instead of dmmakereg
-
+    Save regions to FITS format
     """
-    dmmakereg = make_tool("dmmakereg")
+    from region import CXCRegion
 
     # CIAO 4.10 changes to NULL regions no longer creates a fake
     # "point(0,0)" -- I'm using that so we'll put it back.
@@ -455,19 +454,12 @@ def save_regions( myparams, regions, flavor ):
         for ii in range( len(ss)):
             outfile = "{}{:04d}_{}reg.fits".format(myparams.outroot, ii+1, flavor)
 
-            tmpreg = NamedTemporaryFile( dir=myparams.tmpdir, delete=False, suffix=f"_{flavor}.reg" )
-            tmpreg.close()
+            if len(ss[ii]) == 0:
+                myreg = CXCRegion("point(0,0)")
+            else:
+                myreg = CXCRegion(ss[ii])
 
-            with open(tmpreg.name, "w") as fp:
-                fp.write( ss[ii].replace("|","\n") )
-
-            dmmakereg.region="region({})".format(tmpreg.name)
-            dmmakereg.outfile=outfile
-            dmmakereg.clobber=True
-            dmmakereg.kernel="FITS"
-            dmmakereg()
-
-            gorm(tmpreg.name)
+            myreg.write(outfile, clobber=True, fits=True)
 
             oo.write( "region({})\n".format(outfile))
 
@@ -678,6 +670,14 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
             raise IOError("Please setup for saotrace first")
         projector="psf_project_ray"
     elif simulator == 'marx':
+        if myparams.marx_root == '':
+            from shutil import which
+            marx = which('marx')
+            if marx is None:
+                raise IOError("Please set marx_root parameter to directory where MARX is installed")
+            bindir = os.path.dirname(marx)               # ie ".."
+            myparams.marx_root = os.path.dirname(bindir)  # another ".."
+
         if not os.path.exists(myparams.marx_root):
             raise IOError("Please set marx_root parameter to directory where MARX is installed")
         projector="marx"
@@ -770,8 +770,8 @@ def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
     if simulate is None:
         psf_stk = stk.build( myparams.psffile )
     elif simulate == "marx":
-        if 'MARX_ROOT' not in os.environ:
-            raise RuntimeError("Please setup for MARX before using this option")
+        # ~ if 'MARX_ROOT' not in os.environ:
+            # ~ raise RuntimeError("Please setup for MARX before using this option")
         psf_stk = simulate_psfs( myparams, at_energy, src, bkg, simulator="marx" )
     else:
         raise NotImplementedError("Unknown simulator={}".format(simulate))
@@ -2290,10 +2290,22 @@ def merge_modelflux( stk_params, myparams ):
         if vv:
             verb2(vv)
 
-        verb2("Running model_flux")
         out_arf = combine_spectra.outroot+"_src.arf"
         out_rmf = combine_spectra.outroot+"_src.rmf"
         out_pi = combine_spectra.outroot+"_src.pi"
+
+        # Ugh, c_s uses different file names for gratings files :(
+        check = [os.path.exists(xx) for xx in [out_pi, out_rmf, out_arf]]
+        if not all(check):
+            out_arf = combine_spectra.outroot+".arf"
+            out_rmf = combine_spectra.outroot+".rmf"
+            out_pi = combine_spectra.outroot+".pha"
+            check = [os.path.exists(xx) for xx in [out_pi, out_rmf, out_arf]]
+            if not all(check):
+                raise RuntimeError("Cannot locate combined spectra")
+
+        verb2("Running model_flux")
+
         for at_energy in bands:
             myroot = get_root( myparams, at_energy )
             outroot = myroot+"_{:04d}.dat".format(snum+1)
