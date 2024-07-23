@@ -214,12 +214,13 @@
           <LINE>
             unix% simulate_psf infile=acisf00635_repro_evt2.fits 
                ra=246.88628 dec=-24.556762  spectrum=source.dat
-               outroot=abs_powlaw_mean numiter=10 minsize=256</LINE>          
+               outroot=abs_powlaw_mean numiter=10 minsize=256 maxsize=512</LINE>          
         </SYNTAX>
         <DESC>
           <PARA>
             Using numiter, the simulation will be repeated 10 times.
-            The output image will be at least 256 physical pixels
+            The output image will be at least 256 physical pixels but not
+            more than 512 pixels
             and will be the result of combining the 10 simulations together.            
           </PARA>
         
@@ -230,7 +231,7 @@
           <LINE>
             unix% simulate_psf infile=acisf00635_repro_evt2.fits 
                ra=246.88628 dec=-24.556762  spectrum=source.dat
-               outroot=abs_powlaw_mean numiter=INDEF numrays=10000 minsize=256</LINE>          
+               outroot=abs_powlaw_mean numiter=INDEF numrays=10000 minsize=256 maxsize=512</LINE>          
         </SYNTAX>
         <DESC>
           <PARA>
@@ -248,7 +249,7 @@
           <LINE>
             unix% simulate_psf infile=acisf00635_repro_evt2.fits 
                ra=246.88628 dec=-24.556762  spectrum=none mono=2.3 flux=1e-6
-                outroot=mono_mean numiter=10 keepiter=yes minsize=256</LINE>          
+                outroot=mono_mean numiter=10 keepiter=yes minsize=256 maxsize=512</LINE>          
         </SYNTAX>
         <DESC>
           <PARA>
@@ -321,7 +322,7 @@
               <PARA>
                   The size of the output image will depend on the 
                   size of the PSF and the following parameters: minsize,
-                  binsize, numsig.
+                  maxsize, binsize, numsig.
               </PARA>
               <PARA>
                   The PSF is normalized by the number of rays output
@@ -671,14 +672,15 @@
               </PARA>
               <PARA>
                 If minsize is set, the image will be at least 
-                minsize square.
+                minsize square. If maxsize is set, the image will not be
+                larger than maxsize square.
               </PARA>
 
             </DESC>
          
           </PARAM>
 
-          <PARAM name="minsize" type="integer" def="INDEF" min="1" units="pixel">
+          <PARAM name="minsize" type="integer" def="INDEF" min="0" units="pixel">
             <SYNOPSIS>Minimum PSF image size</SYNOPSIS>
             <DESC>
                 <PARA>
@@ -700,6 +702,30 @@
 
             </DESC>
           </PARAM>
+
+          <PARAM name="maxsize" type="integer" def="INDEF" min="0" units="pixel">
+            <SYNOPSIS>Maximum PSF image size</SYNOPSIS>
+            <DESC>
+                <PARA>
+                  If set, this parameter controls the maximum
+                  output PSF image size.                
+                </PARA>
+                <PARA>
+                  maximum is in physical pixels.
+                </PARA>
+                <PARA>
+            If multiple iterations are requested, the image 
+            size is fixed to the
+            first simulation.
+                </PARA>
+                <PARA>
+                maxsize is ignored if it is greater than the size determined by the numsig
+                parameter.
+                </PARA>
+
+            </DESC>
+          </PARAM>
+
 
           <PARAM name="numiter" type="integer" def="1" min="1">
             <SYNOPSIS>Number of PSFs to simulate and combine together</SYNOPSIS>
@@ -983,9 +1009,18 @@ $ marx @@${outroot}_iNNNN_marx.par
         This effect is not simulated by MARX.  The page also links to
         a script users can run to filter out the piled up events at the
         expense of loosing some detector sensitivity. 
-      </PARA>
+      </PARA>        
+    </ADESC>
 
-        
+    <ADESC title="Changes in the scripts 4.16.2 (Q3 2024) release">
+      <PARA>
+        Added the maxsize parameter to specify the maximum allowed PSF image
+        size.
+      </PARA>
+      <PARA>
+        If marx_root is blank then look for marx in the user's PATH and
+        use that directory to derive marx_root.
+      </PARA>
     </ADESC>
 
     <ADESC title="Changes in the scripts 4.15.2 (April 2023) release">
@@ -1095,7 +1130,7 @@ $ marx @@${outroot}_iNNNN_marx.par
       </PARA>
     </BUGS>
 
-   <LASTMODIFIED>March 2023</LASTMODIFIED>
+   <LASTMODIFIED>July 2024</LASTMODIFIED>
 
   </ENTRY>
 </cxchelptopics>
