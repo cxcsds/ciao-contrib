@@ -27,7 +27,7 @@ Routines to support the specextract tool.
 
 __modulename__ = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "13 November 2023"
+__revision__ = "8 July 2024"
 
 import os
 import sys
@@ -443,7 +443,7 @@ data with chandra_repro or add the keywords to the event file(s) with r4_header_
         if counts == "0":
             try:
                 if refcoord_check.lower() in ["","none","indef"]:
-                    raise IOError(f"{file} has zero counts. Check that the region correct (e.g. wrong region, coordinates not in sky pixels or degrees) or use parameter='refcoord'.")
+                    raise IOError(f"{file} has zero counts. Check that the region formatting is correct (e.g. wrong region, coordinates not in sky pixels or degrees) or use the 'refcoord' parameter.")
 
                 if weights_check:
                     v1("WARNING: Unweighted responses will be created at the 'refcoord' position.\n")
@@ -1341,7 +1341,7 @@ and/or background files. Assuming source and background file lists have a matchi
             ewmap_range_check = args["ewmap_range_check"]
 
             try:
-                if not weights_check:
+                if isinstance(weights_check,bool) and not weights_check:
                     return self._check_event_stats(file,
                                                    refcoord_check=refcoord_check,
                                                    weights_check=False)
