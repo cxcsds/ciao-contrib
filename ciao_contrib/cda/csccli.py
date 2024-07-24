@@ -56,7 +56,7 @@ __all__ = (
 
 # Confirm, need rel1.1 to get HRC data for csc1
 __csc_version = {'csc1' : 'rel1.1', 'csc2' : 'rel2.0', 'csc2.1': 'rel2.1',
-                 'current': 'cur'}
+                 'current': 'cur', 'latest': None}
 
 
 fileTypes_csc1 = {
@@ -137,7 +137,8 @@ fileTypes = {
     "csc1" : fileTypes_csc1,
     "csc2"  : fileTypes_cur,
     "csc2.1" : fileTypes_cur,
-    "current" : fileTypes_cur
+    "current" : fileTypes_cur,
+    "latest" : fileTypes_cur,
 }
 
 
@@ -531,10 +532,12 @@ def cone_query_cli_cscview_ver2( ra_deg, dec_deg, radius_arcmin, ra_condition, d
 
     vals = {
         'query' : " ".join(query_string.split()) , # removes excess white spaces
-        'version' : __csc_version[cat_ver],
         'coordFormat' : 'decimal',
         'nullAppearance' : 'NaN',
         }
+
+    if __csc_version[cat_ver] is not None:
+        vals['version'] = __csc_version[cat_ver]
 
     page = make_URL_request( resource, vals )
     page = page.decode("ascii")
@@ -618,8 +621,12 @@ def obsid_query_cli_cscview_ver2( obsid, columns, catver ):
         'query' : " ".join(query_string.split()) , # removes excess white spaces
         'coordFormat' : 'decimal',
         'nullAppearance' : 'NaN',
-        'version' : __csc_version[catver]
         }
+
+
+    if __csc_version[catver] is not None:
+        vals['version'] = __csc_version[catver]
+
 
     page = make_URL_request( resource, vals )
     page = page.decode("ascii")
@@ -879,7 +886,7 @@ def search_src_by_ra_dec( ra, dec, radius_arcmin, columns, cat_ver ):
 
     if "csc1" == cat_ver:
         page = cone_query_cli_cscview( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns)
-    elif cat_ver in ["csc2", "csc2.1", "current"]:
+    elif cat_ver in ["csc2", "csc2.1", "current", "latest"]:
         page = cone_query_cli_cscview_ver2( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns, cat_ver)
     else:
         raise ValueError("Unknown catalog version")
@@ -894,7 +901,7 @@ def search_src_by_obsid( obsid, columns, cat_ver ):
 
     if 'csc1' == cat_ver :
         page = obsid_query_cli_cscview( obsid, columns )
-    elif cat_ver in ["csc2", "csc2.1", "current"] :
+    elif cat_ver in ["csc2", "csc2.1", "current", "latest"] :
         page = obsid_query_cli_cscview_ver2( obsid, columns, cat_ver )
     else:
         raise ValueError("Unknown catalog version")
@@ -1032,8 +1039,10 @@ def discover_filename_via_archive(myfile, obsid, obi, region, band, instrume, ca
     resource = "http://cda.cfa.harvard.edu/csccli/browse"
     vals = {
         "packageset" : pkg,
-        "version" : __csc_version[catalog],
         }
+
+    if __csc_version[catalog] is not None:
+        vals["version"] = __csc_version[catalog]
 
     try:
         qry = make_URL_request( resource, vals )
@@ -1141,16 +1150,8 @@ def retrieve_files_per_type( filenames, filetype, root, catalog ):
             "filename" : ff,
             }
 
-        if "csc2" == catalog:
-            vals['version'] = __csc_version["csc2"]
-        elif "csc2.1" == catalog:
-            vals['version'] = __csc_version["csc2.1"]
-        elif "csc1" == catalog:
-            vals['version'] = __csc_version["csc1"]
-        elif "current" == catalog:
-            vals['version'] = __csc_version["current"]
-        else:
-            raise ValueError("Unknown catalog version")
+        if __csc_version[catalog] is not None:
+            vals["version"] = __csc_version[catalog]
 
         try:
             page = make_URL_request( resource, vals )
@@ -1328,7 +1329,7 @@ def get_default_columns(cat_version=None):
     """
     retval = default_cols
 
-    if cat_version in ["csc2", "csc2.1", "current"]:
+    if cat_version in ["csc2", "csc2.1", "current", "latest"]:
         default_cols.append("s.detect_stack_id")
         retval = default_cols # may be diff for ver2
 
@@ -1393,7 +1394,7 @@ def expand_standard_cols( cols, cat_version=None ):
                        "SSS"  : csc2_columns["stack_source_summary"],
                        "SSP"  : csc2_columns["stack_source_photometry"]
                        }
-    elif cat_version in ["csc2.1", "current"]:
+    elif cat_version in ["csc2.1", "current", "latest"]:
         check_list = { "MSBS" : csc21_columns["master_source_basic_summary"] ,
                        "MSS"  : csc21_columns["master_source_summary"],
                        "MSP"  : csc21_columns["master_source_photometry"],
@@ -1434,7 +1435,7 @@ def check_required_names( cols, cat_version=None ):
     """
     c2 = expand_standard_cols( cols, cat_version )
 
-    if cat_version in ['current','csc2', 'csc2.1'] and 's.detect_stack_id' not in required_cols:
+    if cat_version in ['latest','current','csc2', 'csc2.1'] and 's.detect_stack_id' not in required_cols:
         required_cols.append( 's.detect_stack_id' )
 
     required_cols.reverse()
@@ -1468,9 +1469,11 @@ def query_csc2_limsens(ra, dec, release):
     vals = {
       "RA" : str(ra),
       "DEC" : str(dec),
-      "version" : __csc_version[release],
       "SR" : str(1.0/3600.),    # 1 arcsec, smaller than helpix size
       }
+
+    if __csc_version[release] is not None:
+      vals["version"] = __csc_version[release]
 
     page = make_URL_request( resource, vals )
     page = page.decode("ascii")
