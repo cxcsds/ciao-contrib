@@ -49,7 +49,7 @@ or
 
 """
 
-__revision__ = "19 July 2024"
+__revision__ = "22 July 2024"
 
 import os
 import warnings
@@ -332,10 +332,6 @@ class Check_and_Update_Info:
         telescope = self.check_tscope(telescope)
 
 
-        ### check for Chandra/HRC, which is barely suitable for crude hardness ratio estimates ###
-        if telescope == "chandra" and instrument == "HRC":
-            raise RuntimeWarning("non-grating HRC data has insufficient spectral resolution to be suitable for spectral fitting!")
-
         chantype = self.check_chantype(telescope,instrument,detnam,chantype)
 
 
@@ -364,10 +360,13 @@ class Check_and_Update_Info:
             if stripnum:
                 varcheck = set(sub(r"\d+", "", v) for v in varcheck)
 
-            if inststr is not None:
-                raise ValueError(f"'telescope={tscopestr}' with 'instrument={inststr}' requires the '{parname}' argument to be {'|'.join(varcheck)}")
 
-            raise ValueError(f"'telescope={tscopestr}' requires '{parname}' argument to be {'|'.join(varcheck)}")
+            estr = '|'.join([f"'{v}'" for v in varcheck])
+                
+            if inststr is not None:
+                raise ValueError(f"'telescope={tscopestr}' with 'instrument={inststr}' requires the '{parname}' argument to be: {estr}")
+
+            raise ValueError(f"'telescope={tscopestr}' requires '{parname}' argument to be: {estr}")
 
 
     def check_tscope(self, telescope: str=""):
@@ -490,14 +489,16 @@ class Check_and_Update_Info:
 
 
         ### check all other instrument and detector setups ###
-        checks = { "einstein" : self._check_einstein,
+        checks = { "chandra" : self._check_chandra,
+                   "einstein" : self._check_einstein,
                    "asca" : self._check_asca,
                    "bepposax" : self._check_bepposax,
                    "calet" : self._check_calet,
                    "rxte" : self._check_rxte,
                    "suzaku" : self._check_suzaku,
                    "swift" : self._check_swift,
-                   "xmm" : self._check_xmm }
+                   "xmm" : self._check_xmm,
+                   "xrism" : self._check_xrism }
 
 
         runchecks = checks.get(telescope)
@@ -506,6 +507,17 @@ class Check_and_Update_Info:
             instrument,detnam = runchecks(instrument,detnam)
 
         return instrument, detnam
+
+
+    def _check_chandra(self,inst,det):
+
+        ### check for Chandra/HRC, which is barely suitable for crude hardness ratio estimates ###
+        if inst == "HRC":
+            raise RuntimeWarning("non-grating HRC data has insufficient spectral resolution to be suitable for spectral fitting!")
+
+        self._varcheck(inst, ["ACIS"], tscopestr="Chandra")
+
+        return inst,det
 
 
     def _check_einstein(self,inst,det):
@@ -602,6 +614,13 @@ class Check_and_Update_Info:
         if inst.startswith("EPN"):
             inst = "EPIC"
             det = "PN"
+
+        return inst,det
+
+
+    def _check_xrism(self,inst,det):
+        self._varcheck(inst, ["XTEND","RESOLVE"],
+                       tscopestr="XRISM")
 
         return inst,det
 

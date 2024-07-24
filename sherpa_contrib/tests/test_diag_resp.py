@@ -24,7 +24,7 @@ Test routines for the diag_resp code
 """
 
 from os import environ
-from random import choice
+from random import choice, randint, randrange, shuffle
 from collections import namedtuple
 import pytest
 
@@ -46,6 +46,20 @@ from sherpa_contrib.diag_resp import mkdiagresp, build_resp, EGrid, _get_random_
 
 
 
+def _quash_ethresh_warning(func):
+    """
+    return compound decorator for reused set of decorators
+    """
+
+    deco1 = pytest.mark.filterwarnings("ignore:.*ENERG_LO value < 0:UserWarning")
+    deco2 = pytest.mark.filterwarnings("ignore:.*ENERG_HI < ENERG_LO:UserWarning")
+    deco3 = pytest.mark.filterwarnings("ignore:.*has a non-monotonic.*array:UserWarning")
+    deco4 = pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
+
+    return deco1(deco2(deco3(deco4(func))))
+
+
+
 def _randomize_case(string: str = "") -> str:
     """
     return randomized case for a given alphabetical string
@@ -57,6 +71,44 @@ def _randomize_case(string: str = "") -> str:
     randomize = (choice(s) for s in zip(lower,upper))
 
     return "".join(randomize)
+
+
+
+def _remove_random_char(string: str="") -> str:
+    """
+    return string with random character removed from the input string
+    """
+
+    char = [s for s in string]
+    _ = char.pop(randrange(len(char)))
+
+    return "".join(char)
+
+
+
+def _shuffle_string(string: str="") -> str:
+    """
+    return string with random character removed from the input string
+    """
+
+    char = [s for s in string]
+    shuffle(char)
+
+    return "".join(char)
+
+
+
+def _shuffle_or_pop_string(string):
+    if string is None:
+        return None
+
+    condition = randint(0,2)
+
+    if condition == 1:
+        return _shuffle_string(string)
+    if condition == 2:
+        return _remove_random_char(string)
+    return string
 
 
 
@@ -231,15 +283,18 @@ def _instrument_configs(fdict: dict) -> dict[tuple[namedtuple]]:
 
     return fdict
 
+
+
+instconfig = _instrument_configs({})
+
+
+
 ####################################################################################################
 
 @pytest.mark.skipif(not astropy_status, reason="'astropy' is not available which these test depends on")
-@pytest.mark.filterwarnings("ignore:.*ENERG_LO value < 0:UserWarning")
-@pytest.mark.filterwarnings("ignore:.*ENERG_HI < ENERG_LO:UserWarning")
-@pytest.mark.filterwarnings("ignore:.*has a non-monotonic.*array:UserWarning")
-@pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
+@_quash_ethresh_warning
 @pytest.mark.parametrize("telescope,instconfig",
-                         [(tscope,config) for tscope,config in _instrument_configs({}).items()])
+                         [(tscope,config) for tscope,config in instconfig.items()])
 def test_instconfig_pyfits(telescope,instconfig,backend=backend):
     """
     Check that all available instrument configurations are usable using astropy pyfits file I/O backend
@@ -263,10 +318,7 @@ def test_instconfig_pyfits(telescope,instconfig,backend=backend):
 
 
 @pytest.mark.skipif(not crates_status, reason="'pycrates' is not available which these test depends on")
-@pytest.mark.filterwarnings("ignore:.*ENERG_LO value < 0:UserWarning")
-@pytest.mark.filterwarnings("ignore:.*ENERG_HI < ENERG_LO:UserWarning")
-@pytest.mark.filterwarnings("ignore:.*has a non-monotonic.*array:UserWarning")
-@pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
+@_quash_ethresh_warning
 @pytest.mark.parametrize("telescope,instconfig",
                          [(tscope,config) for tscope,config in _instrument_configs({}).items()])
 def test_instconfig_crates(telescope,instconfig,backend=backend):
@@ -295,10 +347,7 @@ backend = crates_backend
 
 ####################################################################################################
 
-@pytest.mark.filterwarnings("ignore:.*ENERG_LO value < 0:UserWarning")
-@pytest.mark.filterwarnings("ignore:.*ENERG_HI < ENERG_LO:UserWarning")
-@pytest.mark.filterwarnings("ignore:.*has a non-monotonic.*array:UserWarning")
-@pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
+@_quash_ethresh_warning
 @pytest.mark.parametrize("telescope,instconfig",
                          [(tscope,config) for tscope,config in _instrument_configs({}).items()])
 def test_instconfig_randomcase(telescope,instconfig,backend=backend):
@@ -541,3 +590,34 @@ def test_chandra_gratings(args):
     print(f"Running {msgconfig}...", end="\n\n")
 
     assert mkdiagresp(**args._asdict()), f"{msgconfig} test failed!"
+
+####################################################################################################
+
+malformed = namedtuple("malformed", ["telescope","instrument","detector","instfilter"])
+
+malformed_config = [ malformed(_shuffle_or_pop_string(tscope),
+                               _shuffle_or_pop_string(c.instrument),
+                               _shuffle_or_pop_string(c.detector),
+                               _shuffle_or_pop_string(c.instfilter))
+                     for tscope,configs in instconfig.items()
+                     for c in configs ]
+
+good_config = [ malformed(tscope, c.instrument, c.detector, c.instfilter)
+                for tscope,configs in instconfig.items()
+                for c in configs ]
+
+
+@pytest.mark.xfail
+@_quash_ethresh_warning
+@pytest.mark.parametrize("args,orig",
+                         [(args,orig) for args,orig in zip(*[malformed_config, good_config])])
+def test_malformed(args,orig):
+    """
+    use malformed argument values; they should throw errors, albeit some tests
+    may pass with valid inputs since the arguments are randomly altered
+    """
+
+    if args != orig:
+        assert not mkdiagresp(**args._asdict()), "This test is expected to fail!"
+    else:
+        assert mkdiagresp(**args._asdict()), "This test should have passed!"
