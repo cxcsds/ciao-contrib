@@ -33,13 +33,13 @@ from sherpa.astro.io import backend
 try:
     from sherpa.astro.io import crates_backend
     crates_status = True
-except (ImportError,ModuleNotFoundError) as exc:
+except (ImportError,ModuleNotFoundError) as E:
     crates_status = False
 
 try:
     from sherpa.astro.io import pyfits_backend
     astropy_status = True
-except (ImportError,ModuleNotFoundError) as exc:
+except (ImportError,ModuleNotFoundError) as E:
     astropy_status = False
 
 from sherpa_contrib.diag_resp import mkdiagresp, build_resp, EGrid, _get_random_string
@@ -79,7 +79,7 @@ def _remove_random_char(string: str="") -> str:
     return string with random character removed from the input string
     """
 
-    char = [s for s in string]
+    char = list(string)
     _ = char.pop(randrange(len(char)))
 
     return "".join(char)
@@ -91,7 +91,7 @@ def _shuffle_string(string: str="") -> str:
     return string with random character removed from the input string
     """
 
-    char = [s for s in string]
+    char = list(string)
     shuffle(char)
 
     return "".join(char)
@@ -285,7 +285,7 @@ def _instrument_configs(fdict: dict) -> dict[tuple[namedtuple]]:
 
 
 
-instconfig = _instrument_configs({})
+iconfig = _instrument_configs({})
 
 
 
@@ -293,8 +293,7 @@ instconfig = _instrument_configs({})
 
 @pytest.mark.skipif(not astropy_status, reason="'astropy' is not available which these test depends on")
 @_quash_ethresh_warning
-@pytest.mark.parametrize("telescope,instconfig",
-                         [(tscope,config) for tscope,config in instconfig.items()])
+@pytest.mark.parametrize("telescope,instconfig", list(iconfig.items()))
 def test_instconfig_pyfits(telescope,instconfig,backend=backend):
     """
     Check that all available instrument configurations are usable using astropy pyfits file I/O backend
@@ -319,8 +318,7 @@ def test_instconfig_pyfits(telescope,instconfig,backend=backend):
 
 @pytest.mark.skipif(not crates_status, reason="'pycrates' is not available which these test depends on")
 @_quash_ethresh_warning
-@pytest.mark.parametrize("telescope,instconfig",
-                         [(tscope,config) for tscope,config in _instrument_configs({}).items()])
+@pytest.mark.parametrize("telescope,instconfig", list(iconfig.items()))
 def test_instconfig_crates(telescope,instconfig,backend=backend):
     """
     Check that all available instrument configurations are usable using CIAO's crates file I/O backend
@@ -348,8 +346,7 @@ backend = crates_backend
 ####################################################################################################
 
 @_quash_ethresh_warning
-@pytest.mark.parametrize("telescope,instconfig",
-                         [(tscope,config) for tscope,config in _instrument_configs({}).items()])
+@pytest.mark.parametrize("telescope,instconfig", list(iconfig.items()))
 def test_instconfig_randomcase(telescope,instconfig,backend=backend):
     """
     Test argument case does not matter
@@ -530,7 +527,7 @@ def test_channel_offset():
 
     startchan = 25
 
-    rmf,arf = build_resp(elo, ehi, offset=startchan)
+    rmf,_ = build_resp(elo, ehi, offset=startchan)
 
     assert (fchan_min := min(rmf.f_chan)) == startchan, f"Testing with channel offset of {startchan}... minimum 'f_chan' value in the returned RMF object is {fchan_min}.  It is expected that the values should be equal!"
 
@@ -599,18 +596,18 @@ malformed_config = [ malformed(_shuffle_or_pop_string(tscope),
                                _shuffle_or_pop_string(c.instrument),
                                _shuffle_or_pop_string(c.detector),
                                _shuffle_or_pop_string(c.instfilter))
-                     for tscope,configs in instconfig.items()
+                     for tscope,configs in iconfig.items()
                      for c in configs ]
 
 good_config = [ malformed(tscope, c.instrument, c.detector, c.instfilter)
-                for tscope,configs in instconfig.items()
+                for tscope,configs in iconfig.items()
                 for c in configs ]
 
 
 @pytest.mark.xfail
 @_quash_ethresh_warning
 @pytest.mark.parametrize("args,orig",
-                         [(args,orig) for args,orig in zip(*[malformed_config, good_config])])
+                         list(zip(*[malformed_config, good_config])))
 def test_malformed(args,orig):
     """
     use malformed argument values; they should throw errors, albeit some tests
