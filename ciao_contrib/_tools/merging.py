@@ -507,6 +507,21 @@ def update_ancillary_keywords(infile, outfile, asolfile):
 #            # do this.
 #            # update_ancillary_keywords(infile, outfile, asolfile)
 
+def _copy_region_block(infile, outfile):
+    """DM bug with dmcopy opt=all means we need to avoid it and
+    copy any REGION blocks manually (gratings data)"""
+    from ciao_contrib.runtool import dmappend
+
+    inblk = pycrates.read_file(infile)
+    in_ds = inblk.get_dataset()
+    try:
+        regblk = in_ds.get_crate("REGION")
+    except IndexError:
+        return
+
+    dmappend(f"{infile}[REGION][subspace -time]", outfile)
+
+
 def reproject_events_task(infile, ra0, dec0, outfile,
                           tmpdir="/tmp/",
                           verbose=0,
@@ -536,8 +551,8 @@ def reproject_events_task(infile, ra0, dec0, outfile,
         v2(f"Separation={sepasec} arcsec between reference and {infile}")
         if sepdeg < tol:
             v3(f"No need to reproject {infile}, so copying.")
-            run.dmcopy(infile, outfile, option="all", clobber=clobber)
-
+            run.dmcopy(infile, outfile, clobber=clobber)
+            _copy_region_block(infile, outfile)
         else:
             # If there are any spatial filters on the input event files - e.g.
             # if the original input was populated via a call like
@@ -552,7 +567,10 @@ def reproject_events_task(infile, ra0, dec0, outfile,
                 v3(f"Copying evt file to apply any subspace filters: {infile}")
                 tmpfile = tempfile.NamedTemporaryFile(dir=tmpdir,
                                                       suffix=".evt")
-                run.dmcopy(infile, tmpfile.name, option="all", clobber=True)
+                run.dmcopy(infile, tmpfile.name, clobber=True)
+                # No need to do this w/ temp file, since REGION will be
+                # dropped by reproject_events anyways.
+                # _copy_region_block(infile, tmpfile.name)
                 evtname = tmpfile.name
 
             else:
@@ -1534,8 +1552,9 @@ def merge_event_files(infiles,
         v3("dmcopy the merged event file to remove PI subspace")
         run.dmcopy(merge_outfile + "[subspace -pi]",
                    outfile,
-                   option="all",  # should not be necessary, but kept in
                    clobber=clobber)
+        # should not be necessary, but try anyway
+        _copy_region_block(merge_outfile, outfile)
         merge_outfile_temp = None
 
     # Edit keywords after the merge
