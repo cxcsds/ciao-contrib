@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # 
-# Copyright (C) 2013,2014,2016,2018,2019, 2022 
+# Copyright (C) 2013,2014,2016,2018,2019,2022,2024 
 # Smithsonian Astrophysical Observatory
 # 
 # This program is free software; you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 # 
 
 toolname = "combine_grating_spectra"
-__revision__ = "25 February 2022"
+__revision__ = "17 April 2024"
 
 from pycrates import read_file
 import stk
@@ -178,15 +178,22 @@ def split_II_to_I( instk, arfs, rmfs, outroot, verbose, clobber ):
         outs = [delme(x) for x in glob.glob( tmproot+"_?eg_??.pha")]
         bkgs = [delme(x) for x in glob.glob( tmproot+"_?eg_??_bkg.pha")]
 
+        outs.sort()
         retsrc.extend(outs)
 
         if ( 0 == len(bkgs) ):
             retbkg.extend([None]*len(outs))
-        else:
+        elif len(bkgs) == len(outs):
+            bkgs.sort()
             retbkg.extend(bkgs)
-    
-    retsrc.sort()
-    retbkg.sort()
+        else:  # should never happen but just in case
+            raise IOError("Mismatch in number of source and background PHA files")
+
+    for sss,bbb in zip(retsrc,retbkg):
+        if bbb:
+            sroot = sss.rstrip(".pha")
+            broot = bbb.rstrip("_bkg.pha")
+            assert sroot == broot, "Something is messed up in sort/bkg matching"
 
     return retsrc,retbkg
 
