@@ -3,16 +3,19 @@ from sherpa.astro.ui import *
 import numpy as np
 import matplotlib.pyplot as plt    
 
-def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xlim_low = 0.3, xlim_high = 10, ylim_low = 0.001, ylim_high = 10, log_axis = 'none', plot_type = 'model_unconvolved',  figsize_x = 10, figsize_x_min = 0.1, figsize_x_max = 30, figsize_y=5, figsize_y_min=0.1, figsize_y_max = 30, limit_style = 'soft', widget_step = 0.001):
+def notebook_plotter(model_var, dataset_id = 1, model_resolution = 0.001,  autoscale = 'xy', xlim_low = 0.3, xlim_high = 10, ylim_low = 0.001, ylim_high = 10, log_axis = 'none', plot_type = 'model_unconvolved',  figsize_x = 10, figsize_x_min = 0.1, figsize_x_max = 30, figsize_y=5, figsize_y_min=0.1, figsize_y_max = 30, limit_style = 'soft', widget_step = 0.001):
 
     '''
     This function creates the interactive jupyter notebook plotting window allowing users to visualize changes in model parameters and how that may affect spectral fitting. Users can adjust the 'Model Parameters' section of the interactive plot to visualize real-time changes in the underlying spectral model. Users can modify the Plotting Options in the interactive plot to customize what is plotted. This tool is currently a prototype and is meant to demonstrate the usefulness of python ipywidgets in visualizing sherpa data. For full functionality, users should have a dataset loaded with proper responses and a model set (e.g., with load_pha() and set_source() ). Please note, running this tool and modifying the model parameters will change the model values in your sherpa session.
     
         Parameters
         ----------
-            model_var: sherpa.models.model.BinaryOpModel
-            A variable assigned to a sherpa  model.
+            model_var: sherpa.models.Model object
+            A variable assigned to a sherpa  model. This cannot be a string.
             Example: my_model = (xstbabs.a1 * xsapec.p1)
+
+            dataset_id: int
+                The sherpa dataset identifier. The default value is dataset id 1.
 
             figsize_x_min: float
                 The minimum allowable X-axis size of the interactive plotting window.
@@ -30,12 +33,12 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
                 This parameter can be either 'soft' (default) or 'hard'. Soft limits will set the user-defined limits when plotting the maximum and minumum model parameter values. Hard limits will set the model-defined maximum and minimum model parameter values.
 
             widget_step: float
-                The minimun step to increment the value for all widget sliders.                
+                The minimun step to increment the value for all 'Model Parameter' widget sliders.                
 
             Description of Interactive Plotting Options
             -------------------------------
-            model resolution: float
-                Spectral resolution of the plotted model. The spectral model will be evalulated over an energy/wavelength grid every resolution element.
+           model_resolution: float
+                Desired spectral resolution of the plotted model in units of keV. The spectral model will be evalulated over an energy/wavelength grid every resolution element. If plotting in wavelength space, model_resolution is automatically converted from keV to Ang.
 
             autoscale: string
                 Whether or not to autoscale the respective axes using the values plotted. 'None' means no autoscaling, 'x' means x-axis only autoscaling, 'y' means y-axis only autoscaling, and 'xy' means both x and y axes are autoscaled.                
@@ -56,7 +59,7 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
                 Whether or not to plot axes in log-space. 'None' means no log space plotting, 'xlog' means xlog only plotting, 'ylog' means ylog only plotting, and 'loglog' means both x and y are set to log plotting.
 
             plot_type: string
-                This parameter determines what is plotted. 'model_unconvolved' plots the source model using the model resolution and without folding in the instrument response. 'model_convolved' plots the source model convolved with the instruments (ARF+RMF) responses. 'both_models' plots both unconvolved and convolved models on the same plot. 'data_and_convolved_model' plots the loaded dataset with the source model convolved with the response.
+                This parameter determines what is plotted. 'model_unconvolved' plots the source model using the model resolution and without folding in the instrument response. 'model_convolved' plots the source model convolved with the instruments (ARF+RMF) responses. 'both_models' plots both unconvolved (purple) and convolved models (orange) on the same plot. For this plot_type, plotting options control the unconvolved model plot while the y-axis of the convolved model autoscales to remain within the x and y limits set for the unconvolved model. 'data_and_convolved_model' plots the loaded dataset with the source model convolved with the response. When plotting a convolved model or data, the model_var must be set to the same dataset value as indicated with dataset_id.
 
             figsize_x: float
                 Sets the initial widget x-axis figure size.
@@ -64,9 +67,40 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
             figsize_y: float
                 Sets the initial widget y-axis figure size.
 
-
-         Returns
+         Notes
          -------
+         Interactive plotting options can be set by selecting them in the plotting window or directly in the call to the the notebook_plotter() function. 
+
+         Units of model_resolution parameter should always be in keV regardless whether or not set_analysis is set to 'energy' or 'wavelength'. If plotting in wavelength, keV resolution elements are converted to Angstrom.  This tool does not work with other set_analysis() options.              
+
+         Some of the parameter widget boxes and sliders have clickable up and down arrows to adjust parameter values. Only the minimum 'Model Parameter' slider increments can be adjusted using the widget_step parameter. Users can override most parameter values by clicking the values and entering new values using a keyboard.
+         
+         Examples
+         -------
+
+         Define a model and plot the unconvolved model with default notebook_plotter parameters. Here we set a maximum to nH to better facilitate viewing using widgets:
+
+         >>> my_model = (xstbabs.a1 * xsapec.p1)
+         >>> a1.nH.max = 50
+         >>> notebook_plotter(my_model)
+
+         Plot the same model as previous example with a new resolution of 0.1 keV. Modify the plotting parameters by setting the y-axis in log-scale, setting limits on the x-axis and y figure size while plotting the unconvolved model:  
+
+         >>> notebook_plotter(my_model, model_resolution = 0.1, log_axis = 'ylog', xlim_low = 0.3, xlim_high =10, figsize_y = 3, plot_type = 'model_unconvolved')
+
+         Load a dataset and associated responses with id=2, set a model to the data and then plot the data with the convolved model overlaid:
+
+         >>> load_pha(2,'src2.pi')
+         >>> load_arf(2, 'src2.arf')
+         >>> load_rmf(2, 'src2.rmf')
+         >>> my_model_2 = (xsapec.p1 + xsapec.p2)
+         >>> set_source(2, my_model_2)
+         >>> notebook_plotter(my_model_2, dataset_id = 2, plot_type = 'data_and_convolved_model')
+
+         Compare the unconvolved and convolved models in the previous example in wavelength (Angstrom) and adjust the minimum widget slider increment for model parameters to be at least 0.1:
+
+         >>> set_analysis('wavelength')
+         >>> notebook_plotter(my_model_2, dataset_id = 2, plot_type = 'both_models', widget_step  = 0.1)
 
     '''    
 
@@ -74,15 +108,18 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
     ###############################
     #function 1 -- widget_maker
 
-    def widget_maker(model_var, model_resolution, autoscale, xlim_low, xlim_high, ylim_low, ylim_high, log_axis, plot_type, figsize_x, figsize_x_min, figsize_x_max, figsize_y, figsize_y_min, figsize_y_max, limit_style, widget_step):
+    def widget_maker(model_var, dataset_id, model_resolution, autoscale, xlim_low, xlim_high, ylim_low, ylim_high, log_axis, plot_type, figsize_x, figsize_x_min, figsize_x_max, figsize_y, figsize_y_min, figsize_y_max, limit_style, widget_step):
         '''
         This function collects information about the user-supplied model and creates the appropriate dictionary object where the dictionary keys are the model/UI parameter names and the values are the associated widgets that control them. This function is used by notebook_plotter() when creating the interactive plot.
                             
         Parameters
         ----------
-            model_var: sherpa.models.model.BinaryOpModel
-            A variable assigned to a sherpa  model.
+            model_var: sherpa.models.Model object
+            A variable assigned to a sherpa  model. This cannot be a string.
             Example: my_model = (xstbabs.a1 * xsapec.p1)
+            
+            dataset_id: int
+                The sherpa dataset identifier. The default value is dataset id 1.            
 
             figsize_x_min: float
                 The minimum allowable X-axis size of the interactive plotting window.
@@ -100,12 +137,12 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
                 This parameter can be either 'soft' (default) or 'hard'. Soft limits will set the user-defined limits when plotting the maximum and minumum model parameter values. Hard limits will set the model-defined maximum and minimum model parameter values.
 
             widget_step: float
-                The minimun step to increment the value for all widget sliders
+                The minimun step to increment the value for all 'Model Parameter' widget sliders.                
 
             Description of Interactive Plotting Options
             -------------------------------
-            model resolution: float
-                Spectral resolution of the plotted model. The spectral model will be evalulated over an energy/wavelength grid every resolution element.
+            model_resolution: float
+                Desired spectral resolution of the plotted model in units of keV. The spectral model will be evalulated over an energy/wavelength grid every resolution element. If plotting in wavelength space, model_resolution is automatically converted from keV to Ang.
 
             autoscale: string
                 Whether or not to autoscale the respective axes using the values plotted. 'None' means no autoscaling, 'x' means x-axis only autoscaling, 'y' means y-axis only autoscaling, and 'xy' means both x and y axes are autoscaled.                
@@ -126,7 +163,7 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
                 Whether or not to plot axes in log-space. 'None' means no log space plotting, 'xlog' means xlog only plotting, 'ylog' means ylog only plotting, and 'loglog' means both x and y are set to log plotting.
 
             plot_type: string
-                This parameter determines what is plotted. 'model_unconvolved' plots the source model using the model resolution and without folding in the instrument response. 'model_convolved' plots the source model convolved with the instruments (ARF+RMF) responses. 'both_models' plots both unconvolved and convolved models on the same plot. 'data_and_convolved_model' plots the loaded dataset with the source model convolved with the response.
+                This parameter determines what is plotted. 'model_unconvolved' plots the source model using the model resolution and without folding in the instrument response. 'model_convolved' plots the source model convolved with the instruments (ARF+RMF) responses. 'both_models' plots both unconvolved (purple) and convolved models (orange) on the same plot. For this plot_type, plotting options control the unconvolved model plot while the y-axis of the convolved model autoscales to remain within the x and y limits set for the unconvolved model. 'data_and_convolved_model' plots the loaded dataset with the source model convolved with the response. When plotting a convolved model or data, the model_var must be set to the same dataset value as indicated with dataset_id.
 
             figsize_x: float
                 Sets the initial widget x-axis figure size.
@@ -428,7 +465,8 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
         
 
         #plot colors - for now, hardcoded to be standard sherpa colors for concolved model (orange) and data (blue). 
-        unconvolved_color = '#d62728' #red
+        #unconvolved_color = '#d62728' #red
+        unconvolved_color = 'darkorchid' #purple
         convolved_color = '#ff7f0e' #orange to be consistent with sherpa
         data_color = '#1f77b4' #blue to be consistent with sherpa
 
@@ -465,6 +503,9 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
         #error message if user has not loaded something necessary for the plot
         response_error_message = 'ERROR: Convolved model plotting requires a dataset with an ARF and RMF loaded and a model set with set_source().'
 
+        #error message if user tries to plot a convolved model or dataset associated with a different dataset than the default (e.g., get_default_id()) 
+        dataset_id_error = 'ERROR: Input model "%s" is not associated via set_source() with dataset_id %s. Please set the dataset_id parameter in notebook_plotter to the dataset associated with this model if you wish to view convolved models or data.' %(model_var.name, dataset_id)
+
         #using try/excpet here to catch the error if data/responses aren't loaded without killing the plot
         #check ARF
         try:
@@ -490,6 +531,24 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
         except:
             is_data_set = 'no_data'            
 
+        #convert dataset_id to integer type in case the user entered it in string format
+        dataset_id_int = int(dataset_id)
+
+        #variable used to check if the model to plot is associated with the ID of the dataset also being plotted
+        try:
+            source_checker = get_source(dataset_id_int)
+        except:
+             source_checker = 'source not set'
+
+        #check if the model_var is just a string and if so 
+        if type(model_var) == str:
+            print('\n\n\n')
+            print(response_error_message)
+            print('\n\n\n')             
+
+        ##REMOVE>>?
+        #grab the default_id that is set for plotting purposes. This way users can use set_default_id to plot a different ID
+        #default_dataset = get_default_id()
 
         #grab the model expression for use in the plot titles
         #title = get_source()
@@ -501,7 +560,6 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
             ax.set_ylabel('photons s$^{-1}$ cm$^{-2}$ keV$^{-1}$', fontsize = plot_fontsize)
             ax.set_ylabel(yunit_unconvolved, fontsize = plot_fontsize)
             ax.set_title('Unconvolved Model: %s' %(title_name), fontsize = plot_fontsize)
-
         
         #plot the source model convolved with the ARF/RMF
         if args['plot_type'] == 'model_convolved':  #convolved model units are in counts/s/keV
@@ -511,8 +569,13 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
                 print('\n\n\n')
                 print(response_error_message)
                 print('\n\n\n')
+            elif source_checker != model_var:
+                #print the response error to the screen
+                print('\n\n\n')
+                print(dataset_id_error)
+                print('\n\n\n')
             else:
-                conv_model = get_model_plot()
+                conv_model = get_model_plot(dataset_id_int)
                 ax.plot(conv_model.x, conv_model.y, color = convolved_color)
                 ax.set_ylabel(conv_model.ylabel, fontsize = plot_fontsize)
                 ax.set_title('Convolved Model: %s' %(title_name), fontsize = plot_fontsize)
@@ -526,15 +589,32 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
                 print('\n\n\n')
                 print(response_error_message)
                 print('\n\n\n')
+            elif source_checker != model_var:
+                #print the response error to the screen
+                print('\n\n\n')
+                print(dataset_id_error)
+                print('\n\n\n')                
+            elif (args['log'] == 'ylog') or (args['log'] == 'loglog'):        
+                #need to set up two axes (one for model units and one for convolved units)
+                ax.plot(emid,model_y, color = unconvolved_color)
+                ax.set_ylabel(yunit_unconvolved, fontsize = plot_fontsize)
+                ax.set_title('Unconvolved and Convolved Models')
+
+                conv_model = get_model_plot(dataset_id_int) 
+                ax2 = ax.twinx()
+                ax2.set_yscale('log')
+                ax2.plot(conv_model.x, conv_model.y, color=convolved_color) 
+                ax2.set_ylabel(conv_model.ylabel, fontsize = plot_fontsize, color=convolved_color)
+                #print('\n hello \n')
             else:        
                 #need to set up two axes (one for model units and one for convolved units)
                 ax.plot(emid,model_y, color = unconvolved_color)
                 ax.set_ylabel(yunit_unconvolved, fontsize = plot_fontsize)
                 ax.set_title('Unconvolved and Convolved Models')
 
-                conv_model = get_model_plot() 
+                conv_model = get_model_plot(dataset_id_int) 
                 ax2 = ax.twinx()
-                ax.plot(conv_model.x, conv_model.y, color=convolved_color) #note, this is intentionally left as 'ax' and not 'ax2' because the widget updates the ax axes for logs
+                ax2.plot(conv_model.x, conv_model.y, color=convolved_color) 
                 ax2.set_ylabel(conv_model.ylabel, fontsize = plot_fontsize, color=convolved_color)
         
   
@@ -546,13 +626,18 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
                 print('\n\n\n')
                 print(response_error_message)
                 print('\n\n\n')
+            elif source_checker != model_var:
+                #print the response error to the screen
+                print('\n\n\n')
+                print(dataset_id_error)
+                print('\n\n\n')
             else:                            
-                pha_data = get_data_plot()
+                pha_data = get_data_plot(dataset_id_int)
                 ax.errorbar(pha_data.x, pha_data.y, xerr=pha_data.xerr, yerr=pha_data.yerr, fmt='.', color=data_color)
                 ax.set_ylabel(pha_data.ylabel, fontsize = plot_fontsize)
                 ax.set_title('Data and Convolved Model')
 
-                conv_model = get_model_plot()
+                conv_model = get_model_plot(dataset_id_int)
                 ax.plot(conv_model.x, conv_model.y, color = convolved_color)
 
 
@@ -562,7 +647,7 @@ def notebook_plotter(model_var, model_resolution = 0.001,  autoscale = 'xy', xli
 
 
     #create the widgets from the user-supplied spectral model and the hard-coded plotting options
-    widget_dict = widget_maker(model_var, model_resolution, autoscale, xlim_low, xlim_high, ylim_low, ylim_high, log_axis, plot_type, figsize_x, figsize_x_min, figsize_x_max, figsize_y, figsize_y_min, figsize_y_max, limit_style, widget_step)
+    widget_dict = widget_maker(model_var, dataset_id, model_resolution, autoscale, xlim_low, xlim_high, ylim_low, ylim_high, log_axis, plot_type, figsize_x, figsize_x_min, figsize_x_max, figsize_y, figsize_y_min, figsize_y_max, limit_style, widget_step)
 
     #make the UI object necessary for formatting the widgets in the notebook
     ui = ui_maker(widget_dict)
