@@ -42,7 +42,7 @@ try:
 except (ImportError,ModuleNotFoundError) as E:
     astropy_status = False
 
-from sherpa_contrib.diag_resp import mkdiagresp, build_resp, EGrid, _get_random_string
+from sherpa_contrib.diag_resp import mkdiagresp, build_resp, EGrid
 
 
 
@@ -57,6 +57,16 @@ def _quash_ethresh_warning(func):
     deco4 = pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
 
     return deco1(deco2(deco3(deco4(func))))
+
+
+
+def _get_random_string(strlen: int = 16) -> str:
+    from string import ascii_letters,digits
+    from random import choices
+
+    chars = ascii_letters + digits
+
+    return ''.join(choices(chars, k=strlen))
 
 
 

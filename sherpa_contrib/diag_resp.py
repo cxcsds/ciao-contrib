@@ -49,13 +49,14 @@ or
 
 """
 
-__revision__ = "22 July 2024"
+__revision__ = "16 August 2024"
 
 import os
 import warnings
 from logging import getLogger
 from functools import wraps
 from re import sub
+from typing import Optional,Union
 
 import numpy.typing as npt
 from numpy import arange
@@ -91,40 +92,8 @@ def _reformat_wmsg(func):
 
 
 
-def _quash_shpverb(func):
-    """
-    Decorator:
-
-    Temporarily quash Sherpa verbosity.
-    """
-
-    def run_func(*args, **kwargs):
-        sherpalog = getLogger("sherpa")
-        loglevel = sherpalog.level
-        sherpalog.setLevel(0)
-
-        func_out = func(*args,**kwargs)
-
-        sherpalog.setLevel(loglevel)
-
-        return func_out
-
-    return run_func
-
-
-
-def _get_random_string(strlen: int = 16) -> str:
-    from string import ascii_letters,digits
-    from random import choices
-
-    chars = ascii_letters + digits
-
-    return ''.join(choices(chars, k=strlen))
-
-
-
-def _arg_case(arg: str|int|None=None,
-              lower: bool=False) -> str|None:
+def _arg_case(arg: Optional[Union[str,int,None]]=None,
+              lower: bool=False) -> Optional[Union[str,None]]:
     if not isinstance(arg,str):
         return arg
 
@@ -135,17 +104,12 @@ def _arg_case(arg: str|int|None=None,
 
 
 
-@_quash_shpverb
 def _get_file_header(fn) -> dict:
-    from sherpa.astro.ui import load_pha,get_data,delete_data
+    from sherpa.astro.ui import unpack_pha
+    from sherpa.utils.logging import SherpaVerbosity
 
-    tmp_id = _get_random_string(strlen=32)
-
-    load_pha(tmp_id,fn)
-    hdr = get_data(tmp_id).header
-    delete_data(tmp_id)
-
-    return hdr
+    with SherpaVerbosity("ERROR"):
+        return unpack_pha(fn).header
 
 
 
@@ -175,35 +139,25 @@ class EGrid:
 
 
     def _set_chantype_none(self, telescope: str = "",
-                           instrument: str|None = None,
-                           chantype: str|None=None):
+                           instrument: Optional[Union[str,None]] = None,
+                           chantype: Optional[Union[str,None]] = None):
 
-        if telescope == "asca" and instrument != "GIS":
-            return chantype
-
-        if telescope == "swift" and instrument == "XRT":
-            return chantype
-
-        if telescope == "xmm" and instrument == "EPIC":
-            return chantype
-
-        if telescope == "xrism" and instrument == "RESOLVE":
-            return chantype
-
-        if telescope == "calet":
-            return chantype
-
-        if telescope == "chandra" and instrument == "ACIS" and self.detnam is None:
+        if any([ telescope == "asca" and instrument != "GIS",
+                 telescope == "swift" and instrument == "XRT",
+                 telescope == "xmm" and instrument == "EPIC",
+                 telescope == "xrism" and instrument == "RESOLVE",
+                 telescope == "calet",
+                 telescope == "chandra" and instrument == "ACIS" and self.detnam is None ]):
             return chantype
 
         return None
 
 
-    def _get_ebounds_blk(self, instrument: str|None = None,
-                         detnam: str|None = None,
-                         instfilter: str|None = None,
-                         subchan: int|None = None,
-                         chantype: str|None = None) -> str:
+    def _get_ebounds_blk(self, instrument: Optional[Union[str,None]] = None,
+                         detnam: Optional[Union[str,None]] = None,
+                         instfilter: Optional[Union[str,None]] = None,
+                         subchan: Optional[Union[int,None]] = None,
+                         chantype: Optional[Union[str,None]] = None) -> str:
 
         detstr = f"{detnam:->{len(detnam)+1}}" if detnam is not None else ""
         filtstr = f"{instfilter:/>{len(str(instfilter))+1}}" if instfilter is not None else ""
@@ -246,11 +200,11 @@ class EGrid:
 
 
     def get_egrid(self, telescope: str = "",
-                  instrument: str|None = None,
-                  detnam: str|None = None,
-                  instfilter: str|None = None,
-                  subchan: int|None = None,
-                  chantype: str|None = None) -> tuple[npt.NDArray, npt.NDArray, int]:
+                  instrument: Optional[Union[str,None]] = None,
+                  detnam: Optional[Union[str,None]] = None,
+                  instfilter: Optional[Union[str,None]] = None,
+                  subchan: Optional[Union[int,None]] = None,
+                  chantype: Optional[Union[str,None]] = None) -> tuple[npt.NDArray, npt.NDArray, int]:
         """
         return energy grid and channel offset for a given telescope
         and instrument configuration
@@ -352,7 +306,7 @@ class Check_and_Update_Info:
 
     def _varcheck(self, var: str = "", varcheck: list[str] = None,
                   tscopestr: str = "", parname: str = "instrument",
-                  inststr: None|str = None, stripnum: bool = False):
+                  inststr:  Optional[Union[None,str]] = None, stripnum: bool = False):
         """
         raise ValueError if parameter is not appropriately set with valid value
         """
@@ -362,7 +316,7 @@ class Check_and_Update_Info:
 
 
             estr = '|'.join([f"'{v}'" for v in varcheck])
-                
+
             if inststr is not None:
                 raise ValueError(f"'telescope={tscopestr}' with 'instrument={inststr}' requires the '{parname}' argument to be: {estr}")
 
@@ -417,9 +371,9 @@ class Check_and_Update_Info:
 
 
     def set_instfilter(self, telescope: str = "",
-                       instrument: str|None = None,
-                       detnam: str|None = None,
-                       instfilter: str|int|None = None):
+                       instrument: Optional[Union[str,None]] = None,
+                       detnam: Optional[Union[str,None]] = None,
+                       instfilter: Optional[Union[str,int,None]] = None):
         """
         setup 'instfilter' argument; only Swift/UVOT and Chandra/gratings
         energy-grids are dependent on this quantity
@@ -456,8 +410,8 @@ class Check_and_Update_Info:
 
 
     def check_inst_det(self, telescope: str = "",
-                       instrument: str|None = None,
-                       detnam: str|None = None):
+                       instrument: Optional[Union[str,None]] = None,
+                       detnam: Optional[Union[str,None]] = None):
 
         """
         check validity of "instrument" and "detector" arguments and set to None when the arguments will go unused
@@ -511,7 +465,7 @@ class Check_and_Update_Info:
 
     def _check_chandra(self,inst,det):
 
-        ### check for Chandra/HRC, which is barely suitable for crude hardness ratio estimates ###
+        ### check for Chandra/HRC, which *may be* suitable for crude hardness ratio estimates ###
         if inst == "HRC":
             raise RuntimeWarning("non-grating HRC data has insufficient spectral resolution to be suitable for spectral fitting!")
 
@@ -661,7 +615,7 @@ class Check_and_Update_Info:
 
 
 @_reformat_wmsg
-def build_resp(emin, emax, offset: int, ethresh: float|None=1e-12):
+def build_resp(emin, emax, offset: int, ethresh: Optional[Union[float,None]] = 1e-12):
     """
     Return a diagonal RMF and flat ARF data objects with matching energy grid.
     Use set_rmf and set_arf on the respective instances.
@@ -682,7 +636,14 @@ def build_resp(emin, emax, offset: int, ethresh: float|None=1e-12):
 
         #################################################################
         ### remove once 'startchan' is factored into channel enumeration
-        ### in sherpa/astro/instrument.py
+        ### in sherpa/astro/instrument.py, or use a version test on
+        ### whether this incrementation should be done
+
+        # from sherpa import __version__ as shpver
+        # major,minor,micro = shpver.split(".")
+        # ver = float(f"{major}.{minor}")
+        # ver_micro = int(micro)
+        #
 
         if offset != 1:
             diag_rmf.f_chan += offset - 1
@@ -709,12 +670,12 @@ def build_resp(emin, emax, offset: int, ethresh: float|None=1e-12):
 
 def mkdiagresp(telescope: str = "Chandra",
                instrument: str = "ACIS",
-               detector: str|None = None,
-               instfilter: str|int|None = None,
-               refspec: str|DataPHA|None = None,
+               detector: Optional[Union[str,None]] = None,
+               instfilter: Optional[Union[str,int,None]] = None,
+               refspec: Optional[Union[str,DataPHA,None]] = None,
                chantype: str = "PI",
-               nchan: int|None = None,
-               ethresh: float|None = 1e-12):
+               nchan: Optional[Union[int,None]] = None,
+               ethresh: Optional[Union[float,None]] = 1e-12):
     """
     Return a diagonal RMF and flat ARF data objects with matching energy grid for a specified instrument/detector.
     Use set_rmf and set_arf on the respective instances.  Use 'build_resp' for a non-instrument specific [or generalized] energy-grid configuration.
