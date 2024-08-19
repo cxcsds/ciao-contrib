@@ -49,7 +49,7 @@ or
 
 """
 
-__revision__ = "16 August 2024"
+__revision__ = "19 August 2024"
 
 import os
 import warnings
@@ -210,7 +210,7 @@ class EGrid:
         and instrument configuration
         """
 
-        from sherpa.astro.io import backend as shp_backend
+        from sherpa.astro.io import read_table_blocks as shp_readtabblk
 
         fn = f"{os.environ['ASCDS_INSTALL']}/data/ebounds-lut/{self.telescope}-ebounds-lut.fits"
 
@@ -225,24 +225,22 @@ class EGrid:
                                         chantype = chantype)
 
         try:
-            if "pyfits" in shp_backend.__name__:
-                from astropy.io import fits as aspy_fits
+            _,blks,hdrs = shp_readtabblk(fn)
+            data = None
+            
+            for idx,hdr in hdrs.items():
+                blk = blk.lower() if (blk := hdr.get("BLKNAME")) is not None else blk
 
-                with aspy_fits.open(fn) as hdul:
-                    data = hdul[blkname].data
+                if blk == blkname.lower():
+                    data = blks[idx]
+                    break
 
-                    chan = data.CHANNEL
-                    emin = data.E_MIN
-                    emax = data.E_MAX
+            if data is None:
+                raise IOError(f"Unable to find the '{blkname}' HDU block in {fn}.")
 
-            else:
-                from pycrates import read_file as pcr_readfile
-
-                data = pcr_readfile(f"{fn}[{blkname}]")
-
-                chan = data.CHANNEL.values.astype(int)
-                emin = data.E_MIN.values.astype(float)
-                emax = data.E_MAX.values.astype(float)
+            chan = data["CHANNEL"]
+            emin = data["E_MIN"]
+            emax = data["E_MAX"]
 
         except FileNotFoundError:
             raise ValueError("The specified 'telescope' parameter value is invalid; no corresponding lookup table is available.")
@@ -250,7 +248,7 @@ class EGrid:
 
         offset = min(chan)
 
-        del shp_backend
+        del shp_readtabblk
         del data
 
         egrid_unit = get_keys_from_file(f"{fn}[{blkname}]")["EUNIT"]
