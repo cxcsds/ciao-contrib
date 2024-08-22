@@ -1,0 +1,278 @@
+#!/usr/bin/env python
+
+# Copyright (C) 2024 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+'Compute fraction of PSF in neighboring regions'
+
+import os
+import sys
+from tempfile import NamedTemporaryFile
+
+import numpy as np
+
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib.runtool import make_tool
+from pycrates import IMAGECrate, CrateData
+
+
+__toolname__ = "mkrprm"
+__revision__ = "19 August 2024"
+
+lw.initialize_logger(__toolname__)
+VERB0 = lw.get_logger(__toolname__).verbose0
+VERB1 = lw.get_logger(__toolname__).verbose1
+VERB2 = lw.get_logger(__toolname__).verbose2
+
+
+def make_id_map(pars):
+    'Convert input stack of regions to map file'
+
+    VERB2("Started make_id_map")
+
+    tmpfile = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
+                                 suffix="_reg.map", delete=False)
+
+    mkregmap = make_tool("mkregmap")
+    mkregmap.infile = pars["imgfile"]
+    mkregmap.regions = "@-"+pars["infile"]
+    mkregmap.outfile = tmpfile.name
+    verb = mkregmap(clobber=True)
+
+    if verb:
+        VERB2(verb)
+
+    mapfile = IMAGECrate(mkregmap.outfile)
+
+    VERB2("Done make_id_map")
+    return mapfile
+
+
+def make_psfmap(pars):
+    'Create the PSF map. Must be in units of logical pixel size'
+
+    VERB2("Started make_psfmap")
+
+    tmpfile = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
+                                 suffix="_psf.map", delete=False)
+
+    mkpsfmap = make_tool("mkpsfmap")
+
+    mkpsfmap.infile = pars["imgfile"]
+    mkpsfmap.outfile = tmpfile.name
+    mkpsfmap.energy = pars["energy"]
+    mkpsfmap.spectrum = ""
+    mkpsfmap.ecf = pars["ecf"]
+    mkpsfmap.units = "logical"
+    verb = mkpsfmap(clobber=True)
+    if verb:
+        VERB2(verb)
+
+    psffile = IMAGECrate(mkpsfmap.outfile)
+
+    VERB2("Done mkpsfmap")
+
+    # Round pixel values, remove NaN's.
+
+    vals = psffile.get_image().values
+
+    vals[~np.isfinite(vals)] = 0
+    vals = vals * 20.0
+    vals = np.int32(vals)/20.0
+    vals[vals < 0] = 0
+    psffile.get_image().values = vals
+
+    psffile.write(psffile.get_filename(), clobber=True)
+
+    VERB2("Done make_psfmap")
+
+    return psffile
+
+
+def smooth_with_psf(mapcrate, psfcrate, pars):
+    'Smooth map file with PSF map using dmimgadapt'
+
+    tmpout = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
+                                suffix="_out.map", delete=False)
+
+    # Normalize to sum=1.0
+    vals = mapcrate.get_image().values
+    total = np.nansum(vals)
+    vals = vals / total
+    mapcrate.get_image().values = vals
+    mapcrate.write(mapcrate.get_filename(), clobber=True)
+
+    abin = make_tool("dmimgadapt")
+    abin.infile = mapcrate.get_filename()
+    abin.outfile = tmpout.name
+    abin.function = pars["function"]
+    abin.inradfile = psfcrate.get_filename()
+    abin.counts = 1   # Counts don't matter with inradfile specified
+    vv = abin(clobber=True)
+
+    if vv:
+        VERB2(vv)
+
+    retvals = IMAGECrate(tmpout.name)
+
+    return retvals
+
+
+def get_crate_from_map_with_id(mapfile, mapidx):
+    '''Create a crate with image w/ single mapid value'''
+
+    tmpout = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
+                                suffix="_id.map", delete=False)
+
+    vals = mapfile.get_image().values
+
+    # copy values
+    vals = vals * 1
+
+    # Values not equal to ID are set to 0
+    vals[vals != mapidx] = 0
+
+    # Values equal to ID are set to 1
+    vals[vals > 0] = 1
+
+    # Save to new file
+    crate = IMAGECrate(mapfile.get_filename(), "r")
+    crate.get_image().values = vals
+    crate.write(tmpout.name, clobber=True)
+
+    crate = IMAGECrate(tmpout.name)
+
+    return crate   # mapidx_file
+
+
+def delete_crate(crate):
+    '''Helper to delete temp crates'''
+    if os.path.exists(crate.get_filename()):
+        os.unlink(crate.get_filename())
+
+
+def run_inner_loop(args):
+    "Inner loop run for each ID"
+
+    _mapfile, _outer_psf, inner = args
+
+    inner_crate = get_crate_from_map_with_id(_mapfile, inner)
+    product = _outer_psf.get_image().values * inner_crate.get_image().values
+    frac = np.nansum(product)
+    delete_crate(inner_crate)
+    return frac
+
+
+def build_matrix(mapfile, psffile, pars):
+    '''Main routine to compute PSF overlap in neighboring regions
+
+    The basic algorithm is simple:
+
+      Get a map with a single ID value
+      Smooth it with PSF map
+      For each mapID, compute the overlap, which is literally just
+         the smoothed map multiplied by the ID map
+      Save values
+    '''
+
+    # Get list of ID's in mapfile
+    idx_vals = np.sort(np.unique(mapfile.get_image().values))
+    idx_vals = [int(x) for x in idx_vals if x > 0]
+
+    # Setup output matrix
+    max_id = max(idx_vals)
+    matrix = np.zeros([max_id, max_id])
+
+    for outer in idx_vals:
+
+        # Smooth ID with PSF
+        outer_crate = get_crate_from_map_with_id(mapfile, outer)
+        outer_psf = smooth_with_psf(outer_crate, psffile, pars)
+
+        # Compute frac in neighbors
+        frac = []
+        for inner in idx_vals:
+            frac.append(run_inner_loop((mapfile, outer_psf, inner)))
+
+        # ~ # Parallel -- does not work, some race condition yields bad results
+        # ~ from sherpa.utils import parallel_map
+        # ~ inner = [x for x in idx_vals if x>0]
+        # ~ vals = [(mapfile, outer_psf, v) for v in inner]
+        # ~ frac = parallel_map(run_inner_loop, vals)
+
+        if int(pars["verbose"]) > 0:
+            loc = idx_vals.index(outer)
+            ll = len(idx_vals)
+            percent = (100.0*(loc+1.0))/ll
+            sys.stdout.write(f"\rPercent Complete: {percent:5.1f}%")
+
+        matrix[outer-1, :] = frac
+
+        delete_crate(outer_crate)
+        delete_crate(outer_psf)
+
+    if int(pars["verbose"]) > 0:
+        sys.stdout.write("\n")
+
+
+    return matrix
+
+
+def save_matrix(matrix, pars):
+    'Save to outfile'
+
+    from ciao_contrib.runtool import add_tool_history
+
+    cdata = CrateData()
+    cdata.name = "MATRIX"
+    cdata.values = matrix
+
+    crate = IMAGECrate()
+    crate.add_image(cdata)
+
+    # clobber is checked at the beginning of script
+    crate.write(pars["outfile"], clobber=pars["clobber"])
+
+    add_tool_history(pars["outfile"], __toolname__,
+                     pars, toolversion=__revision__)
+
+
+@lw.handle_ciao_errors(__toolname__, __revision__)
+def main():
+    'Main routine'
+
+    # Load parameters
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(__toolname__, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": VERB1},
+                      revision=__revision__)
+
+    from ciao_contrib._tools.fileio import outfile_clobber_checks
+    outfile_clobber_checks(pars["clobber"], pars["outfile"])
+
+    mapfile = make_id_map(pars)
+    psfmap = make_psfmap(pars)
+
+    matrix = build_matrix(mapfile, psfmap, pars)
+    save_matrix(matrix, pars)
+
+    delete_crate(psfmap)
+    delete_crate(mapfile)
+
+
+if __name__ == "__main__":
+    main()
