@@ -177,7 +177,7 @@ def run_inner_loop(args):
     return frac
 
 
-def build_matrix(mapfile, psffile, pars):
+def build_matrix(mapfile, pars):
     '''Main routine to compute PSF overlap in neighboring regions
 
     The basic algorithm is simple:
@@ -188,6 +188,8 @@ def build_matrix(mapfile, psffile, pars):
          the smoothed map multiplied by the ID map
       Save values
     '''
+
+    psfmap = make_psfmap(pars)
 
     # Get list of ID's in mapfile
     idx_vals = np.sort(np.unique(mapfile.get_image().values))
@@ -201,7 +203,7 @@ def build_matrix(mapfile, psffile, pars):
 
         # Smooth ID with PSF
         outer_crate = get_crate_from_map_with_id(mapfile, outer)
-        outer_psf = smooth_with_psf(outer_crate, psffile, pars)
+        outer_psf = smooth_with_psf(outer_crate, psfmap, pars)
 
         # Compute frac in neighbors
         frac = []
@@ -224,6 +226,8 @@ def build_matrix(mapfile, psffile, pars):
 
         delete_crate(outer_crate)
         delete_crate(outer_psf)
+
+    delete_crate(psfmap)
 
     if int(pars["verbose"]) > 0:
         sys.stdout.write("\n")
@@ -265,12 +269,10 @@ def main():
     outfile_clobber_checks(pars["clobber"], pars["outfile"])
 
     mapfile = make_id_map(pars)
-    psfmap = make_psfmap(pars)
 
-    matrix = build_matrix(mapfile, psfmap, pars)
+    matrix = build_matrix(mapfile, pars)
     save_matrix(matrix, pars)
 
-    delete_crate(psfmap)
     delete_crate(mapfile)
 
 
