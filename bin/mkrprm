@@ -21,7 +21,7 @@
 
 import os
 import sys
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 import numpy as np
 
@@ -31,7 +31,7 @@ from pycrates import IMAGECrate, CrateData
 
 
 __toolname__ = "mkrprm"
-__revision__ = "19 August 2024"
+__revision__ = "28 August 2024"
 
 lw.initialize_logger(__toolname__)
 VERB0 = lw.get_logger(__toolname__).verbose0
@@ -39,13 +39,87 @@ VERB1 = lw.get_logger(__toolname__).verbose1
 VERB2 = lw.get_logger(__toolname__).verbose2
 
 
+def make_marxpar(pars):
+    'Run marx with a point source model, low flux just go get marx.par'
+    from glob import glob
+    import shutil as shu
+    tmpfile = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_marx.par",
+                                 delete=False)
+
+    simulate_psf = make_tool("simulate_psf")
+    simulate_psf.infile = pars["imgfile"]
+
+    img = IMAGECrate(pars["imgfile"])
+    simulate_psf.ra = img.get_key_value("RA_PNT")
+    simulate_psf.dec = img.get_key_value("DEC_PNT")
+    simulate_psf.spectrumfile = ""
+    simulate_psf.monoenergy = pars["energy"]
+    simulate_psf.flux = 1.0e-6  # any small value will do
+    simulate_psf.keep = True
+    # marxroot
+
+    with TemporaryDirectory(suffix="_marx",
+                            dir=pars["tmpdir"]) as marxdir:
+        simulate_psf.outroot = os.path.join(marxdir, "sim")
+        simulate_psf()
+        outfile = glob(os.path.join(marxdir, "*_marx.par"))
+        assert len(outfile) == 1, "There should only be one marx parameter file"
+        os.unlink(tmpfile.name)
+        shu.copy(outfile[0], tmpfile.name)
+
+    return tmpfile.name
+
+
+def smooth_with_marx(mapcrate, marxpar, pars):
+    'Smooth map file with PSF map using dmimgadapt'
+
+    import paramio as pio
+    import subprocess as sp
+
+    tmpevt = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_marx.fits",
+                                delete=True)
+    tmpimg = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_marx.img",
+                                delete=False)
+
+    gsl = make_tool("get_sky_limits")
+    gsl(mapcrate.get_filename())
+    grid = gsl.dmfilter
+
+    dmcopy = make_tool("dmcopy")
+
+    pio.pset(marxpar, "SourceType", "IMAGE")
+    pio.pset(marxpar, "S-ImageFile", mapcrate.get_filename())
+    pio.pset(marxpar, "SourceFlux", "1.0e-2")
+
+    with TemporaryDirectory(suffix="_marx", dir=pars["tmpdir"]) as marxdir:
+        pio.pset(marxpar, "OutputDir", marxdir)
+
+        cmd = ["marx", f"@@{marxpar}"]
+        sp.check_output(cmd)
+
+        cmd = ["marx2fits", marxdir, tmpevt.name]
+        sp.check_output(cmd)
+
+    dmcopy(f"{tmpevt.name}[bin {grid}][opt type=r4]", tmpimg.name, clobber=True)
+
+    # Now need to normalize to 1
+
+    retval = IMAGECrate(tmpimg.name, "rw")
+    vals = retval.get_image().values*1.0
+    vals = vals / np.nansum(vals)
+    retval.get_image().values = vals
+    retval.write()  # Update so vals are normalized
+
+    return retval
+
+
 def make_id_map(pars):
     'Convert input stack of regions to map file'
 
     VERB2("Started make_id_map")
 
-    tmpfile = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
-                                 suffix="_reg.map", delete=False)
+    tmpfile = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_reg.map",
+                                 delete=False)
 
     mkregmap = make_tool("mkregmap")
     mkregmap.infile = pars["imgfile"]
@@ -67,8 +141,8 @@ def make_psfmap(pars):
 
     VERB2("Started make_psfmap")
 
-    tmpfile = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
-                                 suffix="_psf.map", delete=False)
+    tmpfile = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_psf.map",
+                                 delete=False)
 
     mkpsfmap = make_tool("mkpsfmap")
 
@@ -103,11 +177,11 @@ def make_psfmap(pars):
     return psffile
 
 
-def smooth_with_psf(mapcrate, psfcrate, pars):
+def smooth_with_psfmap(mapcrate, psfcrate, pars):
     'Smooth map file with PSF map using dmimgadapt'
 
-    tmpout = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
-                                suffix="_out.map", delete=False)
+    tmpout = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_out.map",
+                                delete=False)
 
     # Normalize to sum=1.0
     vals = mapcrate.get_image().values
@@ -132,11 +206,11 @@ def smooth_with_psf(mapcrate, psfcrate, pars):
     return retvals
 
 
-def get_crate_from_map_with_id(mapfile, mapidx):
+def get_crate_from_map_with_id(mapfile, mapidx, pars):
     '''Create a crate with image w/ single mapid value'''
 
-    tmpout = NamedTemporaryFile(dir=os.environ["ASCDS_WORK_PATH"],
-                                suffix="_id.map", delete=False)
+    tmpout = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_id.map",
+                                delete=False)
 
     vals = mapfile.get_image().values
 
@@ -168,9 +242,9 @@ def delete_crate(crate):
 def run_inner_loop(args):
     "Inner loop run for each ID"
 
-    _mapfile, _outer_psf, inner = args
+    _mapfile, _outer_psf, inner, pars = args
 
-    inner_crate = get_crate_from_map_with_id(_mapfile, inner)
+    inner_crate = get_crate_from_map_with_id(_mapfile, inner, pars)
     product = _outer_psf.get_image().values * inner_crate.get_image().values
     frac = np.nansum(product)
     delete_crate(inner_crate)
@@ -189,7 +263,8 @@ def build_matrix(mapfile, pars):
       Save values
     '''
 
-    psfmap = make_psfmap(pars)
+    # psfmap = make_psfmap(pars)
+    marxpar = make_marxpar(pars)
 
     # Get list of ID's in mapfile
     idx_vals = np.sort(np.unique(mapfile.get_image().values))
@@ -202,13 +277,15 @@ def build_matrix(mapfile, pars):
     for outer in idx_vals:
 
         # Smooth ID with PSF
-        outer_crate = get_crate_from_map_with_id(mapfile, outer)
-        outer_psf = smooth_with_psf(outer_crate, psfmap, pars)
+        outer_crate = get_crate_from_map_with_id(mapfile, outer, pars)
+        # outer_psf = smooth_with_psfmap(outer_crate, psfmap, pars)
+        outer_psf = smooth_with_marx(outer_crate, marxpar, pars)
 
         # Compute frac in neighbors
         frac = []
         for inner in idx_vals:
-            frac.append(run_inner_loop((mapfile, outer_psf, inner)))
+
+            frac.append(run_inner_loop((mapfile, outer_psf, inner, pars)))
 
         # ~ # Parallel -- does not work, some race condition yields bad results
         # ~ from sherpa.utils import parallel_map
@@ -227,11 +304,11 @@ def build_matrix(mapfile, pars):
         delete_crate(outer_crate)
         delete_crate(outer_psf)
 
-    delete_crate(psfmap)
+    # delete_crate(psfmap)
+    # delete_crate(marxpar)
 
     if int(pars["verbose"]) > 0:
         sys.stdout.write("\n")
-
 
     return matrix
 
@@ -269,7 +346,6 @@ def main():
     outfile_clobber_checks(pars["clobber"], pars["outfile"])
 
     mapfile = make_id_map(pars)
-
     matrix = build_matrix(mapfile, pars)
     save_matrix(matrix, pars)
 
