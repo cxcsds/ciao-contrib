@@ -28,6 +28,7 @@ import numpy as np
 import ciao_contrib.logger_wrapper as lw
 from ciao_contrib.runtool import make_tool
 from pycrates import IMAGECrate, CrateData
+import paramio as pio
 
 
 __toolname__ = "mkrprm"
@@ -167,7 +168,7 @@ class MarxConvolution(Convolution):
         simulate_psf = make_tool("simulate_psf")
         simulate_psf.infile = self.pars["infile"]
 
-        img = IMAGECrate(self.pars["infile"])
+        img = IMAGECrate(self.pars["infile"], "r")
         simulate_psf.ra = img.get_key_value("RA_PNT")
         simulate_psf.dec = img.get_key_value("DEC_PNT")
         simulate_psf.spectrumfile = ""
@@ -187,13 +188,55 @@ class MarxConvolution(Convolution):
 
         self.marxpar = tmpfile.name
 
+    def _pad_input_to_center_image(self, mapcrate, img_grid):
+        '''MARX requires the center of the image to be the aimpoint,
+        need to pad image to make that happen'''
+
+        dmcoords = make_tool("dmcoords")
+        dmcoords.infile = mapcrate.get_filename()
+        dmcoords.option = "cel"
+        dmcoords.celfmt = "deg"
+
+        # These values are pset in the setup to be equal to PNT values
+        dmcoords.ra = pio.pget(self.marxpar, "SourceRA")
+        dmcoords.dec = pio.pget(self.marxpar, "SourceDEC")
+        dmcoords()
+
+        xcenter = float(dmcoords.x)
+        ycenter = float(dmcoords.y)
+
+        def split_grid(center, axis):
+            'Split the grid into parts'
+            # x=lo:hi:#bin,y=lo:hi:#bin
+            vals = img_grid.split(",")[axis].split("=")[1].split(":")
+
+            lo = float(vals[0])
+            hi = float(vals[1])
+            no = int(vals[2].lstrip("#"))
+            axlen = max(abs(center-lo), abs(center-hi))
+            axbin = (hi - lo) / no
+            ngrid = f"{center-axlen}:{center+axlen}:{axbin}"
+            return ngrid
+
+        xgrid = split_grid(xcenter, 0)
+        ygrid = split_grid(ycenter, 1)
+
+        newgrid = f"x={xgrid},y={ygrid}"
+
+        tmpimg = NamedTemporaryFile(dir=self.pars["tmpdir"],
+                                    suffix="_padded.img", delete=False)
+        dmcopy = make_tool("dmcopy")
+        dmcopy(f"{mapcrate.get_filename()}[bin {newgrid}]", tmpimg.name,
+               clobber=True)
+        retval = IMAGECrate(tmpimg.name)
+        return retval
+
     def __call__(self, mapcrate):
         '''Simulate, aka convolve
 
         Smooth map file with PSF map using dmimgadapt
         '''
 
-        import paramio as pio
         import subprocess as sp
 
         tmpevt = NamedTemporaryFile(dir=self.pars["tmpdir"],
@@ -205,10 +248,10 @@ class MarxConvolution(Convolution):
         gsl(mapcrate.get_filename())
         grid = gsl.dmfilter
 
-        dmcopy = make_tool("dmcopy")
+        padded_image = self._pad_input_to_center_image(mapcrate, grid)
 
         pio.pset(self.marxpar, "SourceType", "IMAGE")
-        pio.pset(self.marxpar, "S-ImageFile", mapcrate.get_filename())
+        pio.pset(self.marxpar, "S-ImageFile", padded_image.get_filename())
         pio.pset(self.marxpar, "SourceFlux", "1.0e-2")
 
         with TemporaryDirectory(suffix="_marx", dir=self.pars["tmpdir"]) as marxdir:
@@ -222,6 +265,9 @@ class MarxConvolution(Convolution):
             cmd = [m2f, marxdir, tmpevt.name]
             sp.check_output(cmd)
 
+        delete_crate(padded_image)
+
+        dmcopy = make_tool("dmcopy")
         dmcopy(f"{tmpevt.name}[bin {grid}][opt type=r4]", tmpimg.name, clobber=True)
 
         # Now need to normalize to 1
