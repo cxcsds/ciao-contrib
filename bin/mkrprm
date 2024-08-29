@@ -39,78 +39,205 @@ VERB1 = lw.get_logger(__toolname__).verbose1
 VERB2 = lw.get_logger(__toolname__).verbose2
 
 
-def make_marxpar(pars):
-    'Run marx with a point source model, low flux just go get marx.par'
-    from glob import glob
-    import shutil as shu
-    tmpfile = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_marx.par",
-                                 delete=False)
+class Convolution():
+    'Base class for two types of convolution'
 
-    simulate_psf = make_tool("simulate_psf")
-    simulate_psf.infile = pars["imgfile"]
+    def __init__(self, pars):
+        'Constructor'
+        self.pars = pars
 
-    img = IMAGECrate(pars["imgfile"])
-    simulate_psf.ra = img.get_key_value("RA_PNT")
-    simulate_psf.dec = img.get_key_value("DEC_PNT")
-    simulate_psf.spectrumfile = ""
-    simulate_psf.monoenergy = pars["energy"]
-    simulate_psf.flux = 1.0e-6  # any small value will do
-    simulate_psf.keep = True
-    # marxroot
+    def setup(self):
+        'Setup routines'
+        raise NotImplementedError("Implement in derived class")
 
-    with TemporaryDirectory(suffix="_marx",
-                            dir=pars["tmpdir"]) as marxdir:
-        simulate_psf.outroot = os.path.join(marxdir, "sim")
-        simulate_psf()
-        outfile = glob(os.path.join(marxdir, "*_marx.par"))
-        assert len(outfile) == 1, "There should only be one marx parameter file"
-        os.unlink(tmpfile.name)
-        shu.copy(outfile[0], tmpfile.name)
+    def __call__(self, mapcrate):
+        'Perform the convolution'
+        raise NotImplementedError("Implement in derived class")
 
-    return tmpfile.name
+    def __del__(self):
+        'Cleanup when done'
+        raise NotImplementedError("Implement in derived class")
 
 
-def smooth_with_marx(mapcrate, marxpar, pars):
-    'Smooth map file with PSF map using dmimgadapt'
+class PSFMapConvolution(Convolution):
+    'Convolve with dmimgadapt using PSFMap for function size'
 
-    import paramio as pio
-    import subprocess as sp
+    def __init__(self, pars):
+        'Same as base class'
+        super().__init__(pars)
+        self.psfmap = None
+        self.setup()
 
-    tmpevt = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_marx.fits",
-                                delete=True)
-    tmpimg = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_marx.img",
-                                delete=False)
+    def setup(self):
+        '''Create the PSFMap
 
-    gsl = make_tool("get_sky_limits")
-    gsl(mapcrate.get_filename())
-    grid = gsl.dmfilter
+        Create the PSF map. Must be in units of logical pixel size
+        '''
+        VERB2("Started make_psfmap")
 
-    dmcopy = make_tool("dmcopy")
+        tmpfile = NamedTemporaryFile(dir=self.pars["tmpdir"],
+                                     suffix="_psf.map", delete=False)
 
-    pio.pset(marxpar, "SourceType", "IMAGE")
-    pio.pset(marxpar, "S-ImageFile", mapcrate.get_filename())
-    pio.pset(marxpar, "SourceFlux", "1.0e-2")
+        mkpsfmap = make_tool("mkpsfmap")
 
-    with TemporaryDirectory(suffix="_marx", dir=pars["tmpdir"]) as marxdir:
-        pio.pset(marxpar, "OutputDir", marxdir)
+        mkpsfmap.infile = self.pars["infile"]
+        mkpsfmap.outfile = tmpfile.name
+        mkpsfmap.energy = self.pars["energy"]
+        mkpsfmap.spectrum = ""
+        mkpsfmap.ecf = self.pars["ecf"]
+        mkpsfmap.units = "logical"
+        verb = mkpsfmap(clobber=True)
+        if verb:
+            VERB2(verb)
 
-        cmd = ["marx", f"@@{marxpar}"]
-        sp.check_output(cmd)
+        psffile = IMAGECrate(mkpsfmap.outfile)
 
-        cmd = ["marx2fits", marxdir, tmpevt.name]
-        sp.check_output(cmd)
+        VERB2("Done mkpsfmap")
 
-    dmcopy(f"{tmpevt.name}[bin {grid}][opt type=r4]", tmpimg.name, clobber=True)
+        # Round pixel values, remove NaN's.
 
-    # Now need to normalize to 1
+        vals = psffile.get_image().values
 
-    retval = IMAGECrate(tmpimg.name, "rw")
-    vals = retval.get_image().values*1.0
-    vals = vals / np.nansum(vals)
-    retval.get_image().values = vals
-    retval.write()  # Update so vals are normalized
+        vals[~np.isfinite(vals)] = 0
+        vals = vals * 20.0
+        vals = np.int32(vals)/20.0
+        vals[vals < 0] = 0
+        psffile.get_image().values = vals
 
-    return retval
+        psffile.write(psffile.get_filename(), clobber=True)
+
+        VERB2("Done make_psfmap")
+
+        self.psfmap = psffile
+
+    def __call__(self, mapcrate):
+        '''Convolve the mapID crate w/ PSF map
+
+        Smooth map file with PSF map using dmimgadapt
+        '''
+
+        tmpout = NamedTemporaryFile(dir=self.pars["tmpdir"],
+                                    suffix="_out.map", delete=False)
+
+        # Normalize to sum=1.0
+        vals = mapcrate.get_image().values
+        total = np.nansum(vals)
+        vals = vals / total
+        mapcrate.get_image().values = vals
+        mapcrate.write(mapcrate.get_filename(), clobber=True)
+
+        abin = make_tool("dmimgadapt")
+        abin.infile = mapcrate.get_filename()
+        abin.outfile = tmpout.name
+        abin.function = self.pars["function"]
+        abin.inradfile = self.psfmap.get_filename()
+        abin.counts = 1   # Counts don't matter with inradfile specified
+        vv = abin(clobber=True)
+
+        if vv:
+            VERB2(vv)
+
+        retvals = IMAGECrate(tmpout.name)
+
+        return retvals
+
+    def __del__(self):
+        delete_crate(self.psfmap)
+
+
+class MarxConvolution(Convolution):
+    'Convolve with marx; ie simulate w/ marx'
+
+    def __init__(self, pars):
+        'Same as base class'
+        super().__init__(pars)
+        self.marxpar = None
+        self.setup()
+
+    def setup(self):
+        '''Generate marx.par file
+
+        Run marx with a point source model, low flux just go get marx.par
+        '''
+        from glob import glob
+        import shutil as shu
+        tmpfile = NamedTemporaryFile(dir=self.pars["tmpdir"],
+                                     suffix="_marx.par", delete=False)
+
+        simulate_psf = make_tool("simulate_psf")
+        simulate_psf.infile = self.pars["infile"]
+
+        img = IMAGECrate(self.pars["infile"])
+        simulate_psf.ra = img.get_key_value("RA_PNT")
+        simulate_psf.dec = img.get_key_value("DEC_PNT")
+        simulate_psf.spectrumfile = ""
+        simulate_psf.monoenergy = self.pars["energy"]
+        simulate_psf.flux = 1.0e-6  # any small value will do
+        simulate_psf.keep = True
+        simulate_psf.marx_root = self.pars["marx_root"]
+
+        with TemporaryDirectory(suffix="_marx",
+                                dir=self.pars["tmpdir"]) as marxdir:
+            simulate_psf.outroot = os.path.join(marxdir, "sim")
+            simulate_psf()
+            outfile = glob(os.path.join(marxdir, "*_marx.par"))
+            assert len(outfile) == 1, "There should only be one marx parameter file"
+            os.unlink(tmpfile.name)
+            shu.copy(outfile[0], tmpfile.name)
+
+        self.marxpar = tmpfile.name
+
+    def __call__(self, mapcrate):
+        '''Simulate, aka convolve
+
+        Smooth map file with PSF map using dmimgadapt
+        '''
+
+        import paramio as pio
+        import subprocess as sp
+
+        tmpevt = NamedTemporaryFile(dir=self.pars["tmpdir"],
+                                    suffix="_marx.fits", delete=True)
+        tmpimg = NamedTemporaryFile(dir=self.pars["tmpdir"],
+                                    suffix="_marx.img", delete=False)
+
+        gsl = make_tool("get_sky_limits")
+        gsl(mapcrate.get_filename())
+        grid = gsl.dmfilter
+
+        dmcopy = make_tool("dmcopy")
+
+        pio.pset(self.marxpar, "SourceType", "IMAGE")
+        pio.pset(self.marxpar, "S-ImageFile", mapcrate.get_filename())
+        pio.pset(self.marxpar, "SourceFlux", "1.0e-2")
+
+        with TemporaryDirectory(suffix="_marx", dir=self.pars["tmpdir"]) as marxdir:
+            pio.pset(self.marxpar, "OutputDir", marxdir)
+
+            marx = os.path.join(self.pars["marx_root"], "bin", "marx")
+            cmd = [marx, f"@@{self.marxpar}"]
+            sp.check_output(cmd)
+
+            m2f = os.path.join(self.pars["marx_root"], "bin", "marx2fits")
+            cmd = [m2f, marxdir, tmpevt.name]
+            sp.check_output(cmd)
+
+        dmcopy(f"{tmpevt.name}[bin {grid}][opt type=r4]", tmpimg.name, clobber=True)
+
+        # Now need to normalize to 1
+
+        retval = IMAGECrate(tmpimg.name, "rw")
+        vals = retval.get_image().values*1.0
+        vals = vals / np.nansum(vals)
+        retval.get_image().values = vals
+        retval.write()  # Update so vals are normalized
+
+        return retval
+
+    def __del__(self):
+        'Cleanup'
+        if os.path.exists(self.marxpar):
+            os.unlink(self.marxpar)
 
 
 def make_id_map(pars):
@@ -122,8 +249,8 @@ def make_id_map(pars):
                                  delete=False)
 
     mkregmap = make_tool("mkregmap")
-    mkregmap.infile = pars["imgfile"]
-    mkregmap.regions = "@-"+pars["infile"]
+    mkregmap.infile = pars["infile"]
+    mkregmap.regions = pars["regions"]
     mkregmap.outfile = tmpfile.name
     verb = mkregmap(clobber=True)
 
@@ -134,76 +261,6 @@ def make_id_map(pars):
 
     VERB2("Done make_id_map")
     return mapfile
-
-
-def make_psfmap(pars):
-    'Create the PSF map. Must be in units of logical pixel size'
-
-    VERB2("Started make_psfmap")
-
-    tmpfile = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_psf.map",
-                                 delete=False)
-
-    mkpsfmap = make_tool("mkpsfmap")
-
-    mkpsfmap.infile = pars["imgfile"]
-    mkpsfmap.outfile = tmpfile.name
-    mkpsfmap.energy = pars["energy"]
-    mkpsfmap.spectrum = ""
-    mkpsfmap.ecf = pars["ecf"]
-    mkpsfmap.units = "logical"
-    verb = mkpsfmap(clobber=True)
-    if verb:
-        VERB2(verb)
-
-    psffile = IMAGECrate(mkpsfmap.outfile)
-
-    VERB2("Done mkpsfmap")
-
-    # Round pixel values, remove NaN's.
-
-    vals = psffile.get_image().values
-
-    vals[~np.isfinite(vals)] = 0
-    vals = vals * 20.0
-    vals = np.int32(vals)/20.0
-    vals[vals < 0] = 0
-    psffile.get_image().values = vals
-
-    psffile.write(psffile.get_filename(), clobber=True)
-
-    VERB2("Done make_psfmap")
-
-    return psffile
-
-
-def smooth_with_psfmap(mapcrate, psfcrate, pars):
-    'Smooth map file with PSF map using dmimgadapt'
-
-    tmpout = NamedTemporaryFile(dir=pars["tmpdir"], suffix="_out.map",
-                                delete=False)
-
-    # Normalize to sum=1.0
-    vals = mapcrate.get_image().values
-    total = np.nansum(vals)
-    vals = vals / total
-    mapcrate.get_image().values = vals
-    mapcrate.write(mapcrate.get_filename(), clobber=True)
-
-    abin = make_tool("dmimgadapt")
-    abin.infile = mapcrate.get_filename()
-    abin.outfile = tmpout.name
-    abin.function = pars["function"]
-    abin.inradfile = psfcrate.get_filename()
-    abin.counts = 1   # Counts don't matter with inradfile specified
-    vv = abin(clobber=True)
-
-    if vv:
-        VERB2(vv)
-
-    retvals = IMAGECrate(tmpout.name)
-
-    return retvals
 
 
 def get_crate_from_map_with_id(mapfile, mapidx, pars):
@@ -251,7 +308,7 @@ def run_inner_loop(args):
     return frac
 
 
-def build_matrix(mapfile, pars):
+def build_matrix(mapfile, response, pars):
     '''Main routine to compute PSF overlap in neighboring regions
 
     The basic algorithm is simple:
@@ -262,9 +319,6 @@ def build_matrix(mapfile, pars):
          the smoothed map multiplied by the ID map
       Save values
     '''
-
-    # psfmap = make_psfmap(pars)
-    marxpar = make_marxpar(pars)
 
     # Get list of ID's in mapfile
     idx_vals = np.sort(np.unique(mapfile.get_image().values))
@@ -278,20 +332,18 @@ def build_matrix(mapfile, pars):
 
         # Smooth ID with PSF
         outer_crate = get_crate_from_map_with_id(mapfile, outer, pars)
-        # outer_psf = smooth_with_psfmap(outer_crate, psfmap, pars)
-        outer_psf = smooth_with_marx(outer_crate, marxpar, pars)
-
-        # Compute frac in neighbors
-        frac = []
-        for inner in idx_vals:
-
-            frac.append(run_inner_loop((mapfile, outer_psf, inner, pars)))
+        outer_psf = response(outer_crate)
 
         # ~ # Parallel -- does not work, some race condition yields bad results
         # ~ from sherpa.utils import parallel_map
         # ~ inner = [x for x in idx_vals if x>0]
         # ~ vals = [(mapfile, outer_psf, v) for v in inner]
         # ~ frac = parallel_map(run_inner_loop, vals)
+
+        # Compute frac in neighbors in serial
+        frac = []
+        for inner in idx_vals:
+            frac.append(run_inner_loop((mapfile, outer_psf, inner, pars)))
 
         if int(pars["verbose"]) > 0:
             loc = idx_vals.index(outer)
@@ -303,9 +355,6 @@ def build_matrix(mapfile, pars):
 
         delete_crate(outer_crate)
         delete_crate(outer_psf)
-
-    # delete_crate(psfmap)
-    # delete_crate(marxpar)
 
     if int(pars["verbose"]) > 0:
         sys.stdout.write("\n")
@@ -346,7 +395,15 @@ def main():
     outfile_clobber_checks(pars["clobber"], pars["outfile"])
 
     mapfile = make_id_map(pars)
-    matrix = build_matrix(mapfile, pars)
+
+    if pars["psfmethod"] == "map":
+        response = PSFMapConvolution(pars)
+    elif pars["psfmethod"] == "marx":
+        response = MarxConvolution(pars)
+    else:
+        raise ValueError("Unknown value for 'psfmethod' parameter")
+
+    matrix = build_matrix(mapfile, response, pars)
     save_matrix(matrix, pars)
 
     delete_crate(mapfile)
