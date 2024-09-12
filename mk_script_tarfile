@@ -34,7 +34,7 @@ import sys
 import time
 
 
-def build_dist(version, dirname, outdir, python="python3.10"):
+def build_dist(version, dirname, outdir, python="python3.11"):
     """Build contrib scripts package into a separate temp dir"""
 
     outdir = Path(outdir)
@@ -52,12 +52,15 @@ def build_dist(version, dirname, outdir, python="python3.10"):
 
     # Copy directories over to this directory
     #
-    for basedir in ["bin", "share/doc/xml", "share/xspec/install", "share/sherpa/notebooks", "data", "config", "param"]:
+    for basedir in ["bin", "share/doc/xml", "share/xspec/install", "share/sherpa/notebooks", "data", "data/ebounds-lut", "config", "param"]:
         newdir = outdir / basedir
         newdir.mkdir(parents=True)
         nfiles = 0
         for infile in glob.glob(f"{basedir}/*"):
             if infile.endswith('~'):
+                continue
+
+            if infile == "data/ebounds-lut":
                 continue
 
             bname = os.path.basename(infile)
@@ -241,6 +244,8 @@ if __name__ == "__main__":
     tarfile = os.path.join(cwd, tarfile)
     tarfilegz = f'{tarfile}.gz'
 
+    pyver = f"{(pyver := sys.version_info).major}.{pyver.minor}"
+
     if micro != 'DEV':
         if os.path.exists(tarfile) or os.path.exists(tarfilegz):
             sys.stderr.write("ERROR: output file already exists\n")
@@ -252,6 +257,6 @@ if __name__ == "__main__":
 
     from tempfile import TemporaryDirectory
     with TemporaryDirectory(prefix=dirname) as tmpdir:
-        build_dist(version, dirname, tmpdir)
+        build_dist(version, dirname, tmpdir, f"python{pyver}")
         os.chdir(tmpdir)
         make_tarfile(tarfilegz, dirname)
