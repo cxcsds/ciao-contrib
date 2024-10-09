@@ -35,8 +35,7 @@ from dataclasses import dataclass
 from enum import Enum
 import importlib
 import logging
-from typing import Any, Callable, Dict, List, Optional, Set, \
-    TypedDict, Tuple, Union
+from typing import Any, Callable, TypedDict
 
 import numpy as np
 
@@ -495,7 +494,7 @@ class XSPECChannel(Channel):
 class Grouping:
     """Handle XSPEC/Sherpa differences in grouping."""
 
-    xspec: Dict[XSPECChannel, Tuple[Channel, Channel]]
+    xspec: dict[XSPECChannel, tuple[Channel, Channel]]
     """Keys are XSPEC 'channel' numbers, values are Sherpa channels"""
 
     different: bool
@@ -550,7 +549,7 @@ def validate_grouping(pha: ui.DataPHA) -> Grouping:
     # This does not track any XSPEC "channels" that contain "bad"
     # channels.
     #
-    mapping: Dict[XSPECChannel, Tuple[Channel, Channel]] = {}
+    mapping: dict[XSPECChannel, tuple[Channel, Channel]] = {}
 
     # If any group contains both 0 and 2 values.
     #
@@ -826,41 +825,41 @@ MODEL_TYPES = {t.name: t for t in list(Term)}
 class MDefine:
     name: str
     expr: str        # the original expression
-    params: List[str]
-    models: List[str]
+    params: list[str]
+    models: list[str]
     converted: str   # the Python version of the model (likely needs reworking)
     mtype: Term
-    erange: Optional[Tuple[float, float]]
+    erange: tuple[float, float] | None
 
 
-SimpleToken = Union[str, ArithmeticModel]
-Expression = List[SimpleToken]
+SimpleToken = str | ArithmeticModel
+Expression = list[SimpleToken]
 
 
 class StateDict(TypedDict):
     nodata: bool
     statistic: str
     subtracted: bool
-    nobackgrounds: List[int]
-    group: Dict[int, List[int]]
-    datasets: List[int]
-    sourcenum: Dict[int, List[int]]
-    datanum: Dict[int, List[int]]
-    exprs: Dict[int, Dict[int, Expression]]
-    allpars: Dict[str, Parameter]
-    mdefines: List[MDefine]
+    nobackgrounds: list[int]
+    group: dict[int, list[int]]
+    datasets: list[int]
+    sourcenum: dict[int, list[int]]
+    datanum: dict[int, list[int]]
+    exprs: dict[int, dict[int, Expression]]
+    allpars: dict[str, Parameter]
+    mdefines: list[MDefine]
     extend: EnergyGrid
 
 
-RangeValue = Union[int, float]
+RangeValue = int | float
 
 
 class Output:
     """Represent the output text."""
 
-    def __init__(self, explicit: Optional[str] = None) -> None:
-        self.imports: List[str] = []
-        self.text: List[str] = []
+    def __init__(self, explicit: str | None = None) -> None:
+        self.imports: list[str] = []
+        self.text: list[str] = []
         self.explicit = explicit
 
     @property
@@ -873,7 +872,7 @@ class Output:
         answer += self.text
         return "\n".join(answer) + "\n"
 
-    def add_comment(self, comment: Optional[str] = None) -> None:
+    def add_comment(self, comment: str | None = None) -> None:
         if comment is None:
             self.text.append("#")
             return
@@ -969,7 +968,7 @@ def set_subtract(output: Output,
 
 
 def parse_tie(output: Output,
-              pars: Dict[str, Parameter],
+              pars: dict[str, Parameter],
               par: str,
               pline: str) -> None:
     """Parse a tie line.
@@ -1059,7 +1058,7 @@ def parse_tie(output: Output,
 
 
 def expand_token(output: Output,
-                 pars: Dict[str, Parameter],
+                 pars: dict[str, Parameter],
                  pname: str,
                  token: str) -> str:
     """Is this a reference to a parameter?
@@ -1151,7 +1150,7 @@ def expand_token(output: Output,
     return tpar.fullname
 
 
-def parse_dataid(token: str) -> Tuple[Optional[int], int]:
+def parse_dataid(token: str) -> tuple[int | None, int]:
     """Convert '[<data group #>:] <spectrum #>' to values.
 
     This is used for both the DATA command, and the ARF/RESPONSE
@@ -1186,7 +1185,8 @@ def parse_dataid(token: str) -> Tuple[Optional[int], int]:
     return None, itoks[0]
 
 
-def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[RangeValue], Optional[RangeValue]]]]:
+def parse_ranges(ranges: str) -> tuple[str, list[tuple[RangeValue | None,
+                                                       RangeValue | None]]]:
     """Convert a-b,... to a set of ranges.
 
     Parameters
@@ -1209,7 +1209,7 @@ def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[RangeValue], Opt
 
     store = {"chantype": "channel"}
 
-    def lconvert(val: str) -> Optional[RangeValue]:
+    def lconvert(val: str) -> RangeValue | None:
         if '.' in val:
             try:
                 out = float(val)
@@ -1249,7 +1249,7 @@ def parse_ranges(ranges: str) -> Tuple[str, List[Tuple[Optional[RangeValue], Opt
 
 def parse_data(output : Output,
                state: Session,
-               toks: List[str]) -> None:
+               toks: list[str]) -> None:
     """Parse the DATA line
 
     https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSdata.html
@@ -1281,7 +1281,7 @@ def parse_data(output : Output,
 def parse_backgrnd(output: Output,
                    state: StateDict,
                    xline: str,
-                   toks: List[str]) -> None:
+                   toks: list[str]) -> None:
     """Parse the BACKGRND line
 
     https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/manual/XSbackgrnd.html
@@ -1310,7 +1310,7 @@ def parse_backgrnd(output: Output,
 def parse_response(output: Output,
                    state: StateDict,
                    command: str,
-                   toks: List[str]) -> None:
+                   toks: list[str]) -> None:
     """Parse a arf or response line
 
     From
@@ -1352,9 +1352,9 @@ def parse_response(output: Output,
 
 
 def parse_notice_range(output: Output,
-                       datasets: List[int],
+                       datasets: list[int],
                        command: str,
-                       tokens: List[str]) -> None:
+                       tokens: list[str]) -> None:
     """Handle the notice range.
 
     Parameters
@@ -1504,8 +1504,8 @@ def add_mdefine_model(output: Output,
 def parse_model(output: Output,
                 state: StateDict,
                 session: Session,
-                extra_models: List[str],
-                xline: str) -> Dict[int, Expression]:
+                extra_models: list[str],
+                xline: str) -> dict[int, Expression]:
     """Handle the model line
 
     Can we assume that if the model has no dataset/label then it's
@@ -1547,7 +1547,7 @@ def parse_model(output: Output,
     #
     rest = xline[5:]
     tok = rest.split()[0]
-    ilabel: Optional[str] = None  # added for mypy
+    ilabel: str | None = None
     if ':' in tok:
 
         toks = tok.split(':')
@@ -1626,8 +1626,8 @@ def parse_model(output: Output,
 
 def parse_possible_parameters(output: Output,
                               state: StateDict,
-                              intext: List[str],
-                              exprs: Dict[int, Expression]) -> None:
+                              intext: list[str],
+                              exprs: dict[int, Expression]) -> None:
     """Do we have any parameter lines to deconstruct?
 
     This mutates the intext argument
@@ -1697,7 +1697,7 @@ def parse_possible_parameters(output: Output,
             output.add_call('set_par', *pargs, **pkwargs)
 
 
-def is_model_convolution(mdl: Union[xspec.XSModel, MDefine]
+def is_model_convolution(mdl: xspec.XSModel | MDefine
                          ) -> bool:
     """Is this a convolution model"""
 
@@ -1707,7 +1707,7 @@ def is_model_convolution(mdl: Union[xspec.XSModel, MDefine]
     return isinstance(mdl, xspec.XSConvolutionKernel)
 
 
-def is_model_multiplicative(mdl: Union[xspec.XSModel, MDefine]
+def is_model_multiplicative(mdl: xspec.XSModel | MDefine
                             ) -> bool:
     """Is this a multiplicative model"""
 
@@ -1717,7 +1717,7 @@ def is_model_multiplicative(mdl: Union[xspec.XSModel, MDefine]
     return isinstance(mdl, xspec.XSMultiplicativeModel)
 
 
-def is_model_additive(mdl: Union[xspec.XSModel, MDefine]
+def is_model_additive(mdl: xspec.XSModel | MDefine
                       ) -> bool:
     """Is this an additive model"""
 
@@ -1727,7 +1727,7 @@ def is_model_additive(mdl: Union[xspec.XSModel, MDefine]
     return isinstance(mdl, xspec.XSAdditiveModel)
 
 
-def create_session(models: Optional[List[str]]) -> Tuple[Session, List[str]]:
+def create_session(models: list[str] | None) -> tuple[Session, list[str]]:
     """Create a Sherpa session into which XSPEC models have been loaded.
 
     Parameters
@@ -1754,7 +1754,7 @@ def create_session(models: Optional[List[str]]) -> Tuple[Session, List[str]]:
     session = Session()
     session._add_model_types(xspec, MODTYPES)
 
-    extras: List[str] = []
+    extras: list[str] = []
     if models is None:
         return session, extras
 
@@ -1775,7 +1775,8 @@ def create_session(models: Optional[List[str]]) -> Tuple[Session, List[str]]:
 def handle_xspecmodel(session: Session,
                       model: str,
                       cpt: str,
-                      output: Optional[Output]) -> Optional[tuple[xspec.XSModel, Term]]:
+                      output: Output | None
+                      ) -> tuple[xspec.XSModel, Term] | None:
     """Create a model instance for an XSPEC model.
 
     Parameters
@@ -1862,7 +1863,7 @@ def make_component_name(postfix: str, ngroups: int, ctr: int, grp: int) -> str:
 def handle_tablemodel(output: Output,
                       session: Session,
                       expr: str,
-                      gname: str) -> Tuple[xspec.XSTableModel, Term]:
+                      gname: str) -> tuple[xspec.XSTableModel, Term]:
     """Create a tablemodel (it the file can be found)"""
 
     if expr.startswith("atable{"):
@@ -1911,9 +1912,10 @@ def dummy_model(pars, elo, ehi=None):
 
 def handle_mdefine(output: Output,
                    session: Session,
-                   mdefines: List[MDefine],
+                   mdefines: list[MDefine],
                    basename: str,
-                   gname: str) -> Optional[Tuple[UserModel, Term]]:
+                   gname: str
+                   ) -> tuple[UserModel, Term] | None:
     """Is this a mdefine model?
 
     Note we actually create a model (with a dummy function)
@@ -1941,11 +1943,11 @@ def handle_mdefine(output: Output,
 
 def convert_model(output : Output,
                   session: Session,
-                  extra_models: List[str],
+                  extra_models: list[str],
                   expr: str,
                   postfix: str,
-                  groups: List[int],
-                  mdefines: List[MDefine]) -> Dict[int, Expression]:
+                  groups: list[int],
+                  mdefines: list[MDefine]) -> dict[int, Expression]:
     """Extract the model components.
 
     Model names go from m1 to mn (when groups is empty) or
@@ -1996,7 +1998,7 @@ def convert_model(output : Output,
     ngroups = len(groups)
 
     # Need an output list for each group
-    out: Dict[int, Expression] = {g: [] for g in groups}
+    out: dict[int, Expression] = {g: [] for g in groups}
 
     def add_token(tkn):
         for outlist in out.values():
@@ -2149,7 +2151,7 @@ def convert_model(output : Output,
     return out
 
 
-FunctionDict = Dict[str, Optional[str]]
+FunctionDict = dict[str, str | None]
 
 
 UNOP_TOKENS: FunctionDict = {
@@ -2256,9 +2258,9 @@ def MIN(x, y):
 
 
 def parse_mdefine_expr(session: Session,
-                       extra_models: List[str],
+                       extra_models: list[str],
                        expr: str,
-                       mdefines: List[MDefine]) -> Tuple[str, List[str], List[str]]:
+                       mdefines: list[MDefine]) -> tuple[str, list[str], list[str]]:
     """Parse the model expression in a MDEFINE line.
 
     This is incomplete, as all we do is find what appear to be
@@ -2290,10 +2292,10 @@ def parse_mdefine_expr(session: Session,
         [m.upper() for m in extra_models] + \
         [m.name.upper() for m in mdefines]
 
-    pnames: List[str] = []
-    models: List[str] = []
-    seen: Set[str] = set()
-    out: List[str] = []
+    pnames: list[str] = []
+    models: list[str] = []
+    seen: set[str] = set()
+    out: list[str] = []
 
     def add_current(symbol: str) -> None:
         """Add the current symbol to the output."""
@@ -2405,9 +2407,9 @@ def parse_mdefine_expr(session: Session,
 
 
 def tokenize_model_expr(session: Session,
-                        extra_models: List[str],
+                        extra_models: list[str],
                         expr: str,
-                        mdefines: List[MDefine]) -> List[str]:
+                        mdefines: list[MDefine]) -> list[str]:
     """Parse the model expression.
 
     This is simpler than parse_mdefine_expr as do not have to
@@ -2439,7 +2441,7 @@ def tokenize_model_expr(session: Session,
         [m.upper() for m in extra_models] + \
         [m.name.upper() for m in mdefines]
 
-    out: List[str] = []
+    out: list[str] = []
 
     def add_current(symbol: str) -> None:
         """Add the current symbol to the output."""
@@ -2499,9 +2501,9 @@ def tokenize_model_expr(session: Session,
 
 
 def process_mdefine(session: Session,
-                    extra_models: List[str],
+                    extra_models: list[str],
                     xline: str,
-                    mdefines: List[MDefine]) -> MDefine:
+                    mdefines: list[MDefine]) -> MDefine:
     """Parse a mdefine line.
 
     Parameters
@@ -2590,7 +2592,7 @@ def process_mdefine(session: Session,
                    erange=erange)
 
 
-def get_pars_from_expr(expr: Expression) -> List[Parameter]:
+def get_pars_from_expr(expr: Expression) -> list[Parameter]:
     """Find all the parameters."""
 
     out = []
@@ -2790,7 +2792,7 @@ class ExternalGrid(EnergyGrid):
 class ManualGrid(EnergyGrid):
     """User has designed the grid from linear/logarithmic sub-grids"""
 
-    def __init__(self, ranges: List[Tuple[str, float, float, int]]) -> None:
+    def __init__(self, ranges: list[tuple[str, float, float, int]]) -> None:
         self.ranges = ranges
 
     def add_grid(self, output: Output) -> None:
@@ -2827,7 +2829,7 @@ class ManualGrid(EnergyGrid):
         output.add_expr("egrid = np.concatenate(egrids)")
 
 
-def process_energies_grid(toks: List[str]) -> EnergyGrid:
+def process_energies_grid(toks: list[str]) -> EnergyGrid:
     """What is the required grid?
 
     From https://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSenergies.html
@@ -2891,7 +2893,7 @@ def process_energies_grid(toks: List[str]) -> EnergyGrid:
     state = "lo"
     next_state = {"lo": "hi", "hi": "nbins", "nbins": "mode", "mode": "hi"}
 
-    ranges: List[Tuple[str, float, float, int]] = []
+    ranges: list[tuple[str, float, float, int]] = []
 
     cstr = " ".join(toks)
     v3(f"Resolving energy grid '{cstr}'")
@@ -2947,10 +2949,10 @@ def process_energies_grid(toks: List[str]) -> EnergyGrid:
 # of this.
 #
 def convert(infile: Any,  # to hard to type this
-            models: Optional[List[str]] = None,
+            models: list[str] | None = None,
             chisq: str = "chi2datavar",
             clean: bool = False,
-            explicit: Optional[str] = None) -> str:
+            explicit: str | None = None) -> str:
     """Convert a XSPEC xcm file into Sherpa commands.
 
     The XSPEC save command will create an ASCII representation of the
