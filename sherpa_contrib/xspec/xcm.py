@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2020, 2023
+#  Copyright (C) 2020, 2023-2024
 #  Smithsonian Astrophysical Observatory
 #
 #
@@ -40,9 +40,10 @@ from typing import Any, Callable, Dict, List, Optional, Set, \
 
 import numpy as np
 
+from sherpa.astro import hc
 from sherpa.astro import ui  # type: ignore
-from sherpa.astro.ui.utils import Session  # type: ignore
 from sherpa.astro import xspec  # type: ignore
+from sherpa.astro.ui.utils import Session  # type: ignore
 from sherpa.models.basic import ArithmeticModel, UserModel  # type: ignore
 from sherpa.models.model import RegridWrappedModel  # type: ignore
 from sherpa.models.parameter import Parameter, CompositeParameter, ConstantParameter  # type: ignore
@@ -126,8 +127,9 @@ def notice(spectrum: int, lo: int, hi: int, ignore: bool = False) -> None:
     spectrum : int
         The dataset identified.
     lo, hi: int
-        The channel range, as recorded by XSPEC (this is the group
-        number for Sherpa).
+        The channel range, as recorded by XSPEC (this need not be the
+        channel range depending if the data is grouped or the channel
+        values do not start at 1).
     ignore : bool, optional
         If set then we ignore the range.
 
@@ -151,58 +153,67 @@ def notice(spectrum: int, lo: int, hi: int, ignore: bool = False) -> None:
     # This is fast enough it's not worth storing in a cache.
     #
     mapping = validate_grouping(d)
-    if mapping is not None:
-        slo = mapping.xspec[lo]
-        shi = mapping.xspec[hi]
+    if mapping.different:
+        swarn("Spectrum %s: the grouping scheme does not match OGIP "
+              "standards. The filtering may not exactly match XSPEC.",
+              spectrum)
 
-        # Do we need to warn? If it is only for the upper limit
-        # AND this corresponds to the last group (e.g. something
-        # like 45-**) then it should not matter.
-        #
-        # We need to know the number of groups, and I am not sure
-        # we store that, so just calculate it directly.
-        #
-        rawdata = d.apply_filter(d.counts)
-        ngroups = len(rawdata)
-        if slo != lo or (shi != hi and shi < ngroups):
-            swarn("Spectrum %s: the grouping scheme does not match OGIP "
-                  "standards. The filtering may not exactly match XSPEC.",
-                  spectrum)
+    xlo = XSPECChannel(lo)
+    xhi = XSPECChannel(hi)
 
-        lo = slo
-        hi = shi
-
-    # The naming of these routines is a bit odd since sometimes
-    # channel means group and sometimes it means channel.
+    # Get the start and end channel values (Sherpa). As I do not
+    # understand exactly what XSPEC reports, in particularly for "bad"
+    # channels, allow the mapping to be missing. If xlo is missing
+    # then we just skip the filter.
     #
-    if d.units == 'energy':
-        elo = d._channel_to_energy(lo)
-        ehi = d._channel_to_energy(hi)
-
-        v2(f"Converting group {lo}-{hi} to {elo:.3f}-{ehi:.3f} keV [ignore={ignore}]]")
-        # d.notice(elo, ehi, ignore=ignore)
-        ui.notice_id(spectrum, elo, ehi, ignore=ignore)
+    try:
+        smin = mapping.xspec[xlo][0].channel
+    except KeyError:
+        print("MISSING LOW")
         return
 
-    if d.units == 'wavelength':
-        whi = d._channel_to_energy(lo)
-        wlo = d._channel_to_energy(hi)
+    try:
+        smax = mapping.xspec[xhi][1].channel
+    except KeyError:
+        print("MISSING HIGH")
+        smax = int(d.channel[-1])
 
-        v2(f"Converting group {lo}-{hi} to {wlo:.5f}-{whi:.5f} A [ignore={ignore}]]")
-        # d.notice(wlo, whi, ignore=ignore)
-        ui.notice_id(spectrum, wlo, whi, ignore=ignore)
+    if d.units == "channel":
+        v2(f"Converting group {lo}-{hi} to channels {smin}-{smax} [ignore={ignore}]]")
+        ui.notice_id(spectrum, smin, smax)
         return
 
-    if d.units != 'channel':
-        raise ValueError(f"Unexpected analysis setting for spectrum {spectrum}: {d.units}")
+    elo, ehi = d._get_ebins(group=False)
 
-    # Convert from group number (XSPEC) to channel units
-    clo = d._group_to_channel(lo)
-    chi = d._group_to_channel(hi)
+    if d.units == "energy":
+        emin = elo[smin]
+        emax = ehi[smax]
 
-    v2(f"Converting group {lo}-{hi} to channels {clo}-{chi} [ignore={ignore}]]")
-    # d.notice(clo, chi, ignore=ignore)
-    ui.notice_id(spectrum, clo, chi)
+        v2(f"Converting group {lo}-{hi} to {emin:.3f}-{emax:.3f} keV [ignore={ignore}]]")
+        ui.notice_id(spectrum, emin, emax, ignore=ignore)
+        return
+
+    if d.units == "wavelength":
+        # In case the response happens to have any non-positive
+        # values.
+        #
+        tiny = np.finfo(np.float32).tiny
+        elo = elo.copy()
+        ehi = ehi.copy()
+        elo[elo <= 0] = tiny
+        ehi[ehi <= 0] = tiny
+
+        whi = hc / elo
+        wlo = hc / ehi
+
+        wmin = wlo[smin]
+        wmax = whi[smax]
+
+        v2(f"Converting group {lo}-{hi} to {wmin:.5f}-{wmax:.5f} A [ignore={ignore}]]")
+        ui.notice_id(spectrum, wmin, wmax, ignore=ignore)
+        return
+
+    raise ValueError(f"Unexpected analysis setting for spectrum {spectrum}: {d.units}")
 
 
 def ignore(spectrum: int, lo: int, hi: int) -> None:
@@ -446,34 +457,59 @@ def extend_model(idval, energies):
     ui.set_source(idval, nmodel)
 
 
-@dataclass
-class Grouping:
-    """Handle XSPEC/Sherpa differences in grouping
+# Explicitly separate the XSPEC and Sherpa "channel" numbering.
+# This is a bit excessive.
+#
+@dataclass(frozen=True)
+class Channel:
+    """A channel number. It must be an integer and 0 or larger."""
 
-    Note that the "channel" and "group" values here start at 1 (for
-    both XSPEC and Sherpa.
+    channel: int
+
+    def __post_init__(self):
+        if self.channel < 0:
+            raise ValueError(f"channel must be >= 0, not {self.channel}")
+
+        if not float(self.channel).is_integer():
+            raise ValueError(f"channel must be an integer, not {self.channel}")
+
+
+@dataclass(frozen=True)
+class XSPECChannel(Channel):
+    """The XSPEC channel number.
+
+    XSPEC drops "bad" quality channels and counts in "group" number,
+    starting at 1 (if there is no grouping then each "group" maps to a
+    single channel).
 
     """
 
-    xspec : Dict[int, int]
-    """Keys are XSPEC 'channel' numbers, values are Sherpa 'group' numbers"""
+    def __post_init__(self):
+        if self.channel <= 0:
+            raise ValueError(f"channel must be > 0, not {self.channel}")
 
-    sherpa : Dict[int, List[int]]
-    """Keys are Sherpa 'group' and vaue are the matching XSPEC 'channels'"""
+        super().__post_init__()
 
 
-def validate_grouping(pha: ui.DataPHA) -> Optional[Grouping]:
+@dataclass(frozen=True)
+class Grouping:
+    """Handle XSPEC/Sherpa differences in grouping."""
+
+    xspec: Dict[XSPECChannel, Tuple[Channel, Channel]]
+    """Keys are XSPEC 'channel' numbers, values are Sherpa channels"""
+
+    different: bool
+    """Is the XSPEC and Sherpa grouping different?
+
+    This is set if the quality is both 0 and 2 within a group.
+    """
+
+
+def validate_grouping(pha: ui.DataPHA) -> Grouping:
     """Compare XSPEC and Sherpa grouping.
 
-    After reading OGIP standards OGIP Memo OGIP/92-007 and OGIP Memo
-    OGIP/92-007a, which can be found at
-    https://heasarc.gsfc.nasa.gov/docs/heasarc/ofwg/docs/spectra/ogip_92_007/ogip_92_007.html
-    and
-    https://heasarc.gsfc.nasa.gov/docs/heasarc/ofwg/docs/spectra/ogip_92_007a/ogip_92_007a.html
-    respectively, I thought I understood grouping. Then I came across
-    a hand-edited file which XSPEC grouped differently to Sherpa, and
-    I believe it's because the quality values differ within a single
-    group. This routine checks for this case.
+    Map the XSPEC "channel" numbers to the corresponding range of
+    Sherpa channels.
 
     Parameters
     ----------
@@ -482,85 +518,123 @@ def validate_grouping(pha: ui.DataPHA) -> Optional[Grouping]:
 
     Returns
     -------
-    grouping : Grouping or None
-        If None then Sherpa and XSPEC agree (I believe) otherwise an
-        object containing the mapping between the two systems.
+    grouping : Grouping
 
     Notes
     -----
-    If quality is set but grouping is not we assume there is no
-    grouping, and return None. I have not tested this case in XSPEC.
+
+    The OGIP standard does not make it clear what happens if the
+    quality changes within a group. XSPEC (12.13/14 era) seem to split
+    the group if this happens (unlike Sherpa, XSPEC has already
+    removed quality=1 or 5 values from the data).
 
     """
 
-    if pha.grouping is None or pha.quality is None:
-        return None
+    nelem = pha.size
+    if nelem == 0:
+        raise ValueError("PHA has no data!")
 
-    # Use dictionaries rather than a list as it is semantically
-    # clearer, although in reality there's no difference since the key
-    # is an integer.
+    if pha.grouping is None:
+        grouping = np.ones(nelem, dtype=np.int16)
+    else:
+        grouping = pha.grouping
+
+    if pha.quality is None:
+        quality = np.zeros(nelem, dtype=np.int16)
+    else:
+        quality = pha.quality
+
+    # Always create the mapping, even when the XSPEC and Sherpa
+    # channel values agree. The keys are the XSPEC "channel" value and
+    # the values are the range of Sherpa channels that cover this.
+    # This does not track any XSPEC "channels" that contain "bad"
+    # channels.
     #
-    # Given an XSPEC "channel", what Sherpa group does it match?
-    map_xspec_sherpa: Dict[int, int] = {}
+    mapping: Dict[XSPECChannel, Tuple[Channel, Channel]] = {}
 
-    # Given a Sherpa group, what XSPEC "channels" does it match?
-    map_sherpa_xspec: Dict[int, List[int]] = {}
-
-    gxspec = 1
-    gsherpa = 1
-    last_qual = pha.quality[0]
-
-    map_xspec_sherpa[1] = 1
-    map_sherpa_xspec[1] = [1]
-
-    # We could use
+    # If any group contains both 0 and 2 values.
     #
-    #   gmin = pha.apply_groupig(pha.quality, pha._min)
-    #   gmax = pha.apply_groupig(pha.quality, pha._max)
+    different = False
+
+    # The states for processing a channel are:
     #
-    # to identify groups where the quality value is not constant, but
-    # we still would need to go through each such group, so we go
-    # through each PHA channel.
+    #   "ignore"    if the quality value is 1 or 5
+    #   "start"     if grouping is >= 0
+    #   "continue"  if grouping is < 0
     #
-    for grp, qual in zip(pha.grouping[1:], pha.quality[1:]):
-        if grp == 1:
-            gxspec += 1
-            gsherpa += 1
+    # Now, this is made trickier to match XSPEC which seems to create
+    # a new group if the quality value changes between 0 and 2 within
+    # a group.
+    #
+    xspec_chan = 0
+    start_chan = None
+    end_chan = None
+    last_qual = None
+    for grp, qual, chan in zip(grouping, quality, pha.channel):
 
-            map_xspec_sherpa[gxspec] = gsherpa
-            map_sherpa_xspec[gsherpa] = [gxspec]
-            last_qual = qual
-            continue
-
-        if grp == -1:
-            if qual == last_qual:
-                continue
-
-            # This is a group with varying quality
-            gxspec += 1
-
-            map_xspec_sherpa[gxspec] = gsherpa
-            map_sherpa_xspec[gsherpa].append(gxspec)
-            last_qual = qual
-            continue
-
-        # Assume this is 0, but it could be anything. Assume this
-        # is not-a-group
+        # If this is a "bad" channel then we drop it.
         #
-        gxspec += 1
-        gsherpa += 1
+        if qual in [1, 5]:
+            continue
 
-        map_xspec_sherpa[gxspec] = gsherpa
-        map_sherpa_xspec[gsherpa] = [gxspec]
-        last_qual = None
+        this_chan = Channel(int(chan))
 
-    # If the Sherpa and XSPEC grouping values agree then we don't need
-    # to return anything.
+        # This is a new group, so bump the XSPEC channel number and
+        # store the previous range (assuming that ranges is not empty,
+        # which would indicate this is the first element).
+        #
+        if grp > 0:
+
+            # Store the previous mapping, if any.
+            if end_chan is not None:
+                assert start_chan is not None
+                assert xspec_chan > 0
+                xchan = XSPECChannel(xspec_chan)
+                mapping[xchan] = (start_chan, end_chan)
+
+            start_chan = this_chan
+            end_chan = this_chan
+            last_qual = qual
+            xspec_chan += 1
+            continue
+
+        # This is a "continue" bin, but we may need to create
+        # a new bin if the quality has changed.
+        #
+        if last_qual is not None and last_qual != qual:
+            different = True
+
+            # Since last_qual is set then ranges must not be empty.
+            #
+            assert xspec_chan > 0
+            assert start_chan is not None
+            assert end_chan is not None
+            xchan = XSPECChannel(xspec_chan)
+            mapping[xchan] = (start_chan, end_chan)
+            xspec_chan += 1
+            last_qual = qual
+            start_chan = this_chan
+            end_chan = this_chan
+            continue
+
+        # Special case for the "first bin has grouping < 0", which
+        # should be an error but for now we ignore.
+        #
+        if start_chan is None:
+            start_chan = this_chan
+
+        end_chan = this_chan
+        last_qual = qual
+
+    # Copy over the last group.
     #
-    if gxspec == gsherpa:
-        return None
+    if start_chan is None or end_chan is None:
+        raise ValueError("No group data found; how is this possible")
 
-    return Grouping(xspec=map_xspec_sherpa, sherpa=map_sherpa_xspec)
+    xchan = XSPECChannel(xspec_chan)
+    mapping[xchan] = (start_chan, end_chan)
+
+    return Grouping(xspec=mapping, different=different)
 
 
 def _mklabel(func: Callable) -> str:
@@ -1623,7 +1697,8 @@ def parse_possible_parameters(output: Output,
             output.add_call('set_par', *pargs, **pkwargs)
 
 
-def is_model_convolution(mdl: Union[xspec.XSModel, MDefine]) -> bool:
+def is_model_convolution(mdl: Union[xspec.XSModel, MDefine]
+                         ) -> bool:
     """Is this a convolution model"""
 
     if isinstance(mdl, MDefine):
@@ -1632,7 +1707,8 @@ def is_model_convolution(mdl: Union[xspec.XSModel, MDefine]) -> bool:
     return isinstance(mdl, xspec.XSConvolutionKernel)
 
 
-def is_model_multiplicative(mdl: Union[xspec.XSModel, MDefine]) -> bool:
+def is_model_multiplicative(mdl: Union[xspec.XSModel, MDefine]
+                            ) -> bool:
     """Is this a multiplicative model"""
 
     if isinstance(mdl, MDefine):
@@ -1641,7 +1717,8 @@ def is_model_multiplicative(mdl: Union[xspec.XSModel, MDefine]) -> bool:
     return isinstance(mdl, xspec.XSMultiplicativeModel)
 
 
-def is_model_additive(mdl: Union[xspec.XSModel, MDefine]) -> bool:
+def is_model_additive(mdl: Union[xspec.XSModel, MDefine]
+                      ) -> bool:
     """Is this an additive model"""
 
     if isinstance(mdl, MDefine):
