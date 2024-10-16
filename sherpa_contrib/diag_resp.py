@@ -49,7 +49,7 @@ or
 
 """
 
-__revision__ = "19 August 2024"
+__revision__ = "23 September 2024"
 
 import os
 import warnings
@@ -66,6 +66,7 @@ from ciao_contrib._tools.fileio import get_keys_from_file
 from sherpa.astro.data import DataPHA
 from sherpa.astro.ui import create_rmf as shpmkrmf
 from sherpa.astro.ui import create_arf as shpmkarf
+from sherpa import __version__ as shpver
 
 
 
@@ -637,13 +638,11 @@ def build_resp(emin, emax, offset: int, ethresh: Optional[Union[float,None]] = 1
         ### in sherpa/astro/instrument.py, or use a version test on
         ### whether this incrementation should be done
 
-        # from sherpa import __version__ as shpver
-        # major,minor,micro = shpver.split(".")
-        # ver = float(f"{major}.{minor}")
-        # ver_micro = int(micro)
-        #
+        major,minor,micro = shpver.split(".")
+        ver = float(f"{major}.{minor}")
+        #ver_micro = int(micro)
 
-        if offset != 1:
+        if ver < 4.17 and offset != 1:
             diag_rmf.f_chan += offset - 1
 
         #################################################################
