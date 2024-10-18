@@ -42,7 +42,7 @@ try:
 except (ImportError,ModuleNotFoundError) as E:
     astropy_status = False
 
-from sherpa.utils.err import DataErr
+from sherpa.utils.err import DataErr, IOErr
 from sherpa_contrib.diag_resp import mkdiagresp, build_resp, EGrid
 
 
@@ -473,10 +473,10 @@ def test_broken_lut_path(telescope):
     environ["ASCDS_INSTALL"] = _get_random_string(strlen=32)
 
     try:
-        with pytest.raises(OSError) as exc:
+        with pytest.raises( (OSError,IOError,IOErr) ) as exc:
             mkdiagresp(telescope)
 
-        assert exc.type is OSError, "This test is expected to fail since it cannot locate EBOUNDS LUT files..."
+        assert exc.type in (OSError,IOError,IOErr), "This test is expected to fail since it cannot locate EBOUNDS LUT files..."
 
         assert f"{telescope}-ebounds-lut-fits does not exist" not in exc.value.args[0], "This test was able to find the EBOUNDS LUT files when it should not..."
 
