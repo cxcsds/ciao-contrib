@@ -49,7 +49,7 @@ or
 
 """
 
-__revision__ = "23 September 2024"
+__revision__ = "18 October 2024"
 
 import os
 import warnings
@@ -228,7 +228,7 @@ class EGrid:
         try:
             _,blks,hdrs = shp_readtabblk(fn)
             data = None
-            
+
             for idx,hdr in hdrs.items():
                 blk = blk.lower() if (blk := hdr.get("BLKNAME")) is not None else blk
 
@@ -346,7 +346,7 @@ class Check_and_Update_Info:
                           "calet" : "CALET",
                           "chandra" : "Chandra",
                           "cos-b" : "COS-B",
-                          "einsten" : "Einstein",
+                          "einstein" : "Einstein",
                           "exosat" : "EXOSAT",
                           "halosat" : "HALOSAT",
                           "ixpe" : "IXPE",
@@ -861,6 +861,16 @@ def mkdiagresp(telescope: str = "Chandra",
     elo = egrid.elo
     ehi = egrid.ehi
     offset = egrid.offset
+
+
+    # for Einstein/SSS, the first three energy bins are zeros;
+    # tweak the values to avoid '<= the replacement value of'
+    # RuntimeError being thrown right off the bat
+    if telescope == "einstein" and instrument == "SSS":
+        elo[1] = 1e-12 + 1e-16
+        elo[2] = elo[1] + 1e-16
+        ehi[0] = elo[1]
+        ehi[1] = elo[2]
 
 
     return build_resp(emin=elo, emax=ehi, offset=offset, ethresh=ethresh)
