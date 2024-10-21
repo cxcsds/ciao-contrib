@@ -1,0 +1,382 @@
+#!/usr/bin/env python
+
+# Copyright (C) 2024 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+'Compute fraction of PSF in neighboring regions'
+
+import os
+import sys
+from tempfile import TemporaryDirectory
+from dataclasses import dataclass
+import shutil
+
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib.runtool import make_tool
+from pycrates import read_file
+
+
+__toolname__ = "fine_astro"
+__revision__ = "15 October 2024"
+
+
+lw.initialize_logger(__toolname__)
+
+
+def log_wrapper(func):
+    'wrapper around logger to check for None'
+    def wrapped(msg):
+        if msg:
+            func(msg)
+    return wrapped
+
+
+verb0 = log_wrapper(lw.get_logger(__toolname__).verbose0)
+verb1 = log_wrapper(lw.get_logger(__toolname__).verbose1)
+verb2 = log_wrapper(lw.get_logger(__toolname__).verbose2)
+
+
+@dataclass
+class OutputDirs():
+    'All the dirs that will be used'
+    pre_detect: str = "pre"
+    detect: str = "detect"
+    xmatch: str = "xmatch"
+    final: str = "post"
+    fine_astro: str = "fine_astro"
+    tmp: str = "tmp"
+
+
+class NoDetections(Exception):
+    'The (filtered) detect list is empty'
+
+
+class NoMatches(Exception):
+    'wcs_match failed to find a match'
+
+
+def run_merge_obs(evtlist, out_root):
+    'run merge obs'
+
+    merge_obs = make_tool("merge_obs")
+    merge_obs.infile = evtlist
+    merge_obs.outroot = out_root
+    merge_obs.bin = 1
+    merge_obs.psfecf = 0.5
+    merge_obs.band = 'broad'
+    vv = merge_obs()
+    verb2(vv)
+    return merge_obs.outroot
+
+
+def run_wavdetect(pars):
+    'run wavdetect to create src list'
+
+    inroot, outroot, obsid, scales, src_filter, tmpdir = pars
+
+    def check_file(infile):
+        'Does file exist'
+        if os.path.exists(infile) is False:
+            raise ValueError(f"Error: cannot locate file '{infile}'")
+        return infile
+
+    obi = obsid.obsid.obsid
+    verb1(f"Running wavdetect on {obi}")
+
+    img = check_file(f"{inroot}_{obi}_broad_thresh.img")
+    exp = check_file(f"{inroot}_{obi}_broad_thresh.expmap")
+    psf = check_file(f"{inroot}_{obi}_broad_thresh.psfmap")
+
+    import ciao_contrib.runtool as rt
+
+    with rt.new_pfiles_environment():
+
+        wavdetect = make_tool("wavdetect")
+        wavdetect.infile = img
+        wavdetect.expfile = exp
+        wavdetect.psffile = psf
+        wavdetect.outfile = f"{outroot}{obi}.src"
+        wavdetect.scales = scales
+        wavdetect.clobber = True
+
+        with TemporaryDirectory(suffix="_wav", dir=tmpdir) as workdir:
+            wavdetect.interdir = workdir
+            wavdetect.scellfile = f"{workdir}/{obi}.cell"
+            wavdetect.defnbkg = f"{workdir}/{obi}.bkg"
+            wavdetect.image = f"{workdir}/{obi}.recon"
+            vv = wavdetect()
+            verb2(vv)
+
+    if src_filter is None or len(src_filter) == 0:
+        check_srclist(wavdetect.outfile)
+        return wavdetect.outfile
+
+    dmcopy = make_tool("dmcopy")
+    dmcopy(f"{wavdetect.outfile}", f"{outroot}{obi}.filtered.src", clobber=True)
+
+    check_srclist(dmcopy.outfile)
+
+    return dmcopy.outfile
+
+
+def check_srclist(srclist):
+    'Look for common problems with srclist'
+    if srclist is None or len(srclist) == 0:
+        raise NoDetections("No source list found")
+
+    tab = read_file(srclist)
+    if tab.get_nrows() == 0:
+        raise NoDetections(f"Source list {srclist} contains 0 sources")
+
+    try:
+        tab.get_column("ra")
+        tab.get_column("dec")
+    except ValueError:
+        raise NoDetections(f"Source list {srclist} is missing columns RA or Dec")
+
+    # TODO: If has OBS_ID keyword then make sure matches event file (when OO)
+
+    return
+
+
+def get_ref_srclist(obis, reflist, srcs):
+    'figure out reference src list'
+
+    if reflist.lower() in ["indef", "none"]:
+        reflist = ""
+
+    # If reflist is set, check it and use it.
+    if reflist is not None and len(reflist) > 0:
+        if os.path.isfile(reflist):
+            check_srclist(reflist)
+            return reflist
+
+    # if reflist is None or blank, use longest obsid
+    if reflist is None or len(reflist) == 0:
+
+        maxtime = 0
+        retval = None
+        for obi, src in zip(obis, srcs):
+            if obi.get_keyword("EXPOSURE") > maxtime:
+                maxtime = obi.get_keyword("EXPOSURE")
+                retval = src
+        verb1(f"Using {retval} for the reference source list")
+        return retval
+
+    for obi, src in zip(obis, srcs):
+        # Hopefully this will work w/ interleaves|multiobi
+        if obi.obsid.obsid == reflist:
+            return src
+
+    raise ValueError("Cannot identify reference source list")
+
+
+def cross_match(ref_srclist, refevt, srclists, obis, outroot):
+    'Do cross match'
+
+    xmatches = []
+
+    for oo, src in zip(obis, srclists):
+
+        wcs_match = make_tool("wcs_match")
+
+        obi = oo.obsid.obsid
+
+        wcs_match.infile = src
+        wcs_match.refsrcfile = ref_srclist
+        wcs_match.wcsfile = refevt
+        wcs_match.outfile = f"{outroot}_{obi}.xmatch"
+        wcs_match.radius = 4
+        wcs_match.method = "trans"
+        vv = wcs_match(clobber=True)
+        verb2(vv)
+
+        xmatches.append(wcs_match.outfile)
+
+    return xmatches
+
+
+def apply_fine_astro(obis, xmatches, refevt, out_dirs):
+    'Apply fine astro corrections.  Copies asol, bpix, msk, and dtf files'
+
+    def _update_evt():
+        'Update the event file'
+
+        verb2(f"Applying fine astro correction to {in_evt}")
+        dmcopy = make_tool("dmcopy")
+        vv = dmcopy(in_evt, out_evt, clobber=True)
+        verb2(vv)
+
+        wcs_update.infile = out_evt
+        wcs_update.outfile = ""
+        wcs_update.transformfile = xform
+        wcs_update.wcsfile = refevt
+        vv = wcs_update()
+        verb2(vv)
+
+    def _update_asol():
+        'Update aspect solution files'
+        asols = oo.get_asol(indir=out_dirs.root_dir)
+        new_asol = []
+        for asol in asols:
+            verb2(f"Applying fine astro correction to {asol}")
+            outfile = os.path.basename(asol).replace("asol1", "fa_asol")
+            wcs_update.infile = asol
+            wcs_update.outfile = os.path.join(out_dirs.root_dir,
+                                              out_dirs.xmatch, outfile)
+            vv = wcs_update(clobber=True)
+            verb2(vv)
+            new_asol.append(os.path.basename(wcs_update.outfile))
+
+        new_asol = ",".join(new_asol)
+
+        verb2(f"Updating ASOLFILE keyword in {out_evt}")
+        dmhedit = make_tool("dmhedit")
+        dmhedit.infile = out_evt
+        dmhedit.filelist = ""
+        dmhedit.operation = "add"
+        dmhedit.key = "ASOLFILE"
+        dmhedit.value = new_asol
+        vv = dmhedit()
+        verb2(vv)
+
+    def _copy_auxfiles():
+        'copy bpix, mask, dtf to xmatch dir'
+
+        verb2("Copying ancillary files.")
+        aux_list = ["bpix", "mask"]
+        if oo.detector.startswith("HRC"):
+            aux_list.append("dtf")
+
+        for aux in aux_list:
+            aux_file = oo.get_ancillary(aux, indir=out_dirs.root_dir)
+            fname = os.path.basename(aux_file)
+            shutil.copyfile(aux_file,
+                            os.path.join(out_dirs.root_dir,
+                                         out_dirs.xmatch, fname))
+
+    out_root = os.path.join(out_dirs.root_dir, out_dirs.xmatch,
+                            out_dirs.root_base)
+
+    updated_evts = []
+    for oo, xform in zip(obis, xmatches):
+        obi = oo.obsid.obsid
+
+        # No, I want the original event file, might have used smaller
+        # event file for detect
+        # ~ in_evt = f"{pre_merge_root}_{obi}_reproj_evt.fits"
+
+        in_evt = oo.get_evtfile()
+        out_evt = f"{out_root}_{obi}_fa_evt.fits"
+        wcs_update = make_tool("wcs_update")
+
+        _update_evt()
+        _update_asol()
+        _copy_auxfiles()
+        updated_evts.append(out_evt)
+
+    return updated_evts
+
+
+@lw.handle_ciao_errors(__toolname__, __revision__)
+def main():
+    'Main routine'
+
+    # Load parameters
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(__toolname__, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": verb1},
+                      revision=__revision__)
+
+    # ~ from ciao_contrib._tools.fileio import outfile_clobber_checks
+    # ~ outfile_clobber_checks(pars["clobber"], pars["outfile"])
+
+    out_dirs = OutputDirs()
+
+    out_dirs.root_base = os.path.basename(pars["outroot"])
+    out_dirs.root_dir = os.path.dirname(pars["outroot"])
+
+    # TODO: check 1 asol per obsid, tell user to run chandra_repro
+
+    from ciao_contrib._tools import merging
+    obis = merging.validate_obsinfo(pars["infile"])
+
+    if obis is None or len(obis) == 0:
+        raise ValueError("No valid event files")
+
+    if len(obis) == 1 and (pars["ref_src_list"] is None or len(pars["ref_src_list"]) == 0):
+        check_srclist(pars["ref_src_list"])
+
+    # ------------ Run wavdetect ----------------------
+    verb1("Running pre-detect merge_obs")
+    evtlist = [f"{oo.get_evtfile()}{pars['det_filter']}" for oo in obis]
+    merge_root = os.path.join(out_dirs.root_dir,
+                              out_dirs.pre_detect,
+                              out_dirs.root_base)
+    pre_merge_root = run_merge_obs(evtlist, merge_root)
+
+    verb1("Running wavdetect")
+    det_out = os.path.join(out_dirs.root_dir, out_dirs.detect)
+    os.makedirs(det_out, exist_ok=True)
+    det_tmp = os.path.join(out_dirs.root_dir, out_dirs.tmp)
+    os.makedirs(det_tmp, exist_ok=True)
+
+    det_pars = []
+    for oo in obis:
+        runpars = (pre_merge_root,
+                os.path.join(det_out, out_dirs.root_base),
+                oo, pars["det_scales"], pars["src_filter"],
+                det_tmp)
+        det_pars.append(runpars)
+
+    from sherpa.utils import parallel_map
+    src_lists = parallel_map(run_wavdetect, det_pars)
+
+    ref_srclist = get_ref_srclist(obis, pars["ref_src_list"], src_lists)
+
+    # ------------ Cross match -------------
+    verb1("Running cross matches using wcs_match")
+    refevt = f"{pre_merge_root}_merged_evt.fits"
+    xmatch_out = os.path.join(out_dirs.root_dir, out_dirs.xmatch)
+    os.makedirs(xmatch_out, exist_ok=True)
+
+    xmatches = cross_match(ref_srclist, refevt, src_lists, obis,
+                           os.path.join(xmatch_out, out_dirs.root_base))
+
+    # ------------ Update ----------
+    verb1("Updating astronometry")
+    updated_out = os.path.join(out_dirs.root_dir, out_dirs.fine_astro)
+    os.makedirs(updated_out, exist_ok=True)
+
+    updated_evts = apply_fine_astro(obis, xmatches, refevt, out_dirs)
+
+    # ------------ Reproject -----------
+    verb1("Running final merge_obs")
+    merge_root = os.path.join(out_dirs.root_dir,
+                              out_dirs.final,
+                              out_dirs.root_base)
+
+    os.makedirs(os.path.dirname(merge_root), exist_ok=True)
+    final_out = run_merge_obs(updated_evts, merge_root)
+
+    # ~ from ciao_contrib.runtool import add_tool_history
+    # ~ add_tool_history(pars["outfile"], __toolname__,
+                     # ~ pars, toolversion=__revision__)
+
+
+if __name__ == "__main__":
+    main()
