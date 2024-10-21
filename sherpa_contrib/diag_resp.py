@@ -49,7 +49,7 @@ or
 
 """
 
-__revision__ = "18 October 2024"
+__revision__ = "20 October 2024"
 
 import os
 import warnings
@@ -613,6 +613,31 @@ class Check_and_Update_Info:
 
 
 
+def _fix_bin_edges(elo: npt.NDArray, ehi: npt.NDArray,
+                   ethresh: float=1e-12, dE: float=1e-16) -> tuple[npt.NDArray,
+                                                                   npt.NDArray]:
+    """
+    Tweak energy bin edge values that are below the ethresh replacement value.
+    """
+    
+    ind_lo = [ i for i,E in enumerate(elo) if E < ethresh ]
+    ind_hi = [ i for i,E in enumerate(ehi) if E < ethresh ]
+
+    assert len(ind_lo) == len(ind_hi) + 1, "Unable to fix ebin edges below ethresh level, number of elo edges should be 1 greater than the number of elo edges."
+
+    edge_lo = [ ethresh + dE*(i+1) for i in ind_lo ]
+    edge_hi = edge_lo[1:]
+
+    for i,E in zip(ind_lo,edge_lo):
+        elo[i] = E
+
+    for j,E in zip(ind_hi,edge_hi):
+        ehi[j] = E
+
+    return elo, ehi
+
+
+
 @_reformat_wmsg
 def build_resp(emin, emax, offset: int, ethresh: Optional[Union[float,None]] = 1e-12):
     """
@@ -867,10 +892,10 @@ def mkdiagresp(telescope: str = "Chandra",
     # tweak the values to avoid '<= the replacement value of'
     # RuntimeError being thrown right off the bat
     if telescope == "einstein" and instrument == "SSS":
-        elo[1] = 1e-12 + 1e-16
-        elo[2] = elo[1] + 1e-16
-        ehi[0] = elo[1]
-        ehi[1] = elo[2]
+        if ethresh is None:
+            raise ValueError("Unable to fix the energy grid bin edges with 'ethresh=None'.")
+
+        elo,ehi = _fix_bin_edges(elo.copy(), ehi.copy(), ethresh=ethresh, dE=1e-16)
 
 
     return build_resp(emin=elo, emax=ehi, offset=offset, ethresh=ethresh)
