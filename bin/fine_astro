@@ -17,7 +17,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-'Compute fraction of PSF in neighboring regions'
+'Compute and apply fine astrometric correction to stack of observations'
 
 import os
 import sys
@@ -61,14 +61,6 @@ class OutputDirs():
     final: str = "post"
     fine_astro: str = "fine_astro"
     tmp: str = "tmp"
-
-
-class NoDetections(Exception):
-    'The (filtered) detect list is empty'
-
-
-class NoMatches(Exception):
-    'wcs_match failed to find a match'
 
 
 def run_merge_obs(evtlist, out_root):
@@ -138,15 +130,15 @@ def run_wavdetect(pars):
 def check_srclist(srclist):
     'Look for common problems with srclist'
     if srclist is None or len(srclist) == 0:
-        raise NoDetections("No source list found")
+        raise ValueError("No source list found")
 
     tab = read_file(srclist)
 
     try:
         tab.get_column("ra")
         tab.get_column("dec")
-    except ValueError:
-        raise NoDetections(f"Source list {srclist} is missing columns RA or Dec")
+    except ValueError as nocol:
+        raise ValueError(f"Source list {srclist} is missing columns RA or Dec") from nocol
 
     # TODO: If has OBS_ID keyword then make sure matches event file (when OO)
 
@@ -352,10 +344,8 @@ def apply_fine_astro(obis, xmatches, refevt, out_dirs, pars):
     for oo, xform in zip(obis, xmatches):
         obi = oo.obsid.obsid
 
-        # No, I want the original event file, might have used smaller
+        # I want the original event file, might have used smaller
         # event file for detect
-        # ~ in_evt = f"{pre_merge_root}_{obi}_reproj_evt.fits"
-
         in_evt = oo.get_evtfile()
         out_evt = f"{out_root}_{obi}_fa_evt.fits"
         wcs_update = make_tool("wcs_update")
