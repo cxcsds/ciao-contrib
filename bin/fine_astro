@@ -33,6 +33,8 @@ from pycrates import read_file
 __toolname__ = "fine_astro"
 __revision__ = "15 October 2024"
 
+WARN_LARGE_SHIFT = 3.0
+WARN_LARGE_OFFSET = 4.0
 
 lw.initialize_logger(__toolname__)
 
@@ -109,7 +111,7 @@ def run_wavdetect(pars):
         wavdetect.infile = img
         wavdetect.expfile = exp
         wavdetect.psffile = psf
-        wavdetect.outfile = f"{outroot}{obi}.src"
+        wavdetect.outfile = f"{outroot}_{obi}.src"
         wavdetect.scales = scales
         wavdetect.clobber = True
 
@@ -126,7 +128,7 @@ def run_wavdetect(pars):
         return wavdetect.outfile
 
     dmcopy = make_tool("dmcopy")
-    dmcopy(f"{wavdetect.outfile}", f"{outroot}{obi}.filtered.src", clobber=True)
+    dmcopy(f"{wavdetect.outfile}", f"{outroot}_{obi}_filtered.src", clobber=True)
 
     check_srclist(dmcopy.outfile)
 
@@ -139,8 +141,6 @@ def check_srclist(srclist):
         raise NoDetections("No source list found")
 
     tab = read_file(srclist)
-    if tab.get_nrows() == 0:
-        raise NoDetections(f"Source list {srclist} contains 0 sources")
 
     try:
         tab.get_column("ra")
@@ -183,6 +183,69 @@ def get_ref_srclist(obis, reflist, srcs):
     raise ValueError("Cannot identify reference source list")
 
 
+def _warning(msg):
+    'print warning'
+    if sys.stdout.isatty() and os.getenv('NO_COLOR') is None:
+        msg = f"\033[1;33mWarning: {msg}\033[0;0m"
+    verb1(msg)
+
+
+def summarize_xmatch(verbose, infile, outfile):
+    'Summarize cross match results'
+
+    def parse_verbose():
+        'Parse verbose to get number of sources used'
+        srcline = [x for x in verbose.split("\n") if 'sources remain' in x]
+        assert len(srcline) > 0, "Problem parsing verbose output"
+        splitline = srcline[-1].split(" ")
+        assert len(splitline) == 7, "Did verbose output format change?"
+        numsrcs = int(splitline[4])
+        return numsrcs
+
+    def get_shifts():
+        'Get offsets from xform file'
+        tab = read_file(outfile)
+        xx = tab.get_column("t1").values[0]
+        yy = tab.get_column("t2").values[0]
+        return (xx, yy)
+
+    def warn_large_offsets():
+        'Show a warning for large offsets'
+        from math import hypot, fabs
+        if fabs(xx) > WARN_LARGE_SHIFT:
+            _warning(f"X shift = {xx:6.3f} exceeds warning limit of {WARN_LARGE_SHIFT} pixels")
+
+        if fabs(yy) > WARN_LARGE_SHIFT:
+            _warning(f"Y shift = {yy:6.3f} exceeds warning limit of {WARN_LARGE_SHIFT} pixels")
+
+        dd = hypot(xx, yy)
+        if dd > WARN_LARGE_OFFSET:
+            _warning(f"Total offset = {dd:6.3f} exceeds warning limit of {WARN_LARGE_OFFSET} pixels")
+
+    num = parse_verbose()
+    xx, yy = get_shifts()
+    fmt = f"{infile:<35s} nsrc={num}\txoff={xx:6.3f}[pix]\tyoff={yy:6.3f}[pix]"
+    verb1(fmt)
+    warn_large_offsets()
+
+
+def _make_unit_xform(outfile, refevt):
+    'Create a fake unit transform file'
+
+    from pycrates import get_transform
+
+    wcs = get_transform(read_file(refevt), "eqpos")  # Chandra only, OK
+    crpix = wcs.get_parameter_value("CRPIX")
+    crval = wcs.get_parameter_value("CRVAL")
+    cdelt = wcs.get_parameter_value("CDELT")
+
+    with open(outfile, "w", encoding="ascii") as fp:
+        fp.write(f"""#TEXT/SIMPLE
+# a11 a12 a21 a22 t1 t2 ra_ref dec_ref roll_ref xpix_ref ypix_ref x_scale y_scale
+1.0 0.0 0.0 1.0 0.0 0.0 {crval[0]} {crval[1]} 0.0 {crpix[0]} {crpix[1]} {cdelt[0]} {cdelt[1]}
+""")
+
+
 def cross_match(ref_srclist, refevt, srclists, obis, outroot):
     'Do cross match'
 
@@ -200,9 +263,18 @@ def cross_match(ref_srclist, refevt, srclists, obis, outroot):
         wcs_match.outfile = f"{outroot}_{obi}.xmatch"
         wcs_match.radius = 4
         wcs_match.method = "trans"
-        vv = wcs_match(clobber=True)
-        verb2(vv)
+        wcs_match.verbose = 1
+        try:
+            vv = wcs_match(clobber=True)
+        except IOError as failed:
+            ss = str(failed)
+            if 'Cannot find at least 1 source match' in ss:
+                _warning(f"Failed to identify matching sources for OBS_ID {obi}. Proceeding with no astrometric corrections applied.")
+                _make_unit_xform(wcs_match.outfile, refevt)
+            else:
+                raise failed
 
+        summarize_xmatch(vv, src, wcs_match.outfile)
         xmatches.append(wcs_match.outfile)
 
     return xmatches
@@ -338,6 +410,15 @@ def detect_sources(obis, pars, out_dirs):
     return src_lists
 
 
+def sort_obis(obis):
+    'Sort obsid by obinum'
+
+    vals = [(oo.obsid.obsid, oo) for oo in obis]
+    retval = sorted(vals)
+    retval = [oo[1] for oo in retval]
+    return retval
+
+
 @lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
     'Main routine'
@@ -358,6 +439,7 @@ def main():
 
     from ciao_contrib._tools import merging
     obis = merging.validate_obsinfo(pars["infile"])
+    obis = sort_obis(obis)
 
     if obis is None or len(obis) == 0:
         raise ValueError("No valid event files")
