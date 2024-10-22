@@ -1,11 +1,11 @@
 #
-#  Copyright (C) 2011, 2015, 2016, 2019-2022
+#  Copyright (C) 2011, 2015, 2016, 2019-2024
 #                Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -158,16 +158,16 @@ def parallel_pool(func, args, ncores=None, context='fork'):
 
 def parallel_pool_futures(func, args, ncores=None, maxitersize=512, chunksize=None, context='fork', progress=False, progress_prefix=""):
     """
-    Process func in parallel asynchronously, with pool managed by 
+    Process func in parallel asynchronously, with pool managed by
     'concurrent.futures'.  Usage is essentially identical to 'parallel_map'
-    and 'parallel_futures'.  A function that runs with parallel_pool_futures 
-    will run with parallel_pool and parallel_map, but the reverse is not 
-    necessarily true, since concurrent.futures cannot support passing 
-    non-picklable objects.  
-    
-    For example, a tempfile.NamedTemporaryFile file object or curses window 
-    cannot be directly referenced through parallel_pool_futures as an argument 
-    variable, but a tempfile.NamedTemporaryFile.name() string can be referenced. 
+    and 'parallel_futures'.  A function that runs with parallel_pool_futures
+    will run with parallel_pool and parallel_map, but the reverse is not
+    necessarily true, since concurrent.futures cannot support passing
+    non-picklable objects.
+
+    For example, a tempfile.NamedTemporaryFile file object or curses window
+    cannot be directly referenced through parallel_pool_futures as an argument
+    variable, but a tempfile.NamedTemporaryFile.name() string can be referenced.
 
     Another issue is that concurrent.futures executor 'submit' cannot handle
     inner/nested functions, and scripts should be written accordingly.
@@ -177,54 +177,66 @@ def parallel_pool_futures(func, args, ncores=None, maxitersize=512, chunksize=No
     The 'context' argument decides how, when multiprocessing is in use,
     the multiprocessing is run.
 
-    The 'maxitersize' is the maximum number of processes to execute and 
-    let concurrent.futures to automatically manage before letting 
-    parallel_pool_futures take over management to help avoid using up 
+    The 'maxitersize' is the maximum number of processes to execute and
+    let concurrent.futures to automatically manage before letting
+    parallel_pool_futures take over management to help avoid using up
     system memory; the default is 512. 'chunksize' is number of processes
-    to manage at a time, when 'chunksize=None', the value is then 
-    multiprocessing.cpu_count()**2; a poor 'maxitersize' and 'chunksize' 
+    to manage at a time, when 'chunksize=None', the value is then
+    multiprocessing.cpu_count()**2; a poor 'maxitersize' and 'chunksize'
     combination can lead to significantly poorer performance than running
     the function in serial through a loop.
-    
-    The 'progress' argument will print a progress bar showing as the list 
-    of processes are completed and the 'progress_prefix' can be a string 
+
+    The 'progress' argument will print a progress bar showing as the list
+    of processes are completed and the 'progress_prefix' can be a string
     displayed before the progress bar describing the task being handled.
 
     The return value is an array of the return values of func,
     in the order of the args array.
 
     """
-    
+
     ### based on https://alexwlchan.net/2019/10/adventures-with-concurrent-futures/ ###
-    
+
+    ctx = multiprocessing.get_context(context)
+
     if ncores is None:
-        nc = multiprocessing.cpu_count()
+        nc = ctx.cpu_count()
     else:
         nc = ncores
 
-    if progress:
-        stat_unicode = _use_unicode()
-        
+    if nc < 1 and ctx.get_context()._name == "fork":
+        context = "spawn"
+        ctx = multiprocessing.get_context(context)
+        nc = ctx.cpu_count()
+
+
     narg = len(args)
     if nc > narg:
         nc = narg
 
     out = [None] * narg
-   
+
+
     v3(f"# Parallel processing: {narg} processes with {nc} cores")
     v3(f"#   with multiprocessing context: {context}")
-    ctx = multiprocessing.get_context(context)
-    
+
+
     # setup ProcessPoolExecutor arguments
     executor_kw = {"mp_context" : ctx}
 
     # https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ProcessPoolExecutor
-    if nc > 61: 
+    if nc > 61:
         executor_kw["max_workers"] = nc
 
     if chunksize is None:
         chunksize = nc**2
-        
+
+
+    # check character type to use with progressbar if it will be used
+    if progress:
+        stat_unicode = _use_unicode()
+
+
     ### Note: do not pass an unpickle-able object as an input argument (e.g. tempfile object) ###
     ### Note: this approach does not always handle local functions defined within a function well ###
 
@@ -243,8 +255,8 @@ def parallel_pool_futures(func, args, ncores=None, maxitersize=512, chunksize=No
                 else:
                     for future in concurrent.futures.as_completed(future_task):
                         i,arg = future_task[future]
-                        out[i] = future.result()                      
-                        
+                        out[i] = future.result()
+
             else:
                 args_enum_gen = ((i,arg) for i,arg in enumerate(args))
 
@@ -258,7 +270,7 @@ def parallel_pool_futures(func, args, ncores=None, maxitersize=512, chunksize=No
                     for future in done:
                         i,arg = future_task.pop(future)
                         out[i] = future.result()
-                            
+
                     if progress:
                         donelen.append(len(done))
 
@@ -266,14 +278,14 @@ def parallel_pool_futures(func, args, ncores=None, maxitersize=512, chunksize=No
                                          narg,prefix=progress_prefix,isfutures=True,
                                          use_unicode=stat_unicode)]
 
-                    # re-fill processor executor queue as jobs are completed 
+                    # re-fill processor executor queue as jobs are completed
                     for i,arg in itertools.islice(args_enum_gen, len(done)):
                         future = executor.submit(func,arg)
                         future_task[future] = (i,arg)
 
         except Exception as emsg:
             raise(emsg)
-    
+
     return out
 
 
@@ -287,17 +299,17 @@ def _check_tty():
     #     tty = os.itatty()
     # except NameError:
     #     tty = os.itatty()
-        
+
     try:
         tty = os.isatty(sys.stdout.fileno())
-        
+
     except (IOError,NameError,AttributeError):
         # Jupyter notebooks does not use TTY, but can
         # be printed to, but will throw a warning and print
         # to new line if data stream rate exceeded.  Some
         # newer versions of Jupyter will return True with os.isatty
         # rather than throwing an exception
-        
+
         tty = True
 
     return tty
@@ -306,14 +318,14 @@ def _check_tty():
 
 def _use_unicode():
     """
-    determine whether or not unicode symbols can be used in 
-    the terminal shell.  This is especially problematic if 
-    using XQuartz directly (rather than the Terminal app) on 
-    MacOS, since while unicode is supported, the necessary 
-    environment variables are not set to correctly use the 
+    determine whether or not unicode symbols can be used in
+    the terminal shell.  This is especially problematic if
+    using XQuartz directly (rather than the Terminal app) on
+    MacOS, since while unicode is supported, the necessary
+    environment variables are not set to correctly use the
     symbols.
 
-    For example, using `locale` to determine the associated 
+    For example, using `locale` to determine the associated
     variables, (don't explicitly set $LC_ALL), unicode support
     can be activated in XQuartz by setting:
 
@@ -335,26 +347,26 @@ def _use_unicode():
     export LC_MONETARY='en_US.UTF-8'
     export LC_NUMERIC='en_US.UTF-8'
     export LC_TIME='en_US.UTF-8'
-    export LC_ALL=''   
+    export LC_ALL=''
     """
-    
+
     status = []
 
     try:
         ctype = os.environ["LC_CTYPE"]
-        
+
         if "." and "_" in ctype:
             status.append(True)
-        
+
     except KeyError:
         status.append(False)
-    
+
     try:
         lang = os.environ["LANG"]
 
         if lang.upper() not in ["C","POSIX"]:
             status.append(True)
-            
+
     except KeyError:
         status.append(False)
 
@@ -396,11 +408,11 @@ def _show(j, count, size, prefix="", out=sys.stdout, use_unicode=False,
         str_x = 0
 
         if use_unicode:
-            pbarstr = (str_y,str_x,"{0}[{1}{2}] {3}/{4}\r".format(prefix, u"\N{Full block}"*x, "."*(size-x), j, count)) # print unicode "Full block"=u"\u2588"                                       
+            pbarstr = (str_y,str_x,"{0}[{1}{2}] {3}/{4}\r".format(prefix, u"\N{Full block}"*x, "."*(size-x), j, count)) # print unicode "Full block"=u"\u2588"
         else:
             pbarstr = (str_y,str_x,f"{prefix}[{'#'*x}{('.'*(size-x))}] {j}/{count}\r") # print '#'
 
-        printqueue.put(pbarstr,block=True)                           
+        printqueue.put(pbarstr,block=True)
 
         if use_curses and curses_pbarnum == 1 and int(j) > 0:
             while not printqueue.empty():
@@ -412,19 +424,19 @@ def _show(j, count, size, prefix="", out=sys.stdout, use_unicode=False,
             curses_win.refresh()
 
 
-            
+
 def progressbar_iter(iterfunc, count=None, prefix="", size=60, out=sys.stdout, use_unicode=False,
                      use_curses=False, curses_pbarnum=1, printqueue=None): # Python3.6+
     """
     Display progress bar when used with an iterator; generators will need to listed, for example:
-    
+
     for i in progressbar_iter(range(100), count=100, prefix="calculating func:"):
         func(i)
 
     #########################################################################
 
-    Making use of curses, for example when running chunks of stacks of image arithemetic in parallel 
-    and want to monitor to progress of each chunk, will want to take advantage of curses_wrapper and 
+    Making use of curses, for example when running chunks of stacks of image arithemetic in parallel
+    and want to monitor to progress of each chunk, will want to take advantage of curses_wrapper and
     requires multiple wrapper functions that will be executed in main().
 
     def func_with_progressbar(args):
@@ -446,18 +458,18 @@ def progressbar_iter(iterfunc, count=None, prefix="", size=60, out=sys.stdout, u
 
             except Exception as emsg:
                 raise RuntimeError(emsg)
-        
+
         return combine_imgvals
 
 
     def func(curses_screen,stklist):
         if curses_screen is None or not isinstance(curses_screen,curses.window):
             raise AttributeError("A curses screen needs to be defined.")
-    
+
         ncore = multiprocessing.cpu_count()
         datachunks = [*enumerate([stklist[i::ncore] for i in range(ncore)])]
         curses_prefix = "stacking image chunk"
-    
+
         curses_screen.erase()
 
         for i in range(ncore):
@@ -465,7 +477,7 @@ def progressbar_iter(iterfunc, count=None, prefix="", size=60, out=sys.stdout, u
             curses_screen.addstr(2*i+1,0,f"{curses_prefix} {i+1}:\r")
 
         curses_screen.refresh()
-    
+
         printqueue = multiprocessing.Manager().Queue()
         datachunks = [(i,v,printqueue,curses_prefix) for i,v in datachunks]
 
@@ -486,7 +498,7 @@ def progressbar_iter(iterfunc, count=None, prefix="", size=60, out=sys.stdout, u
         stdscr.refresh()
 
         out = func(stdscr,stklist)
-    
+
         return out
 
 
@@ -496,17 +508,17 @@ def progressbar_iter(iterfunc, count=None, prefix="", size=60, out=sys.stdout, u
 
         cr = curses.wrapper(func_wrapper,stklist)
 
-        ...   
+        ...
 
     """
 
     status_tty = _check_tty()
-    
+
     if status_tty:
         termwidth = shutil.get_terminal_size().columns
         termlines = shutil.get_terminal_size().lines
         nwin = None
-        
+
         if count is None:
             count = len(iterfunc)
 
@@ -533,29 +545,29 @@ def progressbar_iter(iterfunc, count=None, prefix="", size=60, out=sys.stdout, u
             _show(i+1,count,size,prefix=prefix,use_unicode=use_unicode,
                   use_curses=use_curses,curses_pbarnum=curses_pbarnum,
                   printqueue=printqueue,curses_win=nwin)
-            
+
         if not use_curses:
             print("\n", flush=True, file=out)
 
     else:
         for i, item in enumerate(iterfunc):
             yield item
-            
+
 
 
 def progressbar_futures(setfunc, count=None, prefix="", size=60, out=sys.stdout, use_unicode=False,
                         use_curses=False, curses_pbarnum=1,  printqueue=None): # Python3.6+
     """
     display progress bar when used in tandem with concurrent.futures.wait in 'parallel_pool_futures'
-    as the pool gets repopulated by the function if 'maxitersize' is exceeded. 
+    as the pool gets repopulated by the function if 'maxitersize' is exceeded.
     """
-    
+
     iterset = list(setfunc)
 
     status_tty = _check_tty()
 
     if status_tty:
-    
+
         termwidth = shutil.get_terminal_size().columns
         termlines = shutil.get_terminal_size().lines
         nwin = None
@@ -576,7 +588,7 @@ def progressbar_futures(setfunc, count=None, prefix="", size=60, out=sys.stdout,
         if termwidth <= size + 4 + len(prefix) + 2*len(str(count)):
             size = int(termwidth - 4 - len(prefix) - 2*len(str(count)))
 
-        complete = 0       
+        complete = 0
         #show(complete)
 
         while complete < count:
@@ -590,22 +602,22 @@ def progressbar_futures(setfunc, count=None, prefix="", size=60, out=sys.stdout,
 
         if not use_curses:
             print("\n", flush=True, file=out)
-            
+
     else:
         return setfunc
 
-    
+
 
 def progressbar_mp(arr, count=None, prefix="", size=60, out=sys.stdout,
                    isfutures=False, use_unicode=False,
-                   use_curses=False, curses_pbarnum=1, printqueue=None):   
+                   use_curses=False, curses_pbarnum=1, printqueue=None):
 
     """
-    generalized progressbar function based on 'progressbar_iter' and 
-    'progressbar_futures'.  If 'isfutures=True', then this function should 
+    generalized progressbar function based on 'progressbar_iter' and
+    'progressbar_futures'.  If 'isfutures=True', then this function should
     be called as `[*progressbar_mp(...)]` in script.
     """
-    
+
     status_tty = _check_tty()
 
     if status_tty:
@@ -650,7 +662,7 @@ def progressbar_mp(arr, count=None, prefix="", size=60, out=sys.stdout,
             ### will need to call as `[*progressbar_mp(...)]` in script ###
             ### since the 'yield' above causes this to be a generator   ###
 
-            complete = 0       
+            complete = 0
 
             while complete < count:
                 complete = sum(arr)
