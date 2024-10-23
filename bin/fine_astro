@@ -38,6 +38,12 @@ WARN_LARGE_OFFSET = 4.0
 
 lw.initialize_logger(__toolname__)
 
+# TODO: Multi-obi
+# TODO: Interleaved mode
+# TODO: CC-mode
+# TODO: Mix HRC & ACIS
+# TODO: tg_zo
+
 
 def log_wrapper(func):
     'wrapper around logger to check for None'
@@ -59,11 +65,10 @@ class OutputDirs():
     detect: str = "detect"
     xmatch: str = "xmatch"
     final: str = "post"
-    fine_astro: str = "fine_astro"
-    tmp: str = "tmp"
+    fine_astro: str = ""
 
 
-def run_merge_obs(evtlist, out_root):
+def run_merge_obs(evtlist, out_root, pars):
     'run merge obs'
 
     merge_obs = make_tool("merge_obs")
@@ -71,7 +76,12 @@ def run_merge_obs(evtlist, out_root):
     merge_obs.outroot = out_root
     merge_obs.bin = 1
     merge_obs.psfecf = 0.5
-    merge_obs.band = 'broad'
+    merge_obs.band = 'default'
+    merge_obs.parallel = pars["parallel"]
+    merge_obs.nproc = pars["nproc"]
+    merge_obs.clobber = pars["clobber"]
+    merge_obs.cleanup = pars["cleanup"]
+    merge_obs.tmpdir = pars["tmpdir"]
     vv = merge_obs()
     verb2(vv)
     return merge_obs.outroot
@@ -91,12 +101,18 @@ def run_wavdetect(pars):
     obi = obsid.obsid.obsid
     verb1(f"Running wavdetect on {obi}")
 
-    img = check_file(f"{inroot}_{obi}_broad_thresh.img")
-    exp = check_file(f"{inroot}_{obi}_broad_thresh.expmap")
-    psf = check_file(f"{inroot}_{obi}_broad_thresh.psfmap")
+    if obsid.instrument == "ACIS":
+        img = check_file(f"{inroot}_{obi}_broad_thresh.img")
+        exp = check_file(f"{inroot}_{obi}_broad_thresh.expmap")
+        psf = check_file(f"{inroot}_{obi}_broad_thresh.psfmap")
+    elif obsid.instrument == "HRC":
+        img = check_file(f"{inroot}_{obi}_wide_thresh.img")
+        exp = check_file(f"{inroot}_{obi}_wide_thresh.expmap")
+        psf = check_file(f"{inroot}_{obi}_wide_thresh.psfmap")
+    else:
+        raise ValueError("Bad instrument")
 
     import ciao_contrib.runtool as rt
-
     with rt.new_pfiles_environment():
 
         wavdetect = make_tool("wavdetect")
@@ -116,23 +132,23 @@ def run_wavdetect(pars):
             verb2(vv)
 
     if src_filter is None or len(src_filter) == 0:
-        check_srclist(wavdetect.outfile)
+        check_srclist(wavdetect.outfile, obi)
         return wavdetect.outfile
 
     dmcopy = make_tool("dmcopy")
     dmcopy(f"{wavdetect.outfile}", f"{outroot}_{obi}_filtered.src", clobber=True)
 
-    check_srclist(dmcopy.outfile)
+    check_srclist(dmcopy.outfile, obi)
 
     return dmcopy.outfile
 
 
-def check_srclist(srclist):
+def check_srclist(srclist, obsid=None):
     'Look for common problems with srclist'
     if srclist is None or len(srclist) == 0:
         raise ValueError("No source list found")
 
-    tab = read_file(srclist)
+    tab = read_file(srclist)  # Checks file exists and is readable
 
     try:
         tab.get_column("ra")
@@ -140,7 +156,15 @@ def check_srclist(srclist):
     except ValueError as nocol:
         raise ValueError(f"Source list {srclist} is missing columns RA or Dec") from nocol
 
-    # TODO: If has OBS_ID keyword then make sure matches event file (when OO)
+    if obsid is None:
+        return
+
+    src_obi = tab.get_key_value("OBS_ID")
+    if src_obi is None:
+        return
+
+    if src_obi != obsid:
+        raise ValueError(f"OBS_ID in {srclist}, {src_obi}, does not match OBS_ID in event file: {obsid}")
 
 
 def get_ref_srclist(obis, reflist, srcs):
@@ -272,6 +296,22 @@ def cross_match(ref_srclist, refevt, srclists, obis, outroot):
     return xmatches
 
 
+def copy_auxfiles(obsid, out_dirs):
+    'copy bpix, mask, dtf to xmatch dir'
+
+    verb2("Copying ancillary files.")
+    aux_list = ["bpix", "mask"]
+    if obsid.detector.startswith("HRC"):
+        aux_list.append("dtf")
+
+    for aux in aux_list:
+        aux_file = obsid.get_ancillary(aux, indir=out_dirs.root_dir)
+        fname = os.path.basename(aux_file)
+        shutil.copyfile(aux_file,
+                        os.path.join(out_dirs.root_dir,
+                                     out_dirs.fine_astro, fname))
+
+
 def apply_fine_astro(obis, xmatches, refevt, out_dirs, pars):
     'Apply fine astro corrections.  Copies asol, bpix, msk, and dtf files'
     from ciao_contrib.runtool import add_tool_history
@@ -302,7 +342,7 @@ def apply_fine_astro(obis, xmatches, refevt, out_dirs, pars):
             outfile = os.path.basename(asol).replace("asol1", "fa_asol")
             wcs_update.infile = asol
             wcs_update.outfile = os.path.join(out_dirs.root_dir,
-                                              out_dirs.xmatch, outfile)
+                                              out_dirs.fine_astro, outfile)
             vv = wcs_update(clobber=True)
             verb2(vv)
             add_tool_history(wcs_update.outfile, __toolname__,
@@ -321,26 +361,13 @@ def apply_fine_astro(obis, xmatches, refevt, out_dirs, pars):
         dmhedit.value = new_asol
         vv = dmhedit()
         verb2(vv)
+        return new_asol
 
-    def _copy_auxfiles():
-        'copy bpix, mask, dtf to xmatch dir'
-
-        verb2("Copying ancillary files.")
-        aux_list = ["bpix", "mask"]
-        if oo.detector.startswith("HRC"):
-            aux_list.append("dtf")
-
-        for aux in aux_list:
-            aux_file = oo.get_ancillary(aux, indir=out_dirs.root_dir)
-            fname = os.path.basename(aux_file)
-            shutil.copyfile(aux_file,
-                            os.path.join(out_dirs.root_dir,
-                                         out_dirs.xmatch, fname))
-
-    out_root = os.path.join(out_dirs.root_dir, out_dirs.xmatch,
+    out_root = os.path.join(out_dirs.root_dir, out_dirs.fine_astro,
                             out_dirs.root_base)
 
     updated_evts = []
+    updated_asol = []
     for oo, xform in zip(obis, xmatches):
         obi = oo.obsid.obsid
 
@@ -351,15 +378,29 @@ def apply_fine_astro(obis, xmatches, refevt, out_dirs, pars):
         wcs_update = make_tool("wcs_update")
 
         _update_evt()
-        _update_asol()
-        _copy_auxfiles()
+        new_asol = _update_asol()
         updated_evts.append(out_evt)
+        updated_asol.append(new_asol)
 
-    return updated_evts
+    return updated_evts, updated_asol
 
 
 def detect_sources(obis, pars, out_dirs):
     'Run wavdetect to detect sources'
+
+    def set_nproc():
+        'Set number of processors'
+
+        if "no" == pars["parallel"]:
+            return 1
+
+        if pars["nproc"] == "INDEF":
+            # parallel_map doesn't limit to number of CPU's like
+            # taskRunner does so we have to set the actual number
+            import multiprocessing
+            return multiprocessing.cpu_count()
+
+        return int(pars["nproc"])
 
     if pars["src_lists"].lower() in ["", "none"]:
 
@@ -368,24 +409,24 @@ def detect_sources(obis, pars, out_dirs):
         merge_root = os.path.join(out_dirs.root_dir,
                                   out_dirs.pre_detect,
                                   out_dirs.root_base)
-        pre_merge_root = run_merge_obs(evtlist, merge_root)
+        pre_merge_root = run_merge_obs(evtlist, merge_root, pars)
 
         verb1("Running wavdetect")
         det_out = os.path.join(out_dirs.root_dir, out_dirs.detect)
-        os.makedirs(det_out, exist_ok=True)
-        det_tmp = os.path.join(out_dirs.root_dir, out_dirs.tmp)
-        os.makedirs(det_tmp, exist_ok=True)
+        if det_out:
+            os.makedirs(det_out, exist_ok=True)
 
         det_pars = []
         for oo in obis:
             runpars = (pre_merge_root,
                        os.path.join(det_out, out_dirs.root_base),
                        oo, pars["det_scales"], pars["src_filter"],
-                       det_tmp)
+                       pars["tmpdir"])
             det_pars.append(runpars)
 
         from sherpa.utils import parallel_map
-        src_lists = parallel_map(run_wavdetect, det_pars)
+        src_lists = parallel_map(run_wavdetect, det_pars,
+                                 numcores=set_nproc())
 
     else:   # pars["src_list"] is not blank/none
         import stk
@@ -394,11 +435,26 @@ def detect_sources(obis, pars, out_dirs):
         if len(src_lists) != len(obis):
             raise ValueError("Mismatched number of observations and source lists.")
 
-        for src in src_lists:
-            check_srclist(src)
+        for src, oo in zip(src_lists, obis):
+            check_srclist(src, oo.obsid.obsid)
 
     return src_lists
 
+
+def summarize_astro(obis, updated_evts, updated_asol):
+    'Print summary of fine astro corrections'
+
+    verb1("\nThe following event files were created:")
+
+    for evt in updated_evts:
+        verb1(f"{evt}")
+
+    verb1("\nThe following aspect solution files were created:")
+    for asps in updated_asol:
+        for asol in asps.split(","):
+            verb1(asol)
+
+    verb1("\n")
 
 def sort_obis(obis):
     'Sort obsid by obinum'
@@ -437,6 +493,10 @@ def main():
     if pars["ref_src_list"].lower() not in ["", "none", "indef"]:
         check_srclist(pars["ref_src_list"])
 
+    if pars["src_lists"].lower() not in ["", "none", "indef"]:
+        if pars["ref_src_list"].lower() in ["", "none", "indef"]:
+            raise ValueError("User must specify ref_src_list if supplying src_lists")
+
     # ------------ Run wavdetect ----------------------
 
     verb1("Gathering source lists")
@@ -449,7 +509,8 @@ def main():
     ref_srclist = get_ref_srclist(obis, pars["ref_src_list"], src_lists)
 
     xmatch_out = os.path.join(out_dirs.root_dir, out_dirs.xmatch)
-    os.makedirs(xmatch_out, exist_ok=True)
+    if xmatch_out:
+        os.makedirs(xmatch_out, exist_ok=True)
 
     xmatches = cross_match(ref_srclist, refevt, src_lists, obis,
                            os.path.join(xmatch_out, out_dirs.root_base))
@@ -457,18 +518,33 @@ def main():
     # ------------ Update ----------
     verb1("Updating astronometry")
     updated_out = os.path.join(out_dirs.root_dir, out_dirs.fine_astro)
-    os.makedirs(updated_out, exist_ok=True)
+    if updated_out:
+        os.makedirs(updated_out, exist_ok=True)
 
-    updated_evts = apply_fine_astro(obis, xmatches, refevt, out_dirs, pars)
+    updated_evts, updated_asol = apply_fine_astro(obis, xmatches, refevt, out_dirs, pars)
+    summarize_astro(obis, updated_evts, updated_asol)
 
-    # ------------ Reproject -----------
-    verb1("Running final merge_obs")
-    merge_root = os.path.join(out_dirs.root_dir,
-                              out_dirs.final,
-                              out_dirs.root_base)
+    if pars["stop"] == "fineastro":
+        return
 
-    os.makedirs(os.path.dirname(merge_root), exist_ok=True)
-    final_out = run_merge_obs(updated_evts, merge_root)
+    if pars["stop"] == "mergeobs":
+        # ------------ Reproject -----------
+        verb1("Running final merge_obs")
+        verb2("Copying auxiliary files so they can be used by merge_obs")
+        for oo in obis:
+            copy_auxfiles(oo, out_dirs)
+
+        merge_root = os.path.join(out_dirs.root_dir, out_dirs.final,
+                                  out_dirs.root_base)
+        merge_out = os.path.dirname(merge_root)
+        if merge_out:
+            os.makedirs(os.path.dirname(merge_root), exist_ok=True)
+        final_out = run_merge_obs(updated_evts, merge_root, pars)
+
+    elif pars["stop"] == "reproject":
+        raise NotImplementedError("Rerproject TBD")
+    else:
+        raise ValueError("Bad value for stop parameter")
 
 
 if __name__ == "__main__":
