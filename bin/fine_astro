@@ -31,7 +31,7 @@ from pycrates import read_file
 
 
 __toolname__ = "fine_astro"
-__revision__ = "15 October 2024"
+__revision__ = "23 October 2024"
 
 WARN_LARGE_SHIFT = 3.0
 WARN_LARGE_OFFSET = 4.0
@@ -41,8 +41,8 @@ lw.initialize_logger(__toolname__)
 # TODO: Multi-obi
 # TODO: Interleaved mode
 # TODO: CC-mode
-# TODO: Mix HRC & ACIS
 # TODO: tg_zo
+# TODO: clobber
 
 
 def log_wrapper(func):
@@ -68,13 +68,13 @@ class OutputDirs():
     fine_astro: str = ""
 
 
-def run_merge_obs(evtlist, out_root, pars):
+def run_merge_obs(evtlist, out_root, pars, binsize=1):
     'run merge obs'
 
     merge_obs = make_tool("merge_obs")
     merge_obs.infile = evtlist
     merge_obs.outroot = out_root
-    merge_obs.bin = 1
+    merge_obs.bin = binsize
     merge_obs.psfecf = 0.5
     merge_obs.band = 'default'
     merge_obs.parallel = pars["parallel"]
@@ -402,6 +402,13 @@ def detect_sources(obis, pars, out_dirs):
 
         return int(pars["nproc"])
 
+    if all(oo.instrument == 'ACIS' for oo in obis):
+        binsize = 1
+    elif all(oo.instrument == 'HRC' for oo in obis):
+        binsize = 2
+    else:
+        raise ValueError("Cannot merge HRC and ACIS observations")
+
     if pars["src_lists"].lower() in ["", "none"]:
 
         verb1("Running pre-detect merge_obs")
@@ -409,7 +416,7 @@ def detect_sources(obis, pars, out_dirs):
         merge_root = os.path.join(out_dirs.root_dir,
                                   out_dirs.pre_detect,
                                   out_dirs.root_base)
-        pre_merge_root = run_merge_obs(evtlist, merge_root, pars)
+        pre_merge_root = run_merge_obs(evtlist, merge_root, pars, binsize=binsize)
 
         verb1("Running wavdetect")
         det_out = os.path.join(out_dirs.root_dir, out_dirs.detect)
@@ -455,6 +462,7 @@ def summarize_astro(obis, updated_evts, updated_asol):
             verb1(asol)
 
     verb1("\n")
+
 
 def sort_obis(obis):
     'Sort obsid by obinum'
