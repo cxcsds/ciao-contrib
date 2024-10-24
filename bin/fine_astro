@@ -134,7 +134,7 @@ def run_wavdetect(pars):
         return wavdetect.outfile
 
     dmcopy = make_tool("dmcopy")
-    dmcopy(f"{wavdetect.outfile}", f"{outroot}_{obi}_filtered.src", clobber=True)
+    dmcopy(f"{wavdetect.outfile}{src_filter}", f"{outroot}_{obi}_filtered.src", clobber=True)
 
     check_srclist(dmcopy.outfile, obi)
 
@@ -234,9 +234,11 @@ def summarize_xmatch(verbose, infile, outfile):
         if dd > WARN_LARGE_OFFSET:
             _warning(f"Total offset = {dd:6.3f} exceeds warning limit of {WARN_LARGE_OFFSET} pixels")
 
+    fname = os.path.basename(infile)
+
     num = parse_verbose()
     xx, yy = get_shifts()
-    fmt = f"{infile:<35s} nsrc={num}\txoff={xx:6.3f}[pix]\tyoff={yy:6.3f}[pix]"
+    fmt = f"{fname:<35s} nsrc={num}\txoff={xx:6.3f}[pix]\tyoff={yy:6.3f}[pix]"
     verb1(fmt)
     warn_large_offsets()
 
@@ -302,7 +304,7 @@ def copy_auxfiles(obsid, out_dirs):
         aux_list.append("dtf")
 
     for aux in aux_list:
-        aux_file = obsid.get_ancillary(aux, indir=out_dirs.root_dir)
+        aux_file = obsid.get_ancillary(aux)
         fname = os.path.basename(aux_file)
         shutil.copyfile(aux_file,
                         os.path.join(out_dirs.root_dir,
@@ -332,7 +334,7 @@ def apply_fine_astro(obis, xmatches, refevt, out_dirs, pars):
 
     def _update_asol():
         'Update aspect solution files'
-        asols = oo.get_asol(indir=out_dirs.root_dir)
+        asols = oo.get_asol()
         new_asol = []
         for asol in asols:
             verb2(f"Applying fine astro correction to {asol}")
