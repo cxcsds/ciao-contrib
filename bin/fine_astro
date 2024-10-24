@@ -38,8 +38,6 @@ WARN_LARGE_OFFSET = 4.0
 
 lw.initialize_logger(__toolname__)
 
-# TODO: Multi-obi
-# TODO: Interleaved mode
 # TODO: CC-mode
 # TODO: tg_zo
 # TODO: clobber
@@ -98,7 +96,7 @@ def run_wavdetect(pars):
             raise ValueError(f"Error: cannot locate file '{infile}'")
         return infile
 
-    obi = obsid.obsid.obsid
+    obi = str(obsid.obsid)
     verb1(f"Running wavdetect on {obi}")
 
     if obsid.instrument == "ACIS":
@@ -132,7 +130,7 @@ def run_wavdetect(pars):
             verb2(vv)
 
     if src_filter is None or len(src_filter) == 0:
-        check_srclist(wavdetect.outfile, obi)
+        check_srclist(wavdetect.outfile, obsid.obsid.obsid)
         return wavdetect.outfile
 
     dmcopy = make_tool("dmcopy")
@@ -192,8 +190,7 @@ def get_ref_srclist(obis, reflist, srcs):
         return retval
 
     for obi, src in zip(obis, srcs):
-        # Hopefully this will work w/ interleaves|multiobi
-        if obi.obsid.obsid == reflist:
+        if obi.obsid.obsid == reflist or str(obi.obsid) == reflist:
             return src
 
     raise ValueError("Cannot identify reference source list")
@@ -271,7 +268,7 @@ def cross_match(ref_srclist, refevt, srclists, obis, outroot):
 
         wcs_match = make_tool("wcs_match")
 
-        obi = oo.obsid.obsid
+        obi = str(oo.obsid)
 
         wcs_match.infile = src
         wcs_match.refsrcfile = ref_srclist
@@ -369,7 +366,7 @@ def apply_fine_astro(obis, xmatches, refevt, out_dirs, pars):
     updated_evts = []
     updated_asol = []
     for oo, xform in zip(obis, xmatches):
-        obi = oo.obsid.obsid
+        obi = str(oo.obsid)
 
         # I want the original event file, might have used smaller
         # event file for detect
@@ -467,7 +464,7 @@ def summarize_astro(obis, updated_evts, updated_asol):
 def sort_obis(obis):
     'Sort obsid by obinum'
 
-    vals = [(oo.obsid.obsid, oo) for oo in obis]
+    vals = [(str(oo.obsid), oo) for oo in obis]
     retval = sorted(vals)
     retval = [oo[1] for oo in retval]
     return retval
