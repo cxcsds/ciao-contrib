@@ -173,9 +173,8 @@ def get_ref_srclist(obis, reflist, srcs):
 
     # If reflist is set, check it and use it.
     if reflist is not None and len(reflist) > 0:
-        if os.path.isfile(reflist):
-            check_srclist(reflist)
-            return reflist
+        check_srclist(reflist)
+        return reflist
 
     # if reflist is None or blank, use longest obsid
     if reflist is None or len(reflist) == 0:
@@ -284,6 +283,7 @@ def cross_match(ref_srclist, refevt, srclists, obis, outroot):
             if 'Cannot find at least 1 source match' in ss:
                 _warning(f"Failed to identify matching sources for OBS_ID {obi}. Proceeding with no astrometric corrections applied.")
                 _make_unit_xform(wcs_match.outfile, refevt)
+                vv = "After deleting poor matches, 0 sources remain\n"
             else:
                 raise failed
 
@@ -521,7 +521,7 @@ def main():
                            os.path.join(xmatch_out, out_dirs.root_base))
 
     # ------------ Update ----------
-    verb1("Updating astronometry")
+    verb1("Updating astrometry")
     updated_out = os.path.join(out_dirs.root_dir, out_dirs.fine_astro)
     if updated_out:
         os.makedirs(updated_out, exist_ok=True)
