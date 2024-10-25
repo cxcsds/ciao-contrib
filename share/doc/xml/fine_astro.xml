@@ -110,7 +110,7 @@ Updating astrometry
     <QEXAMPLE>
       <SYNTAX>
         <LINE>
-        fine_astro infile= "10309/repro/acisf10309_repro_evt2.fits" out="obsid10309" ref="csc2.1.fits" clob+
+        fine_astro infile=10309/repro/acisf10309_repro_evt2.fits out=obsid10309 ref=csc2.1.fits clob+
         </LINE>
       </SYNTAX>
     <DESC>
@@ -265,7 +265,7 @@ Updating astrometry
     <QEXAMPLE>
       <SYNTAX>
         <LINE>fine_astro @/home/user/Chandra/Abell3562/obi.lis abell3562/out \</LINE>
-        <LINE>det_filter="[ccd_id=0:3]" src_filter="[pos=circle(203.4117720d,-31.6794249d,10)]" </LINE>
+        <LINE>src_filter="[pos=circle(203.4117720d,-31.6794249d,10)]" </LINE>
       </SYNTAX>
       <DESC>
         <VERBATIM>
@@ -283,14 +283,8 @@ Updating astrometry
 ...
         </VERBATIM>
         <PARA>
-            In this example we have added two filters.
-            The detect filter, det_filter, is added to the input event files
-            when creating the images with merge_obs that will be used to
-            detect sources.  In this example we are restricting the
-            images to just the 4 ACIS-I chips.
-            A second filter, src_filter, is added to the source list to
+            A  filter, src_filter, is added to the source list to
             identify a single source to be used for all the cross matches.
-            The square brackets, [], are required.
             Note: The detect tools contain a "pos" column, not a "sky" column.
             Also note the trailing 'd' in the used in the coordinates of the circle
             to indicate that these are celestial coordinates, ie RA and Dec values,
@@ -302,21 +296,85 @@ Updating astrometry
         </PARA>
       </DESC>
     </QEXAMPLE>
+    <QEXAMPLE>
+      <SYNTAX>
+        <LINE>fine_astro @/home/user/Chandra/Abell3562/obi.lis abell3562/out \</LINE>
+        <LINE>det_filter="ccd_id=0:3"</LINE>
+      </SYNTAX>
+      <DESC>
 
+        <PARA>
+            This is similar to the previous example example but now 
+            we  have applied detect filter, det_filter. The det_filter is added 
+            to the input event files when creating the images with merge_obs that will be used to
+            detect sources.  In this example we are restricting the
+            images to just the 4 ACIS-I chips.
 
-
+            </PARA>
+        </DESC>
+     </QEXAMPLE>
     </QEXAMPLELIST>
-
-
-
 
     <PARAMLIST>
       <PARAM name="infile" type="file" filetype="input" reqd="yes" stacks="yes">
-        <SYNOPSIS />
+        <SYNOPSIS>Input event files</SYNOPSIS>
         <DESC>
-          <PARA />
+          <PARA>Can be stack of event files, or a stack of
+          directories.</PARA>
         </DESC>
       </PARAM>
+
+      <PARAM name="outroot" type="file" filetype="output" reqd="yes">
+        <SYNOPSIS></SYNOPSIS>
+        <DESC>
+            <PARA>
+            </PARA>
+        </DESC>      
+      </PARAM>
+
+      <PARAM name="src_lists" type="file" filetype="input" stacks="yes">
+        <SYNOPSIS></SYNOPSIS>
+        <DESC>
+            <PARA>must be in same order as event files
+            </PARA>
+        </DESC>      
+      </PARAM>
+      <PARAM name="ref_src_list" type="file" filetype="input" >
+        <SYNOPSIS></SYNOPSIS>
+        <DESC>
+            <PARA>
+            </PARA>
+        </DESC>      
+      </PARAM>
+      <PARAM name="det_filter" type="string">
+        <SYNOPSIS></SYNOPSIS>
+        <DESC>
+            <PARA>
+            </PARA>
+        </DESC>      
+      </PARAM>
+      <PARAM name="det_scales" type="string" def="1.4 2 4">
+        <SYNOPSIS></SYNOPSIS>
+        <DESC>
+            <PARA>
+            </PARA>
+        </DESC>      
+      </PARAM>
+      <PARAM name="src_filter" type="string">
+        <SYNOPSIS></SYNOPSIS>
+        <DESC>
+            <PARA>
+            </PARA>
+        </DESC>      
+      </PARAM>
+      <PARAM name="stop" type="string" def="fineastro">
+        <SYNOPSIS></SYNOPSIS>
+        <DESC>
+            <PARA>
+            </PARA>
+        </DESC>      
+      </PARAM>
+
       <PARAM name="parallel" type="boolean" def="yes">
         <SYNOPSIS>Run processes in parallel?</SYNOPSIS>
         <DESC>
@@ -337,6 +395,9 @@ Updating astrometry
           </PARA>
         </DESC>
       </PARAM>
+
+
+
       <PARAM name="nproc" type="integer" def="INDEF">
         <SYNOPSIS>Number of processors to use</SYNOPSIS>
         <DESC>

@@ -472,6 +472,31 @@ def sort_obis(obis):
     return retval
 
 
+def bracketize(filt_str):
+    'Make sure filter is enclosed in []'
+    if filt_str == "":
+        return filt_str
+    if not filt_str.startswith('['):
+        filt_str = '[' + filt_str
+    if not filt_str.endswith(']'):
+        filt_str = filt_str + ']'
+    return filt_str
+
+
+def check_pars(pars):
+    'Checks on parameter values'
+
+    for filt_str in ['det_filter', 'src_filter']:
+        pars[filt_str] = bracketize(pars[filt_str])
+
+    if pars["ref_src_list"].lower() not in ["", "none", "indef"]:
+        check_srclist(pars["ref_src_list"])
+
+    if pars["src_lists"].lower() not in ["", "none", "indef"]:
+        if pars["ref_src_list"].lower() in ["", "none", "indef"]:
+            raise ValueError("User must specify ref_src_list if supplying src_lists")
+
+
 @lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
     'Main routine'
@@ -481,6 +506,8 @@ def main():
     pars = get_params(__toolname__, "rw", sys.argv,
                       verbose={"set": lw.set_verbosity, "cmd": verb1},
                       revision=__revision__)
+
+    check_pars(pars)
 
     # ~ from ciao_contrib._tools.fileio import outfile_clobber_checks
     # ~ outfile_clobber_checks(pars["clobber"], pars["outfile"])
@@ -496,13 +523,6 @@ def main():
 
     if obis is None or len(obis) == 0:
         raise ValueError("No valid event files")
-
-    if pars["ref_src_list"].lower() not in ["", "none", "indef"]:
-        check_srclist(pars["ref_src_list"])
-
-    if pars["src_lists"].lower() not in ["", "none", "indef"]:
-        if pars["ref_src_list"].lower() in ["", "none", "indef"]:
-            raise ValueError("User must specify ref_src_list if supplying src_lists")
 
     # ------------ Run wavdetect ----------------------
 
