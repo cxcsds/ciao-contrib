@@ -67,7 +67,7 @@ import numpy as np
 
 import ciao_contrib.logger_wrapper as lw
 from ciao_contrib.runtool import make_tool
-from pycrates import read_file, set_key
+from pycrates import read_file
 
 __toolname__ = "patch_hrc_ssc"
 __revision__ = "10 October 2024"
@@ -225,7 +225,7 @@ def compute_dtcor(dtf_file, gti_file, tmpdir):
     return dtcor[-1]
 
 
-def update_events_dtcor(evt_in, evt_out, dtcor, tmpdir):
+def update_events_dtcor(evt_in, evt_out, dtcor, tmpdir, fltfile, dtffile):
     'Need to make a temp copy to update DTCOR in header'
 
     verb1("Updating DTCOR in event file and recomputing EXPOSURE time")
@@ -239,6 +239,12 @@ def update_events_dtcor(evt_in, evt_out, dtcor, tmpdir):
 
     dmhedit = make_tool("dmhedit")
     dmhedit(outfile.name, file="", op="add", key="DTCOR", value=dtcor)
+
+    basefile = os.path.basename(fltfile)
+    dmhedit(outfile.name, file="", op="add", key="FLTFILE", value=basefile)
+
+    basefile = os.path.basename(dtffile)
+    dmhedit(outfile.name, file="", op="add", key="DTFFILE", value=basefile)
     verb2("Update done")
 
     vv = dmcopy(f"{outfile.name}[time=:]", evt_out, clobber=True)
@@ -323,7 +329,8 @@ def main():
     os.unlink(outfile.name)
 
     update_events_dtcor(pars["evt_infile"], pars["evt_outfile"], dtcor,
-                        pars["tmpdir"])
+                        pars["tmpdir"], pars["gti_outfile"],
+                        pars["dtf_outfile"])
 
     add_metadata(pars["evt_outfile"], pars)
 
