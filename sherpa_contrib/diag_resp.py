@@ -49,14 +49,13 @@ or
 
 """
 
-__revision__ = "19 August 2024"
+__revision__ = "20 October 2024"
 
 import os
 import warnings
 from logging import getLogger
 from functools import wraps
 from re import sub
-from typing import Optional,Union
 
 import numpy.typing as npt
 from numpy import arange
@@ -66,6 +65,7 @@ from ciao_contrib._tools.fileio import get_keys_from_file
 from sherpa.astro.data import DataPHA
 from sherpa.astro.ui import create_rmf as shpmkrmf
 from sherpa.astro.ui import create_arf as shpmkarf
+from sherpa import __version__ as shpver
 
 
 
@@ -92,8 +92,8 @@ def _reformat_wmsg(func):
 
 
 
-def _arg_case(arg: Optional[Union[str,int,None]]=None,
-              lower: bool=False) -> Optional[Union[str,None]]:
+def _arg_case(arg: str|int|None = None,
+              lower: bool = False) -> str|None:
     if not isinstance(arg,str):
         return arg
 
@@ -139,8 +139,8 @@ class EGrid:
 
 
     def _set_chantype_none(self, telescope: str = "",
-                           instrument: Optional[Union[str,None]] = None,
-                           chantype: Optional[Union[str,None]] = None):
+                           instrument: str|None = None,
+                           chantype: str|None = None):
 
         if any([ telescope == "asca" and instrument != "GIS",
                  telescope == "swift" and instrument == "XRT",
@@ -153,11 +153,11 @@ class EGrid:
         return None
 
 
-    def _get_ebounds_blk(self, instrument: Optional[Union[str,None]] = None,
-                         detnam: Optional[Union[str,None]] = None,
-                         instfilter: Optional[Union[str,None]] = None,
-                         subchan: Optional[Union[int,None]] = None,
-                         chantype: Optional[Union[str,None]] = None) -> str:
+    def _get_ebounds_blk(self, instrument: str|None = None,
+                         detnam: str|None = None,
+                         instfilter: str|None = None,
+                         subchan: int|None = None,
+                         chantype: str|None = None) -> str:
 
         detstr = f"{detnam:->{len(detnam)+1}}" if detnam is not None else ""
         filtstr = f"{instfilter:/>{len(str(instfilter))+1}}" if instfilter is not None else ""
@@ -200,11 +200,11 @@ class EGrid:
 
 
     def get_egrid(self, telescope: str = "",
-                  instrument: Optional[Union[str,None]] = None,
-                  detnam: Optional[Union[str,None]] = None,
-                  instfilter: Optional[Union[str,None]] = None,
-                  subchan: Optional[Union[int,None]] = None,
-                  chantype: Optional[Union[str,None]] = None) -> tuple[npt.NDArray, npt.NDArray, int]:
+                  instrument: str|None = None,
+                  detnam: str|None = None,
+                  instfilter: str|None = None,
+                  subchan: int|None = None,
+                  chantype: str|None = None) -> tuple[npt.NDArray, npt.NDArray, int]:
         """
         return energy grid and channel offset for a given telescope
         and instrument configuration
@@ -227,7 +227,7 @@ class EGrid:
         try:
             _,blks,hdrs = shp_readtabblk(fn)
             data = None
-            
+
             for idx,hdr in hdrs.items():
                 blk = blk.lower() if (blk := hdr.get("BLKNAME")) is not None else blk
 
@@ -304,7 +304,7 @@ class Check_and_Update_Info:
 
     def _varcheck(self, var: str = "", varcheck: list[str] = None,
                   tscopestr: str = "", parname: str = "instrument",
-                  inststr:  Optional[Union[None,str]] = None, stripnum: bool = False):
+                  inststr:  None|str = None, stripnum: bool = False):
         """
         raise ValueError if parameter is not appropriately set with valid value
         """
@@ -345,7 +345,7 @@ class Check_and_Update_Info:
                           "calet" : "CALET",
                           "chandra" : "Chandra",
                           "cos-b" : "COS-B",
-                          "einsten" : "Einstein",
+                          "einstein" : "Einstein",
                           "exosat" : "EXOSAT",
                           "halosat" : "HALOSAT",
                           "ixpe" : "IXPE",
@@ -369,9 +369,9 @@ class Check_and_Update_Info:
 
 
     def set_instfilter(self, telescope: str = "",
-                       instrument: Optional[Union[str,None]] = None,
-                       detnam: Optional[Union[str,None]] = None,
-                       instfilter: Optional[Union[str,int,None]] = None):
+                       instrument: str|None = None,
+                       detnam: str|None = None,
+                       instfilter: str|int|None = None):
         """
         setup 'instfilter' argument; only Swift/UVOT and Chandra/gratings
         energy-grids are dependent on this quantity
@@ -408,8 +408,8 @@ class Check_and_Update_Info:
 
 
     def check_inst_det(self, telescope: str = "",
-                       instrument: Optional[Union[str,None]] = None,
-                       detnam: Optional[Union[str,None]] = None):
+                       instrument: str|None = None,
+                       detnam: str|None = None):
 
         """
         check validity of "instrument" and "detector" arguments and set to None when the arguments will go unused
@@ -612,8 +612,33 @@ class Check_and_Update_Info:
 
 
 
+def _fix_bin_edges(elo: npt.NDArray, ehi: npt.NDArray,
+                   ethresh: float=1e-12, dE: float=1e-16) -> tuple[npt.NDArray,
+                                                                   npt.NDArray]:
+    """
+    Tweak energy bin edge values that are below the ethresh replacement value.
+    """
+    
+    ind_lo = [ i for i,E in enumerate(elo) if E < ethresh ]
+    ind_hi = [ i for i,E in enumerate(ehi) if E < ethresh ]
+
+    assert len(ind_lo) == len(ind_hi) + 1, "Unable to fix ebin edges below ethresh level, number of elo edges should be 1 greater than the number of elo edges."
+
+    edge_lo = [ ethresh + dE*(i+1) for i in ind_lo ]
+    edge_hi = edge_lo[1:]
+
+    for i,E in zip(ind_lo,edge_lo):
+        elo[i] = E
+
+    for j,E in zip(ind_hi,edge_hi):
+        ehi[j] = E
+
+    return elo, ehi
+
+
+
 @_reformat_wmsg
-def build_resp(emin, emax, offset: int, ethresh: Optional[Union[float,None]] = 1e-12):
+def build_resp(emin, emax, offset: int, ethresh: float|None = 1e-12):
     """
     Return a diagonal RMF and flat ARF data objects with matching energy grid.
     Use set_rmf and set_arf on the respective instances.
@@ -637,13 +662,11 @@ def build_resp(emin, emax, offset: int, ethresh: Optional[Union[float,None]] = 1
         ### in sherpa/astro/instrument.py, or use a version test on
         ### whether this incrementation should be done
 
-        # from sherpa import __version__ as shpver
-        # major,minor,micro = shpver.split(".")
-        # ver = float(f"{major}.{minor}")
-        # ver_micro = int(micro)
-        #
+        major,minor,micro = shpver.split(".")
+        ver = float(f"{major}.{minor}")
+        #ver_micro = int(micro)
 
-        if offset != 1:
+        if ver < 4.17 and offset != 1:
             diag_rmf.f_chan += offset - 1
 
         #################################################################
@@ -668,12 +691,12 @@ def build_resp(emin, emax, offset: int, ethresh: Optional[Union[float,None]] = 1
 
 def mkdiagresp(telescope: str = "Chandra",
                instrument: str = "ACIS",
-               detector: Optional[Union[str,None]] = None,
-               instfilter: Optional[Union[str,int,None]] = None,
-               refspec: Optional[Union[str,DataPHA,None]] = None,
+               detector: str|None = None,
+               instfilter: str|int|None = None,
+               refspec: str|DataPHA|None = None,
                chantype: str = "PI",
-               nchan: Optional[Union[int,None]] = None,
-               ethresh: Optional[Union[float,None]] = 1e-12):
+               nchan: int|None = None,
+               ethresh: float|None = 1e-12):
     """
     Return a diagonal RMF and flat ARF data objects with matching energy grid for a specified instrument/detector.
     Use set_rmf and set_arf on the respective instances.  Use 'build_resp' for a non-instrument specific [or generalized] energy-grid configuration.
@@ -862,6 +885,16 @@ def mkdiagresp(telescope: str = "Chandra",
     elo = egrid.elo
     ehi = egrid.ehi
     offset = egrid.offset
+
+
+    # for Einstein/SSS, the first three energy bins are zeros;
+    # tweak the values to avoid '<= the replacement value of'
+    # RuntimeError being thrown right off the bat
+    if telescope == "einstein" and instrument == "SSS":
+        if ethresh is None:
+            raise ValueError("Unable to fix the energy grid bin edges with 'ethresh=None'.")
+
+        elo,ehi = _fix_bin_edges(elo.copy(), ehi.copy(), ethresh=ethresh, dE=1e-16)
 
 
     return build_resp(emin=elo, emax=ehi, offset=offset, ethresh=ethresh)

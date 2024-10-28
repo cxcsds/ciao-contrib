@@ -42,6 +42,7 @@ try:
 except (ImportError,ModuleNotFoundError) as E:
     astropy_status = False
 
+from sherpa.utils.err import DataErr, IOErr
 from sherpa_contrib.diag_resp import mkdiagresp, build_resp, EGrid
 
 
@@ -192,10 +193,10 @@ def _instrument_configs(fdict: dict) -> dict[tuple[namedtuple]]:
     )
 
 
-    fdict["einsten"] = ( instrument_config("IPC",None,None,None,None),
-                         instrument_config("SSS",None,None,None,None),
-                         instrument_config("MPC",None,None,None,None),
-                         instrument_config("HRI",None,None,None,None)
+    fdict["einstein"] = ( instrument_config("IPC",None,None,None,None),
+                          instrument_config("SSS",None,None,None,None),
+                          instrument_config("MPC",None,None,None,None),
+                          instrument_config("HRI",None,None,None,None)
     )
 
 
@@ -460,9 +461,8 @@ def test_diagresp(args):
 
 
 
-@pytest.mark.xfail
 @pytest.mark.filterwarnings("ignore:.*was 0 and has been replaced by*:UserWarning")
-@pytest.mark.parametrize("telescope",["erosita","ixpe","nustar"])
+@pytest.mark.parametrize("telescope", ["erosita","ixpe","nustar"])
 def test_broken_lut_path(telescope):
     """
     The tool should error out if the energy grid lookup table files are not found in the
@@ -473,13 +473,18 @@ def test_broken_lut_path(telescope):
     environ["ASCDS_INSTALL"] = _get_random_string(strlen=32)
 
     try:
-        assert mkdiagresp(telescope), "Failed to locate EBOUNDS LUT files..."
+        with pytest.raises( (OSError,IOError,IOErr) ) as exc:
+            mkdiagresp(telescope)
+
+        assert exc.type in (OSError,IOError,IOErr), "This test is expected to fail since it cannot locate EBOUNDS LUT files..."
+
+        assert f"{telescope}-ebounds-lut-fits does not exist" not in exc.value.args[0], "This test was able to find the EBOUNDS LUT files when it should not..."
+
     finally:
         environ["ASCDS_INSTALL"] = ascds_install
 
 
 
-@pytest.mark.xfail
 @pytest.mark.parametrize("args", telescope_args_fails)
 def test_diagresp_fails(args):
     """
@@ -488,7 +493,11 @@ def test_diagresp_fails(args):
     """
     msgconfig = _get_configstr(*args)
 
-    assert not mkdiagresp(**args._asdict()), f"{msgconfig} test should be expected to fail!"
+    with pytest.raises(IOError) as exc:
+        mkdiagresp(**args._asdict())
+
+    assert exc.type is OSError, f"{msgconfig} test should be expected to fail!"
+    assert "Unable to find the '{}' HDU block".format(msgconfig.split("/")[-1]) in exc.value.args[0], "This test should fail to find the HDU block name."
 
 
 
@@ -514,14 +523,16 @@ def test_chandra_hrc():
 
 
 
-@pytest.mark.xfail
 def test_chandra_hrc2():
     """
     Test that Chandra/HRC fails correctly
     """
     args = telescope_config("Chandra","HRC",None,None)
 
-    assert not mkdiagresp(**args._asdict()), "This test should fail for Chandra/HRC."
+    with pytest.raises(RuntimeWarning) as exc:
+        mkdiagresp(**args._asdict())
+
+    assert exc.type is RuntimeWarning, "This test should fail for Chandra/HRC."
 
 
 
@@ -573,14 +584,17 @@ def test_reference_spec_instance():
 
 
 
-@pytest.mark.xfail
 def test_ethresh_none():
     """
     Check that not modifying zero-valued energy bin edges with small-valued 'ethresh'
     is working without throwing an error when set to 'None'
     """
 
-    rmf,arf = mkdiagresp(telescope="nustar", ethresh=None)
+    try:
+        rmf,arf = mkdiagresp(telescope="nustar", ethresh=None)
+
+    except (DataErr,Warning) as exc:
+        assert exc is not None, "Setting 'ethresh=None' should not throw a warning or DataErr exception."
 
 
 
@@ -614,7 +628,7 @@ good_config = [ malformed(tscope, c.instrument, c.detector, c.instfilter)
                 for c in configs ]
 
 
-@pytest.mark.xfail
+
 @_quash_ethresh_warning
 @pytest.mark.parametrize("args,orig",
                          list(zip(*[malformed_config, good_config])))
@@ -624,7 +638,14 @@ def test_malformed(args,orig):
     may pass with valid inputs since the arguments are randomly altered
     """
 
-    if args != orig:
-        assert not mkdiagresp(**args._asdict()), "This test is expected to fail!"
-    else:
-        assert mkdiagresp(**args._asdict()), "This test should have passed!"
+    try:
+        mkdiagresp(**args._asdict())
+
+    except (ValueError,OSError,IOError,DataErr) as exc:
+        if args != orig:
+            assert exc is not None, "This test is expected to fail!"
+        else:
+            assert "argument to be" in exc.args[0], "This test should fail from having insufficient arguments provided."
+
+    except RuntimeWarning as exc:
+        assert "HRC data has insufficient spectral resolution" in exc.args[0], "This test should throw a RuntimeWarning and exit."
