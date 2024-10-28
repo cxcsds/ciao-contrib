@@ -151,7 +151,7 @@ except DaxCancel:
     print("Cancel button pressed")
     sys.exit(1)
 
-sherpa.notice()
+sherpa.notice2d()
 sherpa.save_model("${DAX_OUTDIR}/out.fits", clobber=True)
 EOF
 
