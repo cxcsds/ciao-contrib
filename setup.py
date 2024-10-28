@@ -1,7 +1,7 @@
 """
 Create the CIAO contributed package. Options include:
 
-  --version=4.16.0
+  --version=4.17.0
 
 """
 
@@ -25,14 +25,14 @@ def list_files(pattern):
     #
     #
     files = [f for f in files if not os.path.isdir(f)]
-    
+
     if files == []:
         raise ValueError(f"No match for pattern: {pattern}")
 
     return sorted(files)
 
 
-VERSION = "4.16.0"
+VERSION = "4.17.0"
 for val in sys.argv:
     if val.startswith("--version="):
         VERSION = val.split("=")[1]
