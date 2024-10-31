@@ -412,9 +412,12 @@ def detect_sources(obis, pars, out_dirs):
 
         verb1("Running pre-detect merge_obs")
         evtlist = [f"{oo.get_evtfile()}{pars['det_filter']}" for oo in obis]
-        merge_root = os.path.join(out_dirs.root_dir,
-                                  out_dirs.pre_detect,
-                                  out_dirs.root_base)
+
+        merge_dir = os.path.join(out_dirs.root_dir,out_dirs.pre_detect)
+        if merge_dir:
+            os.makedirs(merge_dir, exist_ok=True)
+
+        merge_root = os.path.join(merge_dir, out_dirs.root_base)
         pre_merge_root = run_merge_obs(evtlist, merge_root, pars, binsize=binsize)
 
         verb1("Running wavdetect")
