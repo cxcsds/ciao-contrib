@@ -382,13 +382,40 @@ ahelp -b PARAM -t infiles merge_obs
                 some other detect tool/algorithm outside of CIAO.
                 
               </PARA>
-              <PARA>
+            <PARA title="Format of src_lists files">
                 The source lists must contain the columns RA and DEC, in
-                decimal degrees. The source lists must be in numeric order
+                decimal degrees; sexagesimal formats are not supported. 
+                The source lists must be in numeric order
                 based on the OBS_ID.  If the source list has an OBS_ID keyword it will
                 be checked against the corresponding event file to make sure that they
                 match.
             </PARA>
+            <PARA>
+                The most simple example of a valid src_lists file is an
+                ASCII file with columns RA and DEC.  For example:            
+            </PARA>
+<VERBATIM>
+$ cat src_list_01.dat
+#RA DEC
+203.4117720 -31.6794249
+</VERBATIM>
+            <PARA>
+                FITS binary tables, eg as created by the CIAO detect tools,
+                are also valid.  If the table has columns with names other
+                than "RA" and "DEC", for example "RAJ2000" and "DECJ2000",
+                then you can rename the columns on the file using CIAO
+                datamodel syntax:
+            </PARA>
+<VERBATIM>
+... src_lists="my_file.fits[cols ra=raj2000,dec=decj2000]" ...
+</VERBATIM>
+            <PARA>
+                If the source lists contain the columns "RA_ERR" 
+                and "DEC_ERR", then wcs_match will use those when 
+                determining source matches and when computing the 
+                transform parameters.
+            </PARA>
+
             <PARA>
                 If users supply their own src_lists, then they must also supply
                 the reference source list: ref_src_list.
@@ -405,7 +432,8 @@ ahelp -b PARAM -t infiles merge_obs
             If users supply their own src_lists, then they must also supply
             the reference source list: ref_src_list.
             The ref_src_list must contain the columns RA and DEC, in
-            decimal degrees.  It may for example be from some external
+            decimal degrees; sexagesimal formats are not supported.  
+            It may for example be from some external
             catalog (eg GAIA) to provide an "absolute" reference or it 
             can be another Chandra source list to generate a "relative" 
             correction.
@@ -414,6 +442,12 @@ ahelp -b PARAM -t infiles merge_obs
             If no ref_src_list is supplied, then the tool will use the
             source list for the observation with the longest EXPOSURE time.
             </PARA>
+            <PARA>
+              The format of the ref_src_list is the same as the
+              src_lists parameters as discussed in the  "Format of src_lists files"
+              section above.
+            </PARA>
+
         </DESC>      
       </PARAM>
       <PARAM name="det_filter" type="string">
