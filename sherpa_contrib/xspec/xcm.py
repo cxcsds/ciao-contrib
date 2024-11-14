@@ -177,42 +177,39 @@ def notice(spectrum: int, lo: int, hi: int, ignore: bool = False) -> None:
         print("MISSING HIGH")
         smax = int(d.channel[-1])
 
+    v2(f"Converting group {lo}-{hi} to channels {smin}-{smax} [ignore={ignore}]]")
+
     if d.units == "channel":
-        v2(f"Converting group {lo}-{hi} to channels {smin}-{smax} [ignore={ignore}]]")
-        ui.notice_id(spectrum, smin, smax)
+        ui.notice_id(spectrum, smin, smax, ignore=ignore)
         return
 
-    elo, ehi = d._get_ebins(group=False)
+    # We could convert from channel space to energy or wavelength, but
+    # do the filtering in channel space. This is done directly - that
+    # is, using DataPHA methods - rather than ui functions, to avoid
+    # confusing screen messages.
+    #
+    ofilter = d.get_filter(format="%.4f")
+    old_units = d.units
+    try:
+        d.units = "channel"
 
-    if d.units == "energy":
-        emin = elo[smin]
-        emax = ehi[smax]
+        d.notice(smin, smax, ignore=ignore)
 
-        v2(f"Converting group {lo}-{hi} to {emin:.3f}-{emax:.3f} keV [ignore={ignore}]]")
-        ui.notice_id(spectrum, emin, emax, ignore=ignore)
-        return
+    finally:
+        d.units = old_units
 
-    if d.units == "wavelength":
-        # In case the response happens to have any non-positive
-        # values.
-        #
-        tiny = np.finfo(np.float32).tiny
-        elo = elo.copy()
-        ehi = ehi.copy()
-        elo[elo <= 0] = tiny
-        ehi[ehi <= 0] = tiny
+    if old_units == "energy":
+        postfix = "Energy (keV)"
+    else:
+        postfix = "Wavelength (Angstrom)"
 
-        whi = hc / elo
-        wlo = hc / ehi
-
-        wmin = wlo[smin]
-        wmax = whi[smax]
-
-        v2(f"Converting group {lo}-{hi} to {wmin:.5f}-{wmax:.5f} A [ignore={ignore}]]")
-        ui.notice_id(spectrum, wmin, wmax, ignore=ignore)
-        return
-
-    raise ValueError(f"Unexpected analysis setting for spectrum {spectrum}: {d.units}")
+    # This tries to match the ui.notice_id output, but it ignores some
+    # of the complexities as it assumes that the filter has changed
+    # and does not remove all elements.
+    #
+    nfilter = d.get_filter(format="%.4f")
+    info = logging.getLogger("sherpa").info
+    info(f"dataset {spectrum}: {ofilter} -> {nfilter} {postfix}")
 
 
 def ignore(spectrum: int, lo: int, hi: int) -> None:
