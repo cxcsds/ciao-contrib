@@ -3185,6 +3185,13 @@ parinfo['find_mono_energy'] = {
     }
 
 
+parinfo['fine_astro'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input event files",None),ParValue("outroot","f","Root of output files",None)],
+    'opt': [ParValue("src_lists","f","Input source list (leave blank to run wavdetect)",None),ParValue("ref_src_list","f","Reference source list (blank to use longest observation)",None),ParValue("det_filter","s","Filter to apply to source detect input files",None),ParValue("det_scales","s","Wavdetect scales",'1.4 2 4'),ParValue("src_filter","s","Filter to apply to output source lists from detect",None),ParSet("stop","s","Where to stop processing",'fineastro',["fineastro","mergeobs"]),ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use",None),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","Remove output file if it already exists?",False),ParValue("cleanup","b","Delete intermediary files?",True),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
+    }
+
+
 parinfo['flux_obs'] = {
     'istool': True,
     'req': [ParValue("infiles","s","Input events files",None),ParValue("outroot","f","Root of output files",None)],
@@ -3399,6 +3406,13 @@ parinfo['mkinstmap'] = {
     'istool': True,
     'req': [ParValue("outfile","f","Output File Name",None),ParValue("spectrumfile","s","Energy Spectrum File (see docs)",'NONE'),ParRange("monoenergy","r","Energy for mono-chromatic map [keV]",1,0.1,10),ParValue("pixelgrid","s","Pixel grid specification x0:x1:#nx,y0:y1:#ny",None),ParValue("obsfile","s","Name of fits file + extension with obs info",None),ParValue("detsubsys","s","Detector Name",None),ParSet("grating","s","Grating for zeroth order ARF",'NONE',["NONE","LETG","HETG"]),ParValue("maskfile","s","NONE, or name of ACIS window mask file",'NONE'),ParValue("pbkfile","s","NONE, or the name of the parameter block file",None)],
     'opt': [ParValue("mirror","s","Mirror Name",'HRMA'),ParValue("dafile","s","NONE, CALDB, or name of ACIS dead-area calibration file",'CALDB'),ParValue("ardlibparfile","s","name of ardlib parameter file",'ardlib.par'),ParValue("geompar","s","Parameter file for Pixlib Geometry files",'geom'),ParRange("verbose","i","Verbosity",0,0,5),ParValue("clobber","b","Overwrite existing files?",False)],
+    }
+
+
+parinfo['mkosip'] = {
+    'istool': True,
+    'req': [],
+    'opt': [ParValue("osip_mode","s","",'compute_limits'),ParValue("obspar","f","",None),ParValue("p2resp_file","f","",None),ParValue("gain_file","f","",None),ParValue("order_bounds_table","f","",None),ParValue("fracresp_goal","r","",0.985),ParValue("energy_grid","s","",'253:1740:20;1750:1890:10;1900:4990:20;5000:12000:10'),ParValue("ccdids","s","",'ACIS-456789'),ParValue("high_limit_clip","r","",1.3),ParValue("low_limit_clip","r","",0.8),ParValue("fracresp_high","r","",0.985),ParValue("resample_factor","i","",8),ParValue("moments_full_distribution","b","",False),ParValue("verbose","i","",0),ParValue("n_threads","i","",1)],
     }
 
 
