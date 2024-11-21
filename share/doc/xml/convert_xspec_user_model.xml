@@ -393,9 +393,6 @@ setenv CONDA_BUILD_SYSROOT /opt/MacOSX10.9.sdk
 	well tested. One known problem is if the gfortran
 	version is significantly different to that used to
 	build the &xspec; models provided as part of
-	<!--
-	    CIAO (gcc/gfortran version 4.? in CIAO 4.8),
-	-->
 	CIAO,
 	which can lead to errors such as
       </PARA>
@@ -510,9 +507,10 @@ undefined symbol: _gfortran_copy_string
 	routine from Sherpa.
       </PARA>
       <PARA title="Creating the compiled code">
-	The compiled code is buuilt following the approach Sherpa
+	The compiled code is built following the approach Sherpa
 	uses to build its interface to the XSPEC model library.
-	The C++ code is generated in the src/{modname}/src/_models.cxx
+	The C++ code is generated in the
+	build_xspec_user_model/_models.cxx
 	file. The sherpa.astro.utils.xspec.create_xspec_code
 	routine is used to create the files, although some
 	post-processing is needed to fix up known problems
@@ -521,35 +519,55 @@ undefined symbol: _gfortran_copy_string
 
       <PARA title="What files are compiled?">
 	The following files in the current working directory are
-	compiled: *.f, *.f03, *.f90, *.c, *.cxx, *.C, *.cpp, and
+	copied to build_xspec_user_model and compiled:
+	*.f, *.f03, *.f90, *.c, *.cxx, *.C, *.cpp, and
 	*.cc. The CXX files are checked and any that match
 	lpack*.cxx or *FunctionMap.cxx are removed, as they
 	are assumed to have been created by XSPEC's initpackage
-	call. Please contact the
+	call. Include files (*.h, *.hh, and *.mod) are also copied
+	over.
+	Please contact the
 	<HREF link="https://cxc.harvard.edu/help/">CXC HelpDesk</HREF>
 	if you have problems with this file selection.
       </PARA>
 
       <PARA>
-	The selected files are compiled via the Python Extension class
-	(details are in the setup.py file), although there is some
-	extra work to compile FORTRAN files using this interface,
-	including support the the udmget interface. Any improvements
-	to this code would be gratefully received!
+	The compilation is done by the meson-python build backend
+	(prior to CIAO 4.17 it was a combination of setuptools and
+	internal code to support FORTRAN code). Any improvements to
+	this code would be gratefully received!
       </PARA>
 
       <PARA title="Creating the python code">
 	The script creates two Python files:
-	src/{modname}/__init.py - which defines the Python classes
+	build_xspec_user_model/__init.py - which defines the Python classes
 	that represent the models - and
-	src/{modname}/ui.py - which should be used to load the
-	models into a Sherpa session.
+	build_xspec_user_model/ui.py - which should be used to load the
+	models into a Sherpa session. The build_xpsec_user_model/meson.build
+	file is used to place these files into the correct
+	Python location.
 	The model class names are created by appending the
 	model name from the definition file to the prefix
 	value (which defaults to "XSUM"); since Python class
 	are expected to start with a capital letter the prefix
 	must be capitalised (or, if blank, then the first
 	character of the model name is capitalized).
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.17.0 (December 2024) release">
+      <PARA>
+	Updated to match Sherpa in CIAO 4.17.
+      </PARA>
+      <PARA title="Build changes">
+	The build is now done using <HREF
+	link="https://mesonbuild.com/meson-python/">meson-python</HREF>
+	rather than setuptools. This should avoid problems with the
+	deprecation and removal of distutils and numpy.distutils,
+	which was a problem with the previous code. However, this new
+	appoach has seen limited testing.  The build is now also done
+	entirely within the build_xspec_user_model/ sub-directory,
+	rather than using the current directory.
       </PARA>
     </ADESC>
 
@@ -711,6 +729,6 @@ undefined symbol: _gfortran_copy_string
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>December 2023</LASTMODIFIED>
+    <LASTMODIFIED>December 2024</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>

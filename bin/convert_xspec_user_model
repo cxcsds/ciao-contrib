@@ -82,6 +82,8 @@ from pathlib import Path
 import sysconfig
 import tempfile
 
+import numpy
+
 import sherpa
 import sherpa.astro.ui as ui
 from sherpa.astro.utils import xspec
@@ -193,12 +195,10 @@ CXX_HEADER = """//
 """
 
 
-# ASCDS_OTS is not set for all shells (it is for csh/tcsh but not
-# for bash), so use ASCDS_INSTALL/ots instead. By this point
-# we know ASCDS_INSTALL exists, so don't bother providing a nice
-# error message if os.getenv returns None
+# The assumption is that by this point we know ASCDS_INSTALL must exist.
 #
 ASCDS_INSTALL = os.getenv("ASCDS_INSTALL")
+ASCDS_INSTALL_PATH = Path(ASCDS_INSTALL)
 
 
 def mkdir(outdir):
@@ -211,7 +211,7 @@ def mkdir(outdir):
     os.mkdir(outdir)
 
 
-def check_clobber(fname):
+def check_clobber(fname: str) -> None:
     """Error out if we can't clobber the file."""
 
     if not os.path.exists(fname):
@@ -220,7 +220,16 @@ def check_clobber(fname):
     raise IOError(f"The file {fname} exists and --clobber is not set.")
 
 
-def save(outfile, txt):
+def check_clobber_path(fname: Path) -> None:
+    """Error out if we can't clobber the file."""
+
+    if not fname.exists():
+        return
+
+    raise IOError(f"The file {fname} exists and --clobber is not set.")
+
+
+def save(outfile: str, txt: str) -> None:
     """Save the text to the file.
 
     Parameters
@@ -236,7 +245,22 @@ def save(outfile, txt):
         fh.write(txt)
 
 
-def find_share_xspecdir():
+def save_path(outpath: Path, txt: str) -> None:
+    """Save the text to the file.
+
+    Parameters
+    ----------
+    outfile : str
+        The file name.
+    txt : str
+        The file contents.
+    """
+
+    v3(f"Creating {outpath}")
+    outpath.write_text(txt, encoding="utf-8")
+
+
+def find_share_xspecpath() -> Path:
     """Return the location of the share/xspec directory.
 
    The script returns the first match to the directory
@@ -244,39 +268,35 @@ def find_share_xspecdir():
       <script location>/../share/xspec
       <$ASCDS_INSTALL>/contrib/share/xspec
 
-    or None.
+    It errors out if it can not be found.
 
     """
 
     # At present there's only one path looked for
     #
     v3("Looking for share/xspec/ in:")
-    thisdir = os.path.dirname(__file__)
+    thispath = Path(os.path.dirname(__file__))
     for dname in ["../share/xspec"]:
-        path = os.path.normpath(os.path.join(thisdir, dname))
+        path = (thispath / dname).resolve()
         v3("  - {}".format(path))
-        if os.path.isdir(path):
+        if path.is_dir():
             return path
 
-    path = os.path.join(ASCDS_INSTALL, "contrib/share/xspec")
-    path = os.path.normpath(path)
+    # I do not think we still have a ASCDS_INSTALL/contrib/ directory
+    # but leave for now.
+    #
+    path = (ASCDS_INSTALL_PATH / "contrib/share/xspec").resolve()
     v3("  - {}".format(path))
-    if os.path.isdir(path):
+    if path.is_dir():
         return path
 
-    return None
+    raise OSError("Internal error - unable to find share/xspec directory")
 
 
-def find_xspec_basedir():
+def find_xspec_basedir() -> Path:
     """Where are the XSPEC include files found?
 
-    The script returns the first match to the directory
-
-      <$ASCDS_INSTALL>/ots          <ciao-install>
-      <$ASCDS_INSTALL>/             <conda>
-
-    (relying in the fact there's no ots/ dir in conda), and we check
-    there's
+    Check that in $ASCDS_INSTALL> there are
 
       - include/ and lib/ dirs
       - the file lib/libXS* present.
@@ -289,29 +309,28 @@ def find_xspec_basedir():
 
     # At present there's only one path looked for
     v3("Looking for XSPEC includes in:")
-    out = None
-    for dname in ["ots", ""]:
-        path = os.path.join(ASCDS_INSTALL, dname)
-        v3(f"  - {path}")
-        if os.path.isdir(path):
-            out = path
-            break
+    path = ASCDS_INSTALL_PATH
+    v3(f"  - {path}")
+    if path.is_dir():
+        # Should not need the resolve but leave in for now
+        out = path.resolve()
+    else:
+        raise OSError(f"Unable to find the XSPEC directory: {ASCDS_INSTALL_PATH}")
 
-    v3(f"-> {out}")
-    if out is None:
-        raise OSError(f"Unable to find the XSPEC directory: {ASCDS_INSTALL}")
-
-    libdir = os.path.join(out, 'lib')
-    incdir = os.path.join(out, 'include')
+    libdir = out / "lib"
+    incdir = out / "include"
     for path in [libdir, incdir]:
-        if not os.path.isdir(path):
+        if not path.is_dir():
             raise OSError(f'Unable to find {path} or not a directory')
 
-    matches = glob.glob(os.path.join(libdir, 'libXS*'))
+    # Perhaps this should be more explicit and look for
+    # libXSFunctions/*, libXSUtil.*, libXS.*
+    #
+    matches = list(libdir.glob('libXS*'))
     if len(matches) == 0:
         raise OSError(f'Unable to find libXS* in {libdir}')
 
-    return os.path.abspath(out)
+    return out
 
 
 def validate_namefunc(namefunc):
@@ -492,6 +511,37 @@ def find_cplusplus_files():
     return out
 
 
+def find_c_include_files():
+    """Return probable include files for C and C++"""
+
+    # Flatten out the return value.
+    #
+    out = find_file_types({"h": "*.h",
+                           "hh": "*.hh"})
+    if out is None:
+        return []
+
+    ifiles = []
+    for v in out.values():
+        ifiles.extend(v)
+
+    return sorted(ifiles)
+
+
+def find_fortran_include_files():
+    """Return probable include files for FORTRAN"""
+
+    out = find_file_types({"mod": "*.mod"})
+    if out is None:
+        return []
+
+    ifiles = []
+    for v in out.values():
+        ifiles.extend(v)
+
+    return sorted(ifiles)
+
+
 def count_nfiles(label, fileinfo):
     """Display, at verbose=1, the number of files
     found for this file type (combining all the
@@ -524,7 +574,7 @@ def count_nfiles(label, fileinfo):
     return ntot
 
 
-def create_xspec_init(outdir, clobber):
+def create_xspec_init(outdir: Path, clobber: bool) -> None:
     """Create the xspec.inc file needed for using udmget.
 
     How often does this file change?
@@ -534,11 +584,11 @@ def create_xspec_init(outdir, clobber):
     # For now we over-write the file as the assumption is that it
     # will be from a previous build.
     #
-    outname = os.path.join(outdir, "xspec.inc")
+    outpath = outdir / "xspec.inc"
     if not clobber:
-        check_clobber(outname)
+        check_clobber_path(outpath)
 
-    save(outname, """
+    save_path(outname, """
 
 c Taken from XSPEC 12.13.0
 c Common block for dynamic memory using udmget
@@ -556,37 +606,48 @@ c Common block for dynamic memory using udmget
 """)
 
 
-def create_xspec_udmget(indir, outdir, name, clobber):
+def create_xspec_udmget(inpath: Path,
+                        outpath: Path,
+                        name: str,
+                        clobber: bool
+                        ) -> Path:
     """Copy over the code implemeting udmget.
 
     We also return the file name
     """
 
-    udmfile = os.path.join(indir, "install", name)
-    if not os.path.exists(udmfile):
+    udmfile = inpath / "install" / name
+    if not udm.is_file():
         raise OSError(f"Internal error - unable to find {udmfile}")
 
-    outname = os.path.join(outdir, name)
+    out = outpath / name
     if not clobber:
-        check_clobber(outname)
+        check_clobber_path(out)
 
-    shutil.copy(udmfile, outname)
-    return outname
+    shutil.copy(udmfile, out)
+    return out
 
 
-def build_setup(modname, sources, fortransources, extrafiles,
+def build_meson(modname,
+                langs,
+                sources, fortransources, extrafiles,
                 version,
+                outpath: Path,
+                include_c=[],
+                include_f=[],
                 udmget=False, udmget64=False,
                 clobber=False,
                 license='License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication'):
-    """Create the setup.py file.
+    """Create the Python/meson build files.
 
-    This is based on the work done in [1]_.
+    The files are stored under <outdir>/.
 
     Parameters
     ----------
     modname : str
         The module name.
+    langs : list of str
+        The languages (using XSPEC naming).
     sources : list of str
         The paths to the source files, excluding the FORTRAN files.
         It can be the empty list, but then fortransources must not be
@@ -598,13 +659,17 @@ def build_setup(modname, sources, fortransources, extrafiles,
         Extra files. What are we to do with these?
     version : str
         The version number (dotted values).
+    outpath : Path
+        The base directory where to store the module.
+    include_c, include_f: sequence of str
+        Any C/C++ or FORTRAN include files to copy.
     udmget, udmget64 : bool, optional
         Is the udmget code to be included? At this point only one will
         be set (FORTRAN only).
     clobber : bool, optional
         Do we over-write existing files or error out if they exist.
     license : str, optional
-        The license for the module for the setup.py file.
+        The license for the module.
 
     Notes
     -----
@@ -613,69 +678,80 @@ def build_setup(modname, sources, fortransources, extrafiles,
     that the Sherpa XSPEC model uses (that handles the conversion from
     the user-supplied grid to the one that XSPEC needs).
 
-    A large complication is that I want to compile FORTRAN code and
-    link it into the extension, but do not want any Python interface
-    to this code. My experiments to stop f2py from creating such an
-    interface have been fruitless so far. So this module manually
-    compiles the FORTRAN code and then tells the Extension to link in
-    the object file. I have tried to integrate this into the "command"
-    system of the build process, but perhaps I should just treat the
-    FORTRAN code as creating a separate library that needs to be
-    compiled as part of the build?
+    The Python packaging ecosystem wants the build to be somewhat
+    hermetic, but here I want to make sure we use the same NumPy and
+    Sherpa as is installed. That is, we do not make sherpa and numpy
+    build requirements but just hard-code the paths into the meson
+    build file.
 
-    References
-    ----------
-
-    .. [1] https://github.com/DougBurke/xspeclmodels
+    The build is done as if there is no "structure" - i.e. everything
+    in outdir/ - and the meson.build file deals with moving files to
+    the correct output location, which is also probably not great.
 
     """
 
     if extrafiles != []:
         raise ValueError("Unable to support extrafiles at this time")
 
-    setupname = "setup.py"
-    setupcfg = "setup.cfg"
-    pyproject = "pyproject.toml"
-    if not clobber:
-        check_clobber(setupname)
-        check_clobber(setupcfg)
-        check_clobber(pyproject)
+    languages = set()
+    for lang in langs:
+        if lang == 'C style':
+            languages.add('c')
+        elif lang == 'C++ style':
+            languages.add('cpp')
+        elif lang.startswith('Fortran '):
+            languages.add('fortran')
+        else:
+            raise ValueError(f"Unsupported language: {lang}")
+
+    if len(languages) == 0:
+        raise ValueError("No languages set!")
+
+    # The interface code requires C++.
+    #
+    languages.add("cpp")
+    languages_arg = ", ".join(f"'{l}'" for l in languages)
 
     modname_slashes = modname.replace('.', '/')
 
-    # Copy over the source files
-    #
-    mkdir('src')
-    outdir = 'src/_xspeclmodels'
-    mkdir(outdir)
+    basepath = outpath
+    buildname = basepath / "meson.build"
+    pyproject = basepath / "pyproject.toml"
+    if not clobber:
+        check_clobber_path(buildname)
+        check_clobber_path(pyproject)
 
+    # Copy over the source files. The srcnames values are relative
+    # to basepath.
+    #
     srcnames = []
-    fortnames = []
     for f in sources:
+        f = Path(f)
         v3(f" - copying over source file {f}")
-        if not os.path.isfile(f):
+        if not f.is_file():
             raise OSError(f"Unable to find source name '{f}'")
 
-        outname = os.path.join(outdir, os.path.basename(f))
+        outpath = basepath / f.name
         if not clobber:
-            check_clobber(outname)
+            check_clobber_path(outpath)
 
-        shutil.copy(f, outname)
-        srcnames.append(outname)
+        shutil.copy(f, outpath)
+        srcnames.append(f.name)
 
     for f in fortransources:
+        f = Path(f)
         v3(f" - copying over FORTRAN file {f}")
-        if not os.path.isfile(f):
+        if not f.is_file():
             raise OSError(f"Unable to find FORTRAN file '{f}'")
 
-        outname = os.path.join(outdir, os.path.basename(f))
+        outpath = basepath / f.name
         if not clobber:
-            check_clobber(outname)
+            check_clobber_path(outpath)
 
-        shutil.copy(f, outname)
-        fortnames.append(outname)
+        shutil.copy(f, outpath)
+        srcnames.append(f.name)
 
-    if len(srcnames) == 0 and len(fortnames) == 0:
+    if len(srcnames) == 0:
         raise ValueError("Should not have got here as no source/FORTRAN files to process")
 
     # Copy over the udmget code, if needed.
@@ -685,12 +761,10 @@ def build_setup(modname, sources, fortransources, extrafiles,
         v2(f"  udmget:           {udmget}")
         v2(f"  udmget64:         {udmget64}")
 
-        # Create the xspec.inc file.
-        create_xspec_init(outdir, clobber)
+        xpath = find_share_xspecpath()
 
-        xpath = find_share_xspecdir()
-        if xpath is None:
-            raise OSError("Internal error - unable to find xsudmget directory")
+        # Create the xspec.inc file.
+        create_xspec_init(basepath, clobber)
 
         # Copy over the udmget code.
         #
@@ -699,16 +773,29 @@ def build_setup(modname, sources, fortransources, extrafiles,
         else:
             name = "xsudmget64.cxx"
 
-        outfile = create_xspec_udmget(xpath, outdir, name, clobber)
-        udmfiles = [outfile]
+        udmpath = create_xspec_udmget(xpath, basepath, name, clobber)
+        # srcnames.append(udmpath)
+        srcnames.append(name)
 
-        # In setup.py we assume this, so just check we haven't done
-        # anything interesting...
-        #
-        assert outfile.endswith(".cxx")
+    source_names = "\n".join([f"  '{n}'," for n in srcnames])
 
-    else:
-        udmfiles = []
+    incnames = []
+    for ifiles in [include_c, include_f]:
+        if ifiles is None:
+            continue
+
+        for f in ifiles:
+            f = Path(f)
+            v3(f" - copying over include file {f}")
+            if not f.is_file():
+                raise OSError(f"Unable to find INCLUDE file '{f}'")
+
+            outpath = basepath / f.name
+            if not clobber:
+                check_clobber_path(outpath)
+
+            shutil.copy(f, outpath)
+            incnames.append(f.name)
 
     # Where are the XSPEC include files we may need? These are
     # included in the contrib code.
@@ -720,10 +807,14 @@ def build_setup(modname, sources, fortransources, extrafiles,
     # throw away. This may need to be re-evaluated if we ever need
     # more functionality from Sherpa.
     #
+    # Ditto for NumPy
+    #
     sherpa_include = sherpa.get_include()
+    numpy_include = numpy.get_include()
 
     v2(f"  xspec basedir:    {xspec_basedir}")
     v2(f"  sherpa includes:  {sherpa_include}")
+    v2(f"  NumPy includes:   {numpy_include}")
 
     # Let's find the version names of the XSPEC libraries:
     # hdsp_xxx, CCfits_xxx
@@ -735,28 +826,43 @@ def build_setup(modname, sources, fortransources, extrafiles,
     else:
         suffix = ".so"
 
-
     def find_libname(head):
-        libdir = Path(xspec_basedir) / 'lib'
+        libdir = xspec_basedir / 'lib'
         if not libdir.is_dir():
             raise OSError(f"XSPEC lib dir not found or not a directory: {libdir}")
 
         # For now assume the library is always versioned.
         #
-        match_path = libdir / f"lib{head}_*{suffix}"
-        matches = glob.glob(str(match_path))
+        match_glob = f"lib{head}_*{suffix}"
+        matches = list(libdir.glob(match_glob))
         if len(matches) == 0:
-            raise OSError(f"Unable to find {match_path}")
+            raise OSError(f"Unable to find {match_glob} in {libdir}")
 
         if len(matches) > 1:
-            raise OSError(f"Multiple matches for {match_path}")
+            raise OSError(f"Multiple matches for {match_glob}")
 
         v2(f"   - found: {head:8s}  {matches[0]}")
-        out = Path(matches[0]).stem
+        out = matches[0].stem
         return out[3:]  # drop the "lib" prefix
 
     hdsp_version = find_libname("hdsp")
     ccfits_version = find_libname("CCfits")
+
+    largs = [f'-L{xspec_basedir}/lib',
+             '-lXSFunctions',
+             '-lXSUtil',
+             '-lXS',
+             f'-l{hdsp_version}',
+             f'-l{ccfits_version}',
+             '-lcfitsio',
+            ]
+
+    # Is this still needed?
+    #
+    if os.uname().sysname == 'Darwin':
+        largs.append('-Wl,-no_compact_unwind')
+
+    link_args = "\n".join(f"  '{n}'," for n in largs)
 
     date = time.asctime()
     out = f"""# Auto-generated by convert_xspec_user_model
@@ -764,258 +870,117 @@ def build_setup(modname, sources, fortransources, extrafiles,
 # Sherpa: {sherpa.__version__}
 # Date: {date}
 
-import os
-import subprocess as sbp
+project('{modname}',
+  [{languages_arg}],
+  meson_version: '>= 1.1.0',
+  version: '{version}'
+)
 
-import setuptools
+py = import('python').find_installation(pure: false)
 
-# What do we do now python has deprecated distutils? For the
-# moment I would like to just jump to numpy versions but
-# things are never that simple...
-#
-from distutils.core import Extension
-from distutils.command.build_ext import build_ext
+install_dir = py.get_install_dir()
 
-import numpy
-from numpy.distutils import fcompiler
+incdir_numpy = '{numpy_include}'
+incdir_sherpa = '{sherpa_include}'
+incdirs_xspec = [
+  '{xspec_basedir}/include',
+  '{xspec_basedir}/include/XSFunctions',
+  '{xspec_basedir}/include/XSFunctions/Utilities',
+]
 
-# from numpy.distutils.core import Extension
-# from numpy.distutils.command.build_ext import build_ext
+# Now the files
 
+py_sources = [
+  '__init__.py',
+  'ui.py',
+]
 
-this_incpath = os.getcwd()
-numpy_incpath = numpy.get_include()
-sherpa_incpath = "{sherpa_include}"
+ext_sources = [
+{source_names}
+  '_models.cxx'
+]
 
-# Where do we take the XSPEC includes from?
-#
-xspec_incpath = "{xspec_basedir}/include"
+ext_include = [
+  '.',
+  incdir_numpy,
+  incdir_sherpa
+] + incdirs_xspec
 
-includes = [this_incpath, numpy_incpath, sherpa_incpath, xspec_incpath]
-
-# Add in XSPEC-specific directories that it appears are needed by
-# XSPEC local models - this is a hack and hopefully can go away
-# with the changes made to 12.12.0 but given the timescales I
-# think is likely to remain for a long time.
-#
-for path in ['XSFunctions', 'XSFunctions/Utilities']:
-    includes.append(f'{{xspec_incpath}}/{{path}}')
-
-# Check the includes
-#
-for include in includes:
-    if not os.path.isdir(include):
-        raise IOError(f"Unable to find {{include}} or not a directory")
-
-# Where are the XSPEC libraries?
-#
-# They are located in different places in ciao-install vs conda,
-# but for now concentrating on conda and - on Linux at least -
-# the path doesn't appear to be needed
-#
-libs = []
-
-# The choice of libs depends on the XSPEC model library version,
-# which makes this harder to write than I'd like.
-#
 # The list is based on
 # - Appendix F: Using the XSPEC Models Library in Other Programs
 #   https://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/
 # - looking at the link line created by XSPEC initpackage
 #
-libnames = ["XSFunctions", "XSUtil", "XS",
-            "{hdsp_version}", "{ccfits_version}", "cfitsio"]
+link_args = [
+{link_args}
+]
 
-# What FORTRAN code needs compiling?
+py.install_sources(
+  py_sources,
+  subdir: '{modname_slashes}'
+)
+
+# The idea is that this all needs re-building if anything changes, so
+# although it would be good to set up dependencies correctly it is not
+# terrible if it is not done.
 #
-FORTRANFILES = {fortnames}
-UDMFILES = {udmfiles}
+py.extension_module(
+  '_models',
+  ext_sources,
+  subdir: '{modname_slashes}',
+  include_directories: ext_include,
+  link_args: link_args,
+  install: true,
+)
 
-# Seems to be needed on macOS, otherwise link time creates this
-# message:
-#
-# ld: warning: could not create compact unwind for _zrunkbb_: stack subq instruction is too different from dwarf stack size
-#
-# No idea if this breaks anything (more likely to slow the execution of
-# the code, from what the internet tells me).
-#
-# Is this worth it? '-Wl,-flat_namespace,-undefined,dynamic_lookup'
-#
-if os.uname().sysname == 'Darwin':
-    cargs = ['-Wl,-no_compact_unwind']
-else:
-    cargs = []
-
-# Do we need this?
-# cargs.append('-lgfortran')
-
-mod = Extension('{modname}._models',
-                include_dirs=includes,
-                library_dirs=libs,
-                libraries=libnames,
-                sources=['src/{modname_slashes}/src/_models.cxx']
-                        +
-                        {srcnames},
-                extra_link_args=cargs,
-                depends=FORTRANFILES + UDMFILES
-                )
-
-
-def compile_xsudmget():
-    '''Do we have to compile the xsudmget file?
-
-    We just compile this manually, picking up the compiler
-    with the CXX enviroment variable.
-
-    Relies on the UDMFILES global variable. We know what the
-    value is, so could have this set up at the time the file
-    is written out, but leave as is for now (for testing).
-
-    '''
-
-    if len(UDMFILES) == 0:
-        return []
-
-    if len(UDMFILES) != 1:
-        raise ValueError(f"Expected 1 file, sent {udmfiles}")
-
-    udmfile = UDMFILES[0]
-
-    # Should this be OS dependent?
-    #
-    cxx = os.getenv("CXX")
-    if cxx is None:
-        cxx = "g++"
-
-    # It would be better to place this in the build directory but
-    # do we know where this is?
-    #
-    outfile = udmfile[:-4] + ".o"
-
-    # Taken from a initpackage run with XSPEC 12.13.0
-    #
-    args = [cxx, "-c", "-o", outfile, "-O2", "-g", "-fPIC", udmfile]
-    print(f"Compiling xsudmget with: {{' '.join(args)}}")
-    rval = sbp.call(args)
-    if rval != 0:
-        raise ValueError(f"Unable to run {{args}}")
-
-    return [outfile]
-
-
-# TODO:
-#
-# This could be made more generic by inspecting the sources sent
-# in to it, and pulling out the FORTRAN code from it. It also always
-# recompiles the FORTRAN code, even if it hasn't changed, but then
-# doesn't do anything with it.
-#
-# Should I really be looking at build_clib for inspiration, guidance,
-# and fashion tips?
-#
-class ExtBuild(build_ext):
-
-    def run(self):
-
-        # Manually compile the FORTRAN code; this is all a bit too
-        # hand coded
-        #
-        cmplr = fcompiler.new_fcompiler()
-        cmplr.customize()
-
-        # Try to let included files work
-        cmplr.add_include_dir(this_incpath)
-
-        # Try to support XSPEC compiler options (this has only been tested
-        # with conda, and only with a model wanting FFTW)
-        #
-        cmplr.add_include_dir(xspec_incpath)
-
-        self.announce('Compiling FORTRAN code', level=2)  # used to be log.INFO
-        fobjs = cmplr.compile(FORTRANFILES,
-                              output_dir=self.build_temp,
-                              debug=self.debug)
-
-        # Do we need to compile the UDMGET code. This is C++ code,
-        # to add an extra wrinkle. We expect only a single file but
-        # for reasons we leave this as a list.
-        #
-        extra_fobjs = compile_xsudmget()
-
-        # Could just append if set, but for now expect not to be
-        # set, so error out if this changes
-        #
-        assert self.link_objects is None, \\
-            f'unexpected: link_objects={{self.link_objects}}'
-        self.link_objects = fobjs + extra_fobjs
-
-        super().run()
-
-
-kwargs = {{
-    'ext_modules': [mod],
-}}
-
-# Only bother if we have any FORTRAN files to compile
-if len(FORTRANFILES) > 0:
-    kwargs['cmdclass'] = {{'build_ext': ExtBuild}}
-
-setuptools.setup(**kwargs)
 """
 
-    save(setupname, out)
+    save_path(buildname, out)
 
-    # Create the setup.cfg file
+    # Create the pyproject.toml file. As mentioned, this really should
+    # depend on numpy and sherpa, but for now we hard-code that
+    # knowledge into the meson.file and assume they are both present.
     #
-    out = f'''[metadata]
-name = {modname}
-author = Douglas Burke
-version = {version}
-description = XSPEC user models in Sherpa
-classifiers =
-    {license}
-    Intended Audience :: Science/Research
-    Programming Language :: Python :: 3.8
-    Programming Language :: Python :: 3.9
-    Programming Language :: Python :: 3.10
-    Programming Language :: Python :: Implementation :: CPython
-    Topic :: Scientific/Engineering :: Astronomy
-    Topic :: Scientific/Engineering :: Physics
-    Development Status :: 3 - Alpha
+    out = f'''[build-system]
+requires = ["meson-python"]
+build-backend = "mesonpy"
 
-[options]
-zip_safe = False
+[project]
+name = "{modname}"
+version = "{version}"
+description = "XSPEC user models in Sherpa: {modname}"
+authors = [
+ {{ name = "Smithsonian Astrophysical Observatory / Chandra X-Ray Center", email = 'cxchelp@cfa.harvard.edu' }}
+]
 
-packages = find:
-package_dir =
-    =src
+classifiers = [
+  '{license}',
+  'Intended Audience :: Science/Research',
+  'Programming Language :: Python :: 3.10',
+  'Programming Language :: Python :: 3.11',
+  'Programming Language :: Python :: Implementation :: CPython',
+  'Topic :: Scientific/Engineering :: Astronomy',
+  'Topic :: Scientific/Engineering :: Physics',
+  'Development Status :: 3 - Alpha'
+]
 
-[options.packages.find]
-where = src
+requires_python = ">= 3.10"
+dependencies = [
+  "numpy",
+  "sherpa"
+]
 '''
-    save(setupcfg, out)
-
-    # Create the pyproject.toml file. As we send in the Sherpa
-    # include path from the installed Sherpa we do not need to
-    # build a version of Sherpa, which saves time.
-    #
-    out = '''[build-system]
-requires = ["setuptools >= 49.1.2",
-            "wheel",
-            "oldest-supported-numpy"
-           ]
-build-backend = "setuptools.build_meta"
-'''
-    save(pyproject, out)
+    save_path(pyproject, out)
 
 
-def build_module_ui(modname, clobber=False):
+def build_module_ui(modname: str,
+                    outpath: Path,
+                    clobber: bool = False) -> None:
     """Create the ui module for the module."""
 
-    modname_slashes = modname.replace('.', '/')
-    outfile = f"src/{modname_slashes}/ui.py"
+    outfile = outpath / "ui.py"
     if not clobber:
-        check_clobber(outfile)
+        check_clobber_path(outfile)
 
     out = PYTHON_HEADER
     out += f'''
@@ -1034,7 +999,7 @@ import logging
 import sherpa.astro.ui
 import sherpa.astro.xspec
 
-import {modname}
+import {modname} as _module
 
 logger = logging.getLogger('sherpa')
 
@@ -1043,12 +1008,12 @@ logger = logging.getLogger('sherpa')
 xsmodels = {{n for n in dir(sherpa.astro.xspec)
             if n.startswith('XS')}}
 
-for name in {modname}.__all__:
+for name in _module.__all__:
     if name in xsmodels:
         logger.info(f"Skipping local model as clashes with XSPEC {{name.lower()}}")
         continue
 
-    cls = getattr({modname}, name)
+    cls = getattr(_module, name)
     sherpa.astro.ui.add_model(cls)
 
     # Change the message based on the model type
@@ -1065,21 +1030,25 @@ for name in {modname}.__all__:
     logger.info(msg)
 '''
 
-    save(outfile, out)
+    save_path(outfile, out)
 
 
-def build_module_init(modname, pycode, mdls,
+def build_module_init(modname: str,
+                      outpath: Path,
+                      pycode, mdls,
                       modelfile,
                       infiles,
                       extrafiles,
                       version,
-                      clobber=False):
+                      clobber: bool = False) -> None:
     """Create the module initalization code.
 
     Parameters
     ----------
     modname : str
         The Python module name.
+    outpath : Path
+        The output directory.
     mdls : sequence of ModelDefintion objects
         The models to process. We should not need to send this in.
     pycode : str
@@ -1098,10 +1067,9 @@ def build_module_init(modname, pycode, mdls,
 
     """
 
-    modname_slashes = modname.replace('.', '/')
-    outfile = f"src/{modname_slashes}/__init__.py"
+    outfile = outpath / "__init__.py"
     if not clobber:
-        check_clobber(outfile)
+        check_clobber_path(outfile)
 
     mdlnames = []
     atypes = []
@@ -1195,16 +1163,20 @@ __all__ = ({mdlnames})
 '''
 
     out += pycode
-    save(outfile, out)
+    save_path(outfile, out)
 
 
-def build_module_cxx(modname, cxxcode, mdls, clobber=False):
+def build_module_cxx(modname,
+                     outpath: Path,
+                     cxxcode, mdls, clobber=False):
     """Create the C++ module code.
 
     Parameters
     ----------
     modname : str
         The Python module name.
+    outpath : Path
+        The output directory.
     cxxcode : str
         The C++ code created by xspec.create_xspec_code.
     mdls : sequence of ModelDefintion objects
@@ -1224,29 +1196,30 @@ def build_module_cxx(modname, cxxcode, mdls, clobber=False):
         elif mdl.language == 'C style':
             have_c.append(mdl)
 
-    modname_slashes = modname.replace('.', '/')
-    outdir = f"src/{modname_slashes}/src"
-    mkdir(outdir)
-
-    outfile = f"{outdir}/_models.cxx"
+    outfile = outpath / "_models.cxx"
     if not clobber:
-        check_clobber(outfile)
+        check_clobber_path(outfile)
 
     xspec_version_str = get_xsversion()
     v1(f"Using XSPEC version: {xspec_version_str}")
 
     out = CXX_HEADER
     out += cxxcode
-    save(outfile, out)
+    save_path(outfile, out)
 
 
-def build_module(modname, mdls, modelfile, infiles, extrafiles,
+def build_module(modname: str,
+                 mdls,
+                 modelfile,
+                 infiles,
+                 extrafiles,
                  version,
-                 clobber=False):
+                 outpath: Path,
+                 clobber: bool = False) -> None:
     """Create the module files.
 
     This does not copy over the source files as that is done by
-    build_setup().
+    build_meson().
 
     Parameters
     ----------
@@ -1262,6 +1235,8 @@ def build_module(modname, mdls, modelfile, infiles, extrafiles,
         ny extra files
     version : str
         The version number (dotted values).
+    outpath : Path
+        The base directory where to store the module.
     clobber : bool, optional
         Do we over-write existing files or error out if they exist.
 
@@ -1269,25 +1244,21 @@ def build_module(modname, mdls, modelfile, infiles, extrafiles,
 
     xdata = xspec.create_xspec_code(mdls)
 
-    outdir = 'src'
-    mkdir(outdir)
-
-    for cpt in modname.split('.'):
-        outdir += f'/{cpt}'
-        mkdir(outdir)
-
-    build_module_ui(modname, clobber=clobber)
-    build_module_init(modname, xdata.python, mdls,
+    build_module_ui(modname, outpath, clobber=clobber)
+    build_module_init(modname, outpath, xdata.python, mdls,
                       modelfile, infiles, extrafiles, version,
                       clobber=clobber)
-    build_module_cxx(modname, xdata.compiled, mdls, clobber=clobber)
+    build_module_cxx(modname, outpath,
+                     xdata.compiled, mdls, clobber=clobber)
 
 
-def compile_module(local=False, verbose=False):
+def compile_module(outpath, local=False, verbose=False):
     """Build the module calling out to setup.py.
 
     Parameters
     ----------
+    outpath : Path
+        The location of the pyproject.toml file.
     local : bool, optional
         If set then only build "locally" - i.e. a develop build -
         rather than installing into the Python packaging system.
@@ -1295,6 +1266,10 @@ def compile_module(local=False, verbose=False):
         If set to True then report the build steps
 
     """
+
+    checkfile = outpath / "pyproject.toml"
+    if not checkfile.is_file():
+        raise OSError(f"{checkfile} does not exist or is not a file!")
 
     args = ['pip', 'install']
     if local:
@@ -1304,10 +1279,20 @@ def compile_module(local=False, verbose=False):
 
     args.append('.')
 
-    v3(f"Building with: {' '.join(args)}")
-    rval = sbp.call(args)
-    if rval != 0:
-        raise ValueError(f"Unable to run {args}\n")
+    # Is there a nice
+    olddir = os.getcwd()
+    try:
+        os.chdir(outpath)
+        v3(f" > temporary directory: {outpath}")
+
+        v3(f"Building with: {' '.join(args)}")
+        rval = sbp.call(args)
+        if rval != 0:
+            raise ValueError(f"Unable to run {args}\n")
+
+    finally:
+        os.chdir(olddir)
+        v3(f" < restoring directory: {olddir}")
 
 
 @lw.handle_ciao_errors(toolname, toolver)
@@ -1317,6 +1302,7 @@ def convert_xspec_user_model(modulename, modelfile,
                              clobber=False,
                              local=False,
                              version='1.0',
+                             outdir='build_xspec_user_model',
                              namefunc=add_xsum_prefix,
                              verbose=False):
     """Create a Python module called modulename that allows the
@@ -1331,13 +1317,13 @@ def convert_xspec_user_model(modulename, modelfile,
     It creates (using the clobber to determine whether to continue if
     the files already exist):
 
-        src/<modulename>/__init__.py
-        src/<modulename>/ui.py
+        <outdir>/__init__.py
+        <outdir>/ui.py
+        <outdir>/_models.cxx
+        <outdir>/pyproject.toml
+        <outdir>/meson.build
 
-    and, when local=True
-
-        build/ (and contents)
-        src/<modulename>/_models.cpython-xxx.so
+    and will also copy over the source code into this directory.
 
     Parameters
     ----------
@@ -1360,6 +1346,9 @@ def convert_xspec_user_model(modulename, modelfile,
         False a full install (pip install .).
     version : str, optional
         The version number (dotted values). The default is '1.0'.
+    outdir : str, optional
+        The directory where all the code is copied and the Python
+        configuration files added.
     namefunc : function reference, optional
         The function that is used to convert the XSPEC model name to the
         Sherpa model class name. The default is add_xsum_prefix but
@@ -1438,9 +1427,30 @@ def convert_xspec_user_model(modulename, modelfile,
         for vs in d.values():
             allfiles.extend(vs)
 
+    # Should we copy over apparent include files?
+    #
+    if n_c > 0 or n_cpp > 0:
+        c_includes = find_c_include_files()
+    else:
+        c_includes = []
+
+    if n_fortran > 0:
+        fortran_includes = find_fortran_include_files()
+    else:
+        fortran_includes = []
+
     v3(f"Processing the following {len(allfiles)} source code file(s):")
     v3("  {}".format("\n  ".join(allfiles)))
     v3("")
+
+    n_c_include = len(c_includes)
+    n_f_include = len(fortran_includes)
+    n_include = n_c_include + n_f_include
+    if n_include > 0:
+        v3(f"Processing the following {n_include} include file(s):")
+        v3("  c/c++:   {}".format(",".join(c_includes)))
+        v3("  FORTRAN: {}".format(",".join(fortran_includes)))
+        v3("")
 
     for f in extrafiles:
         if not os.path.exists(f):
@@ -1593,19 +1603,36 @@ def convert_xspec_user_model(modulename, modelfile,
         udmget = False
         udmget64 = False
 
-    build_setup(modulename,
+    outpath = Path(outdir)
+    if outpath.exists():
+        if not outpath.is_dir():
+            raise OSError(f"outdir={outdir} exists but is not a directory")
+    else:
+        v3(f" - creating {outpath}/")
+        outpath.mkdir()
+
+    build_meson(modulename,
+                langs,
                 srcfiles,
                 fortfiles,
                 extrafiles,
                 version,
+                outpath=outpath,
+                include_c=c_includes,
+                include_f=fortran_includes,
                 udmget=udmget, udmget64=udmget64,
                 clobber=clobber)
     build_module(modulename, mdls, modelfile, allfiles, extrafiles,
                  version,
+                 outpath=outpath,
                  clobber=clobber)
 
-    # Set the verbose value if
-    compile_module(local=local, verbose=verbose)
+    # Compile the code. As everything is placed in the same directory
+    # (which is not realy how it should be for Python packages but
+    # makes this code a bit easier) we need to ensure we run the
+    # evaluation in the correct location.
+    #
+    compile_module(outpath, local=local, verbose=verbose)
 
     # Test out whether we can import the model
     v1("")
