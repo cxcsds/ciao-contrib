@@ -201,26 +201,7 @@ ASCDS_INSTALL = os.getenv("ASCDS_INSTALL")
 ASCDS_INSTALL_PATH = Path(ASCDS_INSTALL)
 
 
-def mkdir(outdir):
-    """Create the output directory if it doesn't exist"""
-
-    if os.path.isdir(outdir):
-        return
-
-    v3(f"Creating directory: {outdir}")
-    os.mkdir(outdir)
-
-
-def check_clobber(fname: str) -> None:
-    """Error out if we can't clobber the file."""
-
-    if not os.path.exists(fname):
-        return
-
-    raise IOError(f"The file {fname} exists and --clobber is not set.")
-
-
-def check_clobber_path(fname: Path) -> None:
+def check_clobber(fname: Path) -> None:
     """Error out if we can't clobber the file."""
 
     if not fname.exists():
@@ -229,23 +210,7 @@ def check_clobber_path(fname: Path) -> None:
     raise IOError(f"The file {fname} exists and --clobber is not set.")
 
 
-def save(outfile: str, txt: str) -> None:
-    """Save the text to the file.
-
-    Parameters
-    ----------
-    outfile : str
-        The file name.
-    txt : str
-        The file contents.
-    """
-
-    v3(f"Creating {outfile}")
-    with open(outfile, 'w', encoding="utf-8") as fh:
-        fh.write(txt)
-
-
-def save_path(outpath: Path, txt: str) -> None:
+def save(outpath: Path, txt: str) -> None:
     """Save the text to the file.
 
     Parameters
@@ -586,9 +551,9 @@ def create_xspec_init(outdir: Path, clobber: bool) -> None:
     #
     outpath = outdir / "xspec.inc"
     if not clobber:
-        check_clobber_path(outpath)
+        check_clobber(outpath)
 
-    save_path(outname, """
+    save(outname, """
 
 c Taken from XSPEC 12.13.0
 c Common block for dynamic memory using udmget
@@ -622,7 +587,7 @@ def create_xspec_udmget(inpath: Path,
 
     out = outpath / name
     if not clobber:
-        check_clobber_path(out)
+        check_clobber(out)
 
     shutil.copy(udmfile, out)
     return out
@@ -718,8 +683,8 @@ def build_meson(modname,
     buildname = basepath / "meson.build"
     pyproject = basepath / "pyproject.toml"
     if not clobber:
-        check_clobber_path(buildname)
-        check_clobber_path(pyproject)
+        check_clobber(buildname)
+        check_clobber(pyproject)
 
     # Copy over the source files. The srcnames values are relative
     # to basepath.
@@ -733,7 +698,7 @@ def build_meson(modname,
 
         outpath = basepath / f.name
         if not clobber:
-            check_clobber_path(outpath)
+            check_clobber(outpath)
 
         shutil.copy(f, outpath)
         srcnames.append(f.name)
@@ -746,7 +711,7 @@ def build_meson(modname,
 
         outpath = basepath / f.name
         if not clobber:
-            check_clobber_path(outpath)
+            check_clobber(outpath)
 
         shutil.copy(f, outpath)
         srcnames.append(f.name)
@@ -792,7 +757,7 @@ def build_meson(modname,
 
             outpath = basepath / f.name
             if not clobber:
-                check_clobber_path(outpath)
+                check_clobber(outpath)
 
             shutil.copy(f, outpath)
             incnames.append(f.name)
@@ -935,7 +900,7 @@ py.extension_module(
 
 """
 
-    save_path(buildname, out)
+    save(buildname, out)
 
     # Create the pyproject.toml file. As mentioned, this really should
     # depend on numpy and sherpa, but for now we hard-code that
@@ -970,7 +935,7 @@ dependencies = [
   "sherpa"
 ]
 '''
-    save_path(pyproject, out)
+    save(pyproject, out)
 
 
 def build_module_ui(modname: str,
@@ -980,7 +945,7 @@ def build_module_ui(modname: str,
 
     outfile = outpath / "ui.py"
     if not clobber:
-        check_clobber_path(outfile)
+        check_clobber(outfile)
 
     out = PYTHON_HEADER
     out += f'''
@@ -1030,7 +995,7 @@ for name in _module.__all__:
     logger.info(msg)
 '''
 
-    save_path(outfile, out)
+    save(outfile, out)
 
 
 def build_module_init(modname: str,
@@ -1069,7 +1034,7 @@ def build_module_init(modname: str,
 
     outfile = outpath / "__init__.py"
     if not clobber:
-        check_clobber_path(outfile)
+        check_clobber(outfile)
 
     mdlnames = []
     atypes = []
@@ -1163,7 +1128,7 @@ __all__ = ({mdlnames})
 '''
 
     out += pycode
-    save_path(outfile, out)
+    save(outfile, out)
 
 
 def build_module_cxx(modname,
@@ -1186,26 +1151,16 @@ def build_module_cxx(modname,
 
     """
 
-    # Do we have any C++ models?
-    #
-    have_cxx = []
-    have_c = []
-    for mdl in mdls:
-        if mdl.language == 'C++ style':
-            have_cxx.append(mdl)
-        elif mdl.language == 'C style':
-            have_c.append(mdl)
-
     outfile = outpath / "_models.cxx"
     if not clobber:
-        check_clobber_path(outfile)
+        check_clobber(outfile)
 
     xspec_version_str = get_xsversion()
     v1(f"Using XSPEC version: {xspec_version_str}")
 
     out = CXX_HEADER
     out += cxxcode
-    save_path(outfile, out)
+    save(outfile, out)
 
 
 def build_module(modname: str,
