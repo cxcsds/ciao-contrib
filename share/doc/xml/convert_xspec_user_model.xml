@@ -31,7 +31,6 @@
       <LINE/>
       <LINE>--udmget        build with the udmget package (FORTRAN only)</LINE>
       <LINE>--udmget64      build with the udmget64 package (FORTRAN only)</LINE>
-      <LINE>-l / --local    build the package locally rather than globally?</LINE>
       <LINE>-p / --prefix   flags are used to control the user model names</LINE>
       <LINE>--pyver         set the version number of the Python module</LINE>
       <LINE>-c / --clobber  will overwrite existing files.</LINE>
@@ -73,11 +72,8 @@
       </PARA>
 
       <PARA title="Loading the module">
-	By default the module is installed globally, so that this
-	import should work from any directory, but you can use the
-	--local flag to build a version of the code that requires
-	either changing to the directory you ran &tool;, or
-	by adding the directory to the Python path list.
+	The module is installed globally, so that this import should
+	work from any directory.
       </PARA>
 
       <PARA title="Using the models">
@@ -107,9 +103,6 @@
 	<SYNTAX>
 	  <LINE>&upr; pip uninstall name</LINE>
 	</SYNTAX>
-      </PARA>
-      <PARA>
-	This step is not needed if you used the --local flag.
       </PARA>
     </DESC>
 
@@ -224,25 +217,6 @@
 	</DESC>
       </QEXAMPLE>
 
-      <QEXAMPLE>
-	<SYNTAX>
-	  <LINE>&upr; cd /data/xspeclmodels/foo</LINE>
-	  <LINE>&upr; &tool; foo model.dat --local</LINE>
-	</SYNTAX>
-	<DESC>
-	  <PARA>
-	    This builds the module "foo" but does not install
-	    it into Python. To use the module you either need
-	    to change to this directory or add the directory
-	    to the Python path such as the following
-	  </PARA>
-<VERBATIM>
-os.sys.path.insert(0, '/data/xspeclmodels/foo/src')
-import foo.ui
-</VERBATIM>
-	</DESC>
-      </QEXAMPLE>
-
     </QEXAMPLELIST>
 
     <ADESC title="Loading the module">
@@ -255,27 +229,6 @@ import foo.ui
       <PARA>
 	<SYNTAX>
 	  <LINE>&spr; install name.ui</LINE>
-	</SYNTAX>
-      </PARA>
-      <PARA>
-	If you used the --local option then you either have
-	to run Python (or sherpa) from the directory where
-	you ran &tool;, or adjust the python path by
-	setting the PYTHONPATH environment variable or
-	changing the os.sys.path array. For example, the
-	following will allow models defined in /data/models/
-	to be loaded:
-      </PARA>
-      <PARA>
-	<SYNTAX>
-	  <LINE>&upr; setenv PYTHONPATH /data/models</LINE>
-	</SYNTAX>
-      </PARA>
-      <PARA>or</PARA>
-      <PARA>
-	<SYNTAX>
-	  <LINE>&spr; import os</LINE>
-	  <LINE>&spr; os.sys.path.insert(0, "/data/models")</LINE>
 	</SYNTAX>
       </PARA>
       <PARA title="Automatically loading the module into Sherpa">
@@ -305,7 +258,7 @@ os.environ["RELLINE_TABLES"] = "/data/models/relxill"
       <PARA>
         Starting Sherpa will display a line for each message, which can
 	be useful but quickly gets annoying. To hide these messages
-	use the SherpaVerbosity context managed (new in CIAO 4.14):
+	use the SherpaVerbosity context manager:
       </PARA>
       <VERBATIM>
 from sherpa.utils.logging import SherpaVerbosity
@@ -567,9 +520,12 @@ undefined symbol: _gfortran_copy_string
 	rather than setuptools. This should avoid problems with the
 	deprecation and removal of distutils and numpy.distutils,
 	which was a problem with the previous code. However, this new
-	appoach has seen limited testing.  The build is now also done
-	entirely within the build_xspec_user_model/ sub-directory,
-	rather than using the current directory.
+	appoach has seen limited testing.  The build now uses the
+	build_xspec_user_model/ sub-directory to store most of the
+	necessary code (pyproject.toml and meson.build files are also
+	created in the current directory). The --local flag is
+	no-longer suported (using it will display a WARNING message
+	and the module will be installed globally).
       </PARA>
     </ADESC>
 

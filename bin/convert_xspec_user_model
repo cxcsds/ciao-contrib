@@ -28,7 +28,6 @@
     --help
     --clobber  or -c
     --verbose n  or -v n where n is 0, 1, 2, 3, 4, 5
-    --local
     --prefix [p]  where p is the prefix for the user model names
     --version
     --copyright
@@ -139,23 +138,11 @@ and, once it has finished, you would say, within a Sherpa session,
 
   sherpa> import mymodel.ui
 
-to load the models. The default behavior is to install the models into
-your global set of Python packages, so the above can be run from any
-directory. If you use the --local flag then you need to either
-
-  a) be in the directory from which you ran {toolname}
-
-  b) you have changed the Python path - by editing the PYTHONPATH
-     environment variable or the os.sys.path array - to include this
-     directory.
-
-Note that some models may require data files in the working directory,
-or for you to set up environment variables.
+to load the models. Note that some models may require data files in
+the working directory, or for you to set up environment variables.
 
 If the models fail to compile then you can get more information by
-running
-
-  python setup.py build
+running with '--verbose 2' (or higher).
 
 """
 
@@ -1158,14 +1145,11 @@ def build_module(modname: str,
                      xdata.compiled, mdls, clobber=clobber)
 
 
-def compile_module(local=False, verbose=False):
+def compile_module(verbose=False):
     """Build the module via pyproject.toml.
 
     Parameters
     ----------
-    local : bool, optional
-        If set then only build "locally" - i.e. a develop build -
-        rather than installing into the Python packaging system.
     verbose : bool, optional
         If set to True then report the build steps
 
@@ -1176,8 +1160,6 @@ def compile_module(local=False, verbose=False):
         raise OSError(f"{checkfile} does not exist or is not a file!")
 
     args = ['pip', 'install']
-    if local:
-        args.append('-e')
     if verbose:
         args.append('--verbose')
 
@@ -1189,12 +1171,40 @@ def compile_module(local=False, verbose=False):
         raise ValueError(f"Unable to run {args}\n")
 
 
+def check_unique_name(modulename):
+    """Ensure that the modulename is "unique".
+
+    We want to allow the user to re-use the same module name (e.g.
+    when developing or updating code), so we use the provenance field
+    in the module to check if this is the case.
+
+    """
+
+    v2(f"Checking if import {modulename} already exists")
+    try:
+        module = importlib.import_module(modulename)
+    except ImportError:
+        return
+
+    try:
+        known = module.provenance['buildinfo']['tool'] == toolname
+        modver = module.provenance['moduleversion']
+    except (AttributeError, KeyError):
+        known = False
+
+    if known:
+        v2(f" - found version {modver}")
+        return
+
+    raise ValueError(f"The module name '{modulename}' appears to "
+                     "already exist. Please use a different name.")
+
+
 @lw.handle_ciao_errors(toolname, toolver)
 def convert_xspec_user_model(modulename, modelfile,
                              udmget=False, udmget64=False,
                              extrafiles=None,
                              clobber=False,
-                             local=False,
                              version='1.0',
                              outdir='build_xspec_user_model',
                              namefunc=add_xsum_prefix,
@@ -1233,9 +1243,6 @@ def convert_xspec_user_model(modulename, modelfile,
         local directory (so picked up automatically).
     clobber : bool, optional
         Do we over-write existing files or error out if they exist.
-    local : bool, optional
-        If True then use a "develop" build (pip install -e .) and if
-        False a full install (pip install .).
     version : str, optional
         The version number (dotted values). The default is '1.0'.
     outdir : str, optional
@@ -1270,29 +1277,7 @@ def convert_xspec_user_model(modulename, modelfile,
     v1(f"  clobber:    {clobber}")
     v1("")
 
-    # When local is False ensure that the modulename is "unique". We
-    # want to allow the user to re-use the same module name (e.g.
-    # when developing or updating code), so we use the provenance
-    # field in the module to check if this is the case.
-    #
-    if not local:
-        v2(f"Checking if import {modulename} already exists")
-        try:
-            module = importlib.import_module(modulename)
-            try:
-                known = module.provenance['buildinfo']['tool'] == toolname
-                modver = module.provenance['moduleversion']
-            except (AttributeError, KeyError):
-                known = False
-
-            if known:
-                v2(f" - found version {modver}")
-            else:
-                raise ValueError(f"The module name '{modulename}' appears to " +
-                                 "already exist. Please use a different name.")
-
-        except ImportError:
-            pass
+    check_unique_name(modulename)
 
     # find source-code files; perhaps the cpp_files check should be
     # done before the c_files one to ensure that .c/.C files always
@@ -1498,7 +1483,7 @@ def convert_xspec_user_model(modulename, modelfile,
 
     # Compile the code.
     #
-    compile_module(local=local, verbose=verbose)
+    compile_module(verbose=verbose)
 
     # Test out whether we can import the model
     v1("")
@@ -1506,11 +1491,6 @@ def convert_xspec_user_model(modulename, modelfile,
     ierr = None
     try:
         v2(f"Trying to import {modulename}")
-
-        if local:
-            # Just in case the current directory is not in the path
-            os.sys.path.insert(0, "src")
-
         importlib.import_module(modulename)
         v1("Import succeeded")
 
@@ -1576,8 +1556,11 @@ if __name__ == "__main__":
                         default=False,
                         help="Use the udmget64 routine (needed by some FORTRAN models)")
 
-    parser.add_argument("--local", "-l", dest="local", action="store_true",
-                        default=False,
+    # This is now ignored. Unfortunately argparse only added the
+    # deprecated argument in Python 3.13.
+    #
+    parser.add_argument("--local", "-l",
+                        dest="local", action="store_true", default=False,
                         help="Build the package locally rather than globally?; default is %(default)s")
 
     parser.add_argument("--prefix", "-p", dest="prefix", nargs='?',
@@ -1634,6 +1617,17 @@ if __name__ == "__main__":
     # base verbose setting for the tool as input verbosity >= 2.
     verbose = args.verbose >= 2
 
+    if args.local:
+        has_color = sys.stdout.isatty() and os.getenv('NO_COLOR') is None
+        if has_color:
+            sys.stderr.write("\033[1;33m")
+
+        sys.stderr.write("WARNING")
+        if has_color:
+            sys.stderr.write("\033[0;0m")
+
+        sys.stderr.write(": --local flag is no-longer supported.\n")
+
     convert_xspec_user_model(args.name,
                              args.modelfile,
                              udmget=args.udmget,
@@ -1641,7 +1635,6 @@ if __name__ == "__main__":
                              # extrafiles=args.extrafiles,
                              extrafiles=None,
                              clobber=args.clobber,
-                             local=args.local,
                              version=args.pyver,
                              namefunc=mkname,
                              verbose=verbose)
