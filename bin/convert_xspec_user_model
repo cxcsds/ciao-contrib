@@ -67,7 +67,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "21 November 2024"
+toolver  = "25 November 2024"
 
 import sys
 import os
@@ -476,37 +476,6 @@ def find_cplusplus_files():
     return out
 
 
-def find_c_include_files():
-    """Return probable include files for C and C++"""
-
-    # Flatten out the return value.
-    #
-    out = find_file_types({"h": "*.h",
-                           "hh": "*.hh"})
-    if out is None:
-        return []
-
-    ifiles = []
-    for v in out.values():
-        ifiles.extend(v)
-
-    return sorted(ifiles)
-
-
-def find_fortran_include_files():
-    """Return probable include files for FORTRAN"""
-
-    out = find_file_types({"mod": "*.mod"})
-    if out is None:
-        return []
-
-    ifiles = []
-    for v in out.values():
-        ifiles.extend(v)
-
-    return sorted(ifiles)
-
-
 def count_nfiles(label, fileinfo):
     """Display, at verbose=1, the number of files
     found for this file type (combining all the
@@ -598,14 +567,12 @@ def build_meson(modname,
                 sources, fortransources, extrafiles,
                 version,
                 outpath: Path,
-                include_c=[],
-                include_f=[],
                 udmget=False, udmget64=False,
                 clobber=False,
                 license='License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication'):
     """Create the Python/meson build files.
 
-    The files are stored under <outdir>/.
+    Create: pyproject.toml, meson.build, and <outdir>/meson.build.
 
     Parameters
     ----------
@@ -625,9 +592,7 @@ def build_meson(modname,
     version : str
         The version number (dotted values).
     outpath : Path
-        The base directory where to store the module.
-    include_c, include_f: sequence of str
-        Any C/C++ or FORTRAN include files to copy.
+        The base directory where to store the module. This must exist.
     udmget, udmget64 : bool, optional
         Is the udmget code to be included? At this point only one will
         be set (FORTRAN only).
@@ -649,9 +614,9 @@ def build_meson(modname,
     build requirements but just hard-code the paths into the meson
     build file.
 
-    The build is done as if there is no "structure" - i.e. everything
-    in outdir/ - and the meson.build file deals with moving files to
-    the correct output location, which is also probably not great.
+    The build is done as if there is no "structure", relying on
+    <outdir>/meson.build to copy the files into the correct part of
+    the Python installation.
 
     """
 
@@ -680,11 +645,13 @@ def build_meson(modname,
     modname_slashes = modname.replace('.', '/')
 
     basepath = outpath
-    buildname = basepath / "meson.build"
-    pyproject = basepath / "pyproject.toml"
+    pyproject = Path("pyproject.toml")
+    buildname1 = Path("meson.build")
+    buildname2 = basepath / "meson.build"
     if not clobber:
-        check_clobber(buildname)
         check_clobber(pyproject)
+        check_clobber(buildname1)
+        check_clobber(buildname2)
 
     # Copy over the source files. The srcnames values are relative
     # to basepath.
@@ -692,29 +659,19 @@ def build_meson(modname,
     srcnames = []
     for f in sources:
         f = Path(f)
-        v3(f" - copying over source file {f}")
+        v3(f" - checking source file {f}")
         if not f.is_file():
             raise OSError(f"Unable to find source name '{f}'")
 
-        outpath = basepath / f.name
-        if not clobber:
-            check_clobber(outpath)
-
-        shutil.copy(f, outpath)
-        srcnames.append(f.name)
+        srcnames.append(f"../{f.name}")
 
     for f in fortransources:
         f = Path(f)
-        v3(f" - copying over FORTRAN file {f}")
+        v3(f" - checking FORTRAN file {f}")
         if not f.is_file():
             raise OSError(f"Unable to find FORTRAN file '{f}'")
 
-        outpath = basepath / f.name
-        if not clobber:
-            check_clobber(outpath)
-
-        shutil.copy(f, outpath)
-        srcnames.append(f.name)
+        srcnames.append(f"../{f.name}")
 
     if len(srcnames) == 0:
         raise ValueError("Should not have got here as no source/FORTRAN files to process")
@@ -743,24 +700,6 @@ def build_meson(modname,
         srcnames.append(name)
 
     source_names = "\n".join([f"  '{n}'," for n in srcnames])
-
-    incnames = []
-    for ifiles in [include_c, include_f]:
-        if ifiles is None:
-            continue
-
-        for f in ifiles:
-            f = Path(f)
-            v3(f" - copying over include file {f}")
-            if not f.is_file():
-                raise OSError(f"Unable to find INCLUDE file '{f}'")
-
-            outpath = basepath / f.name
-            if not clobber:
-                check_clobber(outpath)
-
-            shutil.copy(f, outpath)
-            incnames.append(f.name)
 
     # Where are the XSPEC include files we may need? These are
     # included in the contrib code.
@@ -830,6 +769,47 @@ def build_meson(modname,
     link_args = "\n".join(f"  '{n}'," for n in largs)
 
     date = time.asctime()
+
+    # Create the pyproject.toml file. As mentioned, this really should
+    # depend on numpy and sherpa, but for now we hard-code that
+    # knowledge into the meson.file and assume they are both present.
+    #
+    # Note that CIAO 4.17 is only provided with Python 3.11 so the
+    # list of supported Pythons can be short (for the classifier).
+    #
+    out = f'''[build-system]
+requires = ["meson-python"]
+build-backend = "mesonpy"
+
+[project]
+name = "{modname}"
+version = "{version}"
+description = "XSPEC user models in Sherpa: {modname}"
+authors = [
+ {{ name = "Smithsonian Astrophysical Observatory / Chandra X-Ray Center", email = 'cxchelp@cfa.harvard.edu' }}
+]
+
+classifiers = [
+  '{license}',
+  'Intended Audience :: Science/Research',
+  'Programming Language :: Python :: 3.11',
+  'Programming Language :: Python :: Implementation :: CPython',
+  'Topic :: Scientific/Engineering :: Astronomy',
+  'Topic :: Scientific/Engineering :: Physics',
+  'Development Status :: 3 - Alpha'
+]
+
+requires_python = ">= 3.10"
+dependencies = [
+  "numpy",
+  "sherpa"
+]
+'''
+    save(pyproject, out)
+
+    # There are two build.meson files needed. We could probably get
+    # away with just one.
+    #
     out = f"""# Auto-generated by convert_xspec_user_model
 # Version: {toolver}
 # Sherpa: {sherpa.__version__}
@@ -853,7 +833,12 @@ incdirs_xspec = [
   '{xspec_basedir}/include/XSFunctions/Utilities',
 ]
 
-# Now the files
+subdir('{basepath}')
+"""
+
+    save(buildname1, out)
+
+    out = f"""# Set up the Python and compiled code
 
 py_sources = [
   '__init__.py',
@@ -900,42 +885,8 @@ py.extension_module(
 
 """
 
-    save(buildname, out)
+    save(buildname2, out)
 
-    # Create the pyproject.toml file. As mentioned, this really should
-    # depend on numpy and sherpa, but for now we hard-code that
-    # knowledge into the meson.file and assume they are both present.
-    #
-    out = f'''[build-system]
-requires = ["meson-python"]
-build-backend = "mesonpy"
-
-[project]
-name = "{modname}"
-version = "{version}"
-description = "XSPEC user models in Sherpa: {modname}"
-authors = [
- {{ name = "Smithsonian Astrophysical Observatory / Chandra X-Ray Center", email = 'cxchelp@cfa.harvard.edu' }}
-]
-
-classifiers = [
-  '{license}',
-  'Intended Audience :: Science/Research',
-  'Programming Language :: Python :: 3.10',
-  'Programming Language :: Python :: 3.11',
-  'Programming Language :: Python :: Implementation :: CPython',
-  'Topic :: Scientific/Engineering :: Astronomy',
-  'Topic :: Scientific/Engineering :: Physics',
-  'Development Status :: 3 - Alpha'
-]
-
-requires_python = ">= 3.10"
-dependencies = [
-  "numpy",
-  "sherpa"
-]
-'''
-    save(pyproject, out)
 
 
 def build_module_ui(modname: str,
@@ -1207,13 +1158,11 @@ def build_module(modname: str,
                      xdata.compiled, mdls, clobber=clobber)
 
 
-def compile_module(outpath, local=False, verbose=False):
-    """Build the module calling out to setup.py.
+def compile_module(local=False, verbose=False):
+    """Build the module via pyproject.toml.
 
     Parameters
     ----------
-    outpath : Path
-        The location of the pyproject.toml file.
     local : bool, optional
         If set then only build "locally" - i.e. a develop build -
         rather than installing into the Python packaging system.
@@ -1222,7 +1171,7 @@ def compile_module(outpath, local=False, verbose=False):
 
     """
 
-    checkfile = outpath / "pyproject.toml"
+    checkfile = Path("pyproject.toml")
     if not checkfile.is_file():
         raise OSError(f"{checkfile} does not exist or is not a file!")
 
@@ -1234,20 +1183,10 @@ def compile_module(outpath, local=False, verbose=False):
 
     args.append('.')
 
-    # Is there a nice
-    olddir = os.getcwd()
-    try:
-        os.chdir(outpath)
-        v3(f" > temporary directory: {outpath}")
-
-        v3(f"Building with: {' '.join(args)}")
-        rval = sbp.call(args)
-        if rval != 0:
-            raise ValueError(f"Unable to run {args}\n")
-
-    finally:
-        os.chdir(olddir)
-        v3(f" < restoring directory: {olddir}")
+    v3(f"Building with: {' '.join(args)}")
+    rval = sbp.call(args)
+    if rval != 0:
+        raise ValueError(f"Unable to run {args}\n")
 
 
 @lw.handle_ciao_errors(toolname, toolver)
@@ -1272,13 +1211,11 @@ def convert_xspec_user_model(modulename, modelfile,
     It creates (using the clobber to determine whether to continue if
     the files already exist):
 
+        pyproject.toml
+        meson.build
         <outdir>/__init__.py
         <outdir>/ui.py
         <outdir>/_models.cxx
-        <outdir>/pyproject.toml
-        <outdir>/meson.build
-
-    and will also copy over the source code into this directory.
 
     Parameters
     ----------
@@ -1382,30 +1319,9 @@ def convert_xspec_user_model(modulename, modelfile,
         for vs in d.values():
             allfiles.extend(vs)
 
-    # Should we copy over apparent include files?
-    #
-    if n_c > 0 or n_cpp > 0:
-        c_includes = find_c_include_files()
-    else:
-        c_includes = []
-
-    if n_fortran > 0:
-        fortran_includes = find_fortran_include_files()
-    else:
-        fortran_includes = []
-
     v3(f"Processing the following {len(allfiles)} source code file(s):")
     v3("  {}".format("\n  ".join(allfiles)))
     v3("")
-
-    n_c_include = len(c_includes)
-    n_f_include = len(fortran_includes)
-    n_include = n_c_include + n_f_include
-    if n_include > 0:
-        v3(f"Processing the following {n_include} include file(s):")
-        v3("  c/c++:   {}".format(",".join(c_includes)))
-        v3("  FORTRAN: {}".format(",".join(fortran_includes)))
-        v3("")
 
     for f in extrafiles:
         if not os.path.exists(f):
@@ -1573,8 +1489,6 @@ def convert_xspec_user_model(modulename, modelfile,
                 extrafiles,
                 version,
                 outpath=outpath,
-                include_c=c_includes,
-                include_f=fortran_includes,
                 udmget=udmget, udmget64=udmget64,
                 clobber=clobber)
     build_module(modulename, mdls, modelfile, allfiles, extrafiles,
@@ -1582,12 +1496,9 @@ def convert_xspec_user_model(modulename, modelfile,
                  outpath=outpath,
                  clobber=clobber)
 
-    # Compile the code. As everything is placed in the same directory
-    # (which is not realy how it should be for Python packages but
-    # makes this code a bit easier) we need to ensure we run the
-    # evaluation in the correct location.
+    # Compile the code.
     #
-    compile_module(outpath, local=local, verbose=verbose)
+    compile_module(local=local, verbose=verbose)
 
     # Test out whether we can import the model
     v1("")
