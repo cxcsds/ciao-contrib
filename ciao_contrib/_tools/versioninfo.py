@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2011, 2014, 2015, 2016, 2019, 2020, 2021, 2023
+#  Copyright (C) 2011, 2014 - 2016, 2019 - 2021, 2023, 2024
 #  Smithsonian Astrophysical Observatory
 #
 #
@@ -31,7 +31,7 @@ import json
 import os
 import platform
 import subprocess
-from typing import Optional, Sequence
+from typing import Sequence
 
 from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
@@ -74,7 +74,7 @@ def package_name(fname: str) -> str:
     raise ValueError(f"Unrecognized file name: {fname}")
 
 
-def get_installed_versions(ciao: str) -> Optional[dict[str, str]]:
+def get_installed_versions(ciao: str) -> dict[str, str] | None:
     """Return a dictionary of (name, version) pairs for the installed
     CIAO packages, where ciao is the base of the CIAO installation
     (i.e. the value of the $ASCDS_INSTALL environment variable).
@@ -143,7 +143,8 @@ def find_ciao_system() -> str:
     -------
     system : str
         The system type. This matches the SYS field from the
-        ciao-control file used by ciao-install.
+        ciao-control file used by ciao-install (although this
+        is no-longer user, as of CIAO 4.16 or so).
 
     Notes
     -----
@@ -158,8 +159,8 @@ def find_ciao_system() -> str:
     return f"{sysname}-{machine}"
 
 
-def get_latest_versions(timeout: Optional[float] = None,
-                        system: Optional[str] = None
+def get_latest_versions(timeout: float | None = None,
+                        system: str | None = None
                         ) -> dict[str, str]:
     """Return the latest-released version of CIAO packages.
 
@@ -231,18 +232,19 @@ def get_latest_versions(timeout: Optional[float] = None,
     def download(url):
         v3(f" - trying to download {url}")
         try:
-            if timeout is None:
-                res = urlopen(url, context=context)
-            else:
-                res = urlopen(url, timeout=timeout, context=context)
+            kwargs = {"context": context}
+            if timeout is not None:
+                kwargs["timeout"] = timeout
+
+            with urlopen(url, **kwargs) as res:
+                return res.read().decode('utf-8')
+
         except HTTPError as he:
             v3(f" - caught HTTP error {he} for {url}")
             if he.code == 404:
                 return None
 
             raise he
-
-        return res.read().decode('utf-8')
 
     try:
         rsp = download(system_url)
@@ -348,7 +350,7 @@ def check_conda_versions(ciao: str) -> bool:
         found[name] = {'channel': channel, 'version': version}
 
     if len(found) == 0:
-        raise IOError("No CIAO packages found in your conda environment!")
+        raise IOError(f"No CIAO packages found in your {manager} environment!")
 
     # Try and upgrade them (as a dry-run)
     #
@@ -383,7 +385,10 @@ def check_conda_versions(ciao: str) -> bool:
 
     js = json.loads(out.stdout)
 
-    # map a missing key to a failure (as indicates schema has changed)
+    # Map a missing key to a failure (as indicates schema has
+    # changed). Unfortunately the JSON schema does not seem to be
+    # fixed across managers.
+    #
     if not js.get('success', False):
         v3(f"- call failed: {js}")
         msg = js.get('message', None)
@@ -392,15 +397,18 @@ def check_conda_versions(ciao: str) -> bool:
 
         raise IOError(f"Unable to run {manager} dependency check:\n{msg}")
 
-    # perhaps could just check to see message exists, since if it does
-    # it *probably* indicates success, which would be a simpler check
+    # It looks like the message may or may not end in ".", hence the
+    # startswith call.
     #
     msg = js.get('message', '')
-    if msg == 'All requested packages already installed.':
+    if msg.startswith('All requested packages already installed'):
         v3(" - all packages are up to date")
-        print("CIAO (installed via conda) is up to date.")
+        print(f"CIAO (installed via {manager}) is up to date.")
         return True
 
+    # The contents here may well depend on the manager. For now this
+    # is focussed on conda.
+    #
     actions = js.get('actions', {})
 
     def get_names(action):
