@@ -3437,6 +3437,13 @@ parinfo['mkrmf'] = {
     }
 
 
+parinfo['mkrprm'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image",None),ParValue("regions","f","Input stack of regions",None),ParValue("outfile","f","Output radial profile redistribution matrix",None)],
+    'opt': [ParSet("psfmethod","s","Method to apply PSF smoothing",'map',["map","marx"]),ParRange("ecf","r","PSF Map Fraction",0.393,0,1),ParSet("function","s","PSF Map smoothing function",'gaus',["gaus","tophat","lor","hemisphere","cone"]),ParRange("energy","r","PSF Energy",1.4,0.3,10),ParRange("flux","r","Flux for marx simulations",1.0e-2,0,None),ParRange("random_seed","i","MARX random seed, -1: current time",-1,-1,1073741824),ParValue("marx_root","f","Directory where MARX is installed",'${MARX_ROOT}'),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","Remove output file if it already exists?",False),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
+    }
+
+
 parinfo['mktgresp'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input type-II PHA file",None),ParValue("evtfile","f","Input event file",None),ParValue("outroot","f","Output root name for RMF and ARF files",None)],

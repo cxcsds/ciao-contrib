@@ -1,0 +1,396 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="mkrprm" context="Tools::Response" refkeywords="radial profile response matrix rmf aperture correction annulus PSF contamination point spread function" seealsogroups="resptools">
+    <SYNOPSIS>Compute the aperture correction for radial profiles</SYNOPSIS>
+    <DESC>
+      <PARA>
+        'mkrprm' will approximate the contribution of the PSF
+        scattering in each region from all regions. Phrased 
+        slightly differently: it will compute an approximate aperture
+        correction for each region.
+      </PARA>
+      <PARA>
+        It is generally assumed that when creating radial profiles
+        that the data in each radial bin are independent. For example
+        if extracting counts in a series of annulii: the counts in
+        each annular ring are assumed to be independent of all other annuli. 
+        Typically to "ensure" that this assumption is valid users will
+        try to select regions/annuli that are (much) larger than the size of
+        the Point Spread Function (PSF).
+      </PARA>
+      <PARA>
+        This assumption of independence is not always valid due to
+        the variable size of the Chandra PSF.  Depending on how
+        far off-axis the data are imaged, it may be the case that there
+        is some fraction of the counts in one annular ring that 
+        is scattered from the emission imaged in a different region.
+      </PARA>
+      <PARA>
+        This is the spatial equivalent of the standard 
+        spectral response/redistribution matrix, a.k.a. the "RMF". The
+        output is in fact a matrix that provides
+        an approximation of the fraction of the aperture convolved with
+        PSF that is collected in each bin from all bins.
+      </PARA>
+      <PARA>
+        Details of the PSF convolution are discussed in the Algorithms
+        section below.
+      </PARA>
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>dmextract "img.fits[bin sky=@ciao.reg]" radial.prof op=generic</LINE>
+          <LINE>mkrprm img.fits @ciao.reg matrix.img"[opt kernel=text/dtf]"</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            We start with a simple example with only five (5) annulii.
+            The stack of regions looks like:
+          </PARA>
+          <VERBATIM>
+$ cat ciao.reg
+annulus(4100,4123,0,2)
+annulus(4100,4123,2,4)
+annulus(4100,4123,4,6)
+annulus(4100,4123,6,8)
+annulus(4100,4123,8,10)
+          </VERBATIM>
+          <PARA>
+            First we extract the radial profile in the usual way using dmextract.
+            Then we compute the radial profile response matrix using mkrprm.
+            The inputs are the same input image and stack of regions.
+            For this example, we have specified that the output file, matrix.img, 
+            should be an ASCII file using the "[opt kernel=text/dtf]" 
+            datamodel option.  This is only done is this example so that we can
+            more easily display the values in this help file.  In this example the 
+            output looks like the following. Note: we have manually aligned the 
+            columns to be easier to read.
+          </PARA>
+          <VERBATIM>
+$ cat matrix.img
+...
+END
+
+8.0967010351261e-01 1.9030467774856e-01 2.5218738826281e-05 0.0                 0.0
+6.8721133631426e-02 8.0291679360828e-01 1.2835295705841e-01 9.1157018863392e-06 0.0
+5.1225563240883e-06 7.2198538345354e-02 8.2203443497993e-01 1.0575165397976e-01 1.0250138635154e-05
+0.0                 3.9067293798596e-06 8.0572688746482e-02 8.1328640656448e-01 1.0613308357164e-01
+0.0                 0.0                 5.4667406054155e-06 7.4293158500145e-02 8.3350501980292e-01
+          </VERBATIM>
+          <PARA>
+            The first row corresponds to the first region in the stack.
+            We see that 80.967% of the PSF convolved with first annulus is
+            imaged in the first annuls. The 2nd column represents the 2nd annulus, so
+            we see that 19.03% of the first annulus convolved with the PSF is 
+            actually imaged in the second annulus. And then there is 0.00252% 
+            of the PSF convolved with the first annuls imaged in the third annulus.
+            The sum of all the values in the first row equals 1; that is 100% of the 
+            PSF is imaged in those three annulii.
+          </PARA>
+          <PARA>
+            And so on for the second row:  6.87% of the second annulus is imaged
+            in the 1st, 80.29% of the 2nd annulus is imaged in the 2nd annulus, 12.84%
+            of the 2nd annulus is imaged in the 3rd, and 0.00091% of the 2nd annulus is
+            imaged in the 4th.  Again, the values sum to 1.0.
+          </PARA>
+          <PARA>
+            The matrix is nearly diagonal as we expect.  Most of the PSF
+            contribution originating in any region is actually imaged in that region.
+            It is worth noting that the last two rows do not sum to 1.0.  The PSF 
+            scatter in the outer regions extends beyond those regions so that the 
+            total aperture correction is less than 1.0 for those regions.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>mkrprm img.fits @ciao.reg matrix.img</LINE>
+          <LINE>ds9 matrix.img -zoom to fit</LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            The same example as before but this time the output file will
+            be a FITS image that can be display with ds9 or with matplotlib's 
+            "imshow()" command.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>Input image file.</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The image used to generate the radial profile.  If users
+            used an event file, then it must be binned into an image.
+            The image can be filtered (cropped) to just include the 
+            area around the extraction region; this will make the script
+            run faster.  If cropped, then it is suggest to be slightly 
+            larger extraction region to allow for correct PSF normalization
+            in the outer most regions.
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="regions" type="string" reqd="yes" stacks="yes">
+        <SYNOPSIS>The stack of extraction regions used to generate the radial profile.</SYNOPSIS>
+        <DESC>
+          <PARA>The stack of extraction regions should be in CIAO region form.</PARA>
+          <PARA title="Using dmextract's annulus">
+            The dmextract tool has a special syntax for a stack of
+            annulus shaped regions that is not supported by the rest of
+            CIAO.
+          </PARA>
+          <VERBATIM>$ dmextract img.fits"[bin sky=annulus(4100,4123,0:10:2)]" rad.prof op=generic</VERBATIM>
+          <PARA>
+            Luckily the dmextract output contains the region information;
+            it just requires a little special syntax to use it.  In this case
+            users can use the CIAO stack "igrid()" syntax to access each 
+            individual row in the dmextract output file
+          </PARA>
+          <VERBATIM>$ mkrprm img.fits "rad.prof[component=igrid(1:5:1)]" rad.matrix</VERBATIM>
+          <PARA>
+            Since each row in the dmextract output file has a unique value 
+            in the COMPONENT column, we can use that as a filter. We can 
+            see the result of using "igrid" using the stk_build command.
+          </PARA>
+          <VERBATIM>
+$ stk_build "rad.prof[component=igrid(1:5:1)]" out=stdout
+rad.prof[component=1]
+rad.prof[component=2]
+rad.prof[component=3]
+rad.prof[component=4]
+rad.prof[component=5]
+          </VERBATIM>
+          <PARA>Users could also choose to filter on the #row virtual column.</PARA>
+          <PARA title="ds9 format regions: annulus, panda, epanda, bpanda">
+            Certain ds9 regions support multiple radii and angles. These include
+            the annulus, panda, epanda, and bpanda shapes.  CIAO does not
+            recongize these shapes so they must be converted into the 
+            equivalent CIAO syntax. This can be done using the 
+            convert_ds9_region_to_ciao_stack script:
+          </PARA>
+          <VERBATIM>$ convert_ds9_region_to_ciao_stack ds9.reg ciao.lis</VERBATIM>
+          <PARA>Note that the region must be saved in physical coordinates.</PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+        <SYNOPSIS>The output file name.</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The output is the aperture response matrix. It provides the
+            fraction of the region convolved with the PSF from one 
+            aperture (eg annulus) is present in all other bin.
+          </PARA>
+          <PARA>
+            The output is stored as a 2D image.
+            The X-axis is the input radius bin number. The Y-axis is the
+            output radius bin number. Bin are counted 1 to N based on the 
+            number of input regions.
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="psfmethod" type="string" def="map">
+        <SYNOPSIS>The method used to convolve with the PSF.</SYNOPSIS>
+        <DESC>
+          <PARA>
+            Details of the PSF map method are described in the 
+            Algorithms section below.
+          </PARA>
+          <PARA>Currently users can only select psfmethod=map.</PARA>
+          <PARA>
+            There is a method that uses MARX to simulate the PSF
+            convolution with each region; however there is a bug in 
+            MARX when using images as input that currently makes this 
+            choice unusable.
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM max="1" min="0" def="0.393" name="ecf" type="real">
+        <SYNOPSIS>The encircled counts fraction (ECF).</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The enclosed counts fraction of the PSF to use when
+            smoothing with the psfmethod=map method.
+            The default value equal to 0.393 represents 
+            a 1 sigma value for a 2D Gaussian.
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="function" type="string" def="gaus">
+        <SYNOPSIS>The shape of the approximate PSF convolution function</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The Chandra PSF cannot be expressed analytically.
+            These various shape functions can be used to approximate
+            the morphology of the PSF.
+          </PARA>
+          <LIST>
+            <CAPTION>List of available PSF convolution functions</CAPTION>
+            <ITEM>gaus : Gaussian</ITEM>
+            <ITEM>tophat : A flat, circular shape</ITEM>
+            <ITEM>lor : A Lorentzian</ITEM>
+            <ITEM>hemisphere : half of a circular ball</ITEM>
+            <ITEM>cone : A circular base with linear sides</ITEM>
+          </LIST>
+          <PARA>
+            The Chandra PSF becomes less circular farther away
+            from the optical axis and the aperture correction 
+            approximation becomes less accurate.
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="energy" type="real" units="keV">
+        <SYNOPSIS>Energy of the PSF to lookup in keV.</SYNOPSIS>
+        <DESC>
+          <PARA>The energy value is used with all psfmethod options.</PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="flux" type="real" units="photon/cm**2/sec">
+        <SYNOPSIS>The flux for the marx method. Not currently used.</SYNOPSIS>
+        <!--
+             <DESC>
+             <PARA>
+             The more simulated photon marx produces, the better the 
+             approximation will be; however, it will take longer to
+             compute. Adjusting the flux value allows users to 
+             examine the trade off between accuracy and speed.
+             </PARA>
+             </DESC>
+        -->
+      </PARAM>
+      <PARAM name="random_seed" type="integer" def="-1">
+        <SYNOPSIS>Initial random seed for simulations.</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The random_seed is set to initialize the simulation.  
+            With random_seed equal to the default value of -1, the
+            script will use a random value for the
+            initial random_seed.
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="marx_root" type="file">
+        <SYNOPSIS>The directory where MARX was installed.</SYNOPSIS>
+        <DESC>
+          <PARA>The marx executable must be $marx_root/bin/marx.</PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="tmpdir" type="file" def="${ASCDS_WORK_PATH}">
+        <SYNOPSIS>Directory for temporary files</SYNOPSIS>
+      </PARAM>
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>Overwrite output files if they already exist?</SYNOPSIS>
+      </PARAM>
+      <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+        <SYNOPSIS>Amount of tool chatter level.</SYNOPSIS>
+      </PARAM>
+    </PARAMLIST>
+    <ADESC title="Algorithm: psfmethod">
+      <PARA title="psfmethod=map">
+        The psfmethod=map method follows the
+        <HREF link="https://cxc.cfa.harvard.edu/ciao/threads/ttt_mkpsfmap_smoothing/">PSF Size Image Smoothing</HREF>
+        thread.
+      </PARA>
+      <PARA>
+        First the PSF map is created using the mkpsfmap tool at the 
+        requested input energy and ecf values.  The units are set to
+        "logical" pixel size which is required for the dmimgadapt step.
+      </PARA>
+      <PARA>
+        Next an image is created for each input region; it is the same size 
+        as the infile image. Pixels inside the region are set to 1 divided by 
+        the region area (specifically number of pixels).  Pixels
+        outside the region are set to 0.
+      </PARA>
+      <PARA>
+        Then dmimgadapt is used to adaptively smooth each region map with
+        PSF map using the specified functional shape.
+      </PARA>
+      <PARA>
+        Since the input image was normalized to sum to 1.0; the output
+        from dmimgadapt gives the fraction of the region with the adaptively smoothed
+        convolution function. We then just iterated through all the region
+        to determine the fraction of the PSF imaged in each region.
+      </PARA>
+      <PARA title="psfmethod=marx">This option is not currently available.</PARA>
+      <!--
+           <PARA>
+           This method uses MARX to simulate the PSF effects on 
+           each region.  First we set up the MARX parameters to
+           match the observation (SIM location, detector, etc).
+           Then we create an image for each region where the 
+           pixel values inside the region are 1 and outside are 0.
+           This image is then input to MARX using the "SourceType=IMAGE"
+           and "S-ImageFile={temporary file name}" parameter setting;
+           where "{temporary file name}" is the image of the region.
+           MARX requires that the center of the image be the location of
+           the optical axis, so the image is padded to ensure that is the case.
+           The output from marx is then converted to an image matching
+           the same grid as the infile image and is normalized to sum to 1.0.
+           As with the psfmap method: then we iterate through all regions to
+           compute the fraction of the simulated PSF image is imaged in each.
+           </PARA>
+      -->
+    </ADESC>
+    <ADESC title="Including the Response Matrix when fitting with Sherpa">
+      <PARA>
+        The traditional spectral RMF is specific to fitting energy distributions and
+        cannot be used for fitting radial profiles. 
+      </PARA>
+      <PARA>
+        To use the radial response matrix requires a generic matrix multiplication 
+        model. The MatrixModel is available in the sherpa_contrib package.
+        Below is an example of fitting a 1D Gaussian to a radial profile
+        that includes convolution with the radial profile
+        response matrix:
+      </PARA>
+      <VERBATIM>
+import sherpa.astro.ui as ui
+from sherpa_contrib.matrix_model import MatrixModel
+from pycrates import read_file
+
+ui.load_data(1,"radial_profile.fits",3,["RMID","SUR_BRI","SUR_BRI_ERR"])
+
+response_matrix = read_file("rp.matrix").get_image().values*1.0
+x_vals = ui.get_data().x
+mymatrix = MatrixModel(response_matrix, x_vals, name="rprm")
+
+gg2 = ui.gauss1d("gg2")
+ui.set_source(mymatrix(gg2))
+ui.fit()
+      </VERBATIM>
+      <PARA>
+          The matrix values are loaded using pycrates' "read_file" routine
+          and along with the full set of X-coordinates (x_vals) 
+          are used to instantiate the MatrixModel: mymatrix. 
+          The matrix is then applied to Gaussian model, gg2, 
+          in the "set_source(mymatrix(gg))" command and fit().
+          The MatrixModel is the type of convolution model akin to the
+          traditional spectral RMF model.
+      </PARA>
+
+    </ADESC>
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>
+        .
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/tgsplit.html">
+          bug
+          pages
+        </HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+    <LASTMODIFIED>TBD 2024</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
