@@ -351,10 +351,11 @@ import sherpa.astro.ui as ui
 from sherpa_contrib.matrix_model import MatrixModel
 from pycrates import read_file
 
-ui.load_data(1,"radial_profile.fits",3,["RMID","SUR_FLUX","SUR_FLUX_ERR"])
+ui.load_data(1,"radial_profile.fits",3,["RMID","SUR_BRI","SUR_BRI_ERR"])
 
 response_matrix = read_file("rp.matrix").get_image().values*1.0
-mymatrix = MatrixModel(response_matrix, name="rprm")
+x_vals = ui.get_data().x
+mymatrix = MatrixModel(response_matrix, x_vals, name="rprm")
 
 gg2 = ui.gauss1d("gg2")
 ui.set_source(mymatrix(gg2))
@@ -362,16 +363,12 @@ ui.fit()
       </VERBATIM>
       <PARA>
           The matrix values are loaded using pycrates' "read_file" routine
-          and are used to instantiate the MatrixModel: mymatrix.
+          and along with the full set of X-coordinates (x_vals) 
+          are used to instantiate the MatrixModel: mymatrix. 
           The matrix is then applied to Gaussian model, gg2, 
           in the "set_source(mymatrix(gg))" command and fit().
           The MatrixModel is the type of convolution model akin to the
           traditional spectral RMF model.
-      </PARA>
-      <PARA>
-          Note: the MatrixModel currently requires fitting the full 
-          data arrays. Users cannot use the 'notice()' or 'ignore()' commands
-          to omit values from fit.      
       </PARA>
 
     </ADESC>

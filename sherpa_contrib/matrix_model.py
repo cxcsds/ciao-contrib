@@ -9,6 +9,7 @@ from sherpa.instrument import ConvolutionModel
 from sherpa.utils.err import PSFErr
 import sherpa
 
+
 class MatrixValue(ArithmeticConstantModel, Model):
     '''
     Need to wrap the matrix as a type of model, and looks like
@@ -88,11 +89,27 @@ class MatrixModel(Model):
 
     string_types = (str, )
 
-    def __init__(self, matrix, name="matrix"):
+    def __init__(self, matrix, grid, name="matrix"):
         'Init'
-        self.matrix = matrix
+        self.matrix = numpy.array(matrix)
         self.name = name
+        self.full_grid = numpy.array(grid)
+        self.check_parameters()
         super().__init__(name)
+
+    def check_parameters(self):
+        'Simple checks on inputs'
+
+        dims = self.matrix.shape
+        if len(dims) != 2:
+            raise PSFErr("Matrix must be 2D")
+
+        if dims[0] != dims[1]:
+            raise PSFErr("Only square matrices")
+
+        grid_dim = self.full_grid.shape
+        if dims[0] != grid_dim[0]:
+            raise PSFErr("Matrix size must equal data length")
 
     def __repr__(self):
         'what am I'
@@ -119,8 +136,26 @@ class MatrixModel(Model):
     def calc(self, pl, pr, lhs, rhs, *args, **kwargs):
         'Perform the matrix multiplication'
 
-        data = numpy.asarray(rhs(pr, *args, **kwargs))
-        matrix = numpy.asarray(lhs(pl, *args, **kwargs))
+        # pl and pr are model parameter values
+        # args is x-array
+        # kwargs = ??
+
+        data_grid = args[0]
+
+        if len(data_grid) == len(self.full_grid):
+            are_equal = (data_grid == self.full_grid)
+            if not are_equal.all():
+                raise PSFErr("Input X-array does not match Full grid used to create MatrixModel")
+        elif len(data_grid) > len(self.full_grid):
+            raise PSFErr("Mismatch in data grid compared to MatrixModel grid")
+        else:
+            common_grid = numpy.intersect1d(data_grid, self.full_grid)
+            are_equal = (common_grid == data_grid)
+            if not are_equal.all():
+                raise PSFErr("Data grid have values not in original grid")
+
+        data = numpy.asarray(rhs(pr, self.full_grid, **kwargs))
+        matrix = numpy.asarray(lhs(pl, self.full_grid, **kwargs))
 
         dshape = data.shape
         if len(dshape) != 1:
@@ -131,12 +166,19 @@ class MatrixModel(Model):
             raise PSFErr("Matrix must be 2D")
 
         if mshape[0] != mshape[1]:
-            raise PSFErr("Only square matrixes")
+            raise PSFErr("Only square matrices")
 
         if mshape[0] != dshape[0]:
             raise PSFErr("Matrix size must equal data length")
 
-        return numpy.matmul(matrix, data)
+        full_model = numpy.matmul(matrix, data)
+
+        if len(self.full_grid) == len(data_grid):
+            return full_model
+
+        filter_indeces, = numpy.where([c in self.full_grid for c in data_grid])
+        filtered_model = full_model[filter_indeces]
+        return filtered_model
 
     # ~ def get_center(self):
         # ~ 'defined in abc'
@@ -157,3 +199,28 @@ class MatrixModel(Model):
     # ~ def teardown(self):
         # ~ 'defined in abc'
         # ~ return
+
+
+def test_matrix_model_class():
+    'Simple test of MatrixModel'
+
+    import sherpa.astro.ui as ui
+    import numpy
+    from sherpa_contrib.matrix_model import MatrixModel
+
+    xx = numpy.arange(1, 11, 1) + 0.8675309
+    yy = numpy.ones_like(xx) * numpy.pi
+    ee = numpy.ones_like(xx) * 0.1
+
+    diag = numpy.identity(len(xx))
+
+    ui.load_arrays(1, xx, yy, ee, ui.Data1D)
+
+    my_matrix = MatrixModel(diag, xx, name="my_matrix")
+    cc = ui.const1d("cc")
+
+    ui.set_source(my_matrix(cc))
+    ui.fit()
+
+    ui.notice(3, 7)
+    ui.fit()
