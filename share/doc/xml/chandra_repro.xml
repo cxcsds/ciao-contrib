@@ -778,6 +778,37 @@ tg_zo_position="5:35:15.7594,-5:23:10.191"
       </PARAM>
 
 
+      <PARAM name="patch_hrc_ssc" def="no" type="boolean" reqd="no">
+        <SYNOPSIS>
+            Look for evidence of HRC Secondary Science Corruption (SSC) and
+            patch dead-time factors if detected.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+             SSC results from a byte-shift anomaly which occasionally causes a
+             portion of the housekeeping data to be corrupted.  The symptom is
+             dropouts in the dead-time-factor (dtf) which can be seen in a plot
+             of the dtf1 file's dtf valuse vs time, where the dtf is
+             significantly (&gt;10%) below the median value (~1.0).
+          </PARA>
+        <PARA>
+         Event data are good during the SSC times.  Standard data
+         processing, however, will create multiple GTI intervals around the
+         low dtf times, rejecting some events, and lowering the
+         dead-time-correction factor (DTDOR).
+        </PARA>
+        <PARA>
+          Note: telemetry saturation from a bright source can also 
+          lower the dtf; however, this tends to be a more continuous and sustained
+          lowering of the value.  
+        </PARA>
+
+
+        </DESC>
+      </PARAM>
+
+
+
       <PARAM name="cleanup" def="yes" type="boolean" reqd="no">
         <SYNOPSIS>
 	  Cleanup intermediate files on exit
@@ -819,6 +850,19 @@ tg_zo_position="5:35:15.7594,-5:23:10.191"
         </DESC>
       </PARAM>
     </PARAMLIST>
+
+
+<ADESC title="Changes in the scripts 4.17.0 (December 2024) release">
+  <PARA title="New HRC Science Science Corruption tool">
+    A new parameter has been added: patch_hrc_ssc, which when set to 
+    "yes" will run the patch_hrc_ssc tool.  This tool looks for
+    corruption in the HRC secondary science data and will replace (patch)
+    the corrupted values in the dead time factors file. This typically results
+    in a very slightly higher average DTCOR value and elimination of some
+    very short, erroneously tagged bad time intervals.
+  </PARA>
+</ADESC>
+
 
 <ADESC title="Changes in the scripts 4.16.2 (August 2024) release">
   <PARA title="On Board Computer (OBC) mode">
@@ -1328,6 +1372,6 @@ The script now runs tgdetect2 for grating data when recreate_tg_mask=yes
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>May 2024</LASTMODIFIED>
+    <LASTMODIFIED>December 2024</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>

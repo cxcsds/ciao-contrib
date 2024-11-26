@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "07 May 2024"
+version = "25 November 2024"
 
 # import standard python modules as required
 #
@@ -74,7 +74,10 @@ import ciao_contrib.cxcdm_wrapper as cdw
 
 from ciao_contrib.param_wrapper import open_param_file
 
-from ciao_contrib.runtool import acis_build_badpix, acis_find_afterglow, dmkeypar, dmmakepar, hrc_build_badpix, destreak, acis_process_events, dmhedit, hrc_process_events, hrc_dtfstats, tgdetect, tg_create_mask, celldetect, tgidselectsrc, tgmatchsrc, tg_resolve_events, tgextract, dmcopy, dmappend, set_pfiles, dmhistory, acis_set_ardlib, skyfov
+from ciao_contrib.runtool import acis_build_badpix, acis_find_afterglow, dmkeypar, dmmakepar, \
+    hrc_build_badpix, destreak, acis_process_events, dmhedit, hrc_process_events, hrc_dtfstats, \
+    tgdetect, tg_create_mask, celldetect, tgidselectsrc, tgmatchsrc, tg_resolve_events, tgextract, \
+    dmcopy, dmappend, set_pfiles, dmhistory, acis_set_ardlib, skyfov
 from ciao_contrib.caldb import get_caldb_dir, get_caldb_installed
 import stk
 
@@ -656,6 +659,7 @@ def process_command_line(argv):
     tg_zo_position    = pio.pgetstr( fp, "tg_zo_position")
     boresight       = pio.pgetstr(fp, "asol_update") == "yes"
     pi_filter       = pio.pgetb(fp, "pi_filter")
+    patch_hrc_ssc   = pio.pgetb(fp, "patch_hrc_ssc")
     cleanup         = pio.pgetb(fp, "cleanup")
     verbose         = pio.pgeti(fp, "verbose")
     clobber         = pio.pgetstr(fp, "clobber")
@@ -693,6 +697,7 @@ def process_command_line(argv):
         pp["tg_zo_position"] =  tg_zo_position
         pp["asol_update"] =     boresight
         pp["pi_filter"] =       pi_filter
+        pp["patch_hrc_ssc"] =   patch_hrc_ssc
         pp["cleanup"] =         cleanup
         pp["clobber"] =         clobber
         pp["verbose"] =         verbose
@@ -1055,7 +1060,7 @@ def get_inputs(params):
 
             check_name_in_hdr( "msk1", params["msk1_file"], params["hdr_maskfile"] )
 
-        ### find ACIS mtl files ###
+        ### find mtl files ###
         elif re.search(".*"+cycle+"mtl1.fits.*",ff):
 
             if params["mtl1_file"]:
@@ -1688,6 +1693,47 @@ def process_acis_events(params, eventdef=None):
 
     return params
 
+
+def patch_hrc_ssc(params):
+    '''
+        Correct HRC DTF values for Secondary Science Corruption (SSC)    
+    '''
+
+    v3("Checking HRC for secondary science corruption")
+
+    if params["dtf1_file"].lower() in ["", "none"]:
+        v0("Warning: No DTF file found; cannot evaluate Secondary Science Corruption")
+        return
+    
+    if params["mtl1_file"].lower() in ["", "none"]:
+        v0("Warning: No MTL file found; cannot evaluate Secondary Science Corruption")
+
+    root = os.path.join(params["outdir"], params["root"])
+
+    from ciao_contrib.runtool import make_tool
+    patch_ssc = make_tool("patch_hrc_ssc")
+    
+    patch_ssc.dtf_infile = params["dtf1_file"]
+    patch_ssc.mtl_infile = params["mtl1_file"]
+    patch_ssc.evt_infile = params["evt1_file"]
+    patch_ssc.evt_outfile = f"{root}_dtffix_evt1.fits"
+    patch_ssc.gti_outfile = f"{root}_repro_flt1.fits"
+    patch_ssc.dtf_outfile = f"{root}_repro_dtf1.fits"
+    patch_ssc.clobber = params["clobber"]
+    
+    out = patch_ssc()
+    v5(out)
+    
+    if not os.path.exists(patch_ssc.gti_outfile):
+        v1("HRC SSC not detected")
+        return
+
+    params["flt1_file"] = patch_ssc.gti_outfile
+    params["dtf1_file"] = patch_ssc.dtf_outfile
+    params["evt1_file"] = patch_ssc.evt_outfile
+    params["cleanup_files"].append(patch_ssc.evt_outfile)
+
+
 def process_hrc_events(params):
     '''Thread to create new L1 and L2 products
        Executes: hrc_process_events
@@ -1720,6 +1766,10 @@ def process_hrc_events(params):
         error_out(params,"Required asol1 input not found for hrc_process_events: "+asol1,'input error')
     if not os.path.isfile(flt1):
         error_out(params,"Required flt1 input not found for hrc_process_events: "+flt1,'input error')
+
+    if params["patch_hrc_ssc"]:
+        patch_hrc_ssc(params)
+        evt1 = params["evt1_file"]
 
     #!### add RANGELEV value to header, if missing ###
     if rangelev:

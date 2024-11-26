@@ -2705,7 +2705,7 @@ parinfo['centroid_map'] = {
 parinfo['chandra_repro'] = {
     'istool': True,
     'req': [ParValue("indir","f","Input directory",'./'),ParValue("outdir","f","Output directory (default = $indir/repro)",None)],
-    'opt': [ParValue("root","s","Root for output filenames",None),ParValue("badpixel","b","Create a new bad pixel file?",True),ParValue("process_events","b","Create a new level=2 event file?",True),ParValue("destreak","b","Destreak the ACIS-8 chip?",True),ParValue("set_ardlib","b","Set ardlib.par with the bad pixel file?",True),ParValue("check_vf_pha","b","Clean ACIS background in VFAINT data?",False),ParSet("pix_adj","s","Pixel randomization: default|edser|none|randomize",'default',["default","edser","none","randomize","centroid"]),ParValue("tg_zo_position","s","Method to determine gratings 0th order location: evt2|detect|R.A. & Dec.",'evt2'),ParValue("asol_update","b","If necessary, apply boresight correction to aspect solution file?",True),ParValue("pi_filter","b","Apply PI background filter to HRC-S+LETG data?",True),ParValue("cleanup","b","Cleanup intermediate files on exit",True),ParValue("clobber","b","Clobber existing file",False),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
+    'opt': [ParValue("root","s","Root for output filenames",None),ParValue("badpixel","b","Create a new bad pixel file?",True),ParValue("process_events","b","Create a new level=2 event file?",True),ParValue("destreak","b","Destreak the ACIS-8 chip?",True),ParValue("set_ardlib","b","Set ardlib.par with the bad pixel file?",True),ParValue("check_vf_pha","b","Clean ACIS background in VFAINT data?",False),ParSet("pix_adj","s","Pixel randomization: default|edser|none|randomize",'default',["default","edser","none","randomize","centroid"]),ParValue("tg_zo_position","s","Method to determine gratings 0th order location: evt2|detect|R.A. & Dec.",'evt2'),ParValue("asol_update","b","If necessary, apply boresight correction to aspect solution file?",True),ParValue("pi_filter","b","Apply PI background filter to HRC-S+LETG data?",True),ParValue("patch_hrc_ssc","b","Patch HRC Secondary Science Corruption?",False),ParValue("cleanup","b","Cleanup intermediate files on exit",True),ParValue("clobber","b","Clobber existing file",False),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
     }
 
 
@@ -3483,6 +3483,13 @@ parinfo['obsid_search_csc'] = {
     'istool': True,
     'req': [ParValue("obsid","s","Chandra Observation ID",None),ParValue("outfile","f","Name of output table (TSV format)",None)],
     'opt': [ParValue("columns","s","List of columns to include",'INDEF'),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2.1',["csc2.1","csc2","csc1","current","latest"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
+    }
+
+
+parinfo['patch_hrc_ssc'] = {
+    'istool': True,
+    'req': [ParValue("dtf_infile","f","Input dead time factors file",None),ParValue("mtl_infile","f","Input mission time line file",None),ParValue("evt_infile","f","Input Level 1 event file",None),ParValue("evt_outfile","f","Output Level 1 event file",None),ParValue("gti_outfile","f","Output GTI (filter: flt) file",None),ParValue("dtf_outfile","f","Output dead time factors file",None),ParRange("threshold","i","Threshold about which total_evt_count is due to SCC",4000,0,None)],
+    'opt': [ParRange("smooth_count","i","Smoothing applied to total_evt_count to determine bad range",3,1,None),ParValue("tmpdir","f","Temporary directory for intermediate files",'${ASCDS_WORK_PATH}'),ParRange("verbose","i","Amount of tool chatter",1,0,5),ParValue("clobber","b","Overwrite existing files",False)],
     }
 
 
