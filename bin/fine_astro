@@ -305,6 +305,11 @@ def copy_auxfiles(obsid, out_dirs):
 
     for aux in aux_list:
         aux_file = obsid.get_ancillary(aux)
+        if not os.path.exists(aux_file):
+            aux_file += ".gz"
+            if not os.path.exists(aux_file):
+                aux_file.removesuffix(".gz")
+                raise IOError(f"Cannot locate auxiliary file: {aux_file}")
         fname = os.path.basename(aux_file)
         shutil.copyfile(aux_file,
                         os.path.join(out_dirs.root_dir,
