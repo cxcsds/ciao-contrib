@@ -19,7 +19,7 @@ Usage:
 
   Output is to
 
-      ciao_contrib/runtool.py
+      src/ciao_contrib/runtool.py
 
   Note that this file is *not* checked into the repository to
   allow you to check for changes (this could be added once the
@@ -447,7 +447,7 @@ def doit():
         if not os.path.isfile(filename):
             raise IOError(f"Unable to find the file: {filename}")
 
-    contrib_path = "ciao_contrib/"
+    contrib_path = "src/ciao_contrib/"
     odir = os.path.join(ascds_contrib, contrib_path)
     if not os.path.isdir(odir):
         raise IOError(f"Unable to find output directory:\n{odir}")
