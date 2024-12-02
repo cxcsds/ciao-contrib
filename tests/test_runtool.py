@@ -42,8 +42,8 @@ def test_have_ascds_install():
 
 
 def test_expected_tools():
-    assert len(ALL_TOOLS) == 197
-    assert len(STANDARD_TOOLS) == 182
+    assert len(ALL_TOOLS) == 199
+    assert len(STANDARD_TOOLS) == 184
 
 
 @pytest.mark.parametrize("expected", STANDARD_TOOLS)
@@ -406,6 +406,7 @@ def test_write_parfile_standard(toolname, tmp_path):
                'mkpsfmap': 3,
                'mkregmap': 1,
                'mkrmf': 1,
+               'mkrprm': 3,
                'modelflux': 1,
                'monitor_photom': 1,
                'mtl_build_gti': 1,
