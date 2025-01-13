@@ -45,18 +45,21 @@ def xpa_plot_cmd(access_point, command):
         xpa.communicate()
 
 
-def blt_plot_data(access_point, xx, ex, yy, ey):
-    """Plot the data"""
-    cmd = ["xpaset", access_point, "plot"]
-    cmd.extend(["data", "xyey"])
+def __pipe_values_to_plot(cmd, vals):
 
-    # Plot the data
     with subprocess.Popen(cmd, stdin=subprocess.PIPE) as xpa:
-        for vv in zip(xx, yy, ey):
+        for vv in vals:
             pair = " ".join([str(x) for x in vv])+"\n"
             pb = pair.encode()
             xpa.stdin.write(pb)
         xpa.communicate()
+    
+
+def blt_plot_data(access_point, xx, ex, yy, ey):
+    """Plot the data"""
+    cmd = ["xpaset", access_point, "plot"]
+    cmd.extend(["data", "xyey"])
+    __pipe_values_to_plot(cmd, zip(xx, yy, ey))
 
     make_pretty(access_point)
     xpa_plot_cmd(access_point, "legend yes")
@@ -74,13 +77,7 @@ def blt_plot_model(access_point, x_vals, y_vals, title, x_label, y_label,
     cmd.extend(["name", winname, "line",
                 f"{{{title}}}", f"{{{x_label} }}", f"{{{y_label} }}",
                 "xy"])
-
-    with subprocess.Popen(cmd, stdin=subprocess.PIPE) as xpa:
-        for x, y in zip(x_vals, y_vals):
-            pair = f"{x} {y}\n"
-            pb = pair.encode()
-            xpa.stdin.write(pb)
-        xpa.communicate()
+    __pipe_values_to_plot(cmd, zip(x_vals, y_vals))
 
     xpa_plot_cmd(access_point, "shape none")
     xpa_plot_cmd(access_point, "shape fill no")
@@ -100,16 +97,10 @@ def blt_plot_delchisqr(access_point, xx, ex, yy, ey, y_label):
     xpa_plot_cmd(access_point, "layout strip")
 
     # Add line through 0
-    x0 = [xx[0]-ex[0], xx[-1]+ex[-1]]
+    x0 = [xx[0]-2*ex[0], xx[-1]+2*ex[-1]]
     y0 = [0, 0]
     cmd = ["xpaset", access_point, "plot", "data", "xy"]
-
-    with subprocess.Popen(cmd, stdin=subprocess.PIPE) as xpa:
-        for vv in zip(x0, y0):
-            pair = " ".join([str(x) for x in vv])+"\n"
-            pb = pair.encode()
-            xpa.stdin.write(pb)
-        xpa.communicate()
+    __pipe_values_to_plot(cmd, zip(x0, y0))
 
     xpa_plot_cmd(access_point, "shape none")
     xpa_plot_cmd(access_point, "shape fill no")
@@ -119,18 +110,34 @@ def blt_plot_delchisqr(access_point, xx, ex, yy, ey, y_label):
     xpa_plot_cmd(access_point, "dash yes")
 
     # Plot the data
-    cmd = ["xpaset", access_point, "plot", "data", "xyexey"]
+    step_x = [x-2*e for x, e in zip(xx,ex)]
+    step_x.append(xx[-1]+2*ex[-1])
 
-    with subprocess.Popen(cmd, stdin=subprocess.PIPE) as xpa:
-        for vv in zip(xx, yy, ex, ey):
-            pair = " ".join([str(x) for x in vv])+"\n"
-            pb = pair.encode()
-            xpa.stdin.write(pb)
-        xpa.communicate()
+    step_y = [y for y in yy]   # make a copy
+    step_y.append(yy[-1])
+
+    # plot steps if binned data
+    if not all(ex==0):
+        cmd = ["xpaset", access_point, "plot", "data", "xy"]
+        __pipe_values_to_plot(cmd, zip(step_x, step_y))
+        make_pretty(access_point)
+        xpa_plot_cmd(access_point, "width 2")
+        xpa_plot_cmd(access_point, "line smooth step")
+        xpa_plot_cmd(access_point, "shape none")
+        xpa_plot_cmd(access_point, "shape fill no")
+        xpa_plot_cmd(access_point, "color cornflowerblue")
+    
+    cmd = ["xpaset", access_point, "plot", "data", "xyexey"]
+    __pipe_values_to_plot(cmd, zip(xx, yy, 2*ex, ey))
 
     make_pretty(access_point)
     xpa_plot_cmd(access_point, "title y {delta chisqr}")
     xpa_plot_cmd(access_point, "name {delchi}")
+    xpa_plot_cmd(access_point, "width 0")
+    if not all(ex==0):
+        xpa_plot_cmd(access_point, "shape none")
+        xpa_plot_cmd(access_point, "shape fill no")
+        
 
 
 def make_pretty(access_point):
