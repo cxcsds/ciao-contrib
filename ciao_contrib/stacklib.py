@@ -1,13 +1,11 @@
-
-# Python35Support
-
 #
-#  Copyright (C) 2011, 2012, 2016, 2019  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2011, 2012, 2016, 2019, 2025
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -32,9 +30,10 @@ The make_stackfile() is somewhat experimental, and may be removed.
 
 import os
 import tempfile
+import contextlib
 
 
-__all__ = ("make_stackfile", )
+__all__ = ("make_stackfile", "TemporaryStack")
 
 
 def make_stackfile(infiles, dir="/tmp/", suffix='', delete=True):
@@ -67,5 +66,45 @@ def make_stackfile(infiles, dir="/tmp/", suffix='', delete=True):
 
     tfh.flush()
     return tfh
+
+
+class TemporaryStack(contextlib.AbstractContextManager):
+    '''
+    A context manager that will create a stack for a list of values.
+
+    If abspath=True, then it will save the values in the tempfile
+    with the full path name. If false then it will save the values
+    with a preceeding "!" so as not to append the path to the satck
+    file onto the values.
+    '''
+
+    def __init__(self, values, abspath=False, *args, **kwargs):
+        'Create temp stack and populate it with values'
+
+        print(kwargs)
+        # use ASCDS_WORK_PATH for tmpdir if not set
+        if 'dir' not in kwargs:
+            kwargs['dir'] = os.environ["ASCDS_WORK_PATH"]
+
+        # use ".lis" for suffix if not set
+        if 'suffix' not in kwargs:
+            kwargs['suffix'] = ".lis"
+
+        # Use 'w' so stack is always overwritten
+        self.tfh = tempfile.NamedTemporaryFile(mode='w', *args,**kwargs)
+
+        for val in values:
+            if abspath:
+                putstr = os.path.abspath(str(val))
+            else:
+                putstr = "!"+str(val)
+            self.tfh.write(putstr+"\n")
+
+        self.tfh.flush()
+        self.name = self.tfh.name
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        'Close the stack and delete file'
+        self.tfh.close()
 
 # End
