@@ -81,7 +81,6 @@ class TemporaryStack(contextlib.AbstractContextManager):
     def __init__(self, values, abspath=False, *args, **kwargs):
         'Create temp stack and populate it with values'
 
-        print(kwargs)
         # use ASCDS_WORK_PATH for tmpdir if not set
         if 'dir' not in kwargs:
             kwargs['dir'] = os.environ["ASCDS_WORK_PATH"]
