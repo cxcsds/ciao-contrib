@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2019-2023  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2019-2023, 2025 Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -29,26 +29,6 @@ import ciao_contrib.logger_wrapper as lw
 lw.initialize_logger("dax")
 lgr = lw.get_logger("dax")
 lw.set_verbosity(0)
-
-
-def check_unique(xpa):
-    'Make sure only 1 xpa server is listening'
-
-    cmd = ['xpaaccess', '-n', xpa]
-    try:
-        # xpaaccess returns num proc as exit status
-        num = sp.run(cmd, check=False, stdout=sp.PIPE).stdout
-    except sp.CalledProcessError as bad:
-        raise RuntimeError("Cannot access "+xpa) from bad
-
-    if num == '' or num is None or 0 == int(num):
-        raise RuntimeError("What happened to ds9?")
-
-    if int(num) != 1:
-        raise RuntimeError("Multiple ({}) ds9's are ".format(num) +
-                           "running using the same title: " +
-                           "'{}'.".format(xpa) +
-                           "  Please close the other windows and restart.")
 
 
 class ImageProcTask():
@@ -1964,7 +1944,6 @@ def doit():
     'Main routine'
     myxpa = sys.argv[1]
     toolname = sys.argv[2]
-    check_unique(myxpa)
     tool = map_tool_to_object(toolname, myxpa, sys.argv[3:])
     tool.run()
 
