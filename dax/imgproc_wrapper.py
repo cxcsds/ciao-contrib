@@ -1895,3 +1895,143 @@ class Srcflux(ImageProcTaskTextOut):
         for outfile in outfiles:
             if "yes" == pget("dax", "prism"):
                 self.xpaset_p(["prism", outfile])
+
+
+class Srcextent(ImageProcTaskTextOut):
+    'CIAO srcextent script'
+
+    toolname = 'srcextent'
+
+
+    def _sim_psf(self):
+        import paramio as pio
+        randseed = pio.pget("dax", "random_seed")
+
+        xpos, ypos = self.get_coords()
+        auxfiles = self.find_aux()
+
+        from ciao_contrib.runtool import make_tool
+        dmcoords = make_tool("dmcoords")
+        dmcoords(infile=self.infile, op="sky", x=xpos, y=ypos,
+                 celfmt="deg")
+
+        simulate_psf = make_tool("simulate_psf")
+        simulate_psf.infile = self.infile
+        simulate_psf.outroot = self.outfile.name.rstrip(".fits")
+        simulate_psf.ra = dmcoords.ra
+        simulate_psf.dec = dmcoords.dec
+        simulate_psf.spectrumfile = ""
+        simulate_psf.monoenergy = 1.0
+        simulate_psf.flux = 1.0e-3
+        simulate_psf.blur = 0.07
+        simulate_psf.numiter = 1
+        simulate_psf.numsig = 1
+        simulate_psf.minsize = 256
+        simulate_psf.maxsize = 512
+        simulate_psf.readout_streak = False
+        simulate_psf.pileup = False
+        simulate_psf.ideal = True
+        simulate_psf.extended = False
+        simulate_psf.keep = True
+        simulate_psf.asolfile = auxfiles["asol"]
+        simulate_psf.random_seed = randseed
+        simulate_psf()
+
+        # Need to use the 
+        self.tool.psffile = simulate_psf.outroot+"_i0000.psf"
+
+
+
+    def _get_pixel_size_in_arcsec(self):
+        'Get pixel size and covert to arcsec'
+
+        def get_delta(names_to_check, scale_name, coord):
+            'Get delta for physical and wcs axes'
+            sky_name = ""
+            for check in names_to_check:
+                if check in coord_names:
+                    idx = coord_names.index(check)
+                    sky_name = img.get_axisnames()[idx]
+                    break
+
+            if sky_name == "":
+                raise ValueError(f"Cannot find {coord} coordinates")
+
+            xform = img.get_transform(sky_name)
+            sky_delta = [x.get_value() for x in xform.get_parameter_list()
+                         if scale_name in x.get_name().lower()]
+            if len(sky_delta) == 0:
+                raise ValueError(f"Cannot get {coord} pixel size")
+            
+            sky_delta = sky_delta[0]
+            if abs(sky_delta[0]) != abs(sky_delta[1]):
+                raise ValueError(f"{coord} pixels must be square")
+
+            return abs(sky_delta[0])
+
+        from pycrates import read_file
+        img = read_file(self.infile)
+        
+        coord_names = [x.lower() for x in img.get_axisnames()]
+                
+        sky_delta = get_delta(["sky", "pos", "(x,y)"], "scale", "physical")
+        cel_delta = get_delta(['eqpos', 'eqsrc', 'cel'], "delt", "celestial")
+
+        pixel_size = sky_delta*cel_delta*3600.0
+        return pixel_size
+
+    def _get_estimates(self):
+
+        from ciao_contrib.runtool import make_tool
+
+        regions = self.get_regions()
+        imgmom = make_tool("imgmoment")
+        
+        imgmom.infile = f"{self.infile}[(x,y)={regions}]"
+        imgmom()
+        
+        xpos = float(imgmom.x_mu)
+        ypos = float(imgmom.y_mu)
+        
+        mjr = float(imgmom.xsig)
+        mnr = float(imgmom.ysig)
+        
+        from math import sqrt
+        logical_size = sqrt(mjr*mjr+mnr*mnr)/sqrt(2.0)
+
+        delta = self._get_pixel_size_in_arcsec()
+
+        logical_size *= delta
+        
+        return xpos, ypos, logical_size
+
+
+    def set_args(self, args):
+        'args:  makepsf'
+
+        if args[0] == "1":
+            self._sim_psf()
+        else:
+            self.tool.psffile = ""
+
+        regions = self.get_regions()
+        
+        regfile = self.outfile.name.removesuffix(".fits")+".reg"
+        from region import CXCRegion
+        CXCRegion(regions).write(regfile, fits=True, clobber=True)
+
+        self.tool.srcfile = f"{self.infile}[(x,y)={regions}]"
+        self.tool.regfile = regfile
+        self.tool.verbose = 3
+
+        xx, yy, ss = self._get_estimates()
+        self.tool.x0 = xx
+        self.tool.y0 = yy
+        self.tool.srcsize = ss
+
+
+    def send_output(self):
+        'report results'
+        
+        pass
+        
