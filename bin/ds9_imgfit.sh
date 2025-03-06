@@ -1,8 +1,8 @@
 #! /bin/sh
 
 # 
-#  Copyright (C) 2010-2015,2018,2019  Smithsonian Astrophysical Observatory
-#
+#  Copyright (C) 2010-2015,2018,2019, 2025
+#  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -31,16 +31,6 @@ echo "# -------------------"
 echo ""
 echo `date`
 echo ""
-
-
-nxpa=`xpaaccess -n ${ds9}`
-if test $nxpa -ne 1
-then
-  echo "Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
-  exit 1
-fi
-
-
 
 src=`xpaget ${ds9} regions -format ciao -system physical source -strip yes selected | tr -s ";" "+" | sed 's,\+$,,;s,\+\-,\-,g'`
 if test "x${src}" = x
