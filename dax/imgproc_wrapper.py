@@ -1385,7 +1385,7 @@ class Simulatepsf(ImageProcTaskImgOut):
         dmcoords = make_tool("dmcoords")
         dmcoords(infile=self.tool.infile, op="sky", x=xpos, y=ypos,
                  celfmt="deg")
-        self.tool.outroot = self.outfile.name.rstrip(".fits")
+        self.tool.outroot = self.outfile.name.removesuffix(".fits")
         self.tool.ra = dmcoords.ra
         self.tool.dec = dmcoords.dec
         self.tool.spectrumfile = ""
@@ -1903,7 +1903,7 @@ class Srcextent(ImageProcTaskTextOut):
     toolname = 'srcextent'
 
 
-    def _sim_psf(self):
+    def _sim_psf(self, mono_energy):
         import paramio as pio
         randseed = pio.pget("dax", "random_seed")
 
@@ -1917,11 +1917,11 @@ class Srcextent(ImageProcTaskTextOut):
 
         simulate_psf = make_tool("simulate_psf")
         simulate_psf.infile = self.infile
-        simulate_psf.outroot = self.outfile.name.rstrip(".fits")
+        simulate_psf.outroot = self.outfile.name.removesuffix(".fits")
         simulate_psf.ra = dmcoords.ra
         simulate_psf.dec = dmcoords.dec
         simulate_psf.spectrumfile = ""
-        simulate_psf.monoenergy = 1.0
+        simulate_psf.monoenergy = mono_energy
         simulate_psf.flux = 1.0e-3
         simulate_psf.blur = 0.07
         simulate_psf.numiter = 1
@@ -1937,10 +1937,8 @@ class Srcextent(ImageProcTaskTextOut):
         simulate_psf.random_seed = randseed
         simulate_psf()
 
-        # Need to use the 
+        # Need to use the _i0000.psf file since it has not been normalized
         self.tool.psffile = simulate_psf.outroot+"_i0000.psf"
-
-
 
     def _get_pixel_size_in_arcsec(self):
         'Get pixel size and covert to arcsec'
@@ -2007,10 +2005,10 @@ class Srcextent(ImageProcTaskTextOut):
 
 
     def set_args(self, args):
-        'args:  makepsf'
+        'args:  makepsf energy'
 
         if args[0] == "1":
-            self._sim_psf()
+            self._sim_psf(float(args[1]))
         else:
             self.tool.psffile = ""
 
@@ -2031,7 +2029,7 @@ class Srcextent(ImageProcTaskTextOut):
 
 
     def send_output(self):
-        'report results'
+        'report results, just using verbose=3 output for this tool'
         
         pass
         
