@@ -31,7 +31,7 @@ from pycrates import read_file
 
 
 __toolname__ = "fine_astro"
-__revision__ = "23 October 2024"
+__revision__ = "18 February 2025"
 
 WARN_LARGE_SHIFT = 3.0
 WARN_LARGE_OFFSET = 4.0
@@ -418,7 +418,7 @@ def detect_sources(obis, pars, out_dirs):
         verb1("Running pre-detect merge_obs")
         evtlist = [f"{oo.get_evtfile()}{pars['det_filter']}" for oo in obis]
 
-        merge_dir = os.path.join(out_dirs.root_dir,out_dirs.pre_detect)
+        merge_dir = os.path.join(out_dirs.root_dir, out_dirs.pre_detect)
         if merge_dir:
             os.makedirs(merge_dir, exist_ok=True)
 
@@ -520,10 +520,14 @@ def main():
     # ~ from ciao_contrib._tools.fileio import outfile_clobber_checks
     # ~ outfile_clobber_checks(pars["clobber"], pars["outfile"])
 
-    out_dirs = OutputDirs()
+    if pars["outroot"] == "":
+        raise IOError("ERROR: outroot is blank")
 
-    out_dirs.root_base = os.path.basename(pars["outroot"])
+    out_dirs = OutputDirs()
     out_dirs.root_dir = os.path.dirname(pars["outroot"])
+    out_dirs.root_base = os.path.basename(pars["outroot"])
+    if out_dirs.root_base == "":
+        raise IOError("ERROR: outroot must have an output root file name with an optional path name.")
 
     from ciao_contrib._tools import merging
     obis = merging.validate_obsinfo(pars["infile"])
