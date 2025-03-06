@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2011, 2015, 2016, 2018, 2019
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2011, 2015, 2016, 2018, 2019, 2025
+#  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -466,24 +466,28 @@ def search_chandra_archive(ra, dec, size=0.1,
     # interface, so do it manually (if there is any filtering
     # needed).
     #
-    if out is None:
+    nsearch = len(out)
+    if out is None or nsearch == 0:
         v3("Search returned no matches")
         return None
-    elif grating is None:
-        v3("Search returned {} rows".format(len(out)))
+
+    if grating is None:
+        v3(f"Search returned {nsearch} rows")
         return out
-    else:
-        v3("Original search has {} rows".format(len(out)))
-        v3("Applying grating filters: {}".format(gfilters))
-        idx = False
-        for g in gfilters:
-            idx |= out['Grating'] == g
-        if np.any(idx):
-            v3("Filtering leaves {} rows".format(idx.sum()))
-            return out[idx]
-        else:
-            v3("Filtered out all rows")
-            return None
+
+    v3(f"Original search has {nsearch} rows")
+    v3(f"Applying grating filters: {gfilters}")
+    idx = False
+    for g in gfilters:
+        idx |= out['Grating'] == g
+
+    nmatch = idx.sum()
+    if nmatch > 0:
+        v3(f"Filtering leaves {nmatch} rows")
+        return out[idx]
+
+    v3("Filtered out all rows")
+    return None
 
 
 # Why not return a sturctured array?
@@ -516,6 +520,7 @@ def get_chandra_obs(sr, ra=None, dec=None, fmt=None):
       decstr         dec in format given by fmt
 
     The values are stored in Python lists, not NumPy arrays.
+
     """
 
     colmap = [('ObsId', 'obsid'),
