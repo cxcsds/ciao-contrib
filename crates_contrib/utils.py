@@ -898,7 +898,9 @@ class SimpleCoordTransform:
     def _convert(self, direction, mappings, x, y):
         """Convert a single (x,y) using the direction and mappings."""
 
-        pt = [[x, y]]
+        # Need to make sure x and y are float to avoid Transform bug
+        # when inputs are integer (forces output to be integer)
+        pt = [[x * 1.0, y * 1.0]]
         for trinfo in mappings:
             pt = getattr(trinfo["transform"], direction)(pt)
 
