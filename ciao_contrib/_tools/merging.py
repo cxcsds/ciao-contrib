@@ -49,6 +49,7 @@ import ciao_contrib._tools.run as run
 import ciao_contrib._tools.utils as utils
 
 from ciao_contrib._tools.headers import HeaderMerge
+from ciao_contrib.stacklib import TemporaryStack
 
 __all__ = (
     "match_obsid",
@@ -2869,15 +2870,16 @@ def merge_psfmaps(mergetype, psfmap, psfmap_files, expmap_files,
     outfile = "{}[PSFMAP]".format(psfmap)
     if mergetype in dmfilttypes:
 
-        run.punlearn("dmimgfilt")
-        args = ["infile={}".format(','.join(psfmap_files)),
-                "outfile={}".format(outfile),
-                "function={}".format(mergetype),
-                "mask=point(0,0)",
-                "lookupTab={}".format(lookupTable),
-                "clobber={}".format(clstr),
-                "verbose={}".format(verbose)]
-        run.run("dmimgfilt", args)
+        with TemporaryStack(psfmap_files, dir=tmpdir) as tmp_stk:
+            run.punlearn("dmimgfilt")
+            args = ["infile=@{}".format(tmp_stk.name),
+                    "outfile={}".format(outfile),
+                    "function={}".format(mergetype),
+                    "mask=point(0,0)",
+                    "lookupTab={}".format(lookupTable),
+                    "clobber={}".format(clstr),
+                    "verbose={}".format(verbose)]
+            run.run("dmimgfilt", args)
 
     elif mergetype == 'exptime':
 
