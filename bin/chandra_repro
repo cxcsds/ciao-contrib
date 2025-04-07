@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "24 February 2025"
+version = "07 April 2025"
 
 # import standard python modules as required
 #
@@ -1239,7 +1239,11 @@ def get_inputs(params):
     if not os.path.isfile(params["bias0_file"]) and params["instrume"] == 'ACIS' and params["badpixel"] == True:
         error_out(params,"Could not locate bias0 fits file in: " + params["secondarydir"],'input error')
     if not os.path.isfile(params["mtl1_file"]) and params["__obc_mode__"] is True:
-        error_out(params,"Could not locate mtl1 fits file in OBC mode")
+        error_out(params,"Could not locate mtl1 fits file in OBC mode", 'input error')
+
+    if params["grating"] != "NONE":
+        if params["tg_zo_position"] == "evt2" and params["tgmsk_file"] == "":
+            error_out(params, "Could not locate evt2 file with tg_zo_position=evt2", 'input error')
 
     #!### Verify asol1 list exists and is in chronological order ###
     v5("Asol1 file before verify list: " + params["asol1_file"])
@@ -2072,6 +2076,9 @@ def copy_tgmask_from_evt2( params ):
     outdir       = params["outdir"]
     root         = params["root"]
     tgmask = os.path.join(outdir, root + '_tgmask.fits')
+
+    if (len(params["tgmsk_file"]) == 0):
+        raise IOError("ERROR: Could not locate evt2 file. Unable to copy REGION block for gratings processing.")
 
     v1("Copy existing [REGION] block from evt2 file to use with tg_resolve_events")
     dmcopy( params["tgmsk_file"], tgmask, clobber=params["clobber"])
