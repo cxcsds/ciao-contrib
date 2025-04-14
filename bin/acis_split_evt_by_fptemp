@@ -22,7 +22,6 @@
 
 import os
 import sys
-import stk
 from pycrates import read_file
 from ciao_contrib.runtool import make_tool
 import ciao_contrib.logger_wrapper as lw
@@ -47,17 +46,40 @@ verb1 = log_wrapper(lw.get_logger(__toolname__).verbose1)
 verb2 = log_wrapper(lw.get_logger(__toolname__).verbose2)
 
 
+def get_caldb_files(infile):
+    "Lookup CALDB files based on infile"
+
+    from caldb4 import Caldb
+    cc = Caldb(infile=infile)
+    cc.product = "SC_MATRIX"
+    cc.ccd_id = "0"
+    temps = ",".join([str(x) for x in range(153, 178, 2)])
+    cc.fp_temp = temps
+    cc.fidelity = "0-99"
+    prods = cc.search
+
+    if prods is None or len(prods) == 0:
+        raise IOError("ERROR: P2_RESP files cannot be located in the CALDB for this event file")
+
+    # Remove the extension: foo.fits[n] -> foo.fits
+    fnames = [x.split('[')[0] for x in prods]
+
+    return fnames
+
+
 def get_fp_temp_limits(pars):
     '''Get FP_TEMP limits from the CALDB files
 
     We have to parse the CBD* keywords'''
 
-    p2_resp_dir = os.path.join(os.environ["CALDB"], "data", "chandra",
-                               "acis", "p2_resp")
-    assert os.path.isdir(p2_resp_dir), "CALDB is not configured as expected"
+    # ~ import stk
+    # ~ p2_resp_dir = os.path.join(os.environ["CALDB"], "data", "chandra",
+    # ~                            "acis", "p2_resp")
+    # ~ assert os.path.isdir(p2_resp_dir), "CALDB is not configured as expected"
+    # ~ p2resp = stk.build(os.path.join(p2_resp_dir,
+    # ~                                 pars['p2_resp_root'])+"*.fits")
 
-    p2resp = stk.build(os.path.join(p2_resp_dir,
-                                    pars['p2_resp_root'])+"*.fits")
+    p2resp = get_caldb_files(pars["infile"])
 
     limits = []
     for p2_resp_file in p2resp:
@@ -80,6 +102,9 @@ def get_fp_temp_limits(pars):
             assert len(vals.split("-")) == 2, f"{kw} keyword in {p2_resp_file} is not formatted as expected"
             lo, hi = [float(x) for x in vals.split("-")]
             limits.append((lo, hi))
+
+    if len(limits) == 0:
+        raise IOError("ERROR: Could not find FP_TEMP dependency in CALDB files for this event file.")
 
     return limits
 
@@ -136,8 +161,7 @@ def create_and_apply_gtis(pars, fp_limits):
         dmhedit = make_tool("dmhedit")
         dmhedit.verbose = pars["verbose"]
         mid_temp = (lo + hi) / 2.0
-        verb2(dmhedit(outfile, key="FP_TEMP", op="add",
-                      value=mid_temp))
+        verb2(dmhedit(outfile, key="FP_TEMP", op="add", value=mid_temp))
 
         verb2(dmhedit(outfile, key="COMMENT", op="add",
                       value=f"File has been filtered for {lo} <= FP_TEMP < {hi}"))
@@ -146,19 +170,25 @@ def create_and_apply_gtis(pars, fp_limits):
         add_tool_history(outfile, __toolname__,
                          pars, toolversion=__revision__)
 
-    def _slice_and_dice(lo, hi):
-        'Process a single FP temp range'
+    # Get all GTIs first
+    gtis = []
+    for lo, hi in fp_limits:
         if (gti := __create_gti(lo, hi)) is None:
-            return None
+            continue
+        gtis.append((gti, lo, hi))
+
+    if len(gtis) == 0:
+        raise IOError("ERROR: Not good time intervals found")
+
+    if len(gtis) == 1:
+        raise IOError("ERROR: Only 1 FP_TEMP range has good time. No need to run this script")
+
+    # Split event file
+    evt_slices = []
+    for gti, lo, hi in gtis:
         evt = __apply_gti(gti, lo, hi)
         __update_metadata(evt)
-        return evt
-
-    evt_slices = []
-    for lo, hi in fp_limits:
-        if (evt_file := _slice_and_dice(lo, hi)) is None:
-            continue
-        evt_slices.append(evt_file)
+        evt_slices.append(evt)
 
     return evt_slices
 
@@ -190,8 +220,9 @@ def load_parameters():
     if pars['mtlfile'].lower() in ['', 'indef']:
         from ciao_contrib.ancillaryfiles import find_ancillary_files
         aux = find_ancillary_files(pars["infile"], ["MTL"], absolute=False)
-        if len(aux) == 0:
+        if len(aux) == 0 or aux[0] is None:
             raise IOError("Cannot locate mission time line file. Please specify")
+
         pars["mtlfile"] = aux[0][0]
 
     return pars
