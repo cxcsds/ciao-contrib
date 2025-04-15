@@ -228,11 +228,34 @@ def load_parameters():
     return pars
 
 
+def simple_sanity_checks(infile):
+    'Just some simple checks to help users know when this script is useful'
+
+    tab = read_file(infile)
+
+    if tab.get_key_value("INSTRUME") != "ACIS":
+        raise IOError("ERROR: This script is only for ACIS data")
+
+    if tab.get_key_value("GRATING") in ["HETG", "LETG"]:
+        verb0("WARNING: FP_TEMP changes do not affect dispersed grating spectra. Only use if analyzing the 0th order spectrum")
+
+    detnam = tab.get_key_value("DETNAM")
+    _fi = [0, 1, 2, 3, 4, 6, 8, 9]
+    if not any(str(x) in detnam for x in _fi):
+        verb0("WARNING: No front side illuminated CCDs are listed in the DETNAM keyword. FP_TEMP calibration is only for FI chips.")
+
+    ccds = tab.get_column("ccd_id").values
+    uniq_ccd = set(ccds)
+    if not any(x in uniq_ccd for x in _fi):
+        verb0("WARNING: No front side illuminated CCDs are found in the CCD_ID column. FP_TEMP calibration is only for FI chips.")
+
+
 @lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
     'Main routine'
 
     pars = load_parameters()
+    simple_sanity_checks(pars["infile"])
     fp_limits = get_fp_temp_limits(pars)
     evt_slices = create_and_apply_gtis(pars, fp_limits)
     make_output_stack_file(pars, evt_slices)
