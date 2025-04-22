@@ -780,7 +780,7 @@ def download_progress(url, size, outfile,
     headers['Range'] = 'bytes={}-{}'.format(startfrom, size - 1)
 
     time0 = time.time()
-    conn.request('GET', url, headers=headers)
+    conn.request('GET', purl.path, headers=headers)
     with conn.getresponse() as rsp:
 
         # Assume that rsp.status != 206 would cause some form

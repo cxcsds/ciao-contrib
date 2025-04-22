@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2016-2023
+#  Copyright (C) 2016-2024
 #            Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 #
 
 __toolname__ = "blanksky"
-__revision__  = "07 November 2023"
+__revision__  = "18 March 2024"
 
 
 import os
@@ -162,8 +162,6 @@ def e_norm(evtfile,bkgfile,chip,bkgparams,instrument):
 
     det = instrument
 
-    dmlist = make_tool("dmlist")
-
     if det == "ACIS":
         det = "ccd_id"
     else:
@@ -171,17 +169,8 @@ def e_norm(evtfile,bkgfile,chip,bkgparams,instrument):
 
     ccd = f"[{det}={chip}]"
 
-    dmlist.punlearn()
-    dmlist.infile = f"{evtfile}{ccd}{bkgparams}"
-    dmlist.opt = "counts"
-
-    obs_counts = float(dmlist())
-
-    dmlist.punlearn()
-    dmlist.infile = f"{bkgfile}{ccd}{bkgparams}"
-    dmlist.opt = "counts"
-
-    bkg_counts = float(dmlist())
+    obs_counts = float(pcr.read_file(f"{evtfile}{ccd}{bkgparams}").get_nrows())
+    bkg_counts = float(pcr.read_file(f"{bkgfile}{ccd}{bkgparams}").get_nrows())
 
     return obs_counts/bkg_counts
 
@@ -430,8 +419,7 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
         a_p_e.tgainfile = f"{aciscaldb}/cti/{ctifile}"
 
         try:
-            a_p_e.infile = infile
-            a_p_e()
+            a_p_e(infile = infile)
 
         except OSError:
             # add a time and expno column to the blanksky file, so acis_process_events
@@ -448,8 +436,7 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
 
                 dmtcalc()
 
-                a_p_e.infile = bkg_col.name
-                a_p_e()
+                a_p_e(infile = bkg_col.name)
 
     else:
         shutil.copyfile(infile,outfile)
@@ -457,12 +444,15 @@ def apply_gain(infile,outfile,kw,tmpdir,verbose):
 
 
 def get_par(argv):
-    """ Get data_products parameters from parameter file """
+    """
+    Get data_products parameters from parameter file
+    """
+
     pfile = open_param_file(argv,toolname=__toolname__)["fp"]
 
     # Common parameters:
-    params = {}
-    pars = {}
+    params: dict = {}
+    pars: dict = {}
 
     # load all parameters to dictionary
     pars["evtfile"] = params["evtfile"] = paramio.pgetstr(pfile,"evtfile")
@@ -561,15 +551,12 @@ def get_par(argv):
             raise ValueError("The bkgparams parameter requires an 'energy' or 'pi' filter")
 
     ## error out if there are spaces in absolute paths of the various parameters
-    if " " in os.path.abspath(pars["evtfile"]):
-        raise IOError(f"The absolute path for the evtfile, '{os.path.abspath(pars['evtfile'])}', cannot contain any spaces")
+    checklist_spaces = [(pars["evtfile"], "input event"),
+                        (pars["outfile"], "output")]
+    checklist_spaces.extend([(asol, "asol") for asol in params["asol"]])
 
-    if " " in os.path.abspath(pars["outfile"]):
-        raise IOError(f"The absolute path for the output file, '{pars['outfile']}', cannot contain any spaces")
-
-    for asol in params["asol"]:
-        if " " in os.path.abspath(asol):
-            raise IOError(f"The absolute path for the asol file, '{os.path.abspath(asol)}', cannot contain any spaces")
+    for fn,filetype in checklist_spaces:
+        _check_no_spaces(fn,filetype)
 
     # close parameters block after validation
     paramio.paramclose(pfile)
@@ -577,6 +564,14 @@ def get_par(argv):
     v3(f"  Parameters: {params}")
 
     return params,pars
+
+
+
+def _check_no_spaces(fn,filetype):
+    abspath = os.path.abspath(fn)
+
+    if " " in abspath:
+        raise IOError(f"The absolute path for the {filetype} file, '{abspath}', cannot contain any spaces")
 
 
 
@@ -882,7 +877,6 @@ def doit():
     # will also use the filtered event file downstream to calculate scale factors for each chip
 
     reproject_events = make_tool("reproject_events")
-    dmlist = make_tool("dmlist")
     dmcopy = make_tool("dmcopy")
     dmhedit = make_tool("dmhedit")
 
@@ -907,11 +901,7 @@ def doit():
                 else:
                     e_particle = bkgparams
 
-            dmlist.punlearn()
-            dmlist.infile = f"{check_evt.name}{e_particle}"
-            dmlist.opt = "counts"
-
-            check_counts = int(dmlist())
+            check_counts = pcr.read_file(f"{check_evt.name}{e_particle}").get_nrows()
 
             if check_counts == 0:
                 raise IOError("The input event file has zero high-energy \
@@ -998,12 +988,12 @@ written to the 'BKGSCALE' header keyword.")
         else:
             v1(f"Calculated scale factors for 'weight_method={method}':")
 
-        for n in scale:
-            v1(f"    ACIS-{n[0]}: {n[1]} written to the 'BKGSCAL{n[0]}' header keyword.")
+        for ccd,weight in scale:
+            v1(f"{'ACIS':>8}-{ccd}: {weight} written to the 'BKGSCAL{ccd}' header keyword.")
 
     add_tool_history(f"{outdir}{outfile}",__toolname__,pars)
 
 
 
-if __name__  == "__main__":
+if __name__ == "__main__":
     doit()

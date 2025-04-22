@@ -778,6 +778,37 @@ tg_zo_position="5:35:15.7594,-5:23:10.191"
       </PARAM>
 
 
+      <PARAM name="patch_hrc_ssc" def="no" type="boolean" reqd="no">
+        <SYNOPSIS>
+            Look for evidence of HRC Secondary Science Corruption (SSC) and
+            patch dead-time factors if detected.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+             SSC results from a byte-shift anomaly which occasionally causes a
+             portion of the housekeeping data to be corrupted.  The symptom is
+             dropouts in the dead-time-factor (dtf) which can be seen in a plot
+             of the dtf1 file's dtf valuse vs time, where the dtf is
+             significantly (&gt;10%) below the median value (~1.0).
+          </PARA>
+        <PARA>
+         Event data are good during the SSC times.  Standard data
+         processing, however, will create multiple GTI intervals around the
+         low dtf times, rejecting some events, and lowering the
+         dead-time-correction factor (DTDOR).
+        </PARA>
+        <PARA>
+          Note: telemetry saturation from a bright source can also 
+          lower the dtf; however, this tends to be a more continuous and sustained
+          lowering of the value.  
+        </PARA>
+
+
+        </DESC>
+      </PARAM>
+
+
+
       <PARAM name="cleanup" def="yes" type="boolean" reqd="no">
         <SYNOPSIS>
 	  Cleanup intermediate files on exit
@@ -819,6 +850,59 @@ tg_zo_position="5:35:15.7594,-5:23:10.191"
         </DESC>
       </PARAM>
     </PARAMLIST>
+
+
+<ADESC title="Changes in the scripts 4.17.1 (April 2025) release">
+  <PARA title="Gzip'ed files">
+    Adjusted the logic that deals with finding multiple file names for the
+    same file type (eg two bad pixel files). If the files names differ only in the
+    presence of the ".gz" suffix, then now the ".gz" file is ignored. Previously
+    this would trigger an error.
+  </PARA>
+  <PARA title="Missing evt2 files">
+    When processing gratings datasets with the default tg_zo_position=evt2,
+    the Level 2 event file is a required input. A new check has been added
+    to verify the evt2 can be located before processing begins.  
+  </PARA>
+</ADESC>
+
+
+<ADESC title="Changes in the scripts 4.17.0 (December 2024) release">
+  <PARA title="New HRC Science Science Corruption tool">
+    A new parameter has been added: patch_hrc_ssc, which when set to 
+    "yes" will run the patch_hrc_ssc tool.  This tool looks for
+    corruption in the HRC secondary science data and will replace (patch)
+    the corrupted values in the dead time factors file. This typically results
+    in a very slightly higher average DTCOR value and elimination of some
+    very short, erroneously tagged bad time intervals.
+  </PARA>
+</ADESC>
+
+
+<ADESC title="Changes in the scripts 4.16.2 (August 2024) release">
+  <PARA title="On Board Computer (OBC) mode">
+    Some observations, mostly of either the Earth or the Moon, were
+    done without using the aspect camera to determine attitude and pointing.
+    These observations rely on the On Board Computer (OBC) aspect 
+    solution, osol1.fits.  This update allows chandra_repro to use the
+    OBC solution files for these observations.  
+  </PARA>
+  <PARA title="Solar System Objects">
+    This fixes a problem with some solar system objects, including
+    the OBC mode objects, that have multiple aspect solution files;
+    they must be merged into a single file before running sso_freeze.
+    This change also makes a failure in sso_freeze non-fatal. The
+    rest of the event processing will proceed if sso_freeze is unable to
+    compute object-centered coordinates. This happens for most of the EARTH
+    observations. 
+  </PARA>
+  <PARA title="Fix for older datasets">
+    Internal change to how the r4_header_update script is run to 
+    deal with observations that are missing the "*FILE" keywords needed
+    to automatically locate the parameter block file and aspect solution
+    file(s).
+  </PARA>
+</ADESC>
 
 <ADESC title="Changes in the scripts 4.15.0 (December 2022) release">
   <PARA>
@@ -1303,6 +1387,6 @@ The script now runs tgdetect2 for grating data when recreate_tg_mask=yes
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>December 2022</LASTMODIFIED>
+    <LASTMODIFIED>April 2025</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>

@@ -622,12 +622,12 @@ def find_output_grid(evtfile, asolfile, maskfile,
         evtcopy = tempfile.NamedTemporaryFile(dir=tmpdir,
                                               suffix='.evt')
 
-        # Important to make a copy here since do not want option=all
+        # Important to make a copy here since do not want parameters
         # to get set in the default dmcopy object.
         #
         dmcopy = runtool.make_tool('dmcopy')
         dmcopy.punlearn()
-        dmcopy(evtfile, evtcopy.name, option="all", clobber=True)
+        dmcopy(evtfile, evtcopy.name, clobber=True)
         gtifilter = "[@{}]".format(evtcopy.name)
 
     # What SKYFOV method to use?

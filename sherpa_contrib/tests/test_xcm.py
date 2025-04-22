@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2021
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2021, 2024
+#  Smithsonian Astrophysical Observatory
 #
 #
 # This program is free software; you can redistribute it and/or modify
@@ -49,11 +49,14 @@ def check(expected, answer):
 def test_powerlaw():
     """model powerlaw"""
 
-    expected = """from sherpa.astro.ui import *
+    expected = """import numpy as np
+from sherpa.astro.ui import *
 
 
 # model powerlaw
 m1 = create_model_component('xspowerlaw', 'm1')
+
+# Parameter settings
 
 # Set up the model expressions
 #
@@ -74,12 +77,15 @@ set_source(1, m1)
 def test_absorbed_powerlaw(expr, expected):
     """model powerlaw"""
 
-    expected = f"""from sherpa.astro.ui import *
+    expected = f"""import numpy as np
+from sherpa.astro.ui import *
 
 
 # model {expr}
 m1 = create_model_component('xsphabs', 'm1')
 m2 = create_model_component('xspowerlaw', 'm2')
+
+# Parameter settings
 
 # Set up the model expressions
 #
@@ -91,22 +97,25 @@ set_source(1, {expected})
     check(expected, answer)
 
 
-@pytest.mark.parametrize('expr',
-                         ['cflux(powerlaw)',
-                          'cflux * powerlaw'])
-def test_cflux_powerlaw(expr):
+@pytest.mark.parametrize('expr,expected',
+                         [('cflux(powerlaw)', "m1((m2))"),
+                          ('cflux * powerlaw', "m1(m2)")])
+def test_cflux_powerlaw(expr, expected):
     """cflux of powerlaw"""
 
-    expected = f"""from sherpa.astro.ui import *
+    expected = f"""import numpy as np
+from sherpa.astro.ui import *
 
 
 # model {expr}
 m1 = create_model_component('xscflux', 'm1')
 m2 = create_model_component('xspowerlaw', 'm2')
 
+# Parameter settings
+
 # Set up the model expressions
 #
-set_source(1, m1(m2))
+set_source(1, {expected})
 """
 
     f = StringIO(f'model {expr}')
@@ -116,8 +125,8 @@ set_source(1, m1(m2))
 
 # I'd like all these to map to the same string...
 @pytest.mark.parametrize('expr,expected',
-                         [('cflux*(phabs * powerlaw )', 'm1(m2 * m3)'),
-                          ('cflux(phabs(powerlaw))', 'm1(m2 * (m3))'),
+                         [('cflux*(phabs * powerlaw )', 'm1((m2 * m3))'),
+                          ('cflux(phabs(powerlaw))', 'm1((m2 * (m3)))'),
                           ('cflux*phabs*powerlaw', 'm1(m2 * m3)'),
                           ('cflux*phabs(powerlaw)', 'm1(m2 * (m3))')
                          ])
@@ -128,13 +137,16 @@ def test_cflux_absorbed_powerlaw(expr, expected):
     to ensure all these mean the same thing.
     """
 
-    expected = f"""from sherpa.astro.ui import *
+    expected = f"""import numpy as np
+from sherpa.astro.ui import *
 
 
 # model {expr}
 m1 = create_model_component('xscflux', 'm1')
 m2 = create_model_component('xsphabs', 'm2')
 m3 = create_model_component('xspowerlaw', 'm3')
+
+# Parameter settings
 
 # Set up the model expressions
 #
@@ -148,20 +160,23 @@ set_source(1, {expected})
 
 # I'd like all these to map to the same string...
 @pytest.mark.parametrize('expr,expected',
-                         [('phabs * cflux(powerlaw )', 'm1 * m2(m3)'),
-                          ('phabs(cflux(powerlaw))', 'm1 * (m2(m3))'),
-                          pytest.param('phabs(cflux*powerlaw)', 'm1 * (m2(m3))', marks=pytest.mark.xfail)
+                         [('phabs * cflux(powerlaw )', 'm1 * m2((m3))'),
+                          ('phabs(cflux(powerlaw))', 'm1 * (m2((m3)))'),
+                          ('phabs(cflux*powerlaw)', 'm1 * (m2(m3))')
                          ])
 def test_absorbed_cflux_powerlaw(expr, expected):
     """absorbed cflux powerlaw"""
 
-    expected = f"""from sherpa.astro.ui import *
+    expected = f"""import numpy as np
+from sherpa.astro.ui import *
 
 
 # model {expr}
 m1 = create_model_component('xsphabs', 'm1')
 m2 = create_model_component('xscflux', 'm2')
 m3 = create_model_component('xspowerlaw', 'm3')
+
+# Parameter settings
 
 # Set up the model expressions
 #
@@ -182,13 +197,16 @@ def test_mtable_simple_expression():
     if path is None:
         pytest.skip("Need SHERPATESTDIR environment variable")
 
-    expected = f"""from sherpa.astro.ui import *
+    expected = f"""import numpy as np
+from sherpa.astro.ui import *
 
 
 # model mtable{{xspec-tablemodel-RCS.mod}}(zpowerlw)
 load_xstable_model('m1', 'xspec-tablemodel-RCS.mod')
 m1 = get_model_component('m1')
 m2 = create_model_component('xszpowerlw', 'm2')
+
+# Parameter settings
 
 # Set up the model expressions
 #
@@ -226,7 +244,8 @@ def test_mtable_complex_expression():
     if path is None:
         pytest.skip("Need SHERPATESTDIR environment variable")
 
-    expected = f"""from sherpa.astro.ui import *
+    expected = f"""import numpy as np
+from sherpa.astro.ui import *
 
 
 # model constant * phabs * ((zpowerlw)mtable{{xspec-tablemodel-RCS.mod}} + constant(atable{{xspec-tablemodel-RCS.mod}}))
@@ -239,9 +258,11 @@ m5 = create_model_component('xsconstant', 'm5')
 load_xstable_model('m6', 'xspec-tablemodel-RCS.mod')
 m6 = get_model_component('m6')
 
+# Parameter settings
+
 # Set up the model expressions
 #
-set_source(1, m1 * m2 *  ( * (m3) * m4 + m5 * (m6)))
+set_source(1, m1 * m2 * ((m3) * m4 + m5 * (m6)))
 """
 
     f = StringIO('model constant * phabs * ((zpowerlw)mtable{xspec-tablemodel-RCS.mod} + constant(atable{xspec-tablemodel-RCS.mod}))')
@@ -262,11 +283,14 @@ set_source(1, m1 * m2 *  ( * (m3) * m4 + m5 * (m6)))
 def test_param_powerlaw():
     """Check the parameter handling"""
 
-    expected = f"""from sherpa.astro.ui import *
+    expected = f"""import numpy as np
+from sherpa.astro.ui import *
 
 
 # model  powerlaw
 m1 = create_model_component('xspowerlaw', 'm1')
+
+# Parameter settings
 set_par(m1.PhoIndex, 1.7, min=-2, max=9)
 set_par(m1.norm, 0.023, max=1e+20)
 
@@ -286,13 +310,16 @@ set_source(1, m1)
 def test_param_powerlaw_links():
     """Check the parameter handling"""
 
-    expected = f"""from sherpa.astro.ui import *
+    expected = f"""import numpy as np
+from sherpa.astro.ui import *
 
 
 # model  constant(powerlaw + powerlaw)
 m1 = create_model_component('xsconstant', 'm1')
 m2 = create_model_component('xspowerlaw', 'm2')
 m3 = create_model_component('xspowerlaw', 'm3')
+
+# Parameter settings
 set_par(m1.factor, 2)
 set_par(m2.PhoIndex, 1.7, min=-2, max=9)
 set_par(m2.norm, 3, max=1e+20)

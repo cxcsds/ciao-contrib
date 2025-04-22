@@ -1,6 +1,6 @@
 #! /bin/sh
 # 
-#  Copyright (C) 2020  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2020, 2025  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -28,14 +28,6 @@ echo "# -------------------"
 echo ""
 echo `date`
 echo ""
-
-
-nxpa=`xpaaccess -n ${ds9}`
-if test $nxpa -ne 1
-then
-  echo "ERROR: Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
-  exit 1
-fi
 
 
 if test x`xpaget $ds9 mode` = xcrosshair
@@ -127,7 +119,7 @@ do
             
             echo "point $ex $ey # "point=circle text="{${energy},L${order}}"
             echo "point $ex $ey # "point=circle text="{${energy},L${order}}" | \
-              xpaset ${ds9} regions
+              xpaset ${ds9} regions -format ds9 -system physical
           
         else # HETG, do both
 
@@ -139,7 +131,7 @@ do
             
             echo "point $ex $ey # "point=circle text="{${energy},H${order}}"
             echo "point $ex $ey # "point=circle text="{${energy},H${order}}" | \
-              xpaset ${ds9} regions
+              xpaset ${ds9} regions -format ds9 -system physical
 
             punlearn dmcoords
             dmcoords "${f}" op=cel ra=$razo dec=$deczo energy=$energy order=$order \
@@ -149,7 +141,7 @@ do
             
             echo "point $ex $ey # "point=circle text="{${energy},M${order}}"
             echo "point $ex $ey # "point=circle text="{${energy},M${order}}" | \
-              xpaset ${ds9} regions
+              xpaset ${ds9} regions -format ds9 -system physical
 
         fi
 

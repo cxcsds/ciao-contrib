@@ -1,6 +1,6 @@
 #
-#  Copyright (C) 2010, 2011, 2012, 2014, 2015, 2016, 2019
-#            Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010 - 2012, 2014 - 2016, 2019, 2024
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -134,7 +134,7 @@ class CALDBReleaseParser(HTMLParser):
     def close(self):
         HTMLParser.close(self)
         if self.state != "finished":
-            raise IOError("incorrectly-nested tables; state={}".format(self.state))
+            raise IOError(f"incorrectly-nested tables; state={self.state}")
 
         st = self.store
 
@@ -158,12 +158,12 @@ class CALDBReleaseParser(HTMLParser):
                 if tag == "tr":
                     self.row_store = []
                 else:
-                    raise IOError("A new row has started with the tag: {}".format(tag))
+                    raise IOError(f"A new row has started with the tag: {tag}")
             if tag == "td":
                 if self.item_store is None:
                     self.item_store = ""
                 else:
-                    raise IOError("A new item has started but the item_store=[{}]".format(self.item_store))
+                    raise IOError(f"A new item has started but the item_store=[{self.item_store}]")
             return
 
         if self.state not in self.open_mode:
@@ -191,7 +191,7 @@ class CALDBReleaseParser(HTMLParser):
             elif tag == "tr":
                 r = self.row_store
                 if len(r) != 5:
-                    raise IOError("Unable to parse row: {0}".format(r))
+                    raise IOError(f"Unable to parse row: {r}")
                 self.store.append((r[0],
                                    todate(r[1]),
                                    todate(r[2]),
@@ -216,7 +216,7 @@ class CALDBReleaseParser(HTMLParser):
                 if self.item_store == "":
                     self.item_store = ds
                 else:
-                    self.item_store += " {0}".format(ds)
+                    self.item_store += f" {ds}"
 
 
 def get_caldb_releases(timeout=None):
@@ -267,46 +267,46 @@ def get_caldb_releases(timeout=None):
     # Note that the SSL context is explicitly
     # set to stop verification, because the CIAO 4.12 release has
     # seen some issues with certificate validation (in particular
-    # on Ubuntu and macOS systems).
+    # on Ubuntu and macOS systems). As python is now provided by
+    # conda this should not be a problem, but leave for now.
     #
     context = ssl._create_unverified_context()
 
-    v3("About to download {}".format(release_notes_url))
+    v3(f"About to download {release_notes_url}")
     try:
-        if timeout is None:
-            h = urlopen(release_notes_url, context=context)
-        else:
-            h = urlopen(release_notes_url, context=context, timeout=timeout)
+        kwargs = {"context": context}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+
+        with urlopen(release_notes_url, **kwargs) as h:
+            hcts = h.read().decode('utf-8')
 
     except URLError as ue:
-        v3(" - failed with {}".format(ue))
+        v3(f" - failed with {ue}")
         # Probably excessive attempt to make a "nice" error message
         #
         if hasattr(ue, "reason"):
             if hasattr(ue.reason, "errno") and \
                ue.reason.errno == socket.EAI_NONAME:
-                raise IOError("Unable to reach the CALDB site - is the network down?")
-            else:
-                raise IOError("Unable to reach the CALDB site - {}".format(ue.reason))
+                raise IOError("Unable to reach the CALDB site - is the network down?") from ue
 
-        elif hasattr(ue, "getcode"):
+            raise IOError(f"Unable to reach the CALDB site - {ue.reason}") from ue
+
+        if hasattr(ue, "getcode"):
             cval = ue.getcode()
             if cval == 404:
-                raise IOError("The CALDB site appears to be unreachable.")
-            else:
-                raise IOError("The CALDB site returned {}".format(ue))
+                raise IOError("The CALDB site appears to be unreachable.") from ue
 
-        else:
-            raise IOError("Unable to access the CALDB site - {}".format(ue))
+            raise IOError(f"The CALDB site returned {ue}") from ue
 
-    h = h.read().decode('utf-8')
+        raise IOError(f"Unable to access the CALDB site - {ue}") from ue
 
     try:
         p = CALDBReleaseParser()
-        p.feed(h)
+        p.feed(hcts)
         p.close()
-    except IOError:
-        raise IOError("Unable to parse the CALDB release table.")
+    except IOError as ie:
+        raise IOError("Unable to parse the CALDB release table.") from ie
 
     # use a deep copy so that the parser can be cleaned up
     # in case there's a lot of state squirreled away
@@ -334,10 +334,11 @@ def get_caldb_dir():
     caldb = os.getenv("CALDB")
     if caldb is None:
         raise IOError("CALDB environment variable is not defined!")
-    elif not os.path.isdir(caldb):
-        raise IOError("CALDB directory does not exist: {}".format(caldb))
-    else:
-        return caldb
+
+    if not os.path.isdir(caldb):
+        raise IOError(f"CALDB directory does not exist: {caldb}")
+
+    return caldb
 
 
 def get_caldb_installed(caldb=None):
@@ -370,7 +371,7 @@ def get_caldb_installed(caldb=None):
 
     for cname in ["CALDB_VER", "CALDB_DATE"]:
         if not cr.column_exists(cname):
-            raise IOError("Unable to find the {} column in the CALDB version file.".format(cname))
+            raise IOError(f"Unable to find the {cname} column in the CALDB version file.")
 
     cversion = pycrates.copy_colvals(cr, "CALDB_VER")[-1]
     cdate = pycrates.copy_colvals(cr, "CALDB_DATE")[-1]
@@ -446,8 +447,8 @@ def version_to_tuple(version):
     toks = version.split('.')
     try:
         out = [int(t) for t in toks]
-    except ValueError:
-        raise ValueError("Invalid version string '{}'".format(version))
+    except ValueError as ve:
+        raise ValueError(r"Invalid version string '{version}'") from ve
 
     return tuple(out)
 
@@ -506,12 +507,12 @@ def check_caldb_version(version=None):
         # a later revision.
         #
         if version not in [v[0] for v in rels["CALDB"]]:
-            raise IOError("The input CALDB version '{}' is unknown!".format(version))
+            raise IOError(f"The input CALDB version '{version}' is unknown!")
 
     iver = version_to_tuple(installed_ver)
     out = [v for (v, d) in rels["CIAO"] if version_to_tuple(v) > iver]
     if out == []:
-        return
+        return None
 
     out.sort(reverse=True)
     return (installed_ver, out[0])

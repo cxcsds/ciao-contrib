@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2016-2023
+# Copyright (C) 2016-2024
 #           Smithsonian Astrophysical Observatory
 #
 #
@@ -22,7 +22,7 @@
 #
 
 __toolname__ = "blanksky_image"
-__revision__  = "31 October 2023"
+__revision__  = "18 March 2024"
 
 
 import os
@@ -125,9 +125,9 @@ def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
     # match chips available in blanksky events file and the reference image file
     chips_img = []
 
-    for i in range(len(chips)):
+    for i,_ in enumerate(chips,start=1):
         try:
-            chips_img.extend(cr.get_subspace_data(i+1,dettype).range_min.tolist())
+            chips_img.extend(cr.get_subspace_data(i,dettype).range_min.tolist())
         except IndexError:
             continue
 
@@ -141,12 +141,12 @@ def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
     else:
         subspace_arg = "pi"
 
-    for i in range(len(chips)):
+    for i,_ in enumerate(chips,start=1):
         try:
-            component_info.append([i+1,
-                                   cr.get_subspace_data(i+1,dettype).range_min,
-                                   cr.get_subspace_data(i+1,subspace_arg).range_min[0],
-                                   cr.get_subspace_data(i+1,subspace_arg).range_max[0]])
+            component_info.append([i,
+                                   cr.get_subspace_data(i,dettype).range_min,
+                                   cr.get_subspace_data(i,subspace_arg).range_min[0],
+                                   cr.get_subspace_data(i,subspace_arg).range_max[0]])
 
         except IndexError:
             break
@@ -176,7 +176,7 @@ def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
     # in the background event file
     bkg_scaled = []
 
-    dmimgcalc_op = "+".join([f"img{n+1}" for n in range(len(chips))])
+    dmimgcalc_op = "+".join([f"img{n}" for n,_ in enumerate(chips,start=1)])
 
     outname = f"{outfile}{bkgmethod}_bgnd.img"
 
@@ -185,8 +185,8 @@ def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
                        chip)
                       for chip in chips]
 
-        args = [(bkg_scaled[i][0].name,
-                 bkg_scaled[i][1],
+        args = [(bg.name,
+                 chip,
                  component_info,
                  bkg_kw,
                  bkg,
@@ -194,13 +194,13 @@ def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
                  dmfilter,
                  xylimits,
                  crtype,
-                 verbose) for i in range(len(bkg_scaled))]
+                 verbose) for bg,chip in bkg_scaled]
 
         #parallel_map(combine_chips,args)
         parallel_pool_futures(combine_chips,args)
 
         dmimgcalc.punlearn()
-        dmimgcalc.infile = [bg[0].name for bg in bkg_scaled]
+        dmimgcalc.infile = [bg.name for bg,_ in bkg_scaled]
         dmimgcalc.outfile = outname
         dmimgcalc.operation = f"imgout={dmimgcalc_op}"
         dmimgcalc.clobber = True
@@ -209,21 +209,23 @@ def bkg_img(imgfile,bkg,outfile,dmfilter,dettype,chips,tmpdir,verbose):
         dmimgcalc()
 
     finally:
-        for fn in bkg_scaled:
-            fn[0].close()
+        for fn,_ in bkg_scaled:
+            fn.close()
 
     return xylimits,outname,bkgmethod
 
 
 
 def get_par(argv):
-    """ Get data_products parameters from parameter file """
+    """ 
+    Get data_products parameters from parameter file 
+    """
 
     pfile = open_param_file(argv,toolname=__toolname__)["fp"]
 
     # Common parameters:
-    params = {}
-    pars = {}
+    params: dict = {}
+    pars: dict = {}
 
     # input blanksky background event file
     pars["bkgfile"] = params["bkgfile"] = paramio.pgetstr(pfile,"bkgfile")
@@ -266,22 +268,25 @@ def get_par(argv):
     pars["mode"] = params["mode"] = paramio.pgetstr(pfile, "mode")
 
     ## error out if there are spaces in absolute paths of the various parameters
-    if " " in os.path.abspath(pars["bkgfile"]):
-        raise IOError(f"The absolute path for the bkgfile, '{os.path.abspath(pars['bkgfile'])}', \
-cannot contain any spaces")
+    checklist_spaces = [(pars["bkgfile"], "background"),
+                        (pars["outroot"], "output"),
+                        (params["imgfile"], "output image")]
 
-    if " " in os.path.abspath(pars["outroot"]):
-        raise IOError(f"The absolute path for the output file, '{os.path.abspath(pars['outroot'])}', \
-cannot contain any spaces")
-
-    if " " in os.path.abspath(params["imgfile"]):
-        raise IOError(f"The absolute path for the output file, '{os.path.abspath(pars['imgfile'])}', \
-cannot contain any spaces")
+    for fn,filetype in checklist_spaces:
+        _check_no_spaces(fn,filetype)
 
     # close parameters block after validation
     paramio.paramclose(pfile)
 
     return params,pars
+
+
+
+def _check_no_spaces(fn,filetype):
+    abspath = os.path.abspath(fn)
+
+    if " " in abspath:
+        raise IOError(f"The absolute path for the {filetype} file, '{abspath}', cannot contain any spaces")
 
 
 
@@ -315,8 +320,8 @@ def doit():
         det = "chip_id"
 
     # get XY-grid; produce scaled image of the background file
-    xylimits,bkgimg,bkgmethod = bkg_img(imgfile,bkgfile,outdir+outroot,
-                                        filters,det,chips,tmpdir,verbose)
+    _,bkgimg,bkgmethod = bkg_img(imgfile,bkgfile,outdir+outroot,
+                                 filters,det,chips,tmpdir,verbose)
 
     # create ACIS background subtracted image
     outname = f"{outdir}{outroot}{bkgmethod}_bkgsub.img"
@@ -341,5 +346,5 @@ def doit():
 
 
 
-if __name__  == "__main__":
+if __name__ == "__main__":
     doit()

@@ -21,7 +21,7 @@ import glob
 from optparse import OptionParser
 
 help_str = """
-Create the data file used by check_ciao_caldb.
+Create the data file used by check_ciao_version.
 """
 
 def read_vfile(fname):
@@ -42,14 +42,13 @@ def package_name(fname):
     if fname == "VERSION":
         return "CIAO"
 
-    elif fname == "contrib/VERSION.CIAO_scripts":
+    if fname == "VERSION.CIAO_scripts":
         return "contrib"
 
-    elif fname.find("_") != -1:
-        return fname.split("_")[-1]
+    # if fname.find("_") != -1:
+    #     return fname.split("_")[-1]
 
-    else:
-        raise ValueError(f"Unrecognized file name: {fname}")
+    raise ValueError(f"Unrecognized file name: {fname}")
 
 def doit():
     """Run the code."""
@@ -61,18 +60,27 @@ def doit():
         opts.print_help()
         return
 
+    # The use of glob.glob now that we only have fixed names is a bit
+    # ugly, but it still works.
+    #
     ciao = os.path.expandvars("$ASCDS_INSTALL")
     vbase = glob.glob(ciao + "/VERSION")
     if vbase == []:
         raise IOError("Unable to find $ASCDS_INSTALL/VERSION")
 
-    vfiles = glob.glob(ciao + "/VERSION_*")
-    if vfiles == []:
-        raise IOError("Unable to find $ASCDS_INSTALL/VERSION_*")
+    # As of CIAO 4.16 it looks like we don't have the other "components"
+    # to worry about. Well, there's VERSION_obsvis but this is now
+    # part of CIAO so there is no need to include it.
+    #
+    # vfiles = glob.glob(ciao + "/VERSION_*")
+    # if vfiles == []:
+    #     raise IOError("Unable to find $ASCDS_INSTALL/VERSION_*")
+    #
+    vfiles = []
 
     # allow missing contrib file since we can always add this info in manually
     # later
-    cfile = glob.glob(ciao + "/contrib/VERSION*")
+    cfile = glob.glob(ciao + "/VERSION.CIAO_scripts")
     if len(cfile) > 1:
         raise IOError(f"Expected 1 entry for contrib VERSION file, found: {cfile}")
 

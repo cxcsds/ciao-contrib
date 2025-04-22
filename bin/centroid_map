@@ -25,9 +25,10 @@ import os
 import numpy as np
 import ciao_contrib.logger_wrapper as lw
 from pycrates import read_file
+from crates_contrib.masked_image_crate import MaskedIMAGECrate
 
 __TOOLNAME__ = "centroid_map"
-__REVISION__ = "24 August 2023"
+__REVISION__ = "13 January 2024"
 
 
 LGR = lw.initialize_logger(__TOOLNAME__)
@@ -63,9 +64,15 @@ class InputImage():
 
     def __init__(self, infile, scale):
         'load image and compute coordinates'
-        self.input_image = read_file(infile)
-        self.imgvals = self.input_image.get_image().values
+        self.input_image = MaskedIMAGECrate(infile)
+        self.imgvals = self.input_image.get_image().values.astype(float)
         self.imgvals = np.abs(self.imgvals)
+
+        for xx in range(self.imgvals.shape[1]):
+            for yy in range(self.imgvals.shape[0]):
+                if not self.input_image.valid(xx, yy):
+                    self.imgvals[yy][xx] = np.nan
+
         func = self._map_scale_function(scale)
         self.imgvals = func(self.imgvals)
 
@@ -126,14 +133,14 @@ def centroid_map(mapfile, img, outfile):
         if 0 == uu:
             continue
         idx = np.where(mapvals == uu)
-        w = np.sum(img.imgvals[idx])
+        w = np.nansum(img.imgvals[idx])
         if 0 == w:
             # If sum is 0, use unweighted value
             cx = np.average(img.xx[idx])
             cy = np.average(img.yy[idx])
         else:
-            cx = np.sum(img.wx[idx])/w
-            cy = np.sum(img.wy[idx])/w
+            cx = np.nansum(img.wx[idx])/w
+            cy = np.nansum(img.wy[idx])/w
         outvals[int(cy)][int(cx)] = uu
 
     img.write_new_sites(outvals, outfile)

@@ -1,7 +1,7 @@
 #! /bin/sh
 
-#  Copyright (C) 2013,2015,2016,2018-2020  Smithsonian Astrophysical Observatory
-#
+#  Copyright (C) 2013,2015,2016,2018-2020, 2025
+#  Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -30,18 +30,6 @@ absmodel=$9
 shift 9
 absmodel2=$1
 xtra="$2"
-
-
-
-nxpa=`xpaaccess -n ${ds9}`
-if test $nxpa -ne 1
-then
-  echo "# -------------------"
-  echo "Multiple (${nxpa}) ds9's are running using the same title: '${ds9}'.  Please close the other windows and restart."
-  exit 1
-fi
-
-
 
 echo "--------------------------------------------------------"
 echo ""

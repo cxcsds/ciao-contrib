@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2022-2023 Smithsonian Astrophysical Observatory
+# Copyright (C) 2022-2024 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ MIN_FRACTION = 0.6
 FRACTION_STEP = 0.1
 
 toolname = "psf_contour"
-__revision__ = "26 September 2023"
+__revision__ = "15 July 2024"
 
 lw.initialize_logger(toolname)
 verb0 = lw.get_logger(toolname).verbose0
@@ -390,8 +390,13 @@ def get_cli():
         pars[to_real] = float(pars[to_real])
 
     if pars["marx_root"] == '':
-        raise ValueError("ERROR: marx_root parameter cannot be blank;" +
-                         " set to the directory where MARX is installed")
+        from shutil import which
+        marx = which('marx')
+        if marx is None:
+            raise ValueError("ERROR: marx_root parameter cannot be blank;" +
+                             " set to the directory where MARX is installed")
+        bindir = os.path.dirname(marx)               # ie ".."
+        pars["marx_root"] = os.path.dirname(bindir)  # another ".."
 
     if not os.path.isdir(pars["marx_root"]):
         raise ValueError("ERROR: marx_root parameter must be set to " +
@@ -400,7 +405,7 @@ def get_cli():
     marx_exe = os.path.join(pars["marx_root"], "bin", "marx")
     if not os.path.isfile(marx_exe):
         raise ValueError(f"ERROR: Cannot find marx executable in '{marx_exe}'" +
-                          "; check the marx_root parameter")
+                         "; check the marx_root parameter")
 
     return pars
 
@@ -421,7 +426,7 @@ def get_positions(params):
 
 def shrink_psfs(first_psf, second_psf):
     'We shrink the PSFs until the area of the overlapping regions is 0'
-    verb1(f"Shrinking regions for {first_psf.params['outroot']} and {first_psf.params['outroot']}")
+    verb1(f"Shrinking regions for {first_psf.params['outroot']} and {second_psf.params['outroot']}")
 
     keep_going = True
     while keep_going:
@@ -446,10 +451,13 @@ def shrink_psfs(first_psf, second_psf):
     # If that's the case, then we stop shrinking regions and just exclude
     # them from each other.
 
-    new_first = CXCRegion(first_psf.outfile) - CXCRegion(second_psf.outfile)
+    first_reg = CXCRegion(first_psf.outfile)
+    second_reg = CXCRegion(second_psf.outfile)
+
+    new_first = first_reg - second_reg[0]
     new_first.write(first_psf.outfile, fits=True, clobber=True)
 
-    new_second = CXCRegion(second_psf.outfile) - CXCRegion(first_psf.outfile)
+    new_second = second_reg - first_reg[0]
     new_second.write(second_psf.outfile, fits=True, clobber=True)
 
 

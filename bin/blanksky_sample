@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2018-2023
+# Copyright (C) 2018-2024
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -23,7 +23,7 @@
 #
 
 __toolname__ = "blanksky_sample"
-__revision__  = "03 November 2023"
+__revision__  = "18 March 2024"
 
 import os
 import sys
@@ -72,12 +72,15 @@ class ScriptError(RuntimeError):
 
 
 def get_par(argv):
-    """ Get data_products parameters from parameter file """
+    """ 
+    Get data_products parameters from parameter file
+    """
+
     pfile = open_param_file(argv,toolname=__toolname__)["fp"]
 
     # Common parameters:
-    params = {}
-    pars = {}
+    params: dict = {}
+    pars: dict = {}
 
     # load all parameters to dictionary
     pars["infile"] = params["infile"] = paramio.pgetstr(pfile,"infile")
@@ -99,34 +102,16 @@ def get_par(argv):
     ################################
 
     ## error out if there are spaces in absolute paths of various parameters
-    if " " in os.path.abspath(params["infile"]):
-        raise IOError(f"The absolute path for the source events file, \
-'{os.path.abspath(params['infile'])}', cannot contain any spaces")
+    checklist_spaces = [(params["infile"], "source events"),
+                        (params["bkgfile"], "blanksky background"),
+                        (params["bkgout"], "sampled background output"),
+                        (params["psf_bkg_out"], "PSF+background output"),
+                        (params["regionfile"], "region"),
+                        (params["fill_out"], "events substituted output")]
+    checklist_spaces.extend([(asol, "aspect solution") for asol in params["asol"]])
 
-    if " " in os.path.abspath(params["bkgfile"]):
-        raise IOError(f"The absolute path for the blanksky background file, \
-'{os.path.abspath(params['bkgfile'])}', cannot contain any spaces")
-
-    if " " in os.path.abspath(params["bkgout"]):
-        raise IOError(f"The absolute path for the sampled background output file, \
-'{os.path.abspath(params['bkgout'])}', cannot contain any spaces")
-
-    if " " in os.path.abspath(params["psf_bkg_out"]):
-        raise IOError(f"The absolute path for the PSF+background output file, \
-'{os.path.abspath(params['psf_bkg_out'])}', cannot contain any spaces")
-
-    for asol in params["asol"]:
-        if " " in os.path.abspath(asol):
-            raise IOError(f"The absolute path for the asol file, '{os.path.abspath(asol)}', \
-cannot contain any spaces")
-
-    if " " in os.path.abspath(params["regionfile"]):
-        raise IOError(f"The absolute path for the region file, \
-'{os.path.abspath(params['regionfile'])}', cannot contain any spaces")
-
-    if " " in os.path.abspath(params["fill_out"]):
-        raise IOError(f"The absolute path for the events substituted output file, \
-'{os.path.abspath(params['fill_out'])}', cannot contain any spaces")
+    for fn,filetype in checklist_spaces:
+        _check_no_spaces(fn,filetype)
 
     # check if produced "dmfilth"ed events file will be made
     if params["regionfile"] != "" and params["fill_out"] == "":
@@ -209,6 +194,14 @@ must also be specified")
     v3(f"  Parameters: {params}")
 
     return params,pars
+
+
+
+def _check_no_spaces(fn,filetype):
+    abspath = os.path.abspath(fn)
+
+    if " " in abspath:
+        raise IOError(f"The absolute path for the {filetype} file, '{abspath}', cannot contain any spaces")
 
 
 
@@ -678,7 +671,7 @@ def doit():
     dmcopy = make_tool("dmcopy")
     dmmerge = make_tool("dmmerge")
     dmhedit = make_tool("dmhedit")
-    
+
     ############
     with new_pfiles_environment(ardlib=False), \
          tempfile.NamedTemporaryFile(dir=tmpdir) as tmpin, \
@@ -845,7 +838,7 @@ def doit():
                 dmhedit.key = "ASPTYPE"
                 dmhedit.op = "delete"
                 dmhedit()
-                    
+
             try:
                 add_tool_history(f"{psf_bkg_outdir}{psf_bkg_out}", __toolname__, pars)
             except OSError:
@@ -900,5 +893,5 @@ def doit():
 
 
 
-if __name__  == "__main__":
+if __name__ == "__main__":
     doit()

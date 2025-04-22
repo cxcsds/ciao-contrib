@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2019-2022 Smithsonian Astrophysical Observatory
+# Copyright (C) 2019-2022, 2024 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -28,7 +28,7 @@ from pycrates import read_file
 
 import ciao_contrib.logger_wrapper as lw
 toolname = "statmap"
-__revision__ = "22 January 2023"
+__revision__ = "18 July 2024"
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
 verb0 = lgr.verbose0
@@ -60,6 +60,51 @@ class CIAONamedTemporaryFile():
             os.unlink(self.__tmp.name)
 
 
+def weighted_median(vals, weights):
+    'Weighted median'
+    # from :https://stackoverflow.com/questions/20601872/numpy-or-scipy-to-calculate-weighted-median
+
+    if len(vals) == 1:
+        return vals
+
+    if len(vals) == 2:
+        return np.average(vals)
+
+    quantiles = 0.5  # median
+    idx = np.argsort(vals)
+    csum = np.cumsum(weights[idx])
+    quant = np.searchsorted(csum, quantiles * csum[-1])
+
+    if quant == len(vals)-1:
+        return vals[-1]
+
+    return np.where(csum[quant]/csum[-1] == quantiles,
+                    0.5 * (vals[idx[quant]] + vals[idx[quant+1]]),
+                    vals[idx[quant]])
+
+
+def weighted_mean(vals, weights):
+    'Weighted mean'
+    return np.average(vals, weights=weights)
+
+
+def weighted_min(vals, weights):
+    'Pick value with min weight'
+    idx = np.argmin(weights, keepdims=True)
+    return vals[idx[0]]
+
+
+def weighted_max(vals, weights):
+    'Pick value with max weight'
+    idx = np.argmax(weights, keepdims=True)
+    return vals[idx[0]]
+
+
+def weighted_sum(vals, weights):
+    'Return sum of weights'
+    return np.sum(vals*weights)
+
+
 def map_stat_function(stat):
     "convert stat name to a statistical function"
 
@@ -68,13 +113,18 @@ def map_stat_function(stat):
                'min': np.min,
                'mean': np.mean,
                'count': len,
-               'sum': np.sum
+               'sum': np.sum,
+               'wmedian': weighted_median,
+               'wmax': weighted_max,
+               'wmin': weighted_min,
+               'wmean': weighted_mean,
+               'wsum': weighted_sum,
                }
     assert stat in do_stat, "Unknown statistic"
     return do_stat[stat]
 
 
-def assign_mapid_to_events(evtfile, mapfile, column, xcol, ycol):
+def assign_mapid_to_events(evtfile, mapfile, column, xcol, ycol, wcol=None):
     "Lookup event locations in map"
 
     from ciao_contrib.runtool import make_tool
@@ -84,7 +134,10 @@ def assign_mapid_to_events(evtfile, mapfile, column, xcol, ycol):
     tmpevt = CIAONamedTemporaryFile()
 
     pick = make_tool("dmimgpick")
-    pick.infile = evtfile+f"[cols {xcol},{ycol},{column}]"   # fewer cols = faster
+    if wcol is None:
+        pick.infile = evtfile+f"[cols {xcol},{ycol},{column}]"   # fewer cols = faster
+    else:
+        pick.infile = evtfile+f"[cols {xcol},{ycol},{wcol},{column}]"   # fewer cols = faster
     pick.imgfile = mapfile
     pick.outfile = tmpevt.name
     pick.method = "closest"
@@ -93,13 +146,19 @@ def assign_mapid_to_events(evtfile, mapfile, column, xcol, ycol):
     return tmpevt
 
 
-def load_event_file(infile, column, xcol, ycol):
+def load_event_file(infile, column, xcol, ycol, wcol=None):
     "Load event file w/ map IDs"
 
     def find_map_column_name(evtfile):
         "find map column name by process of elimination"
         cols = evtfile.get_colnames(vectors=False)
-        map_col = [x for x in cols if x.lower() not in [xcol, ycol, column]]
+
+        known_cols = [xcol, ycol, column]
+        if wcol is not None:
+            known_cols.append(wcol)
+
+        map_col = [x for x in cols if x.lower() not in known_cols]
+
         assert len(map_col) == 1, "Somehow extra columns are present"
         return map_col[0]
 
@@ -108,10 +167,11 @@ def load_event_file(infile, column, xcol, ycol):
     map_col = find_map_column_name(evtfile)
     map_vals = evtfile.get_column(map_col).values
     col_vals = evtfile.get_column(column).values
-    return map_vals, col_vals
+    wgt_vals = evtfile.get_column(wcol).values if wcol is not None else None
+    return map_vals, col_vals, wgt_vals
 
 
-def compute_stats(map_vals, col_vals, func):
+def compute_stats(map_vals, col_vals, wgt_vals, func):
     "Compute stats for each mapID"
 
     verb2("Computing stats")
@@ -127,7 +187,15 @@ def compute_stats(map_vals, col_vals, func):
     for pixel_val in unique_pixel_vals:
         idx = np.where(map_vals == pixel_val)
         vals = col_vals[idx[0]]
-        stat_vals[pixel_val] = func(vals) if len(vals) > 0 else 0
+
+        if len(vals) == 0:
+            stat_vals[pixel_val] = 0
+        elif wgt_vals is None:
+            stat_vals[pixel_val] = func(vals)
+        else:
+            wvals = wgt_vals[idx[0]]
+            stat_vals[pixel_val] = func(vals, wvals)
+
     return stat_vals
 
 
@@ -173,6 +241,13 @@ def process_parameters():
     pars["clobber"] = (pars["clobber"] == "yes")
     outfile_clobber_checks(pars["clobber"], pars["outfile"])
 
+    if pars["wcolumn"].lower() in ["", "none"]:
+        pars["wcolumn"] = None
+    else:
+        if not pars["statistic"].lower().startswith('w'):
+            verb0("WARNING: Weight column specified but unweighted statistic chosen; ignoring weights")
+            pars["wcolumn"] = None
+
     return pars
 
 
@@ -185,10 +260,12 @@ def main():
     do_stat_func = map_stat_function(pars["statistic"])
     tmpevt = assign_mapid_to_events(pars["infile"], pars["mapfile"],
                                     pars["column"], pars["xcolumn"],
-                                    pars["ycolumn"])
-    map_vals, col_vals = load_event_file(tmpevt.name, pars["column"],
-                                         pars["xcolumn"], pars["ycolumn"])
-    stat_vals = compute_stats(map_vals, col_vals, do_stat_func)
+                                    pars["ycolumn"],
+                                    pars["wcolumn"])
+    map_vals, col_vals, wgt_vals = load_event_file(tmpevt.name, pars["column"],
+                                                   pars["xcolumn"], pars["ycolumn"],
+                                                   pars["wcolumn"])
+    stat_vals = compute_stats(map_vals, col_vals, wgt_vals, do_stat_func)
 
     outvals = replace_mapid_with_stats(stat_vals, pars["mapfile"])
 

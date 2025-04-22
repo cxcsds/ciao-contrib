@@ -1,0 +1,489 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd">
+<cxchelptopics>
+  <ENTRY key="marx_rl_decon" 
+         context="Tools::Image"
+         refkeywords="convolution smoothing imaging simulation PSF deconvolution 
+           lucy richardson maximum entropy likelihood reconstruction MARX"
+         seealsogroups="tcdtools psftools"
+  >
+
+    <SYNOPSIS>
+        Richardson Lucy deconvolution using continuous variable PSF simulations.
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+        Tools such as arestore implement the Richardson Lucy deconvolution
+        technique using a single, fix/constant Point Spread Function (PSF).
+        For Chandra data this is acceptable when dealing with small 
+        spatial scales where the PSF is approximately constant.  However,
+        when working with sources at arcmin scales, the Chandra 
+        PSF varies across the image limiting the reliability of the reconstruction.
+        Traditional image processing methods exist which partitions 
+        the image into segments where the PSF is approximately constant,
+        individually deconvolves each segment, and then combines them 
+        back together in a way that blends the boundary between segments.
+        This is a valid approach, but requires pre-determining an "optimal" 
+        segmentation strategy (eg uniform grid) and pre-computing 
+        the PSFs.
+      </PARA>
+
+      <PARA>
+        The `marx_rl_decon` script takes a different approach.  At it's core,
+        the Richardson Lucy (RL) deconvolution algorithm involves convolving 
+        an image with the PSF.  Typically Chandra users create "the" PSF,
+        ie the single, assumed to be non-varying PSF, using MARX by 
+        inputting a delta function at a specific set of coordinates.
+        However, MARX can take as input other spatial models besides
+        a simple POINT source. It can take an input image and then 
+        will simulate the response of the mirrors and detector (ie the
+        PSF effect) based on the morphology of the input image. The MARX
+        simulation is a representation of the convolution of the variable
+        Chandra spatial response to input image, which is what is at the
+        core of the RL algorithm.  The `marx_rl_decon` script then
+        implements the basic RL algorithm and replaces each convolution
+        with a MARX simulation.
+      </PARA>
+
+      <PARA title="MARX conventions">
+      
+      There are a few things to consider when using MARX.
+      </PARA>
+      
+      <LIST>
+         <ITEM>There is a bug in MARX version 5.5.2 and earlier that 
+         results in a shift of the output image; the magnitude of the shift
+         is on the order of 1 to 2 pixels.  Users therefore must be 
+         using MARX version 5.X.Y or later to use this script.</ITEM>
+        <ITEM>MARX requires that the center of the input image be
+        the location of the aimpoint.  It measures off-axis angles
+        based on distance from the center. </ITEM>
+        <ITEM>MARX creates a world-coordinate-system (WCS) where
+        the aimpoint is used as the tangent point.  This may not be the same
+        as the input image if the image was reprojected to a different
+        tangent point.  This script reprojects the MARX output back
+        to the original WCS.</ITEM>
+        <ITEM>Because the image needs to be flipped about the
+        aimpoint, the image that is created will be large enough to
+        include the flipped image.</ITEM>
+        <ITEM>MARX is doing a simulation therefore the output needs to be
+        renormalized to match the input.</ITEM>
+      </LIST>
+      
+      <PARA title="Additional considerations"> 
+        Since MARX is doing a simulation, the fidelity of the simulation
+        will be limited by the number of simulated events.  The more
+        simulated events, the better the convolution will be represented.
+        However, more events requires a longer run-time.  Users can 
+        adjust the "flux" parameter to control the total integrated flux
+        that is simulated (in units of photon/cm^2/sec).  With low flux
+        values, the background (any low surface brightness areas) 
+        tends to be undersampled and is lost during the reconstruction.
+      </PARA>
+      <PARA>
+        There may also be other detector effects which are not currently 
+        being simulated. This includes any additional blur, pileup and 
+        out-of-time events (ie readout streaks).  Also when 
+        combining observations, the script assumes no source variability.
+      </PARA>
+      <PARA>
+        The number of iterations is currently a user controlled parameter.      
+        It is possible to both under- and over-reconstruct the data. 
+        The script saves the output from each iteration so users can
+        judge the quality of the reconstruction along the way.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+
+     <QEXAMPLE>
+       <SYNTAX>
+           <LINE>$ marx_rl_decon acis_evt.fits pcad_asol.fits acis_fov.fits my_out energy=1.0 numiter=5
+           </LINE>
+        </SYNTAX>
+        <DESC>
+            <VERBATIM>
+marx_rl_decon
+          infile = acis_evt.fits
+        asolfile = pcad_asol.fits
+         fovfile = acis_fov.fits
+         outroot = my_out
+          energy = 1
+         numiter = 5
+         binsize = 1
+            flux = 0.1
+       marx_root = /soft/miniconda/envs/contrib_test
+     random_seed = -1
+        parallel = yes
+           nproc = INDEF
+         clobber = no
+         verbose = 1
+            mode = ql
+
+Computing binning specification
+Making counts image centered on the aim point
+Setting up MARX parameter file
+Iteration 0001
+        I_n ⊙ P
+Running tasks in parallel with 16 processors.
+        I_0/(I_n ⊙ P)
+        flip(I_0/(I_n ⊙ P)) ⊙ P
+Running tasks in parallel with 16 processors.
+        flip(I_0/(I_n ⊙ P))
+        flip(flip(I_0/(I_n ⊙ P)) ⊙ P)
+        I_n * flip(flip(I_0/(I_n ⊙ P)) ⊙ P)
+Iteration 0002
+...
+Iteration 0005
+        I_n ⊙ P
+Running tasks in parallel with 16 processors.
+        I_0/(I_n ⊙ P)
+        flip(I_0/(I_n ⊙ P)) ⊙ P
+Running tasks in parallel with 16 processors.
+        flip(I_0/(I_n ⊙ P))
+        flip(flip(I_0/(I_n ⊙ P)) ⊙ P)
+        I_n * flip(flip(I_0/(I_n ⊙ P)) ⊙ P)
+
+Orignal Image: my_out_counts.img
+Deconvolved Image: my_out_0005_out.img
+</VERBATIM>
+
+            <PARA>
+            The input files for marx_rl_decon are the event file, aspect solution file,
+            and the field-of-view (FOV) file.  The tool will compute the image boundary from
+            the field-of-view.  The image will be padded/extended to allow the data to be 
+            flipped about the optical axis (this is done internally).  The image will then be fed into MARX
+            as part of the Richardson Lucy deconvolution algorithm in place of 
+            the convolution operations.
+            </PARA>
+            <PARA>
+            The output includes the counts image obtained from the event file: ${outroot}_counts.img
+            and the final iteration of the deconvolution: ${outroot}_0005_out.img.  The
+            output from each of the iterations is also currently saved: 0001, 0002, 0003, and 0004.
+            </PARA>
+        </DESC>
+    </QEXAMPLE>
+
+     <QEXAMPLE>
+       <SYNTAX>
+           <LINE>$ marx_rl_decon acis_evt.fits"[energy=500:7000,ccd_id=7]" pcad_asol.fits \</LINE>
+           <LINE>  acis_fov.fits"[ccd_id=7]" my_out energy=1.0 numiter=10 flux=0.2 </LINE>
+        </SYNTAX>
+        <DESC>
+            <PARA>
+            This is similar to the previous example but now filters the input event file
+            on a specific energy range, and filters the event file and the field of view files
+            on CCD_ID.  It has also increase the number of iterations and increased the flux
+            parameter vale; the latter will 
+            provide a better sampling of the background and other low surface brightness areas
+            </PARA>
+        </DESC>
+    </QEXAMPLE>
+
+     <QEXAMPLE>
+       <SYNTAX>
+           <LINE>$ reproject_obs "*/repro/*repro_evt2.fits" out=myout</LINE>
+           <LINE>$ /bin/ls myout_*_reproj_evt.fits > evt.lis</LINE>
+           <LINE>$ /bin/ls myout_*.asol > asol.lis</LINE>
+           <LINE>$ /bin/ls myout_*.fov > fov.lis</LINE>
+           <LINE>$ marx_rl_decon @evt.lis"[energy=500:7000,ccd_id=7]" @asol.lis @fov.lis"[ccd_id=7]"\</LINE>
+           <LINE>  a_different_root binsize=0.5 clob+ mode=h</LINE>
+        </SYNTAX>
+        <DESC>
+            <PARA>
+                In this example we use the reproject_obs script to reproject
+                several event files to a common tangent point. The
+                reproject_obs script also creates the field-of-view files
+                for that new tangent point and copies or creates symbol links to the
+                aspect solution files. We then create stack list files for
+                each of the file types, and then run the marx_rl_decon script. 
+                The [ccd_id=7] filter is applied to each file name in both the
+                event file and the fovfile stacks.  We also changed
+                the binsize to use one-half pixel size subpixel resolution.          
+            </PARA>
+            <PARA>
+                The output will now be the co-added/summed output from
+                all of the observations. It is important to note that
+                a different output root file name was chosen to avoid
+                any unexpected clobbering of temporary output files.
+                The image size will be created such
+                that it encloses all of the field of view files (with
+                padding added to allow flipping).  With multiple 
+                event files, various parts of the processing will 
+                be done in parallel.
+            </PARA>
+            <PARA>
+                Users can also use the output from the merge_obs script
+                in a similar way; knowing that you must supply the individual
+                reproject event files for each observation and not the final
+                merged event file.  Users should perform any fine astrometric
+                correction (eg using wcs_match with wcs_update or using
+                reproject_aspect) before reprojecting to a common tangent point.
+            </PARA>
+
+        </DESC>
+    </QEXAMPLE>
+
+    </QEXAMPLELIST>
+
+   <PARAMLIST>
+     <PARAM name="infile" type="file" filetype="input" reqd="yes" stacks="yes">
+       <SYNOPSIS>
+         Input event file including filters
+       </SYNOPSIS>
+       <DESC>
+        <PARA>
+        The file name of one or more event files. Each event file should
+        have the desired filters such as [energy=x:y] and/or [ccd_id=z].
+        </PARA>
+        <PARA title="Multiple Observations">
+        When multiple event files are specified there are a few conditions
+        that must be met:        
+        </PARA>
+        <LIST>
+          <ITEM>All the event files must have the same tangent plane. That is
+          they must all be reprojected to a common tangent point.  The tool
+          checks the RA_NOM and DEC_NOM keywords each of which must be
+          equal in all the input files.</ITEM>
+          <ITEM>Multiple event files cannot have the same OBS_ID.</ITEM>
+          <ITEM>The number of event files must match the number of
+          aspect solution files, asolfile, and must match the number of
+          the field-of-view files, fovfile.</ITEM>
+        </LIST>
+       </DESC>     
+     </PARAM>
+
+     <PARAM name="asolfile" type="file" filetype="input" reqd="yes" stacks="yes">
+       <SYNOPSIS>
+         The aspect solution file name(s)
+       </SYNOPSIS>
+       <DESC>
+        <PARA>
+         The file name for the aspect solution file. There must only be 
+         one aspect solution file per observation (now true for all but 
+         a few datasets taken in 1999). If supplying multiple aspect 
+         solution files, then they must be supplied in the same order
+         as the event files.
+         </PARA>
+       </DESC>     
+     </PARAM>
+
+     <PARAM name="fovfile" type="file" filetype="input" reqd="yes" stacks="yes">
+       <SYNOPSIS>
+          The field-of-view file name(s), including filters
+       </SYNOPSIS>
+       <DESC>
+        <PARA>
+          The name of the field of view file. The files may be filtered, for
+          example using [ccd_id=z].  The output image will be large enough to
+          include the entire field of view; if multiple files then it will
+          be large enough to include all the fields of view.  The fov
+          files must all be for the same tangent point (like the event files)
+          and must be supplied in the same order as the event files.
+        </PARA>
+      </DESC>     
+     </PARAM>
+
+     <PARAM name="outroot" type="file" filetype="output" reqd="yes">
+       <SYNOPSIS>
+         The directory plus output root file name.
+       </SYNOPSIS>
+       <DESC>
+          <PARA>
+            The output root is used for the final output products along with
+            various temporary files and directories.  Users should choose a 
+            unique root name to avoid unexpected files being inadvertently
+            clobbered.
+            </PARA>
+            <PARA>
+            The final outputs will be the counts image, ${outroot}_counts.img,
+            and the deconvolved image, ${outroot}_nnnn_out.img, where 'nnnn'
+            is the final iteration number, eg 0010.       
+            </PARA>
+       </DESC>
+     </PARAM>
+
+     <PARAM name="energy" type="real" reqd="yes" def="1.0">
+       <SYNOPSIS>
+         Monochromatic energy to simulate the observation
+       </SYNOPSIS>
+       <DESC>
+        <PARA>
+          The convolution via simulation will be done using this 
+          monochromatic energy.
+        </PARA>
+       </DESC>     
+     </PARAM>
+
+      <PARAM name="numiter" reqd="yes" type="integer">
+         <SYNOPSIS>
+            Number of iterations
+         </SYNOPSIS>
+         <DESC>
+         
+         <PARA>
+         There is no mathematically optimal number of iterations.
+         Users should generally start with a generous number of 
+         iterations, 10 is a good starting point.  Then increase the
+         the number of iterations a few times in modest size increments, 
+         5 is reasonable, to see how well the algorithm is converging.
+         The increments can be increased or decreased based on 
+         scale of the total difference in the images. 
+      </PARA>
+    </DESC>
+    </PARAM>
+
+
+     <PARAM name="binsize" type="real" def="1.0">
+       <SYNOPSIS>
+         Image bin size
+       </SYNOPSIS>
+       <DESC>
+            <PARA>
+          The script will create images based on the boundaries
+          of the field-of-view file(s) and with this specified bin size.
+          Units are in physical pixels, so for ACIS binsize=1 uses the 
+          typical 0.492" native pixel resolution.
+            </PARA>
+       </DESC>     
+     </PARAM>
+
+
+     <PARAM name="flux" type="real" def="0.1">
+       <SYNOPSIS>
+          Total flux, in units of photon/cm^2/sec, for each simulation.
+       </SYNOPSIS>
+       <DESC>
+         <PARA>
+           When using an input image with MARX, the simulation continues
+           until this total flux has been simulated, integrated over the
+           entire image.  The total number of simulated events will 
+           depend on the duration of the observations and the image
+           morphology.
+        </PARA>
+        <PARA>
+            If the flux is too low and there is a large contrast between
+            the source and background, then the background will be under
+            sampled (ie poorly represented) which will result in 
+            the background being eliminated in the reconstructed image.
+            Increasing the flux will result in better representation of
+            low flux regions of the image (eg background) at the cost of 
+            longer execution times.  Users may want to do a test run with
+            the default or a low flux value and then increase the value based
+            on the results.
+        </PARA>
+       </DESC>     
+     </PARAM>
+
+
+      <PARAM name="marx_root" type="file" reqd="no">
+        <SYNOPSIS>The directory where MARX was installed.</SYNOPSIS>
+        <DESC>
+        <PARA>
+        The marx executable should be $marx_root/bin/marx.
+        </PARA>
+        </DESC> 
+      </PARAM>
+
+
+      <PARAM name="random_seed" type="integer" def="-1" reqd="no">
+        <SYNOPSIS>
+          Initial random seed for simulations.
+        </SYNOPSIS>
+        <DESC>
+          <PARA>
+            The random_seed is set to initialize the simulation.  
+            With random_seed equal to the default value of -1, the
+            script will use a random value for the
+            initial random_seed.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="parallel" type="boolean" def="yes" reqd="no">
+        <SYNOPSIS>Run code in parallel using multiple processors?</SYNOPSIS>
+        <DESC>
+          <PARA>
+            If multiple processors are available, then 
+            this parameter controls whether the tool should 
+            run various underlying tools in parallel.
+          </PARA>
+          <PARA>
+            If parallel=yes and verbose&gt;0 users will see that
+            arm+orders will be run in a random order.
+          </PARA>
+        </DESC>        
+      </PARAM>
+      
+      <PARAM name="nproc" type="integer" def="INDEF" min="1" reqd="no">
+        <SYNOPSIS>Number of processors to use</SYNOPSIS>
+        <DESC>
+          <PARA>
+            If parallel=yes, then this controls the number of
+            processes to run at once.  The default, INDEF,
+            will use all available processors.  The value
+            cannot be larger than the number of processors.
+          </PARA>
+          <PARA>
+            If parallel=yes and verbose&gt;0 users will see that
+            arms+orders will be run in a random order.
+          </PARA>
+        </DESC>        
+      </PARAM>
+
+     <PARAM name="verbose" type="integer" min="0" max="5" def="1">
+       <SYNOPSIS>
+        Amount of tool chatter level.
+       </SYNOPSIS>
+     </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>
+            Overwrite output files if they already exist?
+        </SYNOPSIS>
+      </PARAM>   
+   </PARAMLIST>
+
+   <ADESC title="Richardson-Lucy Deconvolution">
+      <PARA >
+         The Lucy-Richardson deconvolution algorithm implemented 
+         was developed 
+         independently by Lucy (1974, Astron. J. 79, 745) and
+         Richardson (1972, J.  Opt.  Soc. Am., 62,55).
+         This is an iterative technique that applies maximum
+          likelihood fitting using non-negative data corrupted with
+          Poisson  noise, eg. Chandra data with photon-counting statistics.
+      </PARA>
+      <PARA>
+         While it does do a good job of reconstruction strong signals,
+         it will also tend to sharpen the background noise resulting 
+         in an overall "grainy" appearance.
+      </PARA>
+      
+    </ADESC>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+    
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/marx_rl_decon.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+    
+    <LASTMODIFIED>August 2023</LASTMODIFIED>
+
+  </ENTRY>    
+</cxchelptopics>
