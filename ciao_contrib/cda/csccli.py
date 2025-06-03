@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013, 2016, 2019, 2023, 2024
+# Copyright (C) 2013, 2016, 2019, 2023, 2024, 2025
 #               Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
@@ -461,7 +461,7 @@ def cone_query_cli_cscview( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_co
 
     """
 
-    resource="http://cda.cfa.harvard.edu/csccli/getProperties"
+    resource="https://cda.cfa.harvard.edu/csccli/getProperties"
 
     selstr="dbo.separation(ra,dec,{0},{1}) as sepn,".format(ra_deg, dec_deg)
     selstr+=",".join(columns)
@@ -509,7 +509,7 @@ def cone_query_cli_cscview_ver2( ra_deg, dec_deg, radius_arcmin, ra_condition, d
 
     """
 
-    resource="http://cda.cfa.harvard.edu/csccli/getProperties"
+    resource="https://cda.cfa.harvard.edu/csccli/getProperties"
 
     selstr="dbo.separation(m.ra,m.dec,{0},{1}) as sepn,".format(ra_deg, dec_deg)
     selstr+=",".join(columns)
@@ -557,7 +557,7 @@ def obsid_query_cli_cscview( obsid, columns ):
 
     """
 
-    resource="http://cda.cfa.harvard.edu/csccli/getProperties"
+    resource="https://cda.cfa.harvard.edu/csccli/getProperties"
 
     selstr = ",".join(columns)
 
@@ -599,7 +599,7 @@ def obsid_query_cli_cscview_ver2( obsid, columns, catver ):
 
     """
 
-    resource="http://cda.cfa.harvard.edu/csccli/getProperties"
+    resource="https://cda.cfa.harvard.edu/csccli/getProperties"
 
     selstr = ",".join(columns)
 
@@ -1036,7 +1036,7 @@ def discover_filename_via_archive(myfile, obsid, obi, region, band, instrume, ca
         obs=obsid.strip(), obi=obi.strip(),
         reg=region.strip(), typ=myfile, band=band)
 
-    resource = "http://cda.cfa.harvard.edu/csccli/browse"
+    resource = "https://cda.cfa.harvard.edu/csccli/browse"
     vals = {
         "packageset" : pkg,
         }
@@ -1144,7 +1144,7 @@ def retrieve_files_per_type( filenames, filetype, root, catalog ):
         if check_existing( ff, off ):
             continue
 
-        resource = "http://cda.cfa.harvard.edu/csccli/retrieveFile"
+        resource = "https://cda.cfa.harvard.edu/csccli/retrieveFile"
         vals = {
             "filetype" : fileTypes[catalog][filetype]["filetype"],
             "filename" : ff,
@@ -1465,7 +1465,7 @@ def query_csc1_limsens( ra, dec ):
 
 def query_csc2_limsens(ra, dec, release):
     ''
-    resource = "http://cda.cfa.harvard.edu/csclimsen/limsen"
+    resource = "https://cda.cfa.harvard.edu/csclimsen/limsen"
     vals = {
       "RA" : str(ra),
       "DEC" : str(dec),
