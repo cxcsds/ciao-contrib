@@ -18,11 +18,7 @@
 #
 
 toolname = "srcflux"
-<<<<<<< HEAD
-__revision__ = "12 June 2025"
-=======
-__revision__ = "10 June 2025"
->>>>>>> fc41bfa (support long region expressions in excess of 1023 characters)
+__revision__ = "30 June 2025"
 
 import os
 
@@ -320,10 +316,14 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
 
         with NamedTemporaryFile() as longreg:
 
-            CXCRegion(reg).write(longreg.name, fits=False, clobber=True)
-            dmmakereg.region = f"region({longreg.name})"
+            if ":" not in reg or len(reg) > 1023:
+                # CXCRegion converts sexagesimal to decimal degrees, which then
+                # gets mucked up by dmmakereg unless there is a way to insert the
+                # dmregion 'd' notation to indicate degrees for each coordinate
+                CXCRegion(reg).write(longreg.name, fits=False, clobber=True)
+                reg = f"region({longreg.name})"
 
-            #dmmakereg.region=reg
+            dmmakereg.region=reg
             dmmakereg.outfile=tfile
             dmmakereg.kernel='fits'
             dmmakereg.wcsfile=infile
@@ -338,7 +338,7 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
 
     def validate_region( reg ):
         "See if it is a file, need to open w/ DM to check filters/etc"
-        try:            
+        try:
             if os.path.isfile( (reg[:reg.find("[")] if "[" in reg else reg) ): # this is needed since read_file core dumps if it checks a really long string, e.g. region intersected by polygonal FOV expression
                 read_file(reg)
                 reg = f"region({reg})"
