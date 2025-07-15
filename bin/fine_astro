@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2024 Smithsonian Astrophysical Observatory
+# Copyright (C) 2024,2025 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ from pycrates import read_file
 
 
 __toolname__ = "fine_astro"
-__revision__ = "18 February 2025"
+__revision__ = "02 June 2025"
 
 WARN_LARGE_SHIFT = 3.0
 WARN_LARGE_OFFSET = 4.0
@@ -449,6 +449,12 @@ def detect_sources(obis, pars, out_dirs):
         if len(src_lists) != len(obis):
             raise ValueError("Mismatched number of observations and source lists.")
 
+        # We have sorted the infile by obsid so that means we need to also
+        # source the input src list or else thet may not match any more.
+        from ciao_contrib._tools.fileio import get_obsid_object
+        src_list_obi = [(str(get_obsid_object(src).obsid),src) for src in src_lists]
+        src_lists = [x[1] for x in sorted(src_list_obi)]
+
         for src, oo in zip(src_lists, obis):
             check_srclist(src, oo.obsid.obsid)
 
@@ -540,6 +546,7 @@ def main():
 
     verb1("Gathering source lists")
     src_lists = detect_sources(obis, pars, out_dirs)
+
 
     # ------------ Cross match -------------
     verb1("Running cross matches using wcs_match")
