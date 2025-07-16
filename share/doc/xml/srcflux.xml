@@ -2633,6 +2633,31 @@ for a detailed example.
     
     </ADESC>
 
+    <ADESC title="Changes in the scripts 4.17.2 (July 2025) release">
+      <PARA title="Incidental long region string expressions">
+	When the 'srcreg' and/or 'bkgreg' parameters are used with region
+	stacks, if a region falls near the chip edge, 'roi' and the 'splitroi'
+	output used by 'srcflux' will return a source region intersected by
+	the detector's FOV -- where the FOV is expressed with a
+	polygon region. The FOV polygonal expression, let alone the
+	compound region expression, can easily exceed 1023 characters.
+	In this use case, an internal check will use
+	'pycrates.read_file' to check whether or not the
+	'srcreg'/'bkgreg' parameter is a readable FITS file and if
+	not, then use 'dmmakereg' to check whether the input region
+	expression can be written in sky coordinates.  When a long
+	region expression exceeds the character limit and being 'is
+	file'-tested by pycrates, a core dump will occur.  Another
+	downstream check uses 'dmmakereg' which will fail to run due
+	to an underlying command-line character length limitation
+	affecting CIAO.  These problems are worked around by putting
+	the region expression in a temporary region file is then
+	usable with 'dmmakereg' and using a Python-native file existence
+	check rather than relying on a Crates exit status.
+      </PARA>
+    </ADESC>
+
+    
     <ADESC title="Changes in the scripts 4.14.2 (April 2022) release">
       <PARA title="Intra-obsid variability added">
         srcflux now runs the glvary tool to check for source variability 
