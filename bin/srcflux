@@ -18,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "30 June 2025"
+__revision__ = "25 July 2025"
 
 import os
 
@@ -1885,11 +1885,16 @@ def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf,
     modelflux.opt = 'rate'
     modelflux.verbose = myparams.verbose
 
-    verb2(modelflux())
+    try:
+        verb2(modelflux())
+        
+    except (OSError, IOError):       
+        modelflux.flux = np.nan
+        modelflux.uflux = np.nan
+        verb0(f"WARNING: modelflux failed to run using '{modelflux.arf}' and '{modelflux.rmf}' response files.  NaNs will be returned for the reported flux values.")
 
     flx = modelflux.flux
     uflx = modelflux.uflux
-
 
 
     def _gp( val ):
@@ -1900,7 +1905,7 @@ def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf,
 
     with open( outroot, 'w' ) as fp:
         fp.write("#MFLUX_CNV\tUMFLUX_CNV\n")
-        fp.write( "{}\t{}\n".format(_gp(flx ), _gp(uflx) )  )
+        fp.write( "{}\t{}\n".format( _gp(flx), _gp(uflx) ) )
 
 
 
@@ -2992,7 +2997,7 @@ def check_parameters( myparams ):
         except:
             raise ValueError("Cannot locate mask file.  Please specify 'mskfile' parameter.")
     elif "none" == myparams.mskfile.lower():
-        verb0("\nWARNING: mask file parmater set to 'none'; mask information will not be use.  This may lead to inaccuracies in the results\n")
+        verb0("\nWARNING: mask file parameter set to 'none'; mask information will not be use.  This may lead to inaccuracies in the results\n")
 
 
     if 0 == len( myparams.bpixfile ):
@@ -3003,7 +3008,7 @@ def check_parameters( myparams ):
         except:
             raise ValueError("Cannot locate bad pixel file.  Please specify 'bpixfile' parameter.")
     elif "none" == myparams.bpixfile.lower():
-        verb0("\nWARNING: badpixel file parmater set to 'none'; badpixel information will not be use.  This may lead to inaccuracies in the results\n")
+        verb0("\nWARNING: badpixel file parameter set to 'none'; badpixel information will not be use.  This may lead to inaccuracies in the results\n")
 
     inst = get_single_keyword(myparams.infile, "instrume" )
     if "HRC" == inst:
@@ -3016,7 +3021,7 @@ def check_parameters( myparams ):
             except:
                 raise ValueError("Cannot locate HRC dead time factors file.  Please specify 'dtffile' parameter.")
         elif "none" == myparams.dtffile.lower():
-            verb0("\nWARNING: dead time factors file parmater set to 'none'; DTF information will not be use.  This may lead to inaccuracies in the results\n")
+            verb0("\nWARNING: dead time factors file parameter set to 'none'; DTF information will not be use.  This may lead to inaccuracies in the results\n")
 
     if myparams.regions == "optimized" and myparams.psfmethod == "quick":
         raise ValueError("ERROR: Invalid parameter combination. psfmethod=quick requires circular source regions, however, regions=optimized creates polygon shaped regions. These two options cannot be used together.")
