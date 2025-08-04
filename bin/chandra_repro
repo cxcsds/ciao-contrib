@@ -1993,6 +1993,12 @@ def run_tgdetect2_and_create_mask(params):
     v5("tgdetect2 returned")
     v5(out)
 
+    from pycrates import read_file, get_number_rows
+    tab = read_file(src1a)
+    if get_number_rows(tab) == 0:
+        error_out(params, 'Zero sources detected by tgdetect2. Please re-run and specify zero order location using the tg_zo_position parameter',
+                  'No sources detected')
+
     tg_create_mask.punlearn()
     tgmask = os.path.join(outdir, root + '_tgmask.fits')
     params["cleanup_files"].append(tgmask)
