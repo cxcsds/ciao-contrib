@@ -175,3 +175,312 @@ proc display_tgcoords { tgr tgd energy arm frame id} {
     }
 }
 
+
+# --------------------------------------------------------------------
+# These routines add "elastic ellipse" capabilities
+
+proc get_ciao_filename {tag_token id} {
+
+    # Create CIAO compatible filename from the
+    # on disk file, region, binning+filtering, blocking, cropping
+
+    global current
+
+    set frm [set current(frame)]
+    set filename [$frm get fits file name full base]
+
+    # Get column/axis names
+    set cols [$frm get bin cols]
+    if {$cols eq ""} {
+        set cols {x y}
+    }
+    set xcol [lindex $cols 0]
+    set ycol [lindex $cols 1]
+
+    # Get CIAO region string, requires only 1 region
+    # We filter on tag to get individual shape
+    set tid_ $tag_token$id
+    set tag_ "tag = $tid_"
+    set ciaoreg [$frm marker list ciao physical no {} $tag_ ]
+
+    if {[llength $ciaoreg] == 0} {
+        error "Cannot find region with correct tag" "No Region" 405
+    } elseif {[llength $ciaoreg] > 1} {
+        error "More than one region has same tag" "Too Many Selected" 406
+    }
+    set ciao [string trim $ciaoreg "\n"]
+
+    # Get image crop
+    set crpfilt [$frm get crop physical]
+    set crp [regsub -all " " $crpfilt ","];   # xlo, ylo, xhi, yhi
+    set crop_ rectangle($crp)
+
+    # We need to AND shape and the crop rectangle
+    set shape_ ($xcol,$ycol)=$ciao*$crop_
+
+    # If event list, get any filter. Will be blank for images
+    set binfilt [$frm get bin filter]
+
+    # Construct filter expression
+    if {$binfilt eq ""} {
+        set posfilt "\[$shape_\]"
+    } else {
+        set posfilt "\[$shape_,$binfilt\]"
+    }
+
+    # Get blocking factor
+    set blck [$frm get block factor]
+    set xblk [lindex $blck 0]
+    set yblk [lindex $blck 1]
+
+    # For event list we need to bin into an image
+    set cols [$frm get bin cols]
+    if {$cols eq ""} {
+        set bincmd "\[bin #1=$xblk,#2=$yblk\]"
+    } else {
+        # For events, multiply bin and block factors. This is not
+        # technically correct due to partial pixels but best we can do.
+        set binsize [$frm get bin factor]
+        set xbin [expr [lindex $binsize 0] * $xblk]
+        set ybin [expr [lindex $binsize 1] * $yblk]
+        set bincmd "\[bin $xcol=$xbin,$ycol=$ybin\]"
+    }
+
+    # Construct full file name
+    return $filename$posfilt$bincmd
+
+}
+
+# ---------------------------
+#
+# These routines are used to add a callback to ellipse regions
+# that will set the Text of the ellipse to the sum of the pixel
+# values (aka counts).
+#
+
+
+proc get_counts_CB { tag_token id } {
+    # The callback that will compute the counts in the region
+    # and set the regions text to it.
+
+    global current
+    set frm [set current(frame)]
+
+    #Construct CIAO syntax for filename w/ filters, bin, block, crops
+    set infile [get_ciao_filename $tag_token $id]
+
+    # Run dmstat and return out_sum value
+    # TODO: fix race condition PFILES
+    exec dmstat $infile cen- sig- med- verb=0
+    set sumval [exec pget dmstat out_sum]
+
+    # Have to use escaped brackets since sumval is an integer
+    $frm marker $id text \{$sumval\}
+
+}
+
+proc add_count_callback {frm id } {
+    # Add the get_counts_CB to the id marker
+    # Also sets a tag so that we can find the region again during the
+    # callback
+
+    global current
+    set tag_token CountShape
+    $frm marker $id callback move get_counts_CB $tag_token
+    $frm marker $id callback edit get_counts_CB $tag_token
+    $frm marker $id callback rotate get_counts_CB $tag_token
+    $frm marker $id tag $tag_token$id
+}
+
+proc make_count_shape {} {
+    # Create a new ellipse with the callbacks already enabled.
+
+    global current
+    global env
+
+    if {[info exists env(ASCDS_INSTALL)]} {
+        set frm [set current(frame)]
+        set pos [$frm get cursor physical]
+
+        # Create creates in WCS coordinates, so move to center in physical
+        set mkr [$frm marker create ellipse $pos 20 20 0 ]
+        add_count_callback $frm $mkr
+        $frm marker $mkr move to physical $pos
+    } else {
+        tk_messageBox -message "You must have CIAO setup first" -type ok
+    }
+
+}
+
+proc enable_count_ellipse {} {
+    # This will add the count callback to all selected ellipses
+
+    global current
+
+    set frm [set current(frame)]
+    set slct [$frm get marker select];  # get all selected markers
+
+    foreach id $slct {
+        set shp [$frm get marker $id type]
+        if {$shp ne "ellipse"} {
+            continue
+        }
+        add_count_callback $frm $id
+    }
+}
+
+proc disable_count_ellipse {} {
+    # This will remove the count callback from all selected ellipses
+
+    global current
+
+    set frm [set current(frame)]
+    set tag_token CountShape
+
+    set slct [$frm get marker select]
+
+    foreach id $slct {
+        set shp [$frm get marker $id type]
+        if {$shp ne "ellipse"} {
+            continue
+        }
+
+        $frm marker $id delete callback move get_counts_CB
+        $frm marker $id delete callback edit get_counts_CB
+        $frm marker $id delete callback rotate get_counts_CB
+        $frm marker $id delete tag $tag_token$id
+        $frm marker $id text {{}}  ; # blank string
+    }
+}
+
+
+# --------------------
+# These routines will create an elastic ellipse that will snap to
+# the size, angle, and centoid of the data.
+
+proc get_ellipse_CB {tag_token id} {
+    # The elastic ellipse callback
+
+    global current
+    set frm [set current(frame)]
+
+    #Construct CIAO syntax for filename w/ filters, bin, block, crops
+    set infile [get_ciao_filename $tag_token $id]
+
+    # Run the imgmoment CIAO tool to get centroid, angle, and sizes
+    exec imgmoment $infile
+    set vals [regsub -all "\n" [exec pget imgmoment x_mu y_mu xsig ysig phi] " "]
+
+    # If the pixel values have low stddev, then probably background
+    # and the region will artificially expand ad nauseam. This is a simple
+    # check to see if pixel values are all the same, if so then small sigma
+    # and do not scale by the sqrt(2) needed to scale imgmoment "sig" values
+    exec dmstat $infile centroid- sig+ med- verb=0
+    set sigma [exec pget dmstat out_sigma]
+    set factor [expr {$sigma < 1 ? 1.0 : 1.4142135623730951}]
+
+    set xx [lindex $vals 0]
+    set yy [lindex $vals 1]
+    set r1 [expr [lindex $vals 2] * $factor]
+    set r2 [expr [lindex $vals 3] * $factor]
+    set aa [lindex $vals 4]
+
+    $frm marker $id ellipse radius $r1 $r2 physical
+    $frm marker $id angle $aa physical
+    $frm marker $id move to physical $xx $yy
+}
+
+proc add_adaptive_callback {frm id} {
+    # Since the CB "moves", "edits", and "rotates" the shape,
+    # we need to specify that this should only be run at the END
+    # action.  Otherwise the callback goes into an infinite loop
+    # and ds9 crashes.
+
+    set tag_token AdaptiveShape
+    $frm marker $id callback end move get_ellipse_CB $tag_token
+    $frm marker $id callback end edit get_ellipse_CB $tag_token
+    $frm marker $id callback end rotate get_ellipse_CB $tag_token
+    $frm marker $id tag $tag_token$id
+    $frm marker $id highlite
+    $frm marker $id color violet
+
+}
+
+proc make_adaptive_ellipse {} {
+    # Creates an ellipse in the center of the display with the
+    # elastic ellipse callbacks enabled
+
+    global current
+    global env
+
+    if {[info exists env(ASCDS_INSTALL)]} {
+        set frm [set current(frame)]
+        set pos [$frm get cursor physical]
+
+        # Create creates in WCS coordinates, so move to center in physical
+        set mkr [$frm marker create ellipse $pos 20 20 0 ]
+        add_adaptive_callback $frm $mkr
+        $frm marker $mkr move to physical $pos
+    } else {
+        tk_messageBox -message "You must have CIAO setup first" -type ok
+    }
+
+}
+
+proc enable_adaptive_ellipse {} {
+    # Add adaptive resizing to all selected ellipse shapes
+
+    global current
+
+    set frm [set current(frame)]
+    set slct [$frm get marker select]
+
+    foreach id $slct {
+        set shp [$frm get marker $id type]
+        if {$shp ne "ellipse"} {
+            continue
+        }
+        add_adaptive_callback $frm $id
+    }
+}
+
+proc disable_adaptive_ellipse {} {
+    # Disable the elastic ellipse callbacks
+
+    global current
+
+    set frm [set current(frame)]
+    set tag_token AdaptiveShape
+
+    set slct [$frm get marker select]
+
+    foreach id $slct {
+        set shp [$frm get marker $id type]
+        if {$shp ne "ellipse"} {
+            continue
+        }
+
+        $frm marker $id delete tag $tag_token$id
+        $frm marker $id delete callback end move get_ellipse_CB
+        $frm marker $id delete callback end edit get_ellipse_CB
+        $frm marker $id delete callback end rotate get_ellipse_CB
+        $frm marker $id unhighlite
+        $frm marker $id color green
+    }
+}
+
+# -------------------------------------
+# Add keyboard bindings to enable/disable
+
+bind . <F5> make_count_shape
+bind . <F7> enable_count_ellipse
+bind . <F8> disable_count_ellipse
+
+bind . <F9> make_adaptive_ellipse
+bind . <F11> enable_adaptive_ellipse
+bind . <F12> disable_adaptive_ellipse
+
+
+
+
+
