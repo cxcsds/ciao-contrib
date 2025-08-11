@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "07 April 2025"
+version = "11 August 2025"
 
 # import standard python modules as required
 #
@@ -142,29 +142,29 @@ def error_out(params,msg,val):
 
 
 def filter_aspsolobi_from_aspsol(asol_list,mydir,params):
-    """As of DS10.8.3, there are now two flavors of aspect solution 
+    """As of DS10.8.3, there are now two flavors of aspect solution
     files, per OBI (CONTENT=ASPSOLOBI) and the original per-constant
     aspect interval (cai) (CONTENT=ASPSOL).  Users should only ever
-    have one or the other. 
-    
+    have one or the other.
+
     Unfortunately, due to a quirk in the archive, users may have both.
-    
+
     We know that there can be 1 and only 1 ASPSOLOBI file per obi (multi-obi
-    obsid's will need to have already been split, #repro5). 
-    
+    obsid's will need to have already been split, #repro5).
+
     So if we find both ASPSOLOBI and ASPSOL files, we are going to pick
     the ASPSOLOBI files.  This provides a better off-axis angle value
     and tighter FOV.
     """
     from pycrates import read_file
     from collections import defaultdict
-    
+
     content_values = defaultdict(list)
     for f in asol_list:
         tab = read_file(f.strip(), mode="r")
         content = tab.get_key_value("CONTENT")
         content_values[content].append(f)
-        
+
     if "ASPSOLOBI" in content_values:
         if len( content_values["ASPSOLOBI"] ) > 1:
             error_out(params, "Too many ASPSOLOBI aspect file found.  If this "+
@@ -184,7 +184,7 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir,params):
                 os.unlink(old)
 
         # may not be necessary to del but I don't like relying on
-        # the order of the if's below should someone one day reorder 
+        # the order of the if's below should someone one day reorder
         # them.
         del content_values["ASPSOL"]
 
@@ -200,24 +200,24 @@ def filter_aspsolobi_from_aspsol(asol_list,mydir,params):
         return content_values["OBCSOL"]
 
     if "ASPSOL" in content_values:
-        new_asol = update_aspsol_to_aspsolobi(content_values["ASPSOL"], 
+        new_asol = update_aspsol_to_aspsolobi(content_values["ASPSOL"],
                                               mydir, params)
         return new_asol
-    
+
     error_out(params, "Unknown CONTENT keywords found in the aspect solution files", 'input error')
-    
+
 
 def update_aspsol_to_aspsolobi(asol_list,mydir, params):
-    """CIAO 4.13 includes the new asp_offaxis_corr tool which 
+    """CIAO 4.13 includes the new asp_offaxis_corr tool which
     applies the dy,dz,dtheta offsets to the ra/dec/roll + quaternions.
-    
+
     If we only found ASPSOL files, we upgrade them to ASPSOLOBI files
-    
+
     asp_offaxis_corr also updates the _PNT keywords in the asol file.
     Those need to get to foo_p_e to update the pointing and
     tangent point.
     """
-    
+
     from ciao_contrib.runtool import make_tool
     from pycrates import read_file
 
@@ -240,7 +240,7 @@ def update_aspsol_to_aspsolobi(asol_list,mydir, params):
         error_out(params, "ERROR: No aspect solution files found", 'input error')
 
     # remove \n
-    instk = [a.strip() for a in asol_list] 
+    instk = [a.strip() for a in asol_list]
 
     # if more than one file in stack, better all have the same obsid.
     obsid=None
@@ -269,32 +269,32 @@ def update_aspsol_to_aspsolobi(asol_list,mydir, params):
     dmmerge.outfile = outfile
     dmmerge.clobber = params["clobber"]
     dmmerge()
-    
+
     # This tool updates the outfile in place
     asp_offaxis_corr = make_tool("asp_offaxis_corr")
     asp_offaxis_corr(outfile, "acis")  # instrume doesn't matter
-    
+
     # Update asol header with updated content and NOM values
     from pycrates import read_file, set_key, get_keyval
     tab = read_file(outfile, mode="rw")
     set_key(tab, "CONTENT", "ASPSOLOBI")
     for key in ['RA', 'Dec', 'Roll']:
         val = get_keyval(tab, "{}_PNT".format(key))
-        set_key(tab, "{}_NOM".format(key), val, unit="deg", 
+        set_key(tab, "{}_NOM".format(key), val, unit="deg",
                 desc="Nominal "+key)
-    
+
     tab.write()
-    
+
     # We need to pass in an obs.par file to get the new tangent
     # point and pointing (otherwise it is taken from the evt1_file.
     params["pnt_obspar"] = make_overide_pointing_obspar(outfile, params)
-    
+
     return [outfile+"\n",]
 
 def make_overide_pointing_obspar(asolfile,params):
     """We create an obs.par file where we will be updating the
     _PNT, _NOM, and _AVG files so that they will get used by
-    foo_process_events.    
+    foo_process_events.
     """
 
     # Get new _PNT values
@@ -303,7 +303,7 @@ def make_overide_pointing_obspar(asolfile,params):
     ra = tab.get_key_value("RA_PNT")
     dec = tab.get_key_value("DEC_PNT")
     roll = tab.get_key_value("ROLL_PNT")
-    
+
     # Create obs.par from evt1 file header
     outfile = asolfile.replace("asol1.fits", "obs.par")
     make_obspar(params["evt1_file"], outfile)
@@ -324,7 +324,7 @@ def make_overide_pointing_obspar(asolfile,params):
         if pio.paccess(obspar, pname):
             pio.pputd(obspar, pname, 0.0)
 
-    pio.paramclose(obspar)        
+    pio.paramclose(obspar)
 
     params["cleanup_files"].append(outfile)
 
@@ -334,9 +334,9 @@ def make_overide_pointing_obspar(asolfile,params):
 def make_obspar(infile, outfile):
     """
     I need to make my own `dmmakepar` equivalent here because
-    dmmakepar does not set the comment value "correctly".  It puts the 
+    dmmakepar does not set the comment value "correctly".  It puts the
     units at the end of the comment; but the DM and the real obs.par
-    files needs to have the comment at the beginning of the comment.    
+    files needs to have the comment at the beginning of the comment.
     """
     from pycrates import read_file
     import numpy as np
@@ -351,7 +351,7 @@ def make_obspar(infile, outfile):
                 comment = '"[{}] {}"'.format(unit,key.desc)
             else:
                 comment = '"{}"'.format(key.desc)
-            
+
             if isinstance(key.value, (str,)):
                 dtype="s"
                 val='"{}"'.format(val)
@@ -367,7 +367,7 @@ def make_obspar(infile, outfile):
                 print("Unknown data type. Using string")
                 dtype="s"
                 val='"{}"'.format(val)
-        
+
             param=",".join([key_name.lower(), dtype, "h",val,"","",comment])+"\n"
             fp.write(param)
 
@@ -780,11 +780,11 @@ def event1_inputs(params):
             params["dec_targ"] = keys["DEC_TARG"].value
 
             # Only standard datasets taken in KALMAN lock are supported.
-            # Other modes such as OBC use the on-board-computer 
+            # Other modes such as OBC use the on-board-computer
             # aspect solution and don't have *_asol1.fits files. They
             # only have the *_osol1.fits files.  We can't handle that
             # right now.
-            
+
             if 'KALMAN' != keys["ASPTYPE"].value:
                 #msg = "ASPTYPE='{}' mode data is not currently supported."
                 #raise NotImplementedError(msg.format(keys["ASPTYPE"].value))
@@ -794,7 +794,7 @@ def event1_inputs(params):
             else:
                 params["__obc_mode__"] = False
 
-            if params["instrume"] == 'ACIS':  
+            if params["instrume"] == 'ACIS':
                 params["readmode"] = keys["READMODE"].value
             if params["instrume"] == 'HRC':
                 try:
@@ -844,7 +844,7 @@ def clean_dir(dir_list):
     .gz version'''
 
     retval = list(dir_list).copy()
-    
+
     for _dir in dir_list:
         check = _dir+".gz"
         if check in retval:
@@ -997,10 +997,10 @@ def get_inputs(params):
 
             check_name_in_hdr( "asol1", newasol, params["hdr_asolfile"] )
 
-        ### If we find eph1 file that is not 'orbit' then this is a 
+        ### If we find eph1 file that is not 'orbit' then this is a
         ### solar system object and well run sso_freeze
         elif re.search(".*eph1.fits*", ff):
-            
+
             if ff.startswith("orbit"):
                 params["eph1_file"].append(params["primarydir"] + ff)
             else:
@@ -1008,7 +1008,7 @@ def get_inputs(params):
                     v0("There should only be 1 SSO eph1 file, skipping: "+ff)
                     continue
                 params["sso_file"] = params["primarydir"] + ff
-                
+
 
 
     #!####################################################
@@ -1146,7 +1146,7 @@ def get_inputs(params):
 
                 path=os.path.join(params["outdir"], os.path.basename(newbias))
                 link_or_copy(newbias, path)
-  
+
                 uff=ff.split(".gz")[0]
                 params["cleanup_files"].append(os.path.join(params["outdir"], uff))
 
@@ -1186,7 +1186,7 @@ def get_inputs(params):
 
                 path=os.path.join(params["outdir"], os.path.basename(newasol))
                 link_or_copy(newasol, path)
-                
+
             #!### always make sorted asol list ###
             if os.path.isfile(params["asol1_file"]):
                 #!### Just append to existing list ###
@@ -1200,17 +1200,17 @@ def get_inputs(params):
                     asollist = open(params["asol1_file"], 'w')
                 except:
                     error_out(params,"Could not create list file '%s'" % params["asol1_file"], 'write error')
-                        
+
             #!### In both cases above we write current file to list ###
             asollist.write(newasol + '\n')
-            asollist.close() 
+            asollist.close()
 
             check_name_in_hdr( "asol1", newasol, params["hdr_asolfile"] )
 
     # Look for the V&V report in the top level indir
 
     toplevel_products=clean_dir(os.listdir(params["indir"]))
-    
+
     for ff in toplevel_products:
         if ff.endswith("vv2.pdf.gz"):
             gunzip(os.path.join(params["indir"],ff))
@@ -1686,11 +1686,11 @@ def process_acis_events(params, eventdef=None):
         v1("\nWARNING: pix_adj=CENTROID is not supported for GRADED mode data;\n    setting pix_adj=NONE.")
         acis_process_events.pix_adj="NONE"
 
-    # If we had to recompute the asol file,then we need to change 
+    # If we had to recompute the asol file,then we need to change
     # pointing keywords via obsfile.
     if 'pnt_obspar' in params and os.path.exists(params['pnt_obspar']):
         acis_process_events.obsfile = params['pnt_obspar']
-    
+
     #!### Execute acis_process_events command we built above ###
     out=acis_process_events()
 
@@ -1716,7 +1716,7 @@ def process_acis_events(params, eventdef=None):
 
 def patch_hrc_ssc(params):
     '''
-        Correct HRC DTF values for Secondary Science Corruption (SSC)    
+        Correct HRC DTF values for Secondary Science Corruption (SSC)
     '''
 
     v3("Checking HRC for secondary science corruption")
@@ -1724,7 +1724,7 @@ def patch_hrc_ssc(params):
     if params["dtf1_file"].lower() in ["", "none"]:
         v0("Warning: No DTF file found; cannot evaluate Secondary Science Corruption")
         return
-    
+
     if params["mtl1_file"].lower() in ["", "none"]:
         v0("Warning: No MTL file found; cannot evaluate Secondary Science Corruption")
 
@@ -1732,7 +1732,7 @@ def patch_hrc_ssc(params):
 
     from ciao_contrib.runtool import make_tool
     patch_ssc = make_tool("patch_hrc_ssc")
-    
+
     patch_ssc.dtf_infile = params["dtf1_file"]
     patch_ssc.mtl_infile = params["mtl1_file"]
     patch_ssc.evt_infile = params["evt1_file"]
@@ -1740,10 +1740,10 @@ def patch_hrc_ssc(params):
     patch_ssc.gti_outfile = f"{root}_repro_flt1.fits"
     patch_ssc.dtf_outfile = f"{root}_repro_dtf1.fits"
     patch_ssc.clobber = params["clobber"]
-    
+
     out = patch_ssc()
     v5(out)
-    
+
     if not os.path.exists(patch_ssc.gti_outfile):
         v1("HRC SSC not detected")
         return
@@ -1852,7 +1852,7 @@ def process_hrc_events(params):
     if pix_adj_value != 'default':
         hrc_process_events.rand_pix_size=pix_adj_value
 
-    # If we had to recompute the asol file,then we need to change 
+    # If we had to recompute the asol file,then we need to change
     # pointing keywords via obsfile.
     if 'pnt_obspar' in params and os.path.exists(params['pnt_obspar']):
         hrc_process_events.obsfile = params['pnt_obspar']
@@ -1963,13 +1963,13 @@ def run_tgdetect2_and_create_mask(params):
         evtfilter = "[status=xxxxxx00xxxx0xxx0000x000x00000xx]"
     else:
         error_out(params, "Bad detnam", 'input error')  # should have crashed long before this
-        
 
-    # Work around DM bug. 
+
+    # Work around DM bug.
     # To work around a dm bug we have to separately apply the @flt
     # filter from the status+grade filter.
     #
-    # status & energy filter removes most events so run it 1st. 
+    # status & energy filter removes most events so run it 1st.
     #
     dmcopy.infile = params["evt1_file"]+evtfilter
     dmcopy.outfile = goodevtA
@@ -1992,6 +1992,12 @@ def run_tgdetect2_and_create_mask(params):
     out = tgdetect2()
     v5("tgdetect2 returned")
     v5(out)
+
+    from pycrates import read_file, get_number_rows
+    tab = read_file(src1a)
+    if get_number_rows(tab) == 0:
+        error_out(params, 'Zero sources detected by tgdetect2. Please re-run and specify zero order location using the tg_zo_position parameter',
+                  'No sources detected')
 
     tg_create_mask.punlearn()
     tgmask = os.path.join(outdir, root + '_tgmask.fits')
@@ -2220,7 +2226,7 @@ def get_asol_times( params ):
         params["cleanup_files"].append(new_limits)
 
     else:
-        dmtcalc( params["flt1_file"], outroot+"_addcol_flt1.fits", "time=0", clobber=params["clobber"])    
+        dmtcalc( params["flt1_file"], outroot+"_addcol_flt1.fits", "time=0", clobber=params["clobber"])
         dmcopy( dmtcalc.outfile+"[time={}:{}]".format(min_a,max_a), outroot+"_repro_flt1.fits", clobber=params["clobber"] )
 
 
@@ -2246,15 +2252,15 @@ def filter_obc_gti_limit( mtlfile, outlimfile, clobber=True ):
     """Filters the LIMITS block of the mission time line file
     to remove the limits associated with OBC (on-board-computer)
     mode.
-    
+
     The LIMITS extension is just a single string column in the mtl1.fits
     file.  Each row is a separate limit.  The 'limit_status' column
     in the MTL_S extension of the mtl1.fits file maps to the LIMITS block.
     Each bit in the limit_status maps to a row.  Here we count
     bits left-to-right starting at 1. [Ugh!]
-    
+
     So if we have
-    
+
     % dmlist "acisf02469_001N004_mtl1.fits[mtl_s][cols limit_status][#row=1]" data,clean
     #  limit_status[3]
                                                      01000000000000000010000
@@ -2264,11 +2270,11 @@ def filter_obc_gti_limit( mtlfile, outlimfile, clobber=True ):
     % dmlist "acisf02469_001N004_mtl1.fits[limits][#row=2,19]" data,clean
     #  gti_limits
     (fabs(Point_MoonLimbAng:1)>=6.0)
-    (ASPTYPE:1!="OBC") 
+    (ASPTYPE:1!="OBC")
 
     We want to remove these limits -- but we can't rely on the row numbers.
     We need to check (regex) the contents of each line to look for the lines
-    to remove.    
+    to remove.
     """
 
     from re import search
@@ -2276,7 +2282,7 @@ def filter_obc_gti_limit( mtlfile, outlimfile, clobber=True ):
 
     def is_point_limbang( limit ):
         """Remove the Earth, Sun, Moon limb angle pointing limits.
-        We could try to be clever here and pick the right one, 
+        We could try to be clever here and pick the right one,
         but its just as easy to remove them all"""
         if search('point_.*limbang', limit) is None:
             return False
@@ -2301,11 +2307,11 @@ def filter_obc_gti_limit( mtlfile, outlimfile, clobber=True ):
 
     write_new_limits( mod_limits, outlimfile, clobber)
 
-    
+
 
 def write_new_limits( mod_limits, outlimfile, clobber=True ):
     """Write the output limits file.  We don't need all the
-    header meta data, just the single column with the 
+    header meta data, just the single column with the
     subset of the filter strings"""
 
     from crates_contrib.utils import write_columns
@@ -2313,7 +2319,7 @@ def write_new_limits( mod_limits, outlimfile, clobber=True ):
 
 
 def make_new_obc_gti( mtlfile, outlimfile, outgtifile, clobber=True):
-    """Compute the new GTI; write out new filter 
+    """Compute the new GTI; write out new filter
     """
     from ciao_contrib.runtool import make_tool
     dmgti = make_tool("dmgti")
@@ -2328,7 +2334,7 @@ def make_new_obc_gti( mtlfile, outlimfile, outgtifile, clobber=True):
     summarize_results( outgtifile)
 
 
-    
+
 def summarize_results(outgtifile):
     """Show a summary of the GTI information"""
     from pycrates import read_file
@@ -2338,9 +2344,9 @@ def summarize_results(outgtifile):
     num_gti = len( dss.range_max)
     msg="Total recovered OBC ONTIME={:.2f}ks in {} time interval(s)"
     v1(msg.format( ontime/1000.0, num_gti))
-    
 
-    
+
+
 
 
 
@@ -2441,11 +2447,11 @@ def lookup_hrc_pi_filter(evtfile):
     import caldb4 as caldb
     cdb = caldb.Caldb(infile=evtfile, product="TGPIMASK2")
     calfiles = cdb.search
-    
+
     if not calfiles or len(calfiles) == 0:
         v1("No TGPIMASK2 CALDB file found for this dataset")
         return None
-    
+
     if len(calfiles) > 1:
         raise RuntimeError("ERROR: Too many TGPIMASK2 CALDB files found for this dataset")
 
@@ -2515,7 +2521,7 @@ def l2_hrc_events(params):
         status_str = "xxxxxx00xxxx0xxx00000000x0000000"
     else:
         raise ValueError("Unknown detnam '{}'".format(detnam))
-        
+
     if grating == 'NONE':
         dmcopy.infile=evt1+"[EVENTS][status={}]".format(status_str)  # 6/26/13: pi=0:300 left to user to decide
     else:
@@ -2802,18 +2808,18 @@ def set_ardlib(params):
 def choose_skyfov_method( asolfiles ):
     """
     Choose skyfov method parameter based on ASOL CONTENT keyword
-    
+
     In Repro-5, there will be a new aspect solution file.  It will
     differ from the previous file in how the offsets (DY,DZ) are
-    applied. With these new files we can start to use the new 
-    skyfov convex hull algorithm.    
-    """    
+    applied. With these new files we can start to use the new
+    skyfov convex hull algorithm.
+    """
     from pycrates import read_file
     import stk as stk
 
     skyfov_choices={ 'ASPSOLOBI' : 'convexhull' , 'ASPSOL' : 'minmax',
                      'OBCSOL': 'minmax'}
-    if asolfiles is None: 
+    if asolfiles is None:
         return skyfov_choices["ASPSOL"]
 
     asolfiles = stk.build("@"+asolfiles)
@@ -2859,8 +2865,8 @@ def remake_fov1_file( pars ):
 
 def process_sso(pars, is_gratings=False):
     """
-    Run sso_freeze to add solar system object coordinates to the 
-    event file and the aspect solution file.    
+    Run sso_freeze to add solar system object coordinates to the
+    event file and the aspect solution file.
     """
     from ciao_contrib.runtool import sso_freeze, dmmerge
 
@@ -2878,15 +2884,15 @@ def process_sso(pars, is_gratings=False):
     evt1=pars[evt]
     eph1=pars["eph1_file"]
 
-        
+
     if len(eph1) == 0:
         v0("WARNING: Could not find definitive orbit ephemeris file, orbit*eph1.fits, skipping sso_freeze")
         return
 
     tab = pyc.read_file(sso_eph)
-    obj = tab.get_key_value("OBJECT")        
+    obj = tab.get_key_value("OBJECT")
     v1("\nRunning sso_freeze to add solar system coordinates for object: "+obj)
-    
+
     asol1="@"+pars["asol1_file"]
     dmmerge.punlearn()
     dmmerge.infile = asol1
@@ -2894,7 +2900,7 @@ def process_sso(pars, is_gratings=False):
     out = dmmerge()
     v5(out)
     pars["cleanup_files"].append(dmmerge.outfile)
-    
+
     out_asol1 = os.path.join(pars["outdir"], pars["root"] + '_repro_sso_asol1.fits')
 
     sso_freeze.infile = evt1
@@ -2913,25 +2919,25 @@ def process_sso(pars, is_gratings=False):
         v0("WARNING: Could not run sso_freeze to compute solar system centered coordinates; skipping it. Error message:")
         v0(str(failed))
         return
-        
+
     v5("sso_freeze returned")
     v5(out)
-    
+
     # It would be nice to set the ASOLFILE keyword to the sso asol
-    # since it has the same format. Unfortunately, the sso asol 
+    # since it has the same format. Unfortunately, the sso asol
     # has blockname="ocsol" instead of "ASPSOL" and that causes
-    # down stream tools (asphist) to error out.  Leave this 
+    # down stream tools (asphist) to error out.  Leave this
     # here for the day that's fixed.
     # ~ tab = pyc.read_file(out_evt1, mode="rw")
     # ~ tab.get_key("ASOLFILE").value = os.path.basename(out_asol1)
     # ~ tab.write()
-    
+
     if is_gratings:
         dmappend(pars[evt]+"[REGION]", out_evt1)
 
     pars[evt] = out_evt1
     pars["cleanup_files"].append(out_evt1)
-    
+
 
 #!############
 # main routine
