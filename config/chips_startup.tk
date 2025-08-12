@@ -287,7 +287,7 @@ proc ciao_plotter {tag_token id data label} {
     $ydata set $mydata(yy)
 
     if {![PlotPing $vvarname]} {
-        PlotDialog $vvarname [string totitle [$frm get marker $id type]] true
+        PlotDialog $vvarname [string totitle ${tag_token}${id}] true
         PlotAddGraph $vvarname line
         PlotTitle $vvarname $mylabel(title) $mylabel(xlabel) $mylabel(ylabel)
 
@@ -380,7 +380,7 @@ proc get_counts_CB { tag_token id } {
     # Run dmstat and return out_sum value
     # TODO: fix race condition PFILES
     exec dmstat $infile cen- sig- med- verb=0
-    set sumval [exec pget dmstat out_sum]
+    set sumval [exec -ignorestderr pget dmstat out_sum]
 
     # Have to use escaped brackets since sumval is an integer
     $frm marker $id text \{$sumval\}
@@ -433,14 +433,14 @@ proc get_ellipse_CB {tag_token id} {
 
     # Run the imgmoment CIAO tool to get centroid, angle, and sizes
     exec imgmoment $infile
-    set vals [regsub -all "\n" [exec pget imgmoment x_mu y_mu xsig ysig phi] " "]
+    set vals [regsub -all "\n" [exec -ignorestderr pget imgmoment x_mu y_mu xsig ysig phi] " "]
 
     # If the pixel values have low stddev, then probably background
     # and the region will artificially expand ad nauseam. This is a simple
     # check to see if pixel values are all the same, if so then small sigma
     # and do not scale by the sqrt(2) needed to scale imgmoment "sig" values
     exec dmstat $infile centroid- sig+ med- verb=0
-    set sigma [exec pget dmstat out_sigma]
+    set sigma [exec -ignorestderr pget dmstat out_sigma]
     set factor [expr {$sigma < 1 ? 1.0 : 1.4142135623730951}]
 
     set xx [lindex $vals 0]
@@ -559,7 +559,7 @@ proc disable_lightcurve_shape {} {
 proc run_dmextract_ltc {tag_token id} {
     # Run dmextract in light curve mode
 
-    set binsize [exec pget dax lc_binsize]
+    set binsize [exec -ignorestderr pget dax lc_binsize]
 
     set infile [get_ciao_filename $tag_token $id]
     set infile [regsub {\[bin .*\]} $infile ""]
@@ -622,9 +622,9 @@ proc disable_spectrum_shape {} {
 proc run_dmextract_pi {tag_token id} {
     # Run dmextract in spectral mode
 
-    set grp [exec pget dax grptype]
-    set grpval [exec pget dax grpval]
-    set binspec [exec pget dax grpbin]
+    set grp [exec -ignorestderr pget dax grptype]
+    set grpval [exec -ignorestderr pget dax grpval]
+    set binspec [exec -ignorestderr pget dax grpbin]
 
     set infile [get_ciao_filename $tag_token $id]
     set infile [regsub {\[bin .*\]} $infile ""]
@@ -664,12 +664,81 @@ proc ciao_pi_plotter_cb {tag_token id} {
 }
 
 # -------------------------------------
-# Add keyboard bindings to enable/disable
+
+proc enable_glvary_shape {} {
+    #
+    global current
+    set frm $current(frame)
+
+    set binfilt [$frm get fits header keyword extname]
+    switch $binfilt {
+        "EVENTS" -
+        "STDEVT" {
+            enable_ciao_callback GLvaryShape ciao_glvary_plotter_cb {}
+        }
+        default {
+            tk_messageBox -message "glvary only works with EVENT files." -type ok
+        }
+    }
+}
+
+proc disable_glvary_shape {} {
+    disable_ciao_callback GLvaryShape ciao_glvary_plotter_cb {}
+}
+
+proc run_glvary {tag_token id} {
+    # Run glvary
+    global env
+
+    set infile [get_ciao_filename $tag_token $id]
+    set infile [regsub {\[bin .*\]} $infile ""]
+
+    # Glvary does not accept - to write to stdout. Bummer. So
+    # write to file on disk.
+    set tchan [file tempfile tmpfile $env(DAX_OUTDIR)/glvary.fits]
+    close $tchan
+    file delete $tmpfile
+    set lc ${tmpfile}.lc
+    set prb ${tmpfile}.prb    
+    exec glvary infile=${infile} outfile=${prb} lcfile=${lc} eff="" mode=h clobber=yes verbose=0
+    file delete $prb
+    set vals [exec dmlist "${lc}\[cols time,count_rate\]" data,clean | grep -v Time]
+    file delete $lc
+    
+    set x_ {}
+    set y_ {}
+    foreach {i j} [regsub -all "\n" $vals " " ] {
+        lappend x_ $i
+        lappend y_ $j
+    }
+
+    set retval {}
+    lappend retval $x_
+    lappend retval $y_
+    return $retval
+}
+
+proc ciao_glvary_plotter_cb {tag_token id} {
+    # Run CIAO command to get xy values to plot
+    set xy [run_glvary $tag_token $id]
+
+    set data(xx) [lindex $xy 0]
+    set data(yy) [lindex $xy 1]
+    set label(title) {GL}
+    set label(xlabel) {Delta Time [ksec]}
+    set label(ylabel) {Count Rate [c/sec]}
+
+    ciao_plotter $tag_token $id data label
+}
+
+
 
 #~ bind . <F3> enable_lightcurve_shape
 #~ bind . <F4> disable_lightcurve_shape
 #~ bind . <Shift-F3> enable_spectrum_shape
 #~ bind . <Shift-F4> disable_spectrum_shape
+#~ bind . <Control-F3> enable_glvary_shape
+#~ bind . <Control-F4> disable_glvary_shape
 
 
 #~ bind . <F5> make_count_shape
