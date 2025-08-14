@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2013-2014,2019,2022
+#  Copyright (C) 2013-2014,2019,2022,2025
 #  Smithsonian Astrophysical Observatory
 #
 #
@@ -108,7 +108,7 @@ def _check_keyword_list( keyword_list):
 
     if 'CHANDRA' != keyword_list["TELESCOP"].upper():
         e = "This routine only works with Chandra data, not '{}'"
-        raise ValueError(e.format( keyword_list["TELESCOP"]))
+        raise ValueError(e.format(keyword_list["TELESCOP"]))
 
     if keyword_list["INSTRUME"] not in ['ACIS', 'HRC']:
         e = "Unknown instrument '{}'"
@@ -255,7 +255,7 @@ def cel_to_chandra( keyword_list, ra_vals, dec_vals ):
         try:
             cixy = pix.fpc2chip( dxy )
             if cixy[0] < 0:
-                raise ValueError("Unknow chip")
+                raise ValueError("Unknown chip")
             chip.append( cixy )
         except:
             chip.append( (-999, (-999,-999)))
@@ -339,7 +339,7 @@ def sky_to_chandra( keyword_list, x_vals, y_vals ):
         try:
             cixy = pix.fpc2chip( dxy )
             if cixy[0] < 0:
-                raise ValueError("Unknow chip")
+                raise ValueError("Unknown chip")
             chip.append( cixy )
         except:
             chip.append( (-999, (-999,-999)))
