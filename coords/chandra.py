@@ -20,7 +20,7 @@
 
 """Routines related specifically to converting to/from Chandra coordinates.
 
-The conversion between the various coodtinate systems on Chandra
+The conversion between the various coordinate systems on Chandra
 depend on the aspect solution, since this determines where the
 spacecraft is pointing at any point during the observation. However,
 the routines here are only for a single point in the aspect solution,
