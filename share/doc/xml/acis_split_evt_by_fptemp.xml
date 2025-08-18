@@ -1,0 +1,276 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="acis_split_evt_by_fptemp"
+         context="Tools::ACIS"
+         refkeywords="acis fptemp fp_temp focal plane temperature RMF response matrix warm mission time line MTL"
+         >
+    <SYNOPSIS>
+     Filters input event file based on time spent in calibrated focal plane temperature ranges.
+    </SYNOPSIS>
+    <DESC>
+      <PARA>
+        This script automates the event filtering steps shown in the
+        <HREF link="https://cxc.cfa.harvard.edu/ciao/threads/acis-fptemp-resp/index.html">
+        Extracting Spectra and Responses for ACIS Observations that Undergo Large 
+        Focal-plane Temperature Swings
+        </HREF> thread. The script will use the input event file to identify
+        the set of 
+        <HREF link="https://cxc.cfa.harvard.edu/ciao/why/mkacisrmf.html">mkacisrmf</HREF>,
+        i.e. the "P2_RESP" CALDB files.
+        If there are multiple CALDB files, then the script will use the information in
+        the headers of the "P2_RESP" calibration files to identify the 
+        calibrated focal-plane temperature ranges. The script constructs good
+        time intervals based on the temperature ranges and FP_TEMP values 
+        stored in the mission time line file. For temperature ranges with
+        non-zero good time, it will then filter the event file using those
+        good time intervals.
+        The output is a set of event files and a stack "list" file than can 
+        then be used with specextract to extract combined spectra.
+     </PARA>
+
+     <PARA title="Caveat">
+       This script and the thread are not needed for most observations.
+       Even if there is a significant temperature variation during an observation, 
+       most targets will not have enough counts to be able to differentiate between
+       statistical uncertainty and temperature dependent calibration differences.
+       Users should read the thread and associated documents carefully before
+       using this script.            
+     </PARA>
+
+
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+acis_split_evt_by_fptemp infile=primary/acisf30601N002_evt2.fits outroot=acisf30601N002 clob+
+          </LINE>
+        </SYNTAX>
+        <DESC>
+<VERBATIM>
+acis_split_evt_by_fptemp (13 April 2025)
+          infile = primary/acisf30601N002_evt2.fits
+         outroot = acisf30601N002
+         mtlfile = INDEF
+         clobber = yes
+         verbose = 1
+            mode = ql
+
+FP_TEMP [K]: 165.96 - 178.16 :       0.00 [sec]
+FP_TEMP [K]: 163.96 - 165.96 :       0.00 [sec]
+FP_TEMP [K]: 161.96 - 163.96 :    1925.10 [sec]
+FP_TEMP [K]: 159.96 - 161.96 :    3087.60 [sec]
+FP_TEMP [K]: 157.96 - 159.96 :    3162.00 [sec]
+FP_TEMP [K]: 155.96 - 157.96 :    3050.40 [sec]
+FP_TEMP [K]: 153.96 - 155.96 :    4634.50 [sec]
+FP_TEMP [K]: 152.96 - 153.96 :    1348.50 [sec]
+
+Created the following event files:
+    acisf30601N002_161.96-163.96.evt
+    acisf30601N002_159.96-161.96.evt
+    acisf30601N002_157.96-159.96.evt
+    acisf30601N002_155.96-157.96.evt
+    acisf30601N002_153.96-155.96.evt
+    acisf30601N002_152.96-153.96.evt
+
+Use '@acisf30601N002_evt.lis' to extract spectra and responses.
+</VERBATIM>
+
+            <PARA>
+            This example shows running the script with the event file 
+            for OBS_ID 30601 as input. The script used the event file to locate
+            the set of P2_RESP CALDB files, extracted the FP_TEMP ranges, created
+            good time intervals, and then filtered the event file into 6
+            segments consistent with the FP_TEMP ranges for the 6 non-zero
+            good time intervals.  The script was able to automatically locate
+            the mission time line file (MTL) based on the MTLFILE keyword
+            in the input event file.
+            </PARA>
+
+    <PARA>
+    The output list file, acisf30601N002_evt.lis, can then be used with spectract
+    to create responses. For example:
+    </PARA>
+
+<VERBATIM>
+specextract "@acisf30601N002_evt.lis[sky=region(source.reg)]" \
+   bkgfile="@acisf30601N002_evt.lis[sky=region(background.reg)]" \
+   ... combine=yes ...
+</VERBATIM>
+
+        </DESC>
+     </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+acis_split_evt_by_fptemp acisf00214N004_evt2.fits.gz out=obsid214 
+          </LINE>
+        </SYNTAX>
+        <DESC>
+<VERBATIM>
+acis_split_evt_by_fptemp (13 April 2025)
+          infile = acisf00214N004_evt2.fits.gz
+         outroot = obsid214
+         mtlfile = INDEF
+         clobber = no
+         verbose = 1
+            mode = ql
+
+# acis_split_evt_by_fptemp (13 April 2025): ERROR: P2_RESP files cannot be located in the CALDB for this event file
+</VERBATIM>
+<PARA>
+For OBS_ID 214 there are not P2_RESP calibration files. This observation
+was taken early in the mission and requires using the 'mkrmf' tool 
+rather than the 'mkacisrmf' tool to create response matrix files (RMFs). There are no
+temperature dependent calibrations during this early mission time period.
+</PARA>
+  </DESC>
+  </QEXAMPLE>
+
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+acis_split_evt_by_fptemp acisf00408N005_evt2.fits.gz out=obsid408 
+          </LINE>
+        </SYNTAX>
+        <DESC>
+<VERBATIM>
+acis_split_evt_by_fptemp (13 April 2025)
+          infile = acisf00408N005_evt2.fits.gz
+         outroot = obsid408
+         mtlfile = INDEF
+         clobber = no
+         verbose = 1
+            mode = ql
+
+FP_TEMP [K]: 165.96 - 178.16 :       0.00 [sec]
+FP_TEMP [K]: 163.96 - 165.96 :       0.00 [sec]
+FP_TEMP [K]: 161.96 - 163.96 :       0.00 [sec]
+FP_TEMP [K]: 159.96 - 161.96 :       0.00 [sec]
+FP_TEMP [K]: 157.96 - 159.96 :       0.00 [sec]
+FP_TEMP [K]: 155.96 - 157.96 :       0.00 [sec]
+FP_TEMP [K]: 153.96 - 155.96 :       0.00 [sec]
+FP_TEMP [K]: 152.96 - 153.96 :    1465.20 [sec]
+# acis_split_evt_by_fptemp (13 April 2025): ERROR: Only 1 FP_TEMP range has good time. No need to run this script.
+</VERBATIM>
+<PARA>
+For OBSID 408, the focal plane temperature was steady and falls within a single
+calibration focal plane temperature range. In this case, there is no reason to 
+split the event file into multiple segments as the error message indicates.
+</PARA>
+  </DESC>
+  </QEXAMPLE>
+
+
+
+
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>Input event file</SYNOPSIS>
+      </PARAM>
+      <PARAM name="outroot" type="file" filetype="output" reqd="yes">
+        <SYNOPSIS>Output directory+root file name</SYNOPSIS>
+        <DESC>
+        <PARA>
+        The script will create output files with name like
+        </PARA>
+<VERBATIM>
+${outroot}_${lo}-${hi}.evt
+</VERBATIM>
+
+        <PARA>
+        Where ${lo} is lower limit on the temperature range and
+        ${hi} is the upper limit on the temperature range.
+        </PARA>
+        <PARA>
+        The script will also create an list file        
+        </PARA>
+<VERBATIM>
+${outroot}_evt.lis
+</VERBATIM>
+
+        <PARA>
+        Which can be used by tools like specextract to extract spectra
+        and responses.
+        </PARA>
+
+        </DESC>
+      </PARAM>
+
+      <PARAM name="mtlfile" type="file" filetype="input" def="INDEF">
+        <SYNOPSIS>Input Mission Time Line (MTL) file</SYNOPSIS>
+        <DESC>
+        <PARA>
+        The script uses the "FP_TEMP" column in the mission time line
+        file to create good time intervals using the dmgti tool.
+        </PARA>
+        <PARA>
+        If the mtlfile value is blank or "INDEF", then the script will
+        use the "MTLFILE" keyword in the header of the input event file
+        to try to locate the mission time line file. It will look in
+        several directories relative to the event file.
+        </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>Overwrite existing files?</SYNOPSIS>
+      </PARAM>
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+        <SYNOPSIS>Output verbosity.</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The default verbosity value of 1 prints status
+            messages as the script runs.  Higher verbosity
+            settings print the commands that are being run.
+            Setting verbose=0 turns off most of the screen
+            output (some output is currently unavoidable).
+          </PARA>
+        </DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Background Information">
+     <PARA >
+        For most of the Chandra mission the ACIS focal plane temperature
+        has remained steady at/around -120C. However as the mission has
+        progressed it has become difficult to maintain a steady temperature
+        and at the same time preserve observing efficiency. As a result, the ACIS 
+        focal plane temperature is now allowed to vary during an some observations.
+        Changes in focal plane temperature affect the spectral re-distribution;
+        that is warmer temperatures produce wider observed spectral lines.
+        The response matrix, RMF, has been calibrated for several temperature
+        ranges for certain CCD_IDs (chips).
+     </PARA>
+    </ADESC>
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>
+        .
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/acis_split_evt_by_fptemp.html">
+          bugs page
+          for this script
+        </HREF>
+        on the CIAO website for an up-to-date
+        listing of known bugs.
+      </PARA>
+    </BUGS>
+        <LASTMODIFIED>April 2025</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
+

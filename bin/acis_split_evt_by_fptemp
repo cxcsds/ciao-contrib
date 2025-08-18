@@ -1,0 +1,265 @@
+#!/usr/bin/env python
+#
+# Copyright (C) 2025 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+'Automates splitting event file based on FP_TEMP ranges in P2_RESP files'
+
+
+import os
+import sys
+from pycrates import read_file
+from ciao_contrib.runtool import make_tool
+import ciao_contrib.logger_wrapper as lw
+from ciao_contrib._tools.fileio import outfile_clobber_checks
+
+__toolname__ = "acis_split_evt_by_fptemp"
+__revision__ = "13 April 2025"
+
+lw.initialize_logger(__toolname__)
+
+
+def log_wrapper(func):
+    'wrapper around logger to check for None'
+    def wrapped(msg):
+        if msg:
+            func(msg)
+    return wrapped
+
+
+verb0 = log_wrapper(lw.get_logger(__toolname__).verbose0)
+verb1 = log_wrapper(lw.get_logger(__toolname__).verbose1)
+verb2 = log_wrapper(lw.get_logger(__toolname__).verbose2)
+
+
+def get_caldb_files(infile):
+    "Lookup CALDB files based on infile"
+
+    from caldb4 import Caldb
+    cc = Caldb(infile=infile)
+    cc.product = "SC_MATRIX"
+    cc.ccd_id = "0"
+    temps = ",".join([str(x) for x in range(153, 178, 2)])
+    cc.fp_temp = temps
+    cc.fidelity = "0-99"
+    prods = cc.search
+
+    if prods is None or len(prods) == 0:
+        raise IOError("ERROR: P2_RESP files cannot be located in the CALDB for this event file")
+
+    # Remove the extension: foo.fits[n] -> foo.fits
+    fnames = [x.split('[')[0] for x in prods]
+
+    return fnames
+
+
+def get_fp_temp_limits(pars):
+    '''Get FP_TEMP limits from the CALDB files
+
+    We have to parse the CBD* keywords'''
+
+    # ~ import stk
+    # ~ p2_resp_dir = os.path.join(os.environ["CALDB"], "data", "chandra",
+    # ~                            "acis", "p2_resp")
+    # ~ assert os.path.isdir(p2_resp_dir), "CALDB is not configured as expected"
+    # ~ p2resp = stk.build(os.path.join(p2_resp_dir,
+    # ~                                 pars['p2_resp_root'])+"*.fits")
+
+    p2resp = get_caldb_files(pars["infile"])
+
+    limits = []
+    for p2_resp_file in p2resp:
+
+        tab = read_file(p2_resp_file)
+
+        for kw in tab.get_keynames():
+            # Look for CALDB boundary condition keywords
+            if not kw.startswith("CBD"):
+                continue
+
+            # Only care about the ones that involve FP_TEMP
+            key_val = tab.get_key_value(kw)
+            if not key_val.startswith("FP_TEMP"):
+                continue
+
+            # value looks like "FP_TEMP(lo-hi)K" this parses that
+            # string to get the lo/hi limits
+            vals = key_val.split("(")[1].split(")")[0]
+            assert len(vals.split("-")) == 2, f"{kw} keyword in {p2_resp_file} is not formatted as expected"
+            lo, hi = [float(x) for x in vals.split("-")]
+            limits.append((lo, hi))
+
+    if len(limits) == 0:
+        raise IOError("ERROR: Could not find FP_TEMP dependency in CALDB files for this event file.")
+
+    return limits
+
+
+def create_and_apply_gtis(pars, fp_limits):
+    '''Process each of the FPtemp ranges.
+
+    Creates a GTI from the MTL file using dmgti.
+    Checks if ONTIME==0, if so skip that range
+    Filters evt file w/ GTI.
+    Update filtered evt file w/ mean FP_TEMP for that range.
+    '''
+
+    def __create_gti(lo, hi):
+        'Use dmgti to create GTI for FP_TEMP range'
+
+        dmgti = make_tool("dmgti")
+        dmgti.infile = pars['mtlfile']+"[cols time,fp_temp]"
+        dmgti.outfile = pars['outroot']+f"_{lo}-{hi}.gti"
+        dmgti.userlimit = f"((FP_TEMP>={lo})&&(FP_TEMP<{hi}))"
+        outfile_clobber_checks(pars["clobber"], dmgti.outfile)
+        dmgti.verbose = pars["verbose"]
+        verb2(dmgti(clobber=pars["clobber"]))
+
+        tab = read_file(dmgti.outfile)
+        ontime = tab.get_key_value("ONTIME")
+        verb1(f"FP_TEMP [K]: {lo} - {hi} : {ontime:10.2f} [sec]")
+        if ontime == 0:
+            # No good time, so omit this temperature range
+            os.unlink(dmgti.outfile)
+            return None
+
+        return dmgti.outfile
+
+    def __apply_gti(gti, lo, hi):
+        'Apply GTI using dmcopy. Update FP_TEMP keyword'
+
+        dmcopy = make_tool("dmcopy")
+        dmcopy.infile = f"{pars['infile']}[@{gti}]"
+        dmcopy.outfile = pars['outroot']+f"_{lo}-{hi}.evt"
+        dmcopy.option = "all"
+        dmcopy.verbose = pars["verbose"]
+        outfile_clobber_checks(pars["clobber"], dmcopy.outfile)
+        verb2(dmcopy(clobber=pars["clobber"]))
+        os.unlink(gti)
+
+        return dmcopy.outfile
+
+    def __update_metadata(outfile):
+        'Update header of the filtered event file'
+
+        # Update FP_TEMP keyword with mean FP_TEMP value for this
+        # temperature range.
+        dmhedit = make_tool("dmhedit")
+        dmhedit.verbose = pars["verbose"]
+        mid_temp = (lo + hi) / 2.0
+        verb2(dmhedit(outfile, key="FP_TEMP", op="add", value=mid_temp))
+
+        verb2(dmhedit(outfile, key="COMMENT", op="add",
+                      value=f"File has been filtered for {lo} <= FP_TEMP < {hi}"))
+
+        from ciao_contrib.runtool import add_tool_history
+        add_tool_history(outfile, __toolname__,
+                         pars, toolversion=__revision__)
+
+    # Get all GTIs first
+    gtis = []
+    for lo, hi in fp_limits:
+        if (gti := __create_gti(lo, hi)) is None:
+            continue
+        gtis.append((gti, lo, hi))
+
+    if len(gtis) == 0:
+        raise IOError("ERROR: No good time intervals found")
+
+    if len(gtis) == 1:
+        raise IOError("ERROR: Only 1 FP_TEMP range has good time. No need to run this script.")
+
+    # Split event file
+    evt_slices = []
+    for gti, lo, hi in gtis:
+        evt = __apply_gti(gti, lo, hi)
+        __update_metadata(evt)
+        evt_slices.append(evt)
+
+    return evt_slices
+
+
+def make_output_stack_file(pars, evt_slices):
+    'Make a stack file to be used by eg specextract'
+
+    verb1("\nCreated the following event files:")
+
+    outstk = f"{pars['outroot']}_evt.lis"
+    outfile_clobber_checks(pars["clobber"], outstk)
+    with open(outstk, "w", encoding="ascii") as fp:
+        for evt in evt_slices:
+            fp.write(f"!{evt}\n")
+            verb1(f"    {evt}")
+
+    verb1(f"\nUse '@{pars['outroot']}_evt.lis' to extract spectra and responses.")
+
+
+def load_parameters():
+    'Load parameters, find mtlfile if blank or INDEF'
+
+    # Load parameters
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(__toolname__, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": verb1},
+                      revision=__revision__)
+
+    if pars['mtlfile'].lower() in ['', 'indef']:
+        from ciao_contrib.ancillaryfiles import find_ancillary_files
+        aux = find_ancillary_files(pars["infile"], ["MTL"], absolute=False)
+        if len(aux) == 0 or aux[0] is None:
+            raise IOError("Cannot locate mission time line file. Please specify")
+
+        pars["mtlfile"] = aux[0][0]
+
+    return pars
+
+
+def simple_sanity_checks(infile):
+    'Just some simple checks to help users know when this script is useful'
+
+    tab = read_file(infile)
+
+    if tab.get_key_value("INSTRUME") != "ACIS":
+        raise IOError("ERROR: This script is only for ACIS data")
+
+    if tab.get_key_value("GRATING") in ["HETG", "LETG"]:
+        verb0("WARNING: FP_TEMP changes do not affect dispersed grating spectra. Only use if analyzing the 0th order spectrum")
+
+    detnam = tab.get_key_value("DETNAM")
+    _fi = [0, 1, 2, 3, 4, 6, 8, 9]
+    if not any(str(x) in detnam for x in _fi):
+        verb0("WARNING: No front side illuminated CCDs are listed in the DETNAM keyword. FP_TEMP calibration is only for FI chips.")
+
+    ccds = tab.get_column("ccd_id").values
+    uniq_ccd = set(ccds)
+    if not any(x in uniq_ccd for x in _fi):
+        verb0("WARNING: No front side illuminated CCDs are found in the CCD_ID column. FP_TEMP calibration is only for FI chips.")
+
+
+@lw.handle_ciao_errors(__toolname__, __revision__)
+def main():
+    'Main routine'
+
+    pars = load_parameters()
+    simple_sanity_checks(pars["infile"])
+    fp_limits = get_fp_temp_limits(pars)
+    evt_slices = create_and_apply_gtis(pars, fp_limits)
+    make_output_stack_file(pars, evt_slices)
+
+
+if __name__ == "__main__":
+    main()
