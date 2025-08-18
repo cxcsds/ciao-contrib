@@ -2,7 +2,7 @@
 #
 #
 #
-# Copyright (C) 2012, 2014, 2016, 2018, 2020-2023, 2025
+# Copyright (C) 2012, 2014, 2016, 2018, 2020-2025
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -89,14 +89,14 @@ def check_setup( pars ):
     """
 
     if pars["simulator"] == "saotrace":
-        if is_none( pars["_saotrace_db"] ):
+        if is_none( pars["saotrace_db"] ):
             raise Exception("SAOTrace database not provided in parameter saotrace_db")
-        if is_none( pars["_saotrace_install"] ):
+        if is_none( pars["saotrace_install"] ):
             raise Exception("SAOTrace path not provided in parameter saotrace_install")
 
-        if not os.path.exists(os.path.join(pars["_saotrace_install"],"lib","perl5")):
+        if not os.path.exists(os.path.join(pars["saotrace_install"],"lib","perl5")):
             raise Exception("Missing SAOTrace perl libraries")
-        os.environ["PERL5LIB"] = os.path.join(pars["_saotrace_install"],"lib","perl5")
+        os.environ["PERL5LIB"] = os.path.join(pars["saotrace_install"],"lib","perl5")
 
         
     if "marx" in [pars["simulator"], pars["projector"]]:
@@ -126,11 +126,11 @@ def set_env_vars( pars ):
     # Sets path vars for saotrace, trace-nest
     #
     pfile_env = os.getenv("PFILES")
-    os.environ["PFILES"] = pfile_env + ":" + pars["_saotrace_install"] + "/share/uparm"
+    os.environ["PFILES"] = pfile_env + ":" + pars["saotrace_install"] + "/share/uparm"
 
     path_env = os.getenv("PATH")
-    os.environ["PATH"] = path_env + ":" + pars["_saotrace_install"] + "/bin"
-    os.environ["SAOTRACE_DB"] = pars["_saotrace_db"]
+    os.environ["PATH"] = path_env + ":" + pars["saotrace_install"] + "/bin"
+    os.environ["SAOTRACE_DB"] = pars["saotrace_db"]
 
     #
     # Set path vars for marx
@@ -510,15 +510,15 @@ def run_saotrace(pars, obi_info, src_info ):
     saotrace["tally"]         = "0"
     saotrace["throttle"]      = "0"
     saotrace["throttle_poisson"] = "no"
-    saotrace["config_dir"]    = pars["_saotrace_db"] + "/ts_config"
-    saotrace["config_db"]     = pars["_saotrace_mirror"]
+    saotrace["config_dir"]    = pars["saotrace_db"] + "/ts_config"
+    saotrace["config_db"]     = pars["saotrace_mirror"]
     saotrace["clean"]         = "rays"
     saotrace["debug"]         = ""
 
     # Run with unique/temp PFILES so that no colossion if running in parallel
     from ciao_contrib.runtool import new_pfiles_environment
     with new_pfiles_environment() as zoo:
-        run_task(pars["_saotrace_install"]+"/bin/trace-nest", saotrace)
+        run_task(pars["saotrace_install"]+"/bin/trace-nest", saotrace)
 
     cleanup_saotrace( outroot )
 
@@ -586,7 +586,7 @@ def add_saotrace_metadata( pars, obi_info, src_info ):
                  ('HDUCLAS3' ,'PSFRAY', ""),
                  ('HDUVERS1' ,'1.0.0', ""),
                  ('RAYMETH'  ,'SAOTrace', ""),
-                 ('CONFFILE' ,pars["_saotrace_mirror"], ""),
+                 ('CONFFILE' ,pars["saotrace_mirror"], ""),
                  ('ASOLFILE' ,os.path.basename(pars["asolfile"]), ""),
               ]
 
@@ -1386,9 +1386,9 @@ def main():
                       )
 
     # Hard code these for now, restore w/o underscore when ready
-    pars["_saotrace_install"] = ""
-    pars["_saotrace_db" ] = ""
-    pars["_saotrace_mirror"] = "orbit-200809-01f-a"
+    # ~ pars["saotrace_install"] = ""
+    # ~ pars["saotrace_db" ] = ""
+    # ~ pars["saotrace_mirror"] = "orbit-200809-01f-a"
 
     # check saotrace and marx setup parameters
     check_setup( pars )
