@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2005,2014,2016,2019
+# Copyright (C) 2005,2014,2016,2019,2025
 #               Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
@@ -26,7 +26,7 @@ import sys
 import ciao_contrib.logger_wrapper as lw
 
 toolname = "monitor_photom"
-__revision__ = "22 January 2023"
+__revision__ = "21 August 2025"
 
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
@@ -270,6 +270,9 @@ def write_output(dat, img_sub, outfile, clobber ):
     mag = cnt_rate
     mag[np.where(cnt_rate < min_cnt_rate)] = min_cnt_rate
     mag = mag0 - 2.5 * np.log10(mag/cnt_rate_mag0)
+
+    cnt_rate = cnt_rate.astype(np.float32)
+    mag = mag.astype(np.float32)
 
     clb = ('yes' == clobber)
     write_columns( outfile, dat.time, counts, cnt_rate, mag, img_sub,
