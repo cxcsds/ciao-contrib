@@ -1,11 +1,11 @@
 #
-#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2018
+#  Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2018, 2025
 #            Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -568,7 +568,7 @@ def open_column(bl, colname, filename=None):
 #
 # The width=32 argument on binary_repr is to ensure that there
 # is no overflow on 32-bit machines.
-_cbits = np.uint8([0b11111111, 0b01100000, 0b00111111, 0b11000001])
+_cbits = np.uint32([0b11111111, 0b01100000, 0b00111111, 0b11000001])
 _cbits_str = np.binary_repr(_cbits[3] | _cbits[2] << 8 |
                             _cbits[1] << 16 | _cbits[0] << 24,
                             width=32)
