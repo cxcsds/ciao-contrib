@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021
+#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2025
 #  Smithsonian Astrophysical Observatory
 #
 #
@@ -1897,7 +1897,7 @@ def list_observations(instrume, ranom, decnom, obsinfos):
             aa = np.asarray(a)
 
         try:
-            delta = aa.ptp()
+            delta = np.ptp(aa)
         except TypeError:
             # assume a string
             uvals = np.unique(aa)
