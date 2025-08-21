@@ -1,11 +1,11 @@
 #
-#  Copyright (C) 2008, 2009, 2010, 2011, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2023
+#  Copyright (C) 2008, 2009, 2010, 2011, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2023, 2025
 #            Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -411,7 +411,7 @@ class LightCurve:
             exposure /= 1.0e3
 
         # ustr    = ["  ((time >= {:f}) && (time < {:f})) ; {:.2f} ksec, bin {}".format(s,e,d,c) for c,s,e,d in zip(ctr,tlo,thi,exposure)]
-        ustr = [f"  ((time >= {repr(s)}) && (time < {repr(e)})) ; {d:.2f} ksec, bin {c}"
+        ustr = [f"  ((time >= {str(s)}) && (time < {str(e)})) ; {d:.2f} ksec, bin {c}"
                 for c, s, e, d in zip(ctr, tlo, thi, exposure)]
 
         n = len(tlo)
@@ -430,7 +430,7 @@ class LightCurve:
         """Sets the userlimit field for the rate column to
         lie between minlim and maxlim."""
 
-        self.userlimit = f"({self.ratename}>{repr(minlim)} && {self.ratename}<{repr(maxlim)})"
+        self.userlimit = f"({self.ratename}>{str(minlim)} && {self.ratename}<{str(maxlim)})"
         self.report(f"GTI limits calculated using a count-rate filter:\n  {self.userlimit}\n")
         self.report("The corresponding times are:")
         self.report_userlimit_using_times(minlength=1)
@@ -996,8 +996,8 @@ class CleanLightCurve(LightCurve):
         self.clean_bti = np.logical_not(self.clean_gti)
 
         self.clean_mean_rate = self.rate[self.clean_gti].mean()
-        self.report(f"Rate filter:  {repr(self.clean_min_rate)} <= {self.ratename} < {repr(self.clean_max_rate)}")
-        self.report(f"Mean level of filtered lightcurve = {repr(self.clean_mean_rate)} ct/s\n")
+        self.report(f"Rate filter:  {str(self.clean_min_rate)} <= {self.ratename} < {str(self.clean_max_rate)}")
+        self.report(f"Mean level of filtered lightcurve = {str(self.clean_mean_rate)} ct/s\n")
 
     def calculate_gti_filter(self):
         "Calculate the GTI filter limit (the userlimit string for dmgti)"
@@ -1060,8 +1060,8 @@ class SigmaClipBaseLightCurve(LightCurve):
         self.clean_max_rate = max_rate
         self.clean_mean_rate = self.rate[self.clean_gti].mean()
 
-        self.report(f"Rate filter:  {repr(self.clean_min_rate)} <= {self.ratename} < {repr(self.clean_max_rate)}")
-        self.report(f"Mean level of filtered lightcurve = {repr(self.clean_mean_rate)} ct/s\n")
+        self.report(f"Rate filter:  {str(self.clean_min_rate)} <= {self.ratename} < {str(self.clean_max_rate)}")
+        self.report(f"Mean level of filtered lightcurve = {str(self.clean_mean_rate)} ct/s\n")
 
     def calculate_gti_filter(self, minlength=3):
         "Caculate the GTI filter limit (the userlimit string for dmgti)"
