@@ -306,7 +306,15 @@ class APLimitsMarginalize(APLimits):
             x.sort()
         # igam does not accept numpy arrays, so need to call one by one and put in list
         y = [self.integrant(xp, lams, sstar) for xp in x]
-        return np.trapezoid(y, x)
+
+        if hasattr(np, 'trapezoid'):
+            # Numpy 2.x
+            return np.trapezoid(y, x)
+        elif hasattr(np, 'trapz'):
+            # Numpy 1.x
+            return np.trapz(y, x)
+        else:
+            raise RuntimeError("Unsupported version of Numpy")
 
     def find_sstar(self, alpha):
         i = 0
