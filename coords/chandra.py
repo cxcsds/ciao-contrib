@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2013-2014,2019,2022
+#  Copyright (C) 2013-2014,2019,2022,2025
 #  Smithsonian Astrophysical Observatory
 #
 #
@@ -18,17 +18,93 @@
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-# KJG: 2016-09013 no changes needed for P3
+"""Routines related specifically to converting to/from Chandra coordinates.
 
+The conversion between the various coordinate systems on Chandra
+depend on the aspect solution, since this determines where the
+spacecraft is pointing at any given time during the observation. However,
+the routines here are only for one specific pointing
+given by the RA_PNT, DEC_PNT, and ROLL_PNT argument values. The
+aspect solution file can be used to find the instantaneous
+values for these fields in the "ra", "dec", and "roll" columns.
+
+WARNING:
+
+The CIAO pixlib module can only be initalized once per session. This
+module will only initalize the module once, but if any other code
+calls the Pixlib constructor then the results are not guaranteed to
+be correct.
+
+The routines in this module will only work with Chandra data.
+
+Examples
+--------
+
+Read in the header keywords from evt2.fits and then calculate
+the coordinates for x=4096.5, y=4096.5. Note that this uses the
+RA_PNT, DEC_PNT, and ROLL_PNT values from the file header to
+do this conversion.
+
+>>> from coords.chandra import get_coord_keywords, sky_to_chandra
+>>> args = get_coord_keywords("evt2.fits")
+>>> out = sky_to_chandra(args, 4096.5, 4096.5)
+>>> for k,v in out.items():
+...     print(f"{k:8s} = {v}")
+pixsize  = 0.492
+theta    = [0.0]
+phi      = [0.0]
+ra       = [351.02434929792]
+dec      = [58.875471457108]
+detx     = [4096.5]
+dety     = [4096.5]
+chip_id  = [3]
+chipx    = [545.8718342875546]
+chipy    = [993.6969974545698]
+
+Use the same pointing solution to calculate the coordinates of
+(1000,1500), (2000,1200), and (5000,6000). Note that these positions
+all fall outside the chips (since the chipx or chipy values fall
+outside of 1-1024):
+
+>>> out = sky_to_chandra(args, [1000, 2000, 5000], [1500, 1200, 6000])
+>>> for k,v in out.items():
+...     print(f"{k:8s} = {v}")
+pixsize  = 0.492
+theta    = [33.13562377082892, 29.319334250427374, 17.277596027142643]
+phi      = [73.61926652946008, 87.74132076459314, 278.24706733960716]
+ra       = [351.83468778439004, 351.5723698019347, 350.7836583420799]
+dec      = [58.51806890339487, 58.478454708648044, 59.13539204412459]
+detx     = [5236.153679297238, 4237.419215104079, 4398.738197750065]
+dety     = [7973.52385745345, 7669.337286361373, 2011.2478397515297]
+chip_id  = [8, 7, 1]
+chipx    = [318.9503017010488, 360.6791186060802, 1589.1364367217589]
+chipy    = [-1977.2683032749258, -1672.180553951394, 688.1576177748966]
+
+Read in the aspect solution and then use it to calculate the chip
+location corresponding to x=4096.5, y=4096.5 for each row. The
+Sherpa plot_scatter command is used to display the data.
+
+>>> pcr = read_file("pcad.fits")
+>>> ras = pcr.get_column("ra").values
+>>> decs = pcr.get_column("dec").values
+>>> rolls = pcr.get_column("roll").values
+>>> cxs = []
+>>> cys = []
+>>> for ra,dec,roll in zip(ras, decs, rolls):
+...     args["RA_PNT"] = ra
+...     args["REC_PNT"] = dec
+...     args["ROLL_PNT"] = roll
+...     out = sky_to_chandra(args, 4096.5, 4096.5)
+...     cxs.append(out["chipx"][0])
+...     cys.append(out["chipx"][0])
+>>> plot_scatter(cxs, cys)
 
 """
-Routines related specifically to converting to/from Chandra coordinates
 
-"""
-
-__all__ = [ "cel_to_chandra", "sky_to_chandra" ]
+__all__ = [ "cel_to_chandra", "sky_to_chandra", "get_coord_keywords" ]
 
 
+from pycrates import read_file
 from pixlib import Pixlib
 
 myPixlib = None
@@ -108,7 +184,7 @@ def _check_keyword_list( keyword_list):
 
     if 'CHANDRA' != keyword_list["TELESCOP"].upper():
         e = "This routine only works with Chandra data, not '{}'"
-        raise ValueError(e.format( keyword_list["TELESCOP"]))
+        raise ValueError(e.format(keyword_list["TELESCOP"]))
 
     if keyword_list["INSTRUME"] not in ['ACIS', 'HRC']:
         e = "Unknown instrument '{}'"
@@ -189,6 +265,44 @@ def _setup( keyword_list ):
     return pix, my_dettan, my_skytan, cdelt
 
 
+def get_coord_keywords(arg):
+    """Return the keywords needed for coordinate conversion from a file.
+
+    There is no validation that the input argument (filename or
+    crate) contains the expected keywords UNLESS there are no
+    keywords found.
+
+    Inputs
+    ------
+    arg
+       The crate or filename.
+
+    """
+
+    if hasattr(arg, "get_key_value"):
+        cr = arg
+        filename = cr.get_filename()
+    else:
+        cr = read_file(arg)
+        filename = arg
+
+    out = {}
+    for name in ["TELESCOP", "INSTRUME", "DETNAM",
+                 "RA_NOM", "DEC_NOM", "ROLL_NOM",
+                 "SIM_X", "SIM_Y", "SIM_Z",
+                 "DY_AVG", "DZ_AVG", "DTH_AVG"]:
+        val = cr.get_key_value(name)
+        if val is None:
+            continue
+
+        out[name] = val
+
+    cr = None
+    if not out:
+        raise ValueError(f"No keywords read in from: {filename}")
+    return out
+
+
 def cel_to_chandra( keyword_list, ra_vals, dec_vals ):
     """
     Convert RA/DEC to various chandra coordinates
@@ -255,7 +369,7 @@ def cel_to_chandra( keyword_list, ra_vals, dec_vals ):
         try:
             cixy = pix.fpc2chip( dxy )
             if cixy[0] < 0:
-                raise ValueError("Unknow chip")
+                raise ValueError("Unknown chip")
             chip.append( cixy )
         except:
             chip.append( (-999, (-999,-999)))
@@ -339,7 +453,7 @@ def sky_to_chandra( keyword_list, x_vals, y_vals ):
         try:
             cixy = pix.fpc2chip( dxy )
             if cixy[0] < 0:
-                raise ValueError("Unknow chip")
+                raise ValueError("Unknown chip")
             chip.append( cixy )
         except:
             chip.append( (-999, (-999,-999)))
