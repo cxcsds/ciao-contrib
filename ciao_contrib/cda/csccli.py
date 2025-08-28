@@ -407,17 +407,17 @@ def make_URL_request( resource, vals ):
     # make easy to ID in logs
     request.add_header('User-Agent', 'ciao_contrib.cda.csccli/1.1')
 
-    try:
-        response = urlopen( request )
-        page = response.read()
+    with urlopen(request) as response:
+        try:
+            page = response.read()
 
-        verb5( "URL Code: {0}".format( response.getcode() ))
-        if response.getcode() != 200:
-            # If we get a redirect, 30x, then fall through to curl too
-            raise Exception( page )
+            verb5( "URL Code: {0}".format( response.getcode() ))
+            if response.getcode() != 200:
+                # If we get a redirect, 30x, then fall through to curl too
+                raise Exception( page )
 
-    except Exception:
-        page = make_CURL_request( resource, vals )
+        except Exception:
+            page = make_CURL_request( resource, vals )
 
     if len(page) == 0:
         raise Exception("Problem accessing resource {0}".format(resource))
