@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2022 MIT
+# Copyright (C) 2022,2025 MIT
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -54,7 +54,7 @@ import numpy as np
 from sherpa.utils import igam, lgam, bisection
 
 TOOLNAME = "aplimits"
-__REVISION__ = "01 October 2022"
+__REVISION__ = "21 August 2025"
 
 lw.initialize_logger(TOOLNAME)
 v1 = lw.make_verbose_level(TOOLNAME, 1)
@@ -306,7 +306,15 @@ class APLimitsMarginalize(APLimits):
             x.sort()
         # igam does not accept numpy arrays, so need to call one by one and put in list
         y = [self.integrant(xp, lams, sstar) for xp in x]
-        return np.trapz(y, x)
+
+        if hasattr(np, 'trapezoid'):
+            # Numpy 2.x
+            return np.trapezoid(y, x)
+        elif hasattr(np, 'trapz'):
+            # Numpy 1.x
+            return np.trapz(y, x)
+        else:
+            raise RuntimeError("Unsupported version of Numpy")
 
     def find_sstar(self, alpha):
         i = 0
