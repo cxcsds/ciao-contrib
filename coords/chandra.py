@@ -22,8 +22,8 @@
 
 The conversion between the various coordinate systems on Chandra
 depend on the aspect solution, since this determines where the
-spacecraft is pointing at any point during the observation. However,
-the routines here are only for a single point in the aspect solution,
+spacecraft is pointing at any given time during the observation. However,
+the routines here are only for one specific pointing
 given by the RA_PNT, DEC_PNT, and ROLL_PNT argument values. The
 aspect solution file can be used to find the instantaneous
 values for these fields in the "ra", "dec", and "roll" columns.
