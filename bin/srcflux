@@ -18,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "25 July 2025"
+__revision__ = "27 August 2025"
 
 import os
 
@@ -311,18 +311,17 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
     def region_to_phys( reg ):
         dmmakereg = make_tool("dmmakereg")
         tmproot = NamedTemporaryFile( dir=tmpdir, suffix="_phys.reg", delete=False)
-        tfile = tmproot.name
+        tfile = delme(tmproot.name)
         tmproot.close()
 
-        with NamedTemporaryFile() as longreg:
+        if len(reg) > 1023:
+            # We cannot use dmmakereg to convert to physical, so we have
+            # to assume it already is.
+            verb1("Warning: found long region string, assuming it is in physical coordinates")
+            rr = CXCRegion(reg)
+            return str(rr)
 
-            if ":" not in reg or len(reg) > 1023:
-                # CXCRegion converts sexagesimal to decimal degrees, which then
-                # gets mucked up by dmmakereg unless there is a way to insert the
-                # dmregion 'd' notation to indicate degrees for each coordinate
-                CXCRegion(reg).write(longreg.name, fits=False, clobber=True)
-                reg = f"region({longreg.name})"
-
+        try:
             dmmakereg.region=reg
             dmmakereg.outfile=tfile
             dmmakereg.kernel='fits'
@@ -331,32 +330,32 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
             dmmakereg.verbose=0
             dmmakereg()
 
+            rr=CXCRegion(dmmakereg.outfile)
+            return str(rr)
+
+        except IOError as try2:
+            # If cannot parse, then try again wrapped in region()
+            if 'Could not parse region string or file' not in str(try2):
+                raise try2
+
+        dmmakereg.region=f"region({reg})"
+        dmmakereg()
         rr=CXCRegion(dmmakereg.outfile)
-        gorm( tfile )
         return str(rr)
 
 
     def validate_region( reg ):
-        "See if it is a file, need to open w/ DM to check filters/etc"
+        'Make sure region can be parsed'
         try:
-            if os.path.isfile( (reg[:reg.find("[")] if "[" in reg else reg) ): # this is needed since read_file core dumps if it checks a really long string, e.g. region intersected by polygonal FOV expression
-                read_file(reg)
-                reg = f"region({reg})"
-            try:
-                check = CXCRegion(reg)
-            except:
-                raise ValueError(f"ERROR: '{reg}' is not a valid region file")
-
-        except IOError:   # raised by read_file, so not a file name
-            try:
-                check = CXCRegion(reg)
-            except:
-                raise ValueError(f"ERROR: Cannot parse region string '{reg}'")
+            check = CXCRegion(reg)
+        except:
+            raise ValueError(f"ERROR: '{reg}' is not a valid region")
 
         if check is None or len(check) == 0:
             raise ValueError(f"ERROR: '{reg}' does not contain any valid regions")
 
         return region_to_phys(reg)
+
 
     ss = list(map( validate_region, src_stk ))
     outsrc = myroot+"src.stk"
@@ -1887,8 +1886,8 @@ def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf,
 
     try:
         verb2(modelflux())
-        
-    except (OSError, IOError):       
+
+    except (OSError, IOError):
         modelflux.flux = np.nan
         modelflux.uflux = np.nan
         verb0(f"WARNING: modelflux failed to run using '{modelflux.arf}' and '{modelflux.rmf}' response files.  NaNs will be returned for the reported flux values.")
