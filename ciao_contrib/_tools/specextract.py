@@ -27,7 +27,7 @@ Routines to support the specextract tool.
 
 __modulename__ = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "8 July 2024"
+__revision__ = "3 September 2025"
 
 import os
 import sys
@@ -603,7 +603,7 @@ Unix-compatible line feed only.")
         else:
             reg = get_region_filter(full_filename)[1]
 
-        if not _check_filename_set(region):
+        if not _check_filename_set(reg):
             return None
 
         return reg
