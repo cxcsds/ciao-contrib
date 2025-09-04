@@ -32,7 +32,7 @@ def list_files(pattern):
     return sorted(files)
 
 
-VERSION = "4.17.0"
+VERSION = "4.17.2"
 for val in sys.argv:
     if val.startswith("--version="):
         VERSION = val.split("=")[1]
