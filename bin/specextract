@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/scratch2/Anaconda/anaconda3/envs/ciao-4.18b1-np2/bin/python3.12
 
 #
-# Copyright (C) 2011-2023
+# Copyright (C) 2011-2025
 #        Smithsonian Astrophysical Observatory
 #
 #
@@ -31,9 +31,9 @@ Script:
 	command line, within the CIAO environment.
 """
 
-__version__ = "CIAO 4.16"
+__version__ = "CIAO 4.17"
 __toolname__ = "specextract"
-__revision__ = "26 October 2023"
+__revision__ = "4 September 2025"
 
 ##########################################################################
 #
@@ -2185,6 +2185,14 @@ def get_par(args):
         if outdir != "":
             fileio.validate_outdir(outdir)
 
+    # setup so when tool history is written, if region expressions use arcseconds that
+    # its usage is recorded correctly
+    for kw in ("infile", "bkgfile"):
+        if pars[kw] != "":
+            _fstk = [ spec._arcsec_quotes(fn) for fn in stk.build(pars[kw]) ]
+            pars[kw] = ",".join(_fstk)
+
+
     ## uncomment when clipping implemented
     # if params["wmap_clip"].lower() == "yes":
     #     params["wmap_clip"] = True
@@ -2338,6 +2346,7 @@ cannot contain any spaces")
 
     # update parameters dictionary if necessary, and the list passed to parallelization
     specextract_args = update_param_args_and_dict(pardict_update_spectra,specdicts,specextract_args,pars)
+
 
     ###########################
     #
