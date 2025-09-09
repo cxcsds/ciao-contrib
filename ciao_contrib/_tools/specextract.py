@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2021, 2023
+#  Copyright (C) 2021-2025
 #        Smithsonian Astrophysical Observatory
 #
 #
@@ -27,7 +27,7 @@ Routines to support the specextract tool.
 
 __modulename__ = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "8 July 2024"
+__revision__ = "4 September 2025"
 
 import os
 import sys
@@ -603,7 +603,7 @@ Unix-compatible line feed only.")
         else:
             reg = get_region_filter(full_filename)[1]
 
-        if not _check_filename_set(region):
+        if not _check_filename_set(reg):
             return None
 
         return reg
@@ -1056,9 +1056,14 @@ Merged events files should not be used for spectral analysis.") # or v1 warning?
 
         self.paralleltests(parallel_region_check,fn_stk,method="map",numcores=nproc)
 
-        # for fn in set(src_stk).union(bkg_stk):
-        #     self._valid_regstr(fn)
-        #     self._check_region_crlf(fn)
+
+        ### workaround CIAO parameter interface bug that ###
+        ### converts double quotes into single quotes in ###
+        ### which is problematic when region expressions ###
+        ### using arcseconds for angular sizes.          ###
+
+        src_stk = [ _arcsec_quotes(fn) for fn in src_stk ]
+        bkg_stk = [ _arcsec_quotes(fn) for fn in bkg_stk ]
 
 
         ### check files in source and background stacks ###
@@ -1834,6 +1839,20 @@ def _check_filename_set(filename):
     return True
 
 
+def _arcsec_quotes(fullfile):
+    """
+    workaround parameter interface bug with double quotes used to 
+    express arcseconds (https://cxc.cfa.harvard.edu/ciao/bugs/parameter.html#quotes)
+    """
+
+    regfilt, reg = get_region_filter(fullfile)
+
+    if regfilt and '"' in reg:
+        _reg = reg.replace("\"", "''")
+        return fullfile.replace(reg, _reg)
+
+    return fullfile
+
 
 def get_region_filter(full_filename):
     """
@@ -1876,14 +1895,14 @@ def get_region_filter(full_filename):
 
         if full_filename.startswith("@"):
             # deal with stacks
-            pass
+            region_temp = None
+
         else:
             region_temp = full_filename
             v1(f"WARNING: A supported spatial region filter was not detected for {full_filename}\n")
 
     if reg_filter:
         if ")," in region_temp and ") ," in region_temp:
-
             region_temp2 = region_temp.partition("),")[0]+")"
 
             if ") ," in region_temp2:
