@@ -441,7 +441,13 @@ proc get_ellipse_CB {tag_token id} {
     # and do not scale by the sqrt(2) needed to scale imgmoment "sig" values
     exec dmstat $infile centroid- sig+ med- verb=0
     set sigma [exec -ignorestderr pget dmstat out_sigma]
-    set factor [expr {$sigma < 1 ? 1.0 : 1.4142135623730951}]
+
+    set tt [$frm get marker $id type]
+    if {$tt eq "ellipse"} {
+        set factor [expr {$sigma < 1 ? 1.0 : 1.4142135623730951}]
+    } else {
+        set factor [expr {$sigma < 1 ? 1.5 : 2.0}]
+    }
 
     set xx [lindex $vals 0]
     set yy [lindex $vals 1]
@@ -449,7 +455,7 @@ proc get_ellipse_CB {tag_token id} {
     set r2 [expr [lindex $vals 3] * $factor]
     set aa [lindex $vals 4]
 
-    $frm marker $id ellipse radius $r1 $r2 physical
+    $frm marker $id $tt radius $r1 $r2 physical
     $frm marker $id angle $aa physical
     $frm marker $id move to physical $xx $yy
 }
@@ -501,10 +507,13 @@ proc enable_adaptive_ellipse {} {
 
     foreach id $slct {
         set shp [$frm get marker $id type]
-        if {$shp ne "ellipse"} {
-            continue
+        switch $shp {
+            ellipse -
+            box {
+                add_adaptive_callback $frm $id
+            }
+
         }
-        add_adaptive_callback $frm $id
     }
 }
 
@@ -520,16 +529,17 @@ proc disable_adaptive_ellipse {} {
 
     foreach id $slct {
         set shp [$frm get marker $id type]
-        if {$shp ne "ellipse"} {
-            continue
+        switch $shp {
+            ellipse -
+            box {
+                $frm marker $id delete tag $tag_token$id
+                $frm marker $id delete callback end move get_ellipse_CB
+                $frm marker $id delete callback end edit get_ellipse_CB
+                $frm marker $id delete callback end rotate get_ellipse_CB
+                $frm marker $id unhighlite
+                $frm marker $id color green
+                }
         }
-
-        $frm marker $id delete tag $tag_token$id
-        $frm marker $id delete callback end move get_ellipse_CB
-        $frm marker $id delete callback end edit get_ellipse_CB
-        $frm marker $id delete callback end rotate get_ellipse_CB
-        $frm marker $id unhighlite
-        $frm marker $id color green
     }
 }
 
@@ -699,12 +709,12 @@ proc run_glvary {tag_token id} {
     close $tchan
     file delete $tmpfile
     set lc ${tmpfile}.lc
-    set prb ${tmpfile}.prb    
+    set prb ${tmpfile}.prb
     exec glvary infile=${infile} outfile=${prb} lcfile=${lc} eff="" mode=h clobber=yes verbose=0
     file delete $prb
     set vals [exec dmlist "${lc}\[cols time,count_rate\]" data,clean | grep -v Time]
     file delete $lc
-    
+
     set x_ {}
     set y_ {}
     foreach {i j} [regsub -all "\n" $vals " " ] {
