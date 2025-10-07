@@ -1,179 +1,185 @@
-## 4.16.0 - December 2023
+## 4.17.2
 
-TODO: overview of changes.
+Updated scripts
+
+  chandra_repro
+
+    Ensure that a source has been found before processing grating
+    data.
+
+  dax
+
+    The Chandra Interactive Grating coordinates calculator will now
+    work no matter what the region preference setting is or what
+    frame is in use. It also now includes the wavelength in Angstroms. 
+
+  simulate_psf
+
+    Updated to support direct access to SAOTrace.
+
+  specextract
+
+    A fix has been made when using double quotes (") for arcseconds
+    in region specifiers.
+
+  srcflux
+
+    Improved handling of long region strings.
+
+Updated modules
+
+  ciao_contrib.cda.csccli
+
+    Requests to the CSC services are now explicitly closed rather
+    than relying on Python garbage collection.
+
+  coords.chandra
+
+    Minor improvements to the module documentation and the addition
+    of a helper routine to extract the necessary keywords from a
+    Chandra data file (get_coord_keywords).
 
 
-Using CIAO tools from ds9 (dax)
+## 4.17.1 - April 2025
 
-  The model editor now checks that any values that have been modified
-  have been set (by pressing the Return or Enter key) before allowing
-  the user to proceed with certain actions such as Fit or Plot.
-  Modified values that have not been set appear as red text; the text
-  changes to black after the values have been set.
+Updated scripts
 
-  The image tasks will now handle images that have been blocked by DS9
-  (the Sherpa Image Fit and Radial Profile Fit tasks will now error
-  out as they do not support this option).
+  chandra_repro
 
-  Re-ordered and renamed a number of tasks:
+    - Modified file identification logic to support the case where
+      the same filename exists both compressed (.gz) and uncompressed.
+    - Added check that evt2 file is located for gratings data when
+      using the default tg_zo_position=evt option.
 
-    Original name  |  New name
-    -------------     --------
-    PI                Spectrum(PI)
-    PHA               Spectrum (PHA)
-    TIME              Ligthcurve (Time)
-    EXPNO             Lightcurve (Exposure Number)
+  dax
+
+    - Fix for interactive grating coordinates task with HETG datasets.
+    - Updated plots to match sherpa 4.17.
+    - Switched to using $xpa_method to identify unique instance of DS9.
+      This allows dax to run when with multiple ds9's running (with the
+      same name).
+    - New: Statistics -> Source Extent task runs the CIAO srcextent
+      tool to measure source & psf size and estimate if source is extended.
+
+  download_obsid_caldb
+
+    Fix to download all P2RESP CALDB files for temperature dependent
+    RMFs.
+
+  find_chandra_obsid
+
+    Fix for uncaught error when no observations matching search
+    criteria are found.
+
+  fine_astro
+
+    Improved error checking to require the output root to include a
+    prefix, not just a directory name.
+
+  install_marx
+
+    Updated to support building marxrsp in conda environment. Not used
+    by general users.
+
+  merge_obs
+
+    Fix a problem with combining PSF maps for a large number of
+    observations.
+
+  specextract
+
+    Updated warnings and trigger criteria for warm ACIS observations and
+    calibration validity.
+
+  tgsplit
+
+    The REGION block added to the TYPE:I pha files is now filtered
+    by the grating order and grating arm to match the spectrum block.
 
 
-New scripts
+Updated modules
 
-  energy_hue_map
-  
-    A new technique to create true color images from a continuous 
-    energy spectrum rather than traditional tri-color images created
-    using 3 energy bands.  The inputs include a map estimating the
-    median (or mean) energy in each pixel (for example created 
-    using the statmap tool), and an image of the counts or flux.
+  ciao_contrib.cda.search
 
-  The following scripts provide different algorithms to create map
-  files with different morphologies that have been found to be useful
-  when creating the mean|median energy map with a variety of 
-  fields.
-    
-    hexgrid
+    The search_chandra_archive routine now returns None if there was
+    no match.
 
-        Creates a regular grid of hexagonal shaped map regions.
-        Hexagons can best approximate circles as they are the
-        highest order regular polygon that can uniformly tile a plane.
+  ciao_contrib.stacklib
 
-    vtbin
+    Added a new TemporaryStack context manager that will create
+    a temporary stack file from a list (or other iterable).
 
-        Creates a map file based on the Voronoi Tessellation of points in
-        the input image.  By default it uses the location of the local maxima
-        or users can supply their own locations (via the sitefile).
+  crates_contrib.utils
 
-    centroid_map
+    Implemented a work around in SimpleCoordTransform to force the
+    coordinate transform results to be floating-point/real values
+    regardless of the input data type.
 
-        This script runs vtbin and then computes the centroid of the pixel
-        values in each map region.  It then repeats the Voronoi Tessellation
-        using the centroid values N-many times, where N is the numiter parameter.
 
-    pathfinder
+## 4.17.0 - December 2024
 
-        This script generates map regions based on the local gradient. It
-        follows the steepest ascent to the local maxima.  All pixels that reach
-        the same local maxim are grouped together.  Better for point sources
-        and other "clumpy" emission.
+CIAO 4.17 only supports Python 3.11.
 
-    mkregmap
 
-        Turn a stack of regions into a map file.  Examples include
-        - Stack of region files:  @ciao.lis
-        - Special stack expanders:  pgrid() and rgrid()
-        - Multiple rows in a single region file:  foo.fits[@row=igrid(1:N:1)]
-          "Common" uses would be the output from tools like dmellipse or
-          dmcontour.
+New Scripts
 
-    merge_too_small
+  fine_astro
 
-        Some of these algorithms can create small regions needed to "fill in"
-        the space between other more statistically significant regions.
-        The merge_too_small script will re-assign small groups to the largest
-        neighboring group; where "small" is either area below threshold
-        or counts below threshold.
+    Automate the typical steps needed to apply fine astrometric
+    correction to a set of Chandra observations.
 
-    map2reg
+  mkprpm
 
-        A utility tool to take a map file and converts it into a 
-        region file.  This can be useful to overlay the map boundaries
-        on images in ds9.
+    Compute aperture corrections for radial profiles to account
+    for PSF scattering between annuli. See also the Python
+    sherpa_contrib.matrix_model module.
+
+  patch_hrc_ssc
+
+    Identify and patch (replace) corrupt dead time factor values
+    due to Secondary Science Corruption in HRC data.
 
 
 Updated scripts
 
-  apply_fov_limits
+  chandra_repro
 
-    The script now defaults to creating images with the i4 datatype
-    (4-byte integer) rather than i2 (2-byte integer) it used to use,
-    as the old behavior could lead to data loss. This does increase
-    the memory needed to store the images, so the datatype parameter
-    can be used to change back to the old behaviour.
-
-  blanksky, blanksky_image, blanksky_sample
-
-    'blanksky' has been updated to make use of the CHKVFPHA keyword,
-    introduced to acis_process_events in CIAO 4.16, to determine if
-    "status=0" event filtering should be applied to ACIS VFaint
-    observations, but will fall back on the old technique of parsing
-    the input event file header to make the determination if the new
-    keyword is not available. The 'blanksky_sample' will make use of
-    the reference 'infile' keywords for the optional combined
-    infile/sampled background products instead of the 'Merged'-valued
-    keywords as a result of using dmmerge.
-
-  convert_xspec_script
-
-    Support for the ENERGIES command from XSPEC has been added.
+    Added a new parameter: patch_hrc_ssc, which when set to "yes"
+    run the new patch_hrc_ssc script to patch the dead time factor
+    values that occur during a Secondary Science Corruption event.
 
   convert_xspec_user_model
 
-    The script has been updated to match changes to Sherpa in CIAO
-    4.16.
+    The script has been updated to support Sherpa in CIAO 4.17 and to
+    use the meson-python build backend rather than setuptools. As part
+    of this change the --local is no-longer supported.
 
-  correct_periscope_drift
+  download_obsid_caldb
 
-    The script has been updated to support changes to Sherpa plotting
-    in this release.
-
-  reproject_obs
-
-    The script has been updated so that file validation checks at its
-    initialization will not have a dependency on mask files, which are
-    otherwise not used. 
-
-  specextract
-
-    The script has been updated so that event files generated by MARX
-    are supported and better handling of the ancillary file parameters
-    when set to "none" values. In particular when the bad pixel file
-    parameter was set to "none", occasionally it would revert to using
-    the default bad pixel file from the CalDB, which is now fixed.
-
-  srcflux
-  
-    Added new option to create "optimized" source and background regions
-    based on the PSF.  The new "regions" parameter can be used to 
-    select the method to use to create regions: 
-        - simple (default): circular regions based on PSF ECF
-        - optimized (new) : polygons enclosing ECF of simulated PSF
-        - user : user supplied regions in srcreg and bkgreg parameters
-        
-    The marx_root parameter is also added to specify the directory where
-    marx is installed.
-    
-    In addition, there is a numerical precision bug fix when
-    computing the combined PSF fraction when merging datasets.
+    The script has been updated to support the multiple
+    temperature-dependent P2_RESP calibration files for ACIS.
 
 
-New Python modules
+New modules
 
-  crates_contrib/masked_image_crate
-  
-    This new module introduces the MaskedIMAGECrate class.  It is
-    a subclass of the standard crates IMAGECrate class but extends it
-    to include a `valid` method to check if the pixel location is a
-    valid pixel (inside subspace and not NULL/NaN/Inf).  It only
-    supports 2D images.
+  sherpa_contrib.matrix_model
+
+    Include the aperture correction factor created by mkrprm in a
+    fit to a radial profile in Sherpa.
 
 
-Updated Python modules
+Updated modules
 
   ciao_contrib.runtool
 
-    The module has been updated to reflect parameter changes and the
-    new scripts added in this release.
+    The module has been updated to match the CIAO 4.17 parameter files
+    and add support for new tools and scripts, including:
 
-  sherpa_contrib.profiles
+      chandra_repro, fine_astro, mkosip, patch_hrc_ssc
 
-    The routines have been updated to support changes to Sherpa
-    plotting in this release.
+  sherpa_contrib.notebook_plotter
+
+    The tutorial notebook for sherpa_contrib.notebook_plotter, which
+    can be found at
+    $ASCDS_INSTALL/share/notebooks/notebook_plotter_tutorial.ipynb,
+    has had minor updates.

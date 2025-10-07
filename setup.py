@@ -1,12 +1,13 @@
 """
 Create the CIAO contributed package. Options include:
 
-  --version=4.16.0
+  --version=4.17.0
 
 """
 
 import glob
 import sys
+import os
 
 from setuptools import setup
 
@@ -20,13 +21,18 @@ def list_files(pattern):
     #
     files = [f for f in files if not (f.endswith('~') or f.startswith('flycheck_'))]
 
+    # Remove sub-directories
+    #
+    #
+    files = [f for f in files if not os.path.isdir(f)]
+
     if files == []:
         raise ValueError(f"No match for pattern: {pattern}")
 
     return sorted(files)
 
 
-VERSION = "4.16.0"
+VERSION = "4.17.2"
 for val in sys.argv:
     if val.startswith("--version="):
         VERSION = val.split("=")[1]
@@ -41,9 +47,11 @@ scripts = list_files("bin/*")
 data_files = [("param", list_files("param/*.par")),
               ("share/doc/xml", list_files("share/doc/xml/*.xml")),
               ("share/xspec/install", list_files("share/xspec/install/*cxx")),
+              ("share/sherpa/notebooks", list_files("share/sherpa/notebooks/*ipynb")),
               ("config", list_files("config/*")),
               ("data", list_files("data/*")),
-              (".", ["Changes.CIAO_scripts", "README_CIAO_scripts"])
+              ("data/ebounds-lut", list_files("data/ebounds-lut/*")),
+              (".", ["Changes.CIAO_scripts"])
 ]
 
 setup(version=VERSION,

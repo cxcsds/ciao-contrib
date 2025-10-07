@@ -31,7 +31,7 @@
 This module allows users to run CIAO command-line tools with parameter files
 by calling a function with the name of the tool: for example
 
-  dmcopy("in.fits", "out.fits", clobber=True, option="all")
+  dmcopy("in.fits", "out.fits", clobber=True)
   print(dmstat(infile="img.fits", centroid=False, verbose=0))
 
 If using an interactive Python session - such as IPython or Sherpa - the
@@ -2705,7 +2705,7 @@ parinfo['centroid_map'] = {
 parinfo['chandra_repro'] = {
     'istool': True,
     'req': [ParValue("indir","f","Input directory",'./'),ParValue("outdir","f","Output directory (default = $indir/repro)",None)],
-    'opt': [ParValue("root","s","Root for output filenames",None),ParValue("badpixel","b","Create a new bad pixel file?",True),ParValue("process_events","b","Create a new level=2 event file?",True),ParValue("destreak","b","Destreak the ACIS-8 chip?",True),ParValue("set_ardlib","b","Set ardlib.par with the bad pixel file?",True),ParValue("check_vf_pha","b","Clean ACIS background in VFAINT data?",False),ParSet("pix_adj","s","Pixel randomization: default|edser|none|randomize",'default',["default","edser","none","randomize","centroid"]),ParValue("tg_zo_position","s","Method to determine gratings 0th order location: evt2|detect|R.A. & Dec.",'evt2'),ParValue("asol_update","b","If necessary, apply boresight correction to aspect solution file?",True),ParValue("pi_filter","b","Apply PI background filter to HRC-S+LETG data?",True),ParValue("cleanup","b","Cleanup intermediate files on exit",True),ParValue("clobber","b","Clobber existing file",False),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
+    'opt': [ParValue("root","s","Root for output filenames",None),ParValue("badpixel","b","Create a new bad pixel file?",True),ParValue("process_events","b","Create a new level=2 event file?",True),ParValue("destreak","b","Destreak the ACIS-8 chip?",True),ParValue("set_ardlib","b","Set ardlib.par with the bad pixel file?",True),ParValue("check_vf_pha","b","Clean ACIS background in VFAINT data?",False),ParSet("pix_adj","s","Pixel randomization: default|edser|none|randomize",'default',["default","edser","none","randomize","centroid"]),ParValue("tg_zo_position","s","Method to determine gratings 0th order location: evt2|detect|R.A. & Dec.",'evt2'),ParValue("asol_update","b","If necessary, apply boresight correction to aspect solution file?",True),ParValue("pi_filter","b","Apply PI background filter to HRC-S+LETG data?",True),ParValue("patch_hrc_ssc","b","Patch HRC Secondary Science Corruption?",False),ParValue("cleanup","b","Cleanup intermediate files on exit",True),ParValue("clobber","b","Clobber existing file",False),ParRange("verbose","i","Debug Level(0-5)",1,0,5)],
     }
 
 
@@ -3185,6 +3185,13 @@ parinfo['find_mono_energy'] = {
     }
 
 
+parinfo['fine_astro'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input event files",None),ParValue("outroot","f","Root of output files",None)],
+    'opt': [ParValue("src_lists","f","Input source list (leave blank to run wavdetect)",None),ParValue("ref_src_list","f","Reference source list (blank to use longest observation)",None),ParValue("det_filter","s","Filter to apply to source detect input files",None),ParValue("det_scales","s","Wavdetect scales",'1.4 2 4'),ParValue("src_filter","s","Filter to apply to output source lists from detect",None),ParSet("stop","s","Where to stop processing",'fineastro',["fineastro","mergeobs"]),ParValue("parallel","b","Run processes in parallel?",True),ParValue("nproc","i","Number of processors to use",None),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","Remove output file if it already exists?",False),ParValue("cleanup","b","Delete intermediary files?",True),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
+    }
+
+
 parinfo['flux_obs'] = {
     'istool': True,
     'req': [ParValue("infiles","s","Input events files",None),ParValue("outroot","f","Root of output files",None)],
@@ -3356,7 +3363,7 @@ parinfo['merge_obs'] = {
 parinfo['merge_too_small'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input map",None),ParValue("outfile","f","Output map",None)],
-    'opt': [ParSet("method","s","Apply minval threshold to area of region or counts in region?",'counts',["counts","area"]),ParValue("imgfile","f","Input counts image file, required for method=counts",None),ParValue("binimg","f","Optional output image file",None),ParRange("minvalue","i","Minimum counts or area (logical pixels)",0,0,None),ParRange("verbose","i","Tool chatter level",0,0,5),ParValue("clobber","b","Remove outfile if it already exists?",False)],
+    'opt': [ParSet("method","s","Apply minval threshold to area of region or counts in region?",'counts',["counts","area"]),ParValue("imgfile","f","Input counts image file, required for method=counts",None),ParValue("binimg","f","Optional output image file",None),ParRange("minvalue","i","Minimum counts or area (logical pixels)",0,0,None),ParSet("join","s","Join deficient region with which neighbor?",'min',["min","max"]),ParRange("verbose","i","Tool chatter level",0,0,5),ParValue("clobber","b","Remove outfile if it already exists?",False)],
     }
 
 
@@ -3402,6 +3409,13 @@ parinfo['mkinstmap'] = {
     }
 
 
+parinfo['mkosip'] = {
+    'istool': True,
+    'req': [],
+    'opt': [ParValue("osip_mode","s","",'compute_limits'),ParValue("obspar","f","",None),ParValue("p2resp_file","f","",None),ParValue("gain_file","f","",None),ParValue("order_bounds_table","f","",None),ParValue("fracresp_goal","r","",0.985),ParValue("energy_grid","s","",'253:1740:20;1750:1890:10;1900:4990:20;5000:12000:10'),ParValue("ccdids","s","",'ACIS-456789'),ParValue("high_limit_clip","r","",1.3),ParValue("low_limit_clip","r","",0.8),ParValue("fracresp_high","r","",0.985),ParValue("resample_factor","i","",8),ParValue("moments_full_distribution","b","",False),ParValue("verbose","i","",0),ParValue("n_threads","i","",1)],
+    }
+
+
 parinfo['mkpsfmap'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input image file name",None),ParValue("outfile","f","Output image file name",None),ParValue("energy","r","Energy of PSF to lookup [keV]",None),ParValue("spectrum","f","Spectrum file [keV vs weight] if energy=None",None),ParRange("ecf","r","ECF of PSF to lookup",None,0,1)],
@@ -3420,6 +3434,13 @@ parinfo['mkrmf'] = {
     'istool': True,
     'req': [ParValue("infile","f","name of FEF input file",None),ParValue("outfile","f","name of RMF output file",None),ParValue("axis1","s","axis-1(name=lo:hi:btype)",None),ParValue("axis2","s","axis-2(name=lo:hi:btype)",None)],
     'opt': [ParValue("logfile","f","name of log file",'STDOUT'),ParValue("weights","f","name of weight file",None),ParRange("thresh","r","low threshold of energy cut-off probability",1e-5,0.0,None),ParValue("outfmt","s","RMF output format (legacy|cxc)",'legacy'),ParValue("clobber","b","overwrite existing output file (yes|no)?",False),ParRange("verbose","i","verbosity level (0 = no display)",0,0,5),ParValue("axis3","s","axis-3(name=lo:hi:btype)",'none'),ParValue("axis4","s","axis-4(name=lo:hi:btype)",'none'),ParValue("axis5","s","axis-5(name=lo:hi:btype)",'none')],
+    }
+
+
+parinfo['mkrprm'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input image",None),ParValue("regions","f","Input stack of regions",None),ParValue("outfile","f","Output radial profile redistribution matrix",None)],
+    'opt': [ParSet("psfmethod","s","Method to apply PSF smoothing",'map',["map","marx"]),ParRange("ecf","r","PSF Map Fraction",0.393,0,1),ParSet("function","s","PSF Map smoothing function",'gaus',["gaus","tophat","lor","hemisphere","cone"]),ParRange("energy","r","PSF Energy",1.4,0.3,10),ParRange("flux","r","Flux for marx simulations",1.0e-2,0,None),ParRange("random_seed","i","MARX random seed, -1: current time",-1,-1,1073741824),ParValue("marx_root","f","Directory where MARX is installed",'${MARX_ROOT}'),ParValue("tmpdir","s","Directory for temporary files",'${ASCDS_WORK_PATH}'),ParValue("clobber","b","Remove output file if it already exists?",False),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
     }
 
 
@@ -3468,7 +3489,14 @@ parinfo['multi_chip_gti'] = {
 parinfo['obsid_search_csc'] = {
     'istool': True,
     'req': [ParValue("obsid","s","Chandra Observation ID",None),ParValue("outfile","f","Name of output table (TSV format)",None)],
-    'opt': [ParValue("columns","s","List of columns to include",'INDEF'),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2',["csc2","csc1","current"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
+    'opt': [ParValue("columns","s","List of columns to include",'INDEF'),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2.1',["csc2.1","csc2","csc1","current","latest"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
+    }
+
+
+parinfo['patch_hrc_ssc'] = {
+    'istool': True,
+    'req': [ParValue("dtf_infile","f","Input dead time factors file",None),ParValue("mtl_infile","f","Input mission time line file",None),ParValue("evt_infile","f","Input Level 1 event file",None),ParValue("evt_outfile","f","Output Level 1 event file",None),ParValue("gti_outfile","f","Output GTI (filter: flt) file",None),ParValue("dtf_outfile","f","Output dead time factors file",None),ParRange("threshold","i","Threshold about which total_evt_count is due to SCC",4000,0,None)],
+    'opt': [ParRange("smooth_count","i","Smoothing applied to total_evt_count to determine bad range",3,1,None),ParValue("tmpdir","f","Temporary directory for intermediate files",'${ASCDS_WORK_PATH}'),ParRange("verbose","i","Amount of tool chatter",1,0,5),ParValue("clobber","b","Overwrite existing files",False)],
     }
 
 
@@ -3601,14 +3629,14 @@ parinfo['roi'] = {
 parinfo['search_csc'] = {
     'istool': True,
     'req': [ParValue("pos","s","Input position.  RA, Dec, eg: 246.59955,-24.415158 or name, M81",None),ParRange("radius","r","Search radius [default: arcmin]",0,0,60),ParValue("outfile","f","Name of output table (TSV format)",None)],
-    'opt': [ParSet("radunit","s","Units of search radius",'arcmin',["arcmin","arcsec","deg"]),ParValue("columns","s","List of columns to return",'INDEF'),ParValue("sensitivity","b","Retrieve Limiting sensitivity for each energy band?",False),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2',["csc2","csc1","current"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
+    'opt': [ParSet("radunit","s","Units of search radius",'arcmin',["arcmin","arcsec","deg"]),ParValue("columns","s","List of columns to return",'INDEF'),ParValue("sensitivity","b","Retrieve Limiting sensitivity for each energy band?",False),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2.1',["csc2.1","csc2","csc1","current","latest"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
     }
 
 
 parinfo['simulate_psf'] = {
     'istool': True,
     'req': [ParValue("infile","f","Event or Image file",None),ParValue("outroot","f","Output root name",None),ParRange("ra","r","Right Asscension of source [deg]",0,0,360),ParRange("dec","r","Declination of source [deg]",0,-90,90),ParValue("spectrumfile","f","3 column spectrum file [kev vs. photon/cm^2/sec]",None)],
-    'opt': [ParRange("monoenergy","r","Monochromatic energy [keV]",None,0,10),ParValue("flux","r","Flux value for spectrum or monochromatic energy",None),ParSet("simulator","s","Which tool to simulate HRMA?",'marx',["marx","file"]),ParValue("rayfile","f","Use existing rays file",None),ParSet("projector","s","Which tool to project",'marx',["marx","psf_project_ray"]),ParRange("random_seed","i","PSF random seed, -1: current time",-1,-1,1073741824),ParRange("blur","r","Blur (marx.AspectBlur or psf_project_ray.xblur) [arcsec]",0.07,0,None),ParValue("readout_streak","b","MARX Simulate readout streak (ACIS)",False),ParValue("pileup","b","MARX Run pileup module (ACIS)",False),ParValue("ideal","b","Should MARX use idealized detectors (QE=1) be used?",True),ParValue("extended","b","Should MARX detectors be extended beyond their physical edges?",True),ParRange("binsize","r","Image bin size [pix]",1,0,None),ParRange("numsig","r","Number of sigma to make image",7,1,None),ParValue("minsize","i","Minimum image size [pix]",None),ParRange("numiter","i","Number of simulations to combine together",1,1,None),ParRange("numrays","i","Number of rays to simulate",None,0,None),ParValue("keepiter","b","Keep files from each iteration?",False),ParValue("asolfile","f","Aspect solution file: blank=autofind, none=omit",None),ParValue("marx_root","f","Directory where MARX is installed",'${MARX_ROOT}'),ParRange("verbose","i","Chatter level of tool",1,0,5)],
+    'opt': [ParRange("monoenergy","r","Monochromatic energy [keV]",None,0,10),ParValue("flux","r","Flux value for spectrum or monochromatic energy",None),ParSet("simulator","s","Which tool to simulate HRMA?",'marx',["marx","saotrace","file"]),ParValue("rayfile","f","Use existing rays file",None),ParSet("projector","s","Which tool to project",'marx',["marx","psf_project_ray","none"]),ParRange("random_seed","i","PSF random seed, -1: current time",-1,-1,1073741824),ParRange("blur","r","Blur (marx.AspectBlur or psf_project_ray.xblur) [arcsec]",0.07,0,None),ParValue("readout_streak","b","MARX Simulate readout streak (ACIS)",False),ParValue("pileup","b","MARX Run pileup module (ACIS)",False),ParValue("ideal","b","Should MARX use idealized detectors (QE=1) be used?",True),ParValue("extended","b","Should MARX detectors be extended beyond their physical edges?",True),ParRange("binsize","r","Image bin size [pix]",1,0,None),ParRange("numsig","r","Number of sigma to make image",7,1,None),ParRange("minsize","i","Minimum image size [pix]",None,0,None),ParRange("maxsize","i","Maximum image size [pix]",None,0,None),ParRange("numiter","i","Number of simulations to combine together",1,1,None),ParRange("numrays","i","Number of rays to simulate",None,0,None),ParValue("keepiter","b","Keep files from each iteration?",False),ParValue("asolfile","f","Aspect solution file: blank=autofind, none=omit",None),ParValue("saotrace_install","f","Directory where SAOTrace was intalled",'${INSTALLDIR}'),ParValue("saotrace_db","f","Direcotry where SAOTrace database was intalled",'${SAOTRACE_DB}'),ParValue("saotrace_mirror","s","SAOTrace mirror configuration",'orbit-200809-01f-a'),ParValue("marx_root","f","Directory where MARX is installed",'${MARX_ROOT}'),ParRange("verbose","i","Chatter level of tool",1,0,5)],
     }
 
 
@@ -3671,7 +3699,7 @@ parinfo['sso_freeze'] = {
 parinfo['statmap'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input event file",None),ParValue("mapfile","f","Input map file",None),ParValue("outfile","f","Output file name",None)],
-    'opt': [ParValue("column","s","Column name to compute statistics",'energy'),ParSet("statistic","s","Which statistic to compute?",'median',["median","mean","min","max","sum","count"]),ParValue("xcolumn","s","Column to use for the X-coordinate",'x'),ParValue("ycolumn","s","Column to use for the Y-coordinate",'y'),ParValue("clobber","b","Remove output file if it already exists?",False),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
+    'opt': [ParValue("column","s","Column name to compute statistics",'energy'),ParSet("statistic","s","Which statistic to compute?",'median',["median","mean","min","max","sum","count","wmedian","wmean","wmin","wmax","wsum"]),ParValue("xcolumn","s","Column to use for the X-coordinate",'x'),ParValue("ycolumn","s","Column to use for the Y-coordinate",'y'),ParValue("wcolumn","s","Column to use for weighted statistics",None),ParValue("clobber","b","Remove output file if it already exists?",False),ParRange("verbose","i","Amount of tool chatter",1,0,5)],
     }
 
 

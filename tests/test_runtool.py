@@ -1,7 +1,7 @@
 """Basic tests of the runtool interface"""
 
 import os
-import pathlib
+from pathlib import Path
 
 import pytest
 
@@ -20,7 +20,7 @@ STANDARD_TOOLS = list(set(ALL_TOOLS) - set(SPECIAL_TOOLS) - set(PAR_TOOLS))
 
 # The current tests assume a conda-installed CIAO environment
 #
-ASCDS_INSTALL = pathlib.Path(os.getenv('ASCDS_INSTALL'))
+ASCDS_INSTALL = Path(os.getenv('ASCDS_INSTALL'))
 
 
 initialize_logger('test_runtool')
@@ -42,8 +42,8 @@ def test_have_ascds_install():
 
 
 def test_expected_tools():
-    assert len(ALL_TOOLS) == 181
-    assert len(STANDARD_TOOLS) == 166
+    assert len(ALL_TOOLS) == 199
+    assert len(STANDARD_TOOLS) == 184
 
 
 @pytest.mark.parametrize("expected", STANDARD_TOOLS)
@@ -345,144 +345,94 @@ def test_write_parfile_standard(toolname, tmp_path):
         if a.strip() == b.strip():
             continue
 
+        print(toolname)
         print(a.strip())
         print(b.strip())
+        print("---")
         wrong.append((a, b))
 
     # This is ugly - it would be nice to check the actual differences
     # but that's a lot of work
     #
     nwrong = len(wrong)
-    if toolname == 'acis_find_afterglow':
-        assert nwrong == 2
-    elif toolname == 'acis_process_events':
-        assert nwrong == 1
-    elif toolname == 'acis_streak_map':
-        assert nwrong == 2
-    elif toolname == 'acisreadcorr':
-        assert nwrong == 4
-    elif toolname == 'aprates':
-        assert nwrong == 15
-    elif toolname == 'asphist':
-        assert nwrong == 2
-    elif toolname == 'arestore':
-        assert nwrong == 2
-    elif toolname == 'arfcorr':
-        assert nwrong == 4
-    elif toolname == 'celldetect':
-        assert nwrong == 1
-    elif toolname == 'combine_grating_spectra':
-        assert nwrong == 2
-    elif toolname == 'combine_spectra':
-        assert nwrong == 1
-    elif toolname == 'correct_periscope_drift':
-        assert nwrong == 3
-    elif toolname == 'destreak':
-        assert nwrong == 2
-    elif toolname == 'dmcoords':
-        assert nwrong == 14
-    elif toolname == 'dmellipse':
-        assert nwrong == 2
-    elif toolname == 'dmextract':
-        assert nwrong == 1
-    elif toolname == 'dmmakepar':
-        assert nwrong == 3
-    elif toolname == 'dmhistory':
-        assert nwrong == 1
-    elif toolname == 'dmimgadapt':
-        assert nwrong == 2
-    elif toolname == 'dmimgblob':
-        assert nwrong == 1
-    elif toolname == 'dmimglasso':
-        assert nwrong == 6
-    elif toolname == 'dmimgpick':
-        assert nwrong == 1
-    elif toolname == 'dmimgthresh':
-        assert nwrong == 1
-    elif toolname == 'dmkeypar':
-        assert nwrong == 2
-    elif toolname == 'dmradar':
-        assert nwrong == 1
-    elif toolname == 'dmreadpar':
-        assert nwrong == 3
-    elif toolname == 'dmregrid':
-        assert nwrong == 1
-    elif toolname == 'dmregrid2':
-        assert nwrong == 5
-    elif toolname == 'dmtcalc':
-        assert nwrong == 1
-    elif toolname == 'download_obsid_caldb':
-        assert nwrong == 3
-    elif toolname == 'ecf_calc':
-        assert nwrong == 1
-    elif toolname == 'eff2evt':
-        assert nwrong == 1
-    elif toolname == 'find_chandra_obsid':
-        assert nwrong == 5
-    elif toolname == 'find_mono_energy':
-        # we get energy written out as "" but in the param file it's not
-        # set
-        assert nwrong == 1
-    elif toolname == 'get_src_region':
-        assert nwrong == 3
-    elif toolname == 'glvary':
-        assert nwrong == 1
-    elif toolname == 'hrc_build_badpix':
-        assert nwrong == 4
-    elif toolname == 'hrc_process_events':
-        assert nwrong == 8
-    elif toolname == 'imgmoment':
-        assert nwrong == 15
-    elif toolname == 'make_psf_asymmetry_region':
-        assert nwrong == 3
-    elif toolname == 'mkacisrmf':
-        assert nwrong == 4
-    elif toolname == 'mkarf':
-        assert nwrong == 2
-    elif toolname == 'mkpsfmap':
-        assert nwrong == 3
-    elif toolname == 'mkrmf':
-        assert nwrong == 1
-    elif toolname == 'modelflux':
-        assert nwrong == 1
-    elif toolname == 'monitor_photom':
-        assert nwrong == 1
-    elif toolname == 'mtl_build_gti':
-        assert nwrong == 1
-    elif toolname == 'obsid_search_csc':
-        assert nwrong == 3
-    elif toolname == 'pfold':
-        assert nwrong == 1
-    elif toolname == 'psf_project_ray':
-        assert nwrong == 2
-    elif toolname == 'psfsize_srcs':
-        assert nwrong == 1
-    elif toolname == 'rank_roi':
-        assert nwrong == 1
-    elif toolname == 'reproject_image':
-        assert nwrong == 2
-    elif toolname == 'reproject_image_grid':
-        assert nwrong == 6
-    elif toolname == 'roi':
-        assert nwrong == 1
-    elif toolname == 'search_csc':
-        assert nwrong == 3
-    elif toolname == 'simulate_psf':
-        assert nwrong == 7
-    elif toolname == 'srcflux':
-        assert nwrong == 1
-    elif toolname == 'tg_create_mask':
-        assert nwrong == 40
-    elif toolname == 'tg_resolve_events':
-        assert nwrong == 5
-    elif toolname == 'tgidselectsrc':
-        assert nwrong == 1
-    elif toolname == 'wrecon':
-        assert nwrong == 1
-    elif toolname == 'wtransform':
-        assert nwrong == 1
-    else:
-        assert nwrong == 0
+    nwrongs = {'acis_find_afterglow': 2,
+               'acis_process_events': 1,
+               'acis_streak_map': 2,
+               'acisreadcorr': 4,
+               'aplimits': 3,
+               'aprates': 15,
+               'asphist': 2,
+               'arestore': 2,
+               'arfcorr': 4,
+               'bkg_fixed_counts': 1,
+               'celldetect': 1,
+               'centroid_map': 1,
+               'combine_grating_spectra': 2,
+               'combine_spectra': 1,
+               'correct_periscope_drift': 3,
+               'destreak': 2,
+               'dmcoords': 14,
+               'dmellipse': 2,
+               'dmextract': 1,
+               'dmmakepar': 3,
+               'dmhistory': 1,
+               'dmimgadapt': 2,
+               'dmimgblob': 1,
+               'dmimglasso': 6,
+               'dmimgpick': 1,
+               'dmimgthresh': 1,
+               'dmkeypar': 2,
+               'dmradar': 1,
+               'dmreadpar': 3,
+               'dmregrid': 1,
+               'dmregrid2': 5,
+               'dmtcalc': 1,
+               'download_obsid_caldb': 3,
+               'ecf_calc': 1,
+               'eff2evt': 1,
+               'fine_astro': 1,
+               'find_chandra_obsid': 5,
+               'find_mono_energy': 1,
+               'get_dither_parameters': 4,
+               'get_src_region': 3,
+               'glvary': 1,
+               'hrc_build_badpix': 4,
+               'hrc_process_events': 8,
+               'imgmoment': 15,
+               'make_psf_asymmetry_region': 3,
+               'mkacisrmf': 4,
+               'mkarf': 2,
+               'merge_too_small': 2,
+               'mkpsfmap': 3,
+               'mkregmap': 1,
+               'mkrmf': 1,
+               'mkrprm': 3,
+               'modelflux': 1,
+               'monitor_photom': 1,
+               'mtl_build_gti': 1,
+               'obsid_search_csc': 3,
+               'pathfinder': 1,
+               'pfold': 1,
+               'psf_contour': 2,
+               'psf_project_ray': 2,
+               'psfsize_srcs': 1,
+               'rank_roi': 1,
+               'reproject_image': 2,
+               'reproject_image_grid': 6,
+               'roi': 1,
+               'search_csc': 3,
+               'simulate_psf': 7,
+               'tg_create_mask': 40,
+               'tg_resolve_events': 5,
+               'tgidselectsrc': 1,
+               'wrecon': 1,
+               'wtransform': 1,
+               }
+
+    try:
+        assert nwrong == nwrongs[toolname], (toolname, nwrong)
+    except KeyError:
+        assert nwrong == 0, (toolname, nwrong)
 
 
 @pytest.mark.parametrize("toolname", SPECIAL_TOOLS)
@@ -618,7 +568,7 @@ def test_write_params_same_directory(filename, tmp_path, verbose5):
 
     # The parameter file is written to the userdir
     #
-    outfile = pathlib.Path(pfiles[0]) / 'dmcopy.par'
+    outfile = Path(pfiles[0]) / 'dmcopy.par'
 
     # We can not depend on the file not existing
     # assert not outfile.exists()

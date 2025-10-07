@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2022, 2023 Smithsonian Astrophysical Observatory
+# Copyright (C) 2022-2024 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@ import ciao_contrib.logger_wrapper as lw
 
 
 toolname = "bkg_fixed_counts"
-__revision__ = "27 March 2023"
+__revision__ = "28 March 2024"
 
 lw.initialize_logger(toolname)
 verb0 = lw.get_logger(toolname).verbose0
@@ -98,6 +98,10 @@ def make_swiss_cheese(coords, src_region_list):
         srcregs = CXCRegion()
         for src_file in src_stk:
             src = CXCRegion(src_file)
+
+            # skip if srcreg is null
+            if len(src) == 0:
+                continue
 
             # Why [0]?  (See long comment in psf_contour re:
             # region area and FOV boundaries.

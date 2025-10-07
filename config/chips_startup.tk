@@ -71,6 +71,7 @@ set tgcoords_arm 0
 set tgcoords_tg_r 1
 set tgcoords_tg_d 2
 set tgcoords_energy 3
+set tgcoords_wavelength 4
 set tgcoords_order 1
 set tgcoords_frame 0
 set tgcoords_id 1
@@ -80,8 +81,14 @@ proc run_tgcoords { frame id } {
 
     global ds9
     global tgcoords_order
+    global current
 
-    set frm [lindex $ds9(frames) $frame]
+    if { $frame == 0 } {
+        set frm $current(frame)
+    } else {
+        set frm [puts $frame]
+    }
+
     set coords [$frm get marker $id line point physical]
     set x0 [lindex $coords 0]
     set y0 [lindex $coords 1]
@@ -119,23 +126,27 @@ proc launch_tgcoords_ui {frame id } {
     ttk::label .tgcoords.frm.tgr_label -text {TG_R [deg]}
     ttk::label .tgcoords.frm.tgd_label -text {TG_D [deg]}
     ttk::label .tgcoords.frm.eng_label -text {Energy [keV]}
+    ttk::label .tgcoords.frm.wav_label -text {Wavelength [A]}
     ttk::entry .tgcoords.frm.arm_value -textvariable tgcoords_arm 
     ttk::entry .tgcoords.frm.ord_value -textvariable tgcoords_order
     ttk::entry .tgcoords.frm.tgr_value -textvariable tgcoords_tg_r
     ttk::entry .tgcoords.frm.tgd_value -textvariable tgcoords_tg_d
     ttk::entry .tgcoords.frm.eng_value -textvariable tgcoords_energy
+    ttk::entry .tgcoords.frm.wav_value -textvariable tgcoords_wavelength
 
     grid .tgcoords.frm.arm_label -row 1 -column 1 -padx 5
     grid .tgcoords.frm.ord_label -row 2 -column 1 -padx 5
     grid .tgcoords.frm.tgr_label -row 3 -column 1 -padx 5
     grid .tgcoords.frm.tgd_label -row 4 -column 1 -padx 5
     grid .tgcoords.frm.eng_label -row 5 -column 1 -padx 5
+    grid .tgcoords.frm.wav_label -row 6 -column 1 -padx 5
     
     grid .tgcoords.frm.arm_value -row 1 -column 2 -padx 5
     grid .tgcoords.frm.ord_value -row 2 -column 2 -padx 5
     grid .tgcoords.frm.tgr_value -row 3 -column 2 -padx 5
     grid .tgcoords.frm.tgd_value -row 4 -column 2 -padx 5
     grid .tgcoords.frm.eng_value -row 5 -column 2 -padx 5
+    grid .tgcoords.frm.wav_value -row 6 -column 2 -padx 5
 
     bind .tgcoords.frm.ord_value <Return> {run_tgcoords $tgcoords_frame $tgcoords_id}
         
@@ -149,11 +160,15 @@ proc display_tgcoords { tgr tgd energy arm frame id} {
     global tgcoords_tg_r
     global tgcoords_tg_d
     global tgcoords_energy
+    global tgcoords_wavelength
 
     set tgcoords_arm $arm
     set tgcoords_tg_r $tgr
     set tgcoords_tg_d $tgd
     set tgcoords_energy $energy
+
+    set tgcoords_wavelength [expr 12.39842 / $energy]
+
 
     if {[winfo exists .tgcoords ] == 0} {
         launch_tgcoords_ui $frame $id

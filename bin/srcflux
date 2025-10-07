@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2013-2023 Smithsonian Astrophysical Observatory
+# Copyright (C) 2013-2025 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 #
 
 toolname = "srcflux"
-__revision__ = "02 November 2023"
+__revision__ = "27 August 2025"
 
 import os
 
@@ -178,15 +178,15 @@ def locate_fovfile( myparams ):
 
 def make_optimized_regions(myparams):
     '''Create point source optimized regions using new psf_countour and
-    bkg_fixed_counts scripts.      
+    bkg_fixed_counts scripts.
     '''
     from region import CXCRegion
-    
+
     fov = locate_fovfile( myparams)
-    
+
     verb1("Creating optimized source regions")
     psf_contour = make_tool("psf_contour")
-    psf_contour.infile = myparams.infile 
+    psf_contour.infile = myparams.infile
     psf_contour.pos = myparams.outroot+"srcs.fits"
     psf_contour.outroot = myparams.outroot
     psf_contour.method = "contour"
@@ -203,10 +203,12 @@ def make_optimized_regions(myparams):
 
     src_list = myparams.outroot+"src.lis"
     out_lis = stk.build(myparams.outroot+"_i*_src.reg")
-    out_lis.sort()    
+    out_lis.sort()
     with open(src_list, "w") as fptr:
         for reg_file in out_lis:
             reg = CXCRegion(reg_file)
+            if len(reg) == 0:
+                reg = "point(0,0)"
             fptr.write(str(reg)+"\n")
 
     # For background we use broad band (ACIS) to determine the number
@@ -215,7 +217,7 @@ def make_optimized_regions(myparams):
     tab = read_file(myparams.outroot+"srcs.fits")
     inst = tab.get_key_value("INSTRUME")
     if inst == "ACIS":
-        bg_infile += "[energy=500:7000]"   #  Use broad band for bg 
+        bg_infile += "[energy=500:7000]"   #  Use broad band for bg
 
     verb1("Creating optimized background regions")
     bkg_fixed = make_tool("bkg_fixed_counts")
@@ -230,10 +232,10 @@ def make_optimized_regions(myparams):
     chat = bkg_fixed(clobber=True)
     if chat:
         verb2(chat)
-    
+
     bkg_list = myparams.outroot+"bkg.lis"
     out_lis = stk.build(myparams.outroot+"_i*_bkg.reg")
-    out_lis.sort()    
+    out_lis.sort()
     with open(bkg_list, "w") as fptr:
         for reg_file in out_lis:
             reg = CXCRegion(reg_file)
@@ -244,7 +246,7 @@ def make_optimized_regions(myparams):
         gorm(to_del)
         for suffix in [".psf", ".smpsf", "_projrays.fits", "_src.reg"]:
             gorm(to_del.replace("_bkg.reg", suffix))
-        
+
     return f"@-{src_list}", f"@-{bkg_list}"
 
 
@@ -309,42 +311,51 @@ def validate_src_and_bkg_regions( myroot, infile, tmpdir, src, bkg ):
     def region_to_phys( reg ):
         dmmakereg = make_tool("dmmakereg")
         tmproot = NamedTemporaryFile( dir=tmpdir, suffix="_phys.reg", delete=False)
-        tfile = tmproot.name
+        tfile = delme(tmproot.name)
         tmproot.close()
 
-        dmmakereg.region=reg
-        dmmakereg.outfile=tfile
-        dmmakereg.kernel='fits'
-        dmmakereg.wcsfile=infile
-        dmmakereg.clobber=True
-        dmmakereg.verbose=0
-        dmmakereg()
+        if len(reg) > 1023:
+            # We cannot use dmmakereg to convert to physical, so we have
+            # to assume it already is.
+            verb1("Warning: found long region string, assuming it is in physical coordinates")
+            rr = CXCRegion(reg)
+            return str(rr)
 
+        try:
+            dmmakereg.region=reg
+            dmmakereg.outfile=tfile
+            dmmakereg.kernel='fits'
+            dmmakereg.wcsfile=infile
+            dmmakereg.clobber=True
+            dmmakereg.verbose=0
+            dmmakereg()
+
+            rr=CXCRegion(dmmakereg.outfile)
+            return str(rr)
+
+        except IOError as try2:
+            # If cannot parse, then try again wrapped in region()
+            if 'Could not parse region string or file' not in str(try2):
+                raise try2
+
+        dmmakereg.region=f"region({reg})"
+        dmmakereg()
         rr=CXCRegion(dmmakereg.outfile)
-        gorm( tfile )
         return str(rr)
 
 
     def validate_region( reg ):
-        "See if it is a file, need to open w/ DM to check filters/etc"
+        'Make sure region can be parsed'
         try:
-            read_file(reg)
-            reg = f"region({reg})"
-            try:
-                check = CXCRegion(reg)
-            except:
-                raise ValueError(f"ERROR: '{reg}' is not a valid region file")
-
-        except IOError:   # raised by read_file, so not a file name
-            try:
-                check = CXCRegion(reg)
-            except:
-                raise ValueError(f"ERROR: Cannot parse region string '{reg}'")
+            check = CXCRegion(reg)
+        except:
+            raise ValueError(f"ERROR: '{reg}' is not a valid region")
 
         if check is None or len(check) == 0:
             raise ValueError(f"ERROR: '{reg}' does not contain any valid regions")
 
         return region_to_phys(reg)
+
 
     ss = list(map( validate_region, src_stk ))
     outsrc = myroot+"src.stk"
@@ -435,10 +446,9 @@ def check_pos_in_srcreg( infile, srcs ):
 
 def save_regions( myparams, regions, flavor ):
     """
-        !!! TODO: Use new region module in ciao4.10 instead of dmmakereg
-
+    Save regions to FITS format
     """
-    dmmakereg = make_tool("dmmakereg")
+    from region import CXCRegion
 
     # CIAO 4.10 changes to NULL regions no longer creates a fake
     # "point(0,0)" -- I'm using that so we'll put it back.
@@ -453,19 +463,12 @@ def save_regions( myparams, regions, flavor ):
         for ii in range( len(ss)):
             outfile = "{}{:04d}_{}reg.fits".format(myparams.outroot, ii+1, flavor)
 
-            tmpreg = NamedTemporaryFile( dir=myparams.tmpdir, delete=False, suffix=f"_{flavor}.reg" )
-            tmpreg.close()
+            if len(ss[ii]) == 0:
+                myreg = CXCRegion("point(0,0)")
+            else:
+                myreg = CXCRegion(ss[ii])
 
-            with open(tmpreg.name, "w") as fp:
-                fp.write( ss[ii].replace("|","\n") )
-
-            dmmakereg.region="region({})".format(tmpreg.name)
-            dmmakereg.outfile=outfile
-            dmmakereg.clobber=True
-            dmmakereg.kernel="FITS"
-            dmmakereg()
-
-            gorm(tmpreg.name)
+            myreg.write(outfile, clobber=True, fits=True)
 
             oo.write( "region({})\n".format(outfile))
 
@@ -643,10 +646,10 @@ def get_counts( myparams, at_energy, src, bkg ):
 
 
 def run_simulate_psf(sim_psf):
-    "Run a single instance of simulate_psf"        
+    "Run a single instance of simulate_psf"
     verb1("Simulating PSF: "+sim_psf.outroot)
 
-    # The make_tool object can't be pickled so I'm just 
+    # The make_tool object can't be pickled so I'm just
     # going to copy parameters using the Params object.
     simulate_psf = make_tool("simulate_psf")
     for attr in dir(sim_psf):
@@ -676,6 +679,14 @@ def simulate_psfs( myparams, at_energy, src, bkg, simulator ):
             raise IOError("Please setup for saotrace first")
         projector="psf_project_ray"
     elif simulator == 'marx':
+        if myparams.marx_root == '':
+            from shutil import which
+            marx = which('marx')
+            if marx is None:
+                raise IOError("Please set marx_root parameter to directory where MARX is installed")
+            bindir = os.path.dirname(marx)               # ie ".."
+            myparams.marx_root = os.path.dirname(bindir)  # another ".."
+
         if not os.path.exists(myparams.marx_root):
             raise IOError("Please set marx_root parameter to directory where MARX is installed")
         projector="marx"
@@ -768,8 +779,8 @@ def get_psf_from_file( myparams, at_energy, src, bkg, simulate=None ):
     if simulate is None:
         psf_stk = stk.build( myparams.psffile )
     elif simulate == "marx":
-        if 'MARX_ROOT' not in os.environ:
-            raise RuntimeError("Please setup for MARX before using this option")
+        # ~ if 'MARX_ROOT' not in os.environ:
+            # ~ raise RuntimeError("Please setup for MARX before using this option")
         psf_stk = simulate_psfs( myparams, at_energy, src, bkg, simulator="marx" )
     else:
         raise NotImplementedError("Unknown simulator={}".format(simulate))
@@ -1525,18 +1536,18 @@ def add_variability_to_output(myparams, at_energy, lcfiles ):
     odds = []
     prob = []
     varindex = []
-    
+
     for ff in lcfiles:
         tab = read_file(ff)
         odds.append(tab.get_key_value("ODDS"))
         prob.append(tab.get_key_value("PROB"))
         varindex.append(tab.get_key_value("VARINDEX"))
-    
+
     from crates_contrib.utils import add_colvals
     tab = read_file(myroot+__osuf__, mode="rw")
     add_colvals(tab, "SRC_VAR_ODDS", odds, desc="Odds for variable signal 10Log")
     add_colvals(tab, "SRC_VAR_PROB", prob, desc="Probability of variable signal")
-    add_colvals(tab, "SRC_VAR_INDEX", varindex, desc="Variability index")    
+    add_colvals(tab, "SRC_VAR_INDEX", varindex, desc="Variability index")
     tab.write()
 
 
@@ -1873,11 +1884,16 @@ def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf,
     modelflux.opt = 'rate'
     modelflux.verbose = myparams.verbose
 
-    verb2(modelflux())
+    try:
+        verb2(modelflux())
+
+    except (OSError, IOError):
+        modelflux.flux = np.nan
+        modelflux.uflux = np.nan
+        verb0(f"WARNING: modelflux failed to run using '{modelflux.arf}' and '{modelflux.rmf}' response files.  NaNs will be returned for the reported flux values.")
 
     flx = modelflux.flux
     uflx = modelflux.uflux
-
 
 
     def _gp( val ):
@@ -1888,7 +1904,7 @@ def run_modelflux( myparams, at_energy, outroot, src, bkg, ii, make_resp, inarf,
 
     with open( outroot, 'w' ) as fp:
         fp.write("#MFLUX_CNV\tUMFLUX_CNV\n")
-        fp.write( "{}\t{}\n".format(_gp(flx ), _gp(uflx) )  )
+        fp.write( "{}\t{}\n".format( _gp(flx), _gp(uflx) ) )
 
 
 
@@ -2059,7 +2075,7 @@ def run_dither_region(myparams,outroot, src, suffix):
     asol_files = obs.get_asol() if 0 == len(myparams.asolfile) else myparams.asolfile
     msk = obs.get_ancillary("mask") if 0 == len(myparams.mskfile) else myparams.mskfile
     bpix = obs.get_ancillary("bpix") if 0 == len(myparams.bpixfile) else myparams.bpixfile
-    
+
     punlearn("ardlib")
     detnam = obs.get_keyword("DETNAM")
     if detnam.startswith("ACIS"):
@@ -2072,7 +2088,7 @@ def run_dither_region(myparams,outroot, src, suffix):
         dtf = obs.get_ancillary("dtf") if 0 == len(myparams.dtffile) else myparams.dtffile
         dtf_val = "DTF"
     elif detnam == "HRC-S":
-        pset("ardlib", "AXAF_HRC-S_BADPIX_FILE", bpix)            
+        pset("ardlib", "AXAF_HRC-S_BADPIX_FILE", bpix)
         dtf = obs.get_ancillary("dtf") if 0 == len(myparams.dtffile) else myparams.dtffile
         dtf_val = "DTF"
     else:
@@ -2112,7 +2128,7 @@ def run_dither_region(myparams,outroot, src, suffix):
 
 def run_glvary(at_energy, ii, src, bkg, myparams):
     """
-    We run glvary, but only on the source region    
+    We run glvary, but only on the source region
     """
 
     verb1("Making Lightcurve for source "+str(ii))
@@ -2121,17 +2137,17 @@ def run_glvary(at_energy, ii, src, bkg, myparams):
         tab = read_file("{}[sky={}]".format(infile,region))
         if tab.get_key_value("INSTRUME") == "HRC":
             return ""
-        
+
         if tab.get_nrows() == 0:
             return ""  #   Doesn't matter which GTI if there are no counts
-        
+
         #
         # I want to get a list of the ccd_id values, but
         # if there is more than 1 chip, I want to _try_
         # to use the GTI of the chip with the most
         # events.
         #
-        ccd_val = tab.get_column("CCD_ID").values        
+        ccd_val = tab.get_column("CCD_ID").values
         ccds = list(np.unique(ccd_val))
         most_common = np.bincount(ccd_val).argmax()
         ccds.remove(most_common)
@@ -2156,7 +2172,7 @@ def run_glvary(at_energy, ii, src, bkg, myparams):
     with newpf(tmpdir=myparams.tmpdir, copyuser=False, ardlib=False) as foo:
         src_eff_file = run_dither_region(myparams, outroot, src, "src")
         bkg_eff_file = run_dither_region(myparams, outroot, bkg, "bkg")
-        
+
     glvary = make_tool("glvary")
     glvary.infile = inroot+"[sky={}]{}".format(src,ccd_id_filter)
     glvary.outfile = outroot+".prob"
@@ -2178,7 +2194,7 @@ def run_glvary(at_energy, ii, src, bkg, myparams):
     dmextract.clobber = myparams.clobber
     dmextract.verbose = myparams.verbose
     verb2(dmextract())
-    
+
     gorm(src_eff_file)
     gorm(bkg_eff_file)
 
@@ -2200,7 +2216,7 @@ def get_variability( taskrunner, myparams, at_energy, src, bkg ):
     for ii in range(len(src_stk)):
         outroot = "{}{:04d}_{}.gllc".format( myparams.outroot, ii+1, suffix)
         taskrunner.add_task( outroot, "", run_glvary, at_energy, ii+1, src_stk[ii], bkg_stk[ii], myparams)
-        infiles.append(outroot) 
+        infiles.append(outroot)
 
     return infiles
 
@@ -2288,10 +2304,22 @@ def merge_modelflux( stk_params, myparams ):
         if vv:
             verb2(vv)
 
-        verb2("Running model_flux")
         out_arf = combine_spectra.outroot+"_src.arf"
         out_rmf = combine_spectra.outroot+"_src.rmf"
         out_pi = combine_spectra.outroot+"_src.pi"
+
+        # Ugh, c_s uses different file names for gratings files :(
+        check = [os.path.exists(xx) for xx in [out_pi, out_rmf, out_arf]]
+        if not all(check):
+            out_arf = combine_spectra.outroot+".arf"
+            out_rmf = combine_spectra.outroot+".rmf"
+            out_pi = combine_spectra.outroot+".pha"
+            check = [os.path.exists(xx) for xx in [out_pi, out_rmf, out_arf]]
+            if not all(check):
+                raise RuntimeError("Cannot locate combined spectra")
+
+        verb2("Running model_flux")
+
         for at_energy in bands:
             myroot = get_root( myparams, at_energy )
             outroot = myroot+"_{:04d}.dat".format(snum+1)
@@ -2345,12 +2373,12 @@ def merge_get_counts( infiles ):
             assert cc in range(10)
             etime = tab.get_key_value("LIVTIME{}".format(cc))
             if etime is None:
-                # For sources right on the edge of the chip, they 
-                # can be inside the FOV (includes dither), but the 
+                # For sources right on the edge of the chip, they
+                # can be inside the FOV (includes dither), but the
                 # chip_id value itself is computed
-                # at the mean pointing, so it may be on another 
+                # at the mean pointing, so it may be on another
                 # chip, which is no turned on. If this happens, just
-                # set exposure time to LIVETIME (to be consistent w/ 
+                # set exposure time to LIVETIME (to be consistent w/
                 # individual obi)
                 etime = tab.get_key_value("LIVETIME")
             retval['exptime'].append(etime)
@@ -2968,7 +2996,7 @@ def check_parameters( myparams ):
         except:
             raise ValueError("Cannot locate mask file.  Please specify 'mskfile' parameter.")
     elif "none" == myparams.mskfile.lower():
-        verb0("\nWARNING: mask file parmater set to 'none'; mask information will not be use.  This may lead to inaccuracies in the results\n")
+        verb0("\nWARNING: mask file parameter set to 'none'; mask information will not be use.  This may lead to inaccuracies in the results\n")
 
 
     if 0 == len( myparams.bpixfile ):
@@ -2979,7 +3007,7 @@ def check_parameters( myparams ):
         except:
             raise ValueError("Cannot locate bad pixel file.  Please specify 'bpixfile' parameter.")
     elif "none" == myparams.bpixfile.lower():
-        verb0("\nWARNING: badpixel file parmater set to 'none'; badpixel information will not be use.  This may lead to inaccuracies in the results\n")
+        verb0("\nWARNING: badpixel file parameter set to 'none'; badpixel information will not be use.  This may lead to inaccuracies in the results\n")
 
     inst = get_single_keyword(myparams.infile, "instrume" )
     if "HRC" == inst:
@@ -2992,19 +3020,23 @@ def check_parameters( myparams ):
             except:
                 raise ValueError("Cannot locate HRC dead time factors file.  Please specify 'dtffile' parameter.")
         elif "none" == myparams.dtffile.lower():
-            verb0("\nWARNING: dead time factors file parmater set to 'none'; DTF information will not be use.  This may lead to inaccuracies in the results\n")
+            verb0("\nWARNING: dead time factors file parameter set to 'none'; DTF information will not be use.  This may lead to inaccuracies in the results\n")
+
+    if myparams.regions == "optimized" and myparams.psfmethod == "quick":
+        raise ValueError("ERROR: Invalid parameter combination. psfmethod=quick requires circular source regions, however, regions=optimized creates polygon shaped regions. These two options cannot be used together.")
+
 
 def check_nom_keywords(evt_files):
-    """If there is more than 1 event files, then they must have the 
+    """If there is more than 1 event files, then they must have the
     same tangent point.  Check the RA and DEC_NOM values in the headers.
-    
+
     But, this is only true if regions are in physical coords. If celestial
     then OK.  Unfortunately we don't know the coord sys so we have to
     make this a warning not an error.
     """
 
     def _check_key(nom_key, nom_val):
-        key_val = tab.get_key_value(nom_key)        
+        key_val = tab.get_key_value(nom_key)
         if nom_val is None:
             nom_val = key_val
         if nom_val != key_val:
@@ -3015,7 +3047,7 @@ def check_nom_keywords(evt_files):
 
     ra_nom = None
     dec_nom = None
-    
+
     for evt in evt_files:
         tab = read_file(evt)
         ra_nom = _check_key("RA_NOM", ra_nom)
@@ -3058,9 +3090,9 @@ def build_infile_stacks( pars ):
 
 def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
     """
-    Allow the user to write a plugin that can be run after all the 
+    Allow the user to write a plugin that can be run after all the
     other processing is complete and to collect those results with
-    in the output .flux file.    
+    in the output .flux file.
     """
 
     import importlib
@@ -3077,7 +3109,7 @@ def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
         retval = True
         has_vals = []
 
-        for v in vals:            
+        for v in vals:
 
             # Check that value has require attributes
             for k in ["name", "units", "value", "description"]:
@@ -3094,7 +3126,7 @@ def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
             has_vals.append(v.name)
 
             # Check for valid name (FITS standard)
-            if re.match("^[A-Za-z0-9][A-Za-z0-9_\-]*$", v.name) is None:
+            if re.match(r"^[A-Za-z0-9][A-Za-z0-9_\-]*$", v.name) is None:
                 verb0(f"WARNING: User plugin failed with an invalid column name '{v.name}'. Only letter, number, dash, and underscore are allowed. Must start with a letter or number.")
                 retval = False
                 continue
@@ -3106,7 +3138,7 @@ def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
                                          'vals': [v.value,]}
             else:
                 plugin_values[v.name]["vals"].append(v.value)
-            
+
         # Keep a list of values so that we can easily check all sources
         # return the same set of values.
         if len(list_of_values) == 0:
@@ -3128,7 +3160,7 @@ def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
 
         from pycrates import CrateData, add_col
         intab = read_file(outfile, mode="rw")
-        
+
         for newcol in list_of_values:
             _col = CrateData()
             _col.name = newcol
@@ -3136,13 +3168,13 @@ def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
             _col.desc = plugin_values[newcol]["desc"]
             _col.values = plugin_values[newcol]["vals"]
             add_col(intab, _col)
-            
+
         intab.write()
 
     if myparams.pluginfile == "" or myparams.pluginfile.lower() == "none":
         return
 
-    # Locate the plugin, add dirname to python path or cwd if no dir        
+    # Locate the plugin, add dirname to python path or cwd if no dir
     try:
         pdir = os.path.dirname(myparams.pluginfile)
         if pdir == "":
@@ -3180,7 +3212,7 @@ def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
         _vals = efilt.split("=")[1]
         elo,ehi = [float(x) for x in _vals.split(":")]
 
-    # Get the number of sources    
+    # Get the number of sources
     intab = read_file( myroot+__osuf__, mode="r")
     src_cts = intab.get_column("component").values
     del intab
@@ -3190,11 +3222,11 @@ def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
     else:
         infiles = [s.infile for s in stk_params]
 
-    # Loop over sources.  Not running in parallel 
+    # Loop over sources.  Not running in parallel
     # right now.
     for ii in range( len(src_cts) ):
         outroot = myparams.outroot+"{:04d}".format(ii+1)
-            
+
         vals = plugin_cmd(infiles, outroot, band, elo, ehi, ii+1)
 
         if _check_vals(vals, list_of_values, plugin_values) == False:
@@ -3203,7 +3235,7 @@ def run_user_plugin(myparams, at_energy, plugin_name, stk_params=None):
 
     write_plugin_values(myroot+__osuf__, list_of_values, plugin_values)
 
-    
+
 
 def process_single_obi( myparams, pars ):
     """
@@ -3235,9 +3267,9 @@ def process_single_obi( myparams, pars ):
         add_modelflux_to_output( myparams, at_energy, mfluxfiles )
         scale_modelflux_fluxes( myparams, at_energy )
         add_variability_to_output( myparams, at_energy, lcfiles)
-        
+
         run_user_plugin(myparams, at_energy, "srcflux_obsid_plugin")
-        
+
         cleanup_outfile( myparams, pars, at_energy )
 
 
@@ -3291,13 +3323,13 @@ def obi_main(pars):
 @lw.handle_ciao_errors( toolname, __revision__)
 def main():
 
-    __must_have = ("infile", "pos", "outroot", "bands", "srcreg", 
+    __must_have = ("infile", "pos", "outroot", "bands", "srcreg",
                    "bkgreg", "bkgresp", "psfmethod", "psffile", "conf",
-                   "binsize", "rmffile", "arffile", "model", 
-                   "paramvals", "absmodel", "absparams", "abund", 
-                   "pluginfile", "fovfile", "asolfile", "mskfile", 
-                   "bpixfile", "dtffile", "ecffile", "parallel", 
-                   "nproc", "tmpdir", "random_seed", "clobber", 
+                   "binsize", "rmffile", "arffile", "model",
+                   "paramvals", "absmodel", "absparams", "abund",
+                   "pluginfile", "fovfile", "asolfile", "mskfile",
+                   "bpixfile", "dtffile", "ecffile", "parallel",
+                   "nproc", "tmpdir", "random_seed", "clobber",
                    "verbose", "regions", "marx_root",)
 
     # Load parameters
@@ -3333,7 +3365,7 @@ def main():
     merged_fluxes = merge_counts( stk_pars, myparams)
     modelflux_vals = merge_modelflux( stk_pars, myparams )
     merge_write_output( stk_pars, myparams, modelflux_vals, merged_fluxes)
-    
+
     for at_band in stk.build( myparams.bands):
         run_user_plugin(myparams, at_band, "srcflux_merge_plugin", stk_params=stk_pars)
 

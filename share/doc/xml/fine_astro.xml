@@ -1,0 +1,694 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="fine_astro"
+         context="Tools::Coordinates"
+         refkeywords="wcs reproject aspect reference match source position asol update transformation transform register"
+         seealsogroups="reproject">
+    <SYNOPSIS>Automate the steps to apply a fine astrometric correction</SYNOPSIS>
+    <DESC>
+      <PARA>
+        `fine_astro' automates the typical steps needed to apply a fine
+        astrometric correction to a set of Chandra observations.
+        This script automates the steps shown in the 
+        <HREF link="https://cxc.cfa.harvard.edu/ciao/threads/reproject_aspect/">
+        Correcting Absolute Astrometry</HREF> thread.
+        By default the script will run the wavdetect tool to create a 
+        source list for each observation, or users can choose to input a stack of source lists.  
+        Users can either apply a relative correction to the World
+        Coordinate System (WCS) by matching source positions in multiple
+        Chandra observations or apply an absolute correction by matching source
+        positions against a reference catalog. The script will 
+        compute the cross matches using the wcs_match tool and then
+        applies the translation-only solution to each event file and
+        aspect solution file using the wcs_update tool. Users can then
+        optionally run merge_obs to reproject the events files to the same
+        tangent point and create co-added images.
+      </PARA>
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+              fine_astro infile="10309,26897" out="QSO_B1311-270" 
+          </LINE>
+        </SYNTAX>
+        <DESC>
+<VERBATIM>
+fine_astro (23 October 2024)
+          infile = 10309,26897
+         outroot = QSO_B1311-270
+       src_lists = 
+    ref_src_list = 
+      det_filter = 
+      det_scales = 1.4 2 4
+      src_filter = 
+            stop = fineastro
+        parallel = yes
+           nproc = INDEF
+          tmpdir = /tmp
+         clobber = no
+         cleanup = yes
+         verbose = 1
+            mode = ql
+
+Found 10309/repro/acisf10309_repro_evt2.fits
+Found 26897/repro/acisf26897_repro_evt2.fits
+Verifying 2 observations.
+Gathering source lists
+Running pre-detect merge_obs
+Running wavdetect
+Running wavdetect on 10309
+Running wavdetect on 26897
+Running cross matches using wcs_match
+Using detect/QSO_B1311-270_10309.src for the reference source list
+detect/QSO_B1311-270_10309.src      nsrc=6      xoff= 0.000[pix]        yoff= 0.000[pix]
+detect/QSO_B1311-270_26897.src      nsrc=2      xoff=-0.348[pix]        yoff= 0.470[pix]
+Updating astrometry
+
+The following event files were created:
+QSO_B1311-270_10309_fa_evt.fits
+QSO_B1311-270_26897_fa_evt.fits
+
+The following aspect solution files were created:
+pcadf10309_000N001_fa_asol.fits
+pcadf26897_000N001_fa_asol.fits
+
+</VERBATIM>
+
+          <PARA>
+          In the most simple form, the user supplies as input the 
+          directory names containing the event files and auxiliary data products 
+          and the output file root name (including directory). 
+          The script will run merge_obs to create the images it needs to run
+          wavdetect. It will then cross match those source lists with the 
+          longest observation, in this example OBS_ID 10309, to compute the astrometric corrections.
+          Finally, the event files and aspect solution files are updated.          
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+    <QEXAMPLE>
+      <SYNTAX>
+      <LINE>
+      fine_astro infile="10309,26897" out="QSO_B1311-270" ref_src_list=csc2.1.fits
+      </LINE>
+      </SYNTAX>
+      <DESC>
+<VERBATIM>
+...
+Running cross matches using wcs_match
+detect/QSO_B1311-270_10309.src      nsrc=4      xoff= 0.049[pix]        yoff=-0.077[pix]
+detect/QSO_B1311-270_26897.src      nsrc=1      xoff=-0.566[pix]        yoff= 0.691[pix]
+Updating astrometry
+...
+</VERBATIM>      
+      <PARA>
+      This is the same as the previous example except now the crossmatch
+      is done against an externally supplied source list. Note that the
+      pixel offsets are different, and in particular that the offsets 
+      for OBS_ID=10309 are now non-zero.      
+      </PARA>
+      </DESC>    
+    </QEXAMPLE>
+    <QEXAMPLE>
+      <SYNTAX>
+        <LINE>
+        fine_astro infile=10309/repro/acisf10309_repro_evt2.fits out=obsid10309 ref=csc2.1.fits clob+
+        </LINE>
+      </SYNTAX>
+    <DESC>
+    <VERBATIM>
+fine_astro (23 October 2024)
+          infile = 10309/repro/acisf10309_repro_evt2.fits
+         outroot = obsid10309
+       src_lists = 
+    ref_src_list = csc2.1.fits
+      det_filter = 
+      det_scales = 1.4 2 4
+      src_filter = 
+            stop = fineastro
+        parallel = yes
+           nproc = INDEF
+          tmpdir = /tmp
+         clobber = yes
+         cleanup = yes
+         verbose = 1
+            mode = ql
+
+Verifying one observation.
+Gathering source lists
+Running pre-detect merge_obs
+Running wavdetect
+Running wavdetect on 10309
+Running cross matches using wcs_match
+detect/obsid10309_10309.src         nsrc=4      xoff= 0.130[pix]        yoff=-0.060[pix]
+Updating astrometry
+
+The following event files were created:
+obsid10309_10309_fa_evt.fits
+
+The following aspect solution files were created:
+pcadf10309_000N001_fa_asol.fits
+    
+    </VERBATIM>
+    <PARA>
+    This is similar to the previous example, except now we have explicitly specified
+    a single event file, by name.  When using a reference source list we can update 
+    the astometery of a single OBS_ID.
+    </PARA>
+    </DESC>    
+    </QEXAMPLE>
+
+    <QEXAMPLE>
+      <SYNTAX>
+       <LINE>
+       fine_astro @obi.lis QSO_B1311-270 src_lists=@srcs.lis ref_src_list=csc2.1.fits clob+
+       </LINE>
+      </SYNTAX>
+      <DESC>
+      <VERBATIM>
+fine_astro (23 October 2024)
+          infile = @obi.lis
+         outroot = QSO_B1311-270
+       src_lists = @srcs.lis
+    ref_src_list = csc2.1.fits
+      det_filter = 
+      det_scales = 1.4 2 4
+      src_filter = 
+            stop = fineastro
+        parallel = yes
+           nproc = INDEF
+          tmpdir = /tmp
+         clobber = yes
+         cleanup = yes
+         verbose = 1
+            mode = ql
+
+Found 10309/repro/acisf10309_repro_evt2.fits
+Found 26897/repro/acisf26897_repro_evt2.fits
+Verifying 2 observations.
+Gathering source lists
+Running cross matches using wcs_match
+obsid10309_cell.src                 nsrc=2      xoff=-0.314[pix]        yoff=-0.607[pix]
+Warning: Failed to identify matching sources for OBS_ID 26897. Proceeding with no astrometric corrections applied.
+obsid26897_cell.src                 nsrc=0      xoff= 0.000[pix]        yoff= 0.000[pix]
+Updating astrometry
+
+The following event files were created:
+QSO_B1311-270_10309_fa_evt.fits
+QSO_B1311-270_26897_fa_evt.fits
+
+The following aspect solution files were created:
+pcadf10309_000N001_fa_asol.fits
+pcadf26897_000N001_fa_asol.fits
+            </VERBATIM>
+      
+         <PARA>
+         In this example we have used stacks to specify the list of 
+         observations and the list of source lists to use.
+         When specifying the "src_lists" parameters, users must also
+         specify the "ref_src_list" parameter.
+         The contents of the file "obi.lis" looks like         
+         </PARA>
+<VERBATIM>
+# obsid
+10309
+26897
+</VERBATIM>
+<PARA>(note: lines that begin with "#" are ignored) and the 
+contents of the file "srcs.lis" looks like</PARA>
+<VERBATIM>
+obsid10309_cell.src
+obsid26897_cell.src
+</VERBATIM>
+    <PARA>which in this example are source lists created with the 
+    celldetect tool.</PARA>
+    <PARA>
+    In this example, OBS_ID 26897, failed to find any matching sources
+    between the input source list and the reference source list.
+    In this case a warning is shown and the script proceeds by
+    applying a WCS update with no offsets (equal to 0.0).
+    </PARA>      
+      </DESC>
+    </QEXAMPLE>
+
+    <QEXAMPLE>
+      <SYNTAX>
+        <LINE>fine_astro @obi.lis "QSO_J1016+2037" clob+</LINE>
+      </SYNTAX>
+      <DESC>
+      <VERBATIM>
+...
+Running cross matches using wcs_match
+Using detect/QSO_J1016+2037_25858.src for the reference source list
+detect/QSO_J1016+2037_20411.src     nsrc=2      xoff= 2.188[pix]        yoff= 0.472[pix]
+detect/QSO_J1016+2037_25382.src     nsrc=2      xoff= 2.944[pix]        yoff= 0.422[pix]
+detect/QSO_J1016+2037_25857.src     nsrc=2      xoff= 3.630[pix]        yoff= 0.753[pix]
+Warning: X shift =  3.630 exceeds warning limit of 3.0 pixels
+detect/QSO_J1016+2037_25858.src     nsrc=2      xoff= 0.000[pix]        yoff= 0.000[pix]
+detect/QSO_J1016+2037_26339.src     nsrc=2      xoff= 0.688[pix]        yoff=-0.204[pix]
+detect/QSO_J1016+2037_27711.src     nsrc=2      xoff= 0.875[pix]        yoff= 0.853[pix]
+detect/QSO_J1016+2037_27728.src     nsrc=2      xoff= 3.972[pix]        yoff= 1.221[pix]
+Warning: X shift =  3.972 exceeds warning limit of 3.0 pixels
+Warning: Total offset =  4.155 exceeds warning limit of 4.0 pixels
+detect/QSO_J1016+2037_27729.src     nsrc=2      xoff= 3.621[pix]        yoff= 1.159[pix]
+Warning: X shift =  3.621 exceeds warning limit of 3.0 pixels
+Updating astrometry
+...      
+      </VERBATIM>
+      <PARA>
+        In this example with 8 observations there are some observations with 
+        large offsets. This script will produce a warning if
+        the offset in either the X or Y direction exceeds 3 pixels and/or
+        if the total offset exceeds 4 pixels.  Users may want to more
+        carefully examine the results to ensure that the automatic 
+        crossmatch worked correctly. 
+      </PARA>            
+      </DESC>
+    </QEXAMPLE>
+    <QEXAMPLE>
+      <SYNTAX>
+        <LINE>fine_astro @/home/user/Chandra/Abell3562/obi.lis abell3562/out \</LINE>
+        <LINE>src_filter="[pos=circle(203.4117720d,-31.6794249d,10)]" </LINE>
+      </SYNTAX>
+      <DESC>
+        <VERBATIM>
+...
+Running cross matches using wcs_match
+Using abell3562/detect/out_25861_filtered.src for the reference source list
+out_25494_filtered.src              nsrc=1      xoff= 0.274[pix]        yoff=-0.509[pix]
+out_25859_filtered.src              nsrc=1      xoff= 0.991[pix]        yoff= 1.912[pix]
+out_25860_filtered.src              nsrc=1      xoff= 0.896[pix]        yoff= 1.894[pix]
+out_25861_filtered.src              nsrc=1      xoff= 0.000[pix]        yoff= 0.000[pix]
+out_26404_filtered.src              nsrc=1      xoff= 0.741[pix]        yoff= 2.149[pix]
+out_27965_filtered.src              nsrc=1      xoff= 0.380[pix]        yoff=-1.140[pix]
+out_4167_filtered.src               nsrc=1      xoff= 0.592[pix]        yoff=-1.276[pix]
+Updating astrometry
+...
+        </VERBATIM>
+        <PARA>
+            A  filter, src_filter, is added to the source list to
+            identify a single source to be used for all the cross matches.
+            Note: The detect tools contain a "pos" column, not a "sky" column.
+            Also note the trailing 'd' in the used in the coordinates of the circle
+            to indicate that these are celestial coordinates, ie RA and Dec values,
+            rather than physical coordinates; alternatively users could also have used
+            sexagesimal format to indicate that the values are celestial rather
+            than physical coordinates.  The output source list has been
+            filtered as is indicated by the '_filtered' suffix addd to the
+            file names.            
+        </PARA>
+      </DESC>
+    </QEXAMPLE>
+    <QEXAMPLE>
+      <SYNTAX>
+        <LINE>fine_astro @/home/user/Chandra/Abell3562/obi.lis abell3562/out \</LINE>
+        <LINE>det_filter="ccd_id=0:3"</LINE>
+      </SYNTAX>
+      <DESC>
+
+        <PARA>
+            This is similar to the previous example example but now 
+            we  have applied detect filter, det_filter. The det_filter is added 
+            to the input event files when creating the images with merge_obs that will be used to
+            detect sources.  In this example we are restricting the
+            images to just the 4 ACIS-I chips.
+
+            </PARA>
+        </DESC>
+     </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes" stacks="yes">
+        <SYNOPSIS>Input event files</SYNOPSIS>
+        <DESC>
+          <PARA>Can be stack of event files, or a stack of
+          directories.
+          For more details see the merge_obs
+          <HREF link="https://cxc.cfa.harvard.edu/ciao/ahelp/merge_obs.html#plist.infiles">"infile" parameter description</HREF>
+          or from the command line:
+          </PARA>
+<VERBATIM>
+ahelp -b PARAM -t infiles merge_obs
+</VERBATIM>
+
+        </DESC>
+      </PARAM>
+
+      <PARAM name="outroot" type="file" filetype="output" reqd="yes">
+        <SYNOPSIS>The output directory and root file name</SYNOPSIS>
+        <DESC>
+            <PARA>
+              The root of the output file names to create (including
+              directory).
+              The script creates two type of files
+            </PARA>
+            <LIST>
+              <ITEM>For each input event file, the script will
+              create an output event file with the name:
+              ${outroot}_${obi}_fa_evt.fits; "fa" indicates fine-astrometry correction has been applied. 
+              ${obi} will most often be the 
+              OBS_ID of the observation.  For multi-obi observations 
+              ${OBI} will be the OBS_ID followed by an underscore and the OBI_NUM.
+              For interleaved mode, ${obi} will be the OBS_ID followed by 
+              "e1" or "e2" for the primary and secondary exposures.</ITEM>
+              <ITEM>For each observation, the script will update all the
+              aspect solution files associated with the OBI. Most OBS_IDs now
+              contain a single aspect solution file; however there are 
+              a few early datasets that still may contain multiple aspect solutions
+              files per OBI. The script will use the same base file names as the input
+              aspect solution file, often pcadf${obs_id}_${obi_num}N00${n}, and will
+              replace the suffix "asol1" with "fa_asol".
+              </ITEM>    
+            </LIST>
+            <PARA>
+              Each output event file will have the ASOLFILE keyword updated
+              with the new aspect solution file names.
+            </PARA>
+
+
+        </DESC>      
+      </PARAM>
+
+      <PARAM name="src_lists" type="file" filetype="input" stacks="yes">
+        <SYNOPSIS>A stack of source lists to be used for the cross match.</SYNOPSIS>
+        <DESC>
+            <PARA>
+                Users may supply their own source list to be used to cross match
+                against the reference source list.  This could for example be the output from
+                another CIAO detect tool (eg celldetect) or could be from running
+                wavdetect in a different energy band.  Or it could be generated using
+                some other detect tool/algorithm outside of CIAO.
+                
+              </PARA>
+            <PARA title="Format of src_lists files">
+                The source lists must contain the columns RA and DEC, in
+                decimal degrees; sexagesimal formats are not supported. 
+                The source lists must be in numeric order
+                based on the OBS_ID.  If the source list has an OBS_ID keyword it will
+                be checked against the corresponding event file to make sure that they
+                match.
+            </PARA>
+            <PARA>
+                The most simple example of a valid src_lists file is an
+                ASCII file with columns RA and DEC.  For example:            
+            </PARA>
+<VERBATIM>
+$ cat src_list_01.dat
+#RA DEC
+203.4117720 -31.6794249
+</VERBATIM>
+            <PARA>
+                FITS binary tables, eg as created by the CIAO detect tools,
+                are also valid.  If the table has columns with names other
+                than "RA" and "DEC", for example "RAJ2000" and "DECJ2000",
+                then you can rename the columns on the file using CIAO
+                datamodel syntax:
+            </PARA>
+<VERBATIM>
+... src_lists="my_file.fits[cols ra=raj2000,dec=decj2000]" ...
+</VERBATIM>
+            <PARA>
+                If the source lists contain the columns "RA_ERR" 
+                and "DEC_ERR", then wcs_match will use those when 
+                determining source matches and when computing the 
+                transform parameters.
+            </PARA>
+
+            <PARA>
+                If users supply their own src_lists, then they must also supply
+                the reference source list: ref_src_list.
+            </PARA>
+
+
+        </DESC>      
+      </PARAM>
+      <PARAM name="ref_src_list" type="file" filetype="input" >
+        <SYNOPSIS>The source list to use as a reference</SYNOPSIS>
+        <DESC>
+            <PARA>Users can choose to supply their own source list
+            to be used as the reference for the astrometric correction.
+            If users supply their own src_lists, then they must also supply
+            the reference source list: ref_src_list.
+            The ref_src_list must contain the columns RA and DEC, in
+            decimal degrees; sexagesimal formats are not supported.  
+            It may for example be from some external
+            catalog (eg GAIA) to provide an "absolute" reference or it 
+            can be another Chandra source list to generate a "relative" 
+            correction.
+            </PARA>
+            <PARA>
+            If no ref_src_list is supplied, then the tool will use the
+            source list for the observation with the longest EXPOSURE time.
+            </PARA>
+            <PARA>
+              The format of the ref_src_list is the same as the
+              src_lists parameters as discussed in the  "Format of src_lists files"
+              section above.
+            </PARA>
+
+        </DESC>      
+      </PARAM>
+      <PARAM name="det_filter" type="string">
+        <SYNOPSIS>Filter to apply to event files when detecting sources</SYNOPSIS>
+        <DESC>
+            <PARA>
+                There may be times when it is useful to supply a filter
+                to the input event file when doing the source
+                detection. For example, users may want to restrict the 
+                source detection to a certain single source, or to sources some
+                distance from the optical axis, etc.  The contents 
+                of this parameter are added as a filter to each event file
+                when the images are created to used for detect.
+            </PARA>
+        </DESC>      
+      </PARAM>
+      <PARAM name="det_scales" type="string" def="1.4 2 4">
+        <SYNOPSIS>wavdetect wavelet detect scales</SYNOPSIS>
+        <DESC>
+            <PARA>
+                The size of the wavelets to use to search for sources.
+                Units are in logical pixel size.
+                See <HREF link="https://cxc.cfa.harvard.edu/ciao/ahelp/wavdetect.html#plist.scales">
+                wavdetct ahelp page</HREF> for more details. From the 
+                command line:
+            </PARA>
+<VERBATIM>
+ahelp -b PARAM -t scales wavdetect
+</VERBATIM>
+        </DESC>      
+      </PARAM>
+      <PARAM name="src_filter" type="string">
+        <SYNOPSIS>Source list filters</SYNOPSIS>
+        <DESC>
+            <PARA>
+                Users can choose to apply a filter the detected source lists.
+                This could for example be used to specify a minimum number
+                of net-counts (ie only use bright sources for the cross match). 
+                This filter is only applied to the internally detected
+                sources; it is not applied to the files specified by the
+                src_lists nor ref_src_list parameters.                
+            </PARA>
+        </DESC>      
+      </PARAM>
+      <PARAM name="stop" type="string" def="fineastro">
+        <SYNOPSIS>Stop processing after the fine astrometric correction or continue
+        to run merge_obs?</SYNOPSIS>
+        <DESC>
+            <PARA>
+               There are two <!--three--> "stop" options:
+            </PARA>
+
+            <LIST>
+                <ITEM>stop=fineastro : The script will stop after
+                computing and applying the fine astrometric correction to
+                the event files and aspect solution files.</ITEM>
+                <!--
+                <ITEM>reproject_obs</ITEM>
+                -->
+                <ITEM>stop=mergeobs : After the fine astrometric corrections are applied,
+                the script will run merge_obs.  This will reproject the
+                event files to a common tangent point and will dmmerge them.
+                It will create the counts image, exposure map,
+                and PSF map in the default energy band.</ITEM>
+            </LIST>
+        </DESC>      
+      </PARAM>
+
+      <PARAM name="parallel" type="boolean" def="yes">
+        <SYNOPSIS>Run processes in parallel?</SYNOPSIS>
+        <DESC>
+          <PARA>
+            When run on a multi-processor system, many of the
+            tasks can be run in parallel to reduce the
+            execution time of the script.
+            Since the tasks are likely to be memory or I/O-bound,
+            the reduction in run time will be less than the
+            number of cores on a machine.
+            When parallel=yes, the default behaviour is to use all
+            the CPU processors, but this can be changed with
+            the nproc parameter.
+          </PARA>
+          <PARA>
+            This option can be ignored when run on a single-processor
+            system.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+
+
+      <PARAM name="nproc" type="integer" def="INDEF">
+        <SYNOPSIS>Number of processors to use</SYNOPSIS>
+        <DESC>
+          <PARA>
+            This parameter is only used when parallel=yes. It determines
+            the number of processors to use. If maxproc is the actual
+            number of processors on your machine, then
+            a value of INDEF - the default value - means that all
+            maxproc processors will be used.  A positive value
+            means to use that number of processors (any value
+            larger than maxproc will be set to maxproc).
+            A negative value is added to maxproc (and any value less
+            than one is set to one).
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="tmpdir" type="string" def="${ASCDS_WORK_PATH}">
+        <SYNOPSIS>Directory for temporary files.</SYNOPSIS>
+        <DESC>
+          <PARA>
+            Directory for storing temporary files that
+            require further processing before becoming useful.
+            If the directory does not exist then it will be created
+            for use by the script, and then deleted.
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="cleanup" type="boolean" def="yes">
+        <SYNOPSIS>Cleanup intermediary files on exit.</SYNOPSIS>
+        <DESC>
+          <PARA>
+            If set to "yes", the intermediate data products
+            are deleted when the script ends, leaving only: the
+            reprojected event files; merged event file;
+            per-observation images, exposure maps, and
+            exposure-corrected images; and the combined images, exposure
+            maps, and exposure-corrected images.
+          </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>Overwrite existing files?</SYNOPSIS>
+      </PARAM>
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+        <SYNOPSIS>Output verbosity.</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The default verbosity value of 1 prints status
+            messages as the script runs.  Higher verbosity
+            settings print the commands that are being run.
+            Setting verbose=0 turns off most of the screen
+            output (some output is currently unavoidable).
+          </PARA>
+        </DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Processing Step-by-Step">
+          <PARA>
+          The script will try to locate the event files in each 
+          input directory. First it looks in the directory itself, then
+          in a subdirectory named "repro" and finally in a sub directory 
+          named "primary". 
+          </PARA>
+          <PARA>
+          The script will then run the merge_obs script to create the input
+          files needed to run wavdetect: counts image, exposure map, 
+          and PSF map.  The script uses the default energy band which is
+          'broad' band for ACIS and 'wide' band for HRC.  Users who 
+          require a source list created using a different energy band 
+          must create the source lists separately and use the "src_lists"
+          parameter to specify them.  If the "det_filter"
+          parameter is set, it is used to filter the event files during this
+          initial merge.  This can be used to restrict the source detection
+          to a single CCD_ID, to a specific spatial region, etc. 
+          The output from the initial merge_obs run are in the 'pre' 
+          output directory.
+          </PARA>
+          <PARA>
+          wavdetect is run on each separate observation (separately for each
+          OBS_ID, multi-obi observations, and interleaved mode observations). 
+          wavdetect is run in parallel based on the number of CPUs available and
+          the parameter+nproc parameter settings. Users can specify the
+          wavelet scales using the "det_scales" parameter. If the "src_filter"
+          parameter is specified, then each source list is filtering using
+          the value provided. This can be used for example to include on
+          high count/significance sources, to excludes sources detected in certain regions, etc.
+          The detect outputs are stored in the 'detect' output directory.
+          </PARA>
+          <PARA>
+          Next the sources are cross matched.  If no reference source list
+          is supplied, then the observation with the longest EXPOSURE time is 
+          used. The script runs the wcs_match tool using a match radius of 
+          4 arcsec and generates a translation only solution.
+          If there are no matching sources, then the script will 
+          issue a warning and will proceed by using a 0-offset solution.
+          </PARA>
+          <PARA>
+          The script then applies each fine astrometric correction to each
+          event file and all associated aspect solution files using the
+          wcs_update tool.  The ASOLFILE header keyword in the 
+          updatd event file is also updated to point to the new aspect
+          soltuion file(s).          
+          </PARA>
+          <PARA>
+          Finally, if the stop parameter is set stop=mergeobs, then
+          the script will run merge_obs to reproject the event astrometrically
+          adjusted event files to the same tangent point and to create 
+          images using the default energy band.          
+          </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in scripts 4.17.2 (August 2025) release">
+      <PARA>
+        Improved the logic when supplying src_lists. The stack of input
+        source list files is sorted by OBS_ID/OBI_NUM/CYCLE like the
+        input event list to improve robustness when matching
+        source list files to event files.      
+      </PARA>    
+    </ADESC>
+
+    <ADESC title="Changes in scripts 4.17.1 (February 2025) release">
+      <PARA>
+        The script fails if the outroot only contains a directory. Added
+        a check to make sure that the outroot also contains an output root 
+        file name.
+      </PARA>    
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>
+        .
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/fine_astro.html">
+          bugs page
+          for this script
+        </HREF>
+        on the CIAO website for an up-to-date
+        listing of known bugs.
+      </PARA>
+    </BUGS>
+    <LASTMODIFIED>June 2025</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

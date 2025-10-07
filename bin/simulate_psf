@@ -2,7 +2,7 @@
 #
 #
 #
-# Copyright (C) 2012, 2014, 2016, 2018, 2020-2023
+# Copyright (C) 2012, 2014, 2016, 2018, 2020-2025
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -26,7 +26,7 @@ import sys
 import subprocess
 
 toolname = "simulate_psf"
-__revision__ = "09 March 2023"
+__revision__ = "12 June 2025"
 
 
 from cxcdm import *
@@ -89,19 +89,25 @@ def check_setup( pars ):
     """
 
     if pars["simulator"] == "saotrace":
-        if is_none( pars["_saotrace_db"] ):
+        if is_none( pars["saotrace_db"] ):
             raise Exception("SAOTrace database not provided in parameter saotrace_db")
-        if is_none( pars["_saotrace_install"] ):
+        if is_none( pars["saotrace_install"] ):
             raise Exception("SAOTrace path not provided in parameter saotrace_install")
 
-        if not os.path.exists(os.path.join(pars["_saotrace_install"],"lib","perl5")):
+        if not os.path.exists(os.path.join(pars["saotrace_install"],"lib","perl5")):
             raise Exception("Missing SAOTrace perl libraries")
-        os.environ["PERL5LIB"] = os.path.join(pars["_saotrace_install"],"lib","perl5")
+        os.environ["PERL5LIB"] = os.path.join(pars["saotrace_install"],"lib","perl5")
 
         
     if "marx" in [pars["simulator"], pars["projector"]]:
         if is_none( pars["marx_root"]):
-            raise Exception("MARX_ROOT is not provided in parameter marx_root")
+            from shutil import which
+            marx = which('marx')
+            if marx is None:
+                raise Exception("ERROR: Cannot determine marx_root. Please specify marx installation directory.")
+
+            bindir = os.path.dirname(marx)               # ie ".."
+            pars["marx_root"] = os.path.dirname(bindir)  # another ".."
 
     if "yes" == pars["pileup"]:
         verb1("\n# {0} ({1}): Pileup warning:  PSF images are not correctly normalized when pileup=yes is used.\n".format(toolname,__revision__))
@@ -120,11 +126,11 @@ def set_env_vars( pars ):
     # Sets path vars for saotrace, trace-nest
     #
     pfile_env = os.getenv("PFILES")
-    os.environ["PFILES"] = pfile_env + ":" + pars["_saotrace_install"] + "/share/uparm"
+    os.environ["PFILES"] = pfile_env + ":" + pars["saotrace_install"] + "/share/uparm"
 
     path_env = os.getenv("PATH")
-    os.environ["PATH"] = path_env + ":" + pars["_saotrace_install"] + "/bin"
-    os.environ["SAOTRACE_DB"] = pars["_saotrace_db"]
+    os.environ["PATH"] = path_env + ":" + pars["saotrace_install"] + "/bin"
+    os.environ["SAOTRACE_DB"] = pars["saotrace_db"]
 
     #
     # Set path vars for marx
@@ -180,7 +186,7 @@ def cleanup_saotrace( outroot ):
     import glob as glob
 
     for extn in [ "log", "block", "lua", "summary.yml", "gi", "totwt-in", "totwt-out"]:
-        for tt in glob.glob( outroot+"_00[1346][\._]*"+extn ):
+        for tt in glob.glob( outroot+r"_00[1346][\._]*"+extn ):
             gorm( tt )
         if extn not in ["log", "lua", "gi"]:
             gorm( outroot + "." + extn )
@@ -504,15 +510,15 @@ def run_saotrace(pars, obi_info, src_info ):
     saotrace["tally"]         = "0"
     saotrace["throttle"]      = "0"
     saotrace["throttle_poisson"] = "no"
-    saotrace["config_dir"]    = pars["_saotrace_db"] + "/ts_config"
-    saotrace["config_db"]     = pars["_saotrace_mirror"]
+    saotrace["config_dir"]    = pars["saotrace_db"] + "/ts_config"
+    saotrace["config_db"]     = pars["saotrace_mirror"]
     saotrace["clean"]         = "rays"
     saotrace["debug"]         = ""
 
     # Run with unique/temp PFILES so that no colossion if running in parallel
     from ciao_contrib.runtool import new_pfiles_environment
     with new_pfiles_environment() as zoo:
-        run_task(pars["_saotrace_install"]+"/bin/trace-nest", saotrace)
+        run_task(pars["saotrace_install"]+"/bin/trace-nest", saotrace)
 
     cleanup_saotrace( outroot )
 
@@ -580,7 +586,7 @@ def add_saotrace_metadata( pars, obi_info, src_info ):
                  ('HDUCLAS3' ,'PSFRAY', ""),
                  ('HDUVERS1' ,'1.0.0', ""),
                  ('RAYMETH'  ,'SAOTrace', ""),
-                 ('CONFFILE' ,pars["_saotrace_mirror"], ""),
+                 ('CONFFILE' ,pars["saotrace_mirror"], ""),
                  ('ASOLFILE' ,os.path.basename(pars["asolfile"]), ""),
               ]
 
@@ -1024,6 +1030,10 @@ def get_obi_info( pars ):
     obi_info["date-obs"] = get_dm_key( tab, "date-obs")
 
     if "ACIS" == obi_info["instrume"]:
+
+        if get_dm_key(tab, "readmode") == "CONTINUOUS":
+            raise ValueError("ERROR: Unable to simulate a PSF for Continuous Clocking Mode observations")    
+
         ## This should be OK for interleaved mode since
         # TIMEDEL should equal A or B depedning on P/S
         obi_info["exptime"] = get_dm_key(tab, "exptime")
@@ -1119,6 +1129,9 @@ def get_xygrid( pars, use_root, src_info):
         mm = int(int( pars["minsize"] ) / 2.0 )
         mlen = max( mlen, mm )
 
+    if "INDEF" != pars["maxsize"]:
+        mm = int(int( pars["maxsize"] ) / 2.0 )
+        mlen = min( mlen, mm )
 
     # TODO integer / half-pixel ize?
     xl = xx - mlen
@@ -1361,12 +1374,21 @@ def main():
     from ciao_contrib.param_soaker import get_params
 
     pars = get_params("simulate_psf", "rw", sys.argv,
-                      verbose={"set":logWrap.set_verbosity, "cmd":verb1} )
+                      verbose={"set":logWrap.set_verbosity, "cmd":verb1},
+                      musthave=("infile","outroot","ra","dec",
+                                "spectrumfile","monoenergy","flux",
+                                "simulator","rayfile","projector",
+                                "random_seed","blur","readout_streak",
+                                "pileup","ideal","extended","binsize",
+                                "numsig","minsize","maxsize","numiter",
+                                "numrays","keepiter","asolfile",
+                                "marx_root","verbose",)                      
+                      )
 
     # Hard code these for now, restore w/o underscore when ready
-    pars["_saotrace_install"] = ""
-    pars["_saotrace_db" ] = ""
-    pars["_saotrace_mirror"] = "orbit-200809-01f-a"
+    # ~ pars["saotrace_install"] = ""
+    # ~ pars["saotrace_db" ] = ""
+    # ~ pars["saotrace_mirror"] = "orbit-200809-01f-a"
 
     # check saotrace and marx setup parameters
     check_setup( pars )
