@@ -302,28 +302,28 @@ proc ciao_plotter {tag_token id data label} {
     PlotList $vvarname
 }
 
-proc add_ciao_callback {frm id tag_token cb end_} {
+proc add_ciao_callback {frm id tag_token cb } {
     # Add callback to marker
-    $frm marker $id callback $end_ move $cb $tag_token
-    $frm marker $id callback $end_ edit $cb $tag_token
-    $frm marker $id callback $end_ rotate $cb $tag_token
+    $frm marker $id callback move $cb $tag_token
+    $frm marker $id callback edit $cb $tag_token
+    $frm marker $id callback rotate $cb $tag_token
     $frm marker $id tag $tag_token$id
 
 }
 
-proc delete_ciao_callback {frm id tag_token cb end_} {
+proc delete_ciao_callback {frm id tag_token cb} {
     # Delete callback from marker
     $frm marker $id delete tag $tag_token$id
-    $frm marker $id delete $end_ callback move $cb
-    $frm marker $id delete $end_ callback edit $cb
-    $frm marker $id delete $end_ callback rotate $cb
+    $frm marker $id delete callback move $cb
+    $frm marker $id delete callback edit $cb
+    $frm marker $id delete callback rotate $cb
 }
 
-proc enable_ciao_callback {tag_token cb end_} {
-    # Add CIAO histogram to all selected ciao-compatible shapes
+proc toggle_ciao_callback {tag_token cb} {
     global current
     set frm [set current(frame)]
     set slct [$frm get marker select]
+
     foreach id $slct {
         set shp [$frm get marker $id type]
         switch $shp {
@@ -333,27 +333,12 @@ proc enable_ciao_callback {tag_token cb end_} {
             polygon -
             annulus -
             point {
-                add_ciao_callback $frm $id $tag_token $cb $end_
-            }
-        }
-    }
-}
-
-proc disable_ciao_callback {tag_token cb end_} {
-    # Disable CIAO histogram callback
-    global current
-    set frm [set current(frame)]
-    set slct [$frm get marker select]
-    foreach id $slct {
-        set shp [$frm get marker $id type]
-        switch $shp {
-            circle -
-            ellipse -
-            box -
-            polygon -
-            annulus -
-            point {
-                delete_ciao_callback $frm $id $tag_token $cb $end_
+                set tgs [$frm get marker $id tag]
+                if {[lsearch $tgs $tag_token$id] >= 0} {
+                    delete_ciao_callback $frm $id $tag_token $cb
+                } else {
+                    add_ciao_callback $frm $id $tag_token $cb
+                }
             }
         }
     }
@@ -387,36 +372,10 @@ proc get_counts_CB { tag_token id } {
 
 }
 
-proc make_count_shape {} {
-    # Create a new ellipse with the callbacks already enabled.
-
-    global current
-    global env
-
-    if {[info exists env(ASCDS_INSTALL)]} {
-        set frm [set current(frame)]
-        set pos [$frm get cursor physical]
-
-        # Create creates in WCS coordinates, so move to center in physical
-        set mkr [$frm marker create ellipse $pos 20 20 0 ]
-        $frm marker $mkr select
-        enable_ciao_callback CountShape get_counts_CB {}
-        $frm marker $mkr move to physical $pos
-    } else {
-        tk_messageBox -message "You must have CIAO setup first" -type ok
-    }
-
+proc toggle_count_ellipse {} {
+    toggle_ciao_callback CountShape get_counts_CB
 }
 
-proc enable_count_ellipse {} {
-    # This will add the count callback to all selected ellipses
-    enable_ciao_callback CountShape get_counts_CB {}
-}
-
-proc disable_count_ellipse {} {
-    # This will remove the count callback from all selected ellipses
-    disable_ciao_callback CountShape get_counts_CB {}
-}
 
 # --------------------
 # These routines will create an elastic ellipse that will snap to
@@ -476,76 +435,43 @@ proc add_adaptive_callback {frm id} {
 
 }
 
-proc make_adaptive_ellipse {} {
-    # Creates an ellipse in the center of the display with the
-    # elastic ellipse callbacks enabled
-
-    global current
-    global env
-
-    if {[info exists env(ASCDS_INSTALL)]} {
-        set frm [set current(frame)]
-        set pos [$frm get cursor physical]
-
-        # Create creates in WCS coordinates, so move to center in physical
-        set mkr [$frm marker create ellipse $pos 20 20 0 ]
-        add_adaptive_callback $frm $mkr
-        $frm marker $mkr move to physical $pos
-    } else {
-        tk_messageBox -message "You must have CIAO setup first" -type ok
-    }
-
+proc del_adaptive_callback {frm id} {
+    set tag_token AdaptiveShape
+    $frm marker $id delete tag $tag_token$id
+    $frm marker $id delete callback end move get_ellipse_CB
+    $frm marker $id delete callback end edit get_ellipse_CB
+    $frm marker $id delete callback end rotate get_ellipse_CB
+    $frm marker $id unhighlite
+    $frm marker $id color green
 }
 
-proc enable_adaptive_ellipse {} {
-    # Add adaptive resizing to all selected ellipse shapes
-
+proc toggle_adaptive_ellipse {} {
     global current
 
     set frm [set current(frame)]
     set slct [$frm get marker select]
-
-    foreach id $slct {
-        set shp [$frm get marker $id type]
-        switch $shp {
-            ellipse -
-            box {
-                add_adaptive_callback $frm $id
-            }
-
-        }
-    }
-}
-
-proc disable_adaptive_ellipse {} {
-    # Disable the elastic ellipse callbacks
-
-    global current
-
-    set frm [set current(frame)]
     set tag_token AdaptiveShape
 
-    set slct [$frm get marker select]
-
     foreach id $slct {
         set shp [$frm get marker $id type]
         switch $shp {
             ellipse -
             box {
-                $frm marker $id delete tag $tag_token$id
-                $frm marker $id delete callback end move get_ellipse_CB
-                $frm marker $id delete callback end edit get_ellipse_CB
-                $frm marker $id delete callback end rotate get_ellipse_CB
-                $frm marker $id unhighlite
-                $frm marker $id color green
+                set tgs [$frm get marker $id tag]
+                if {[lsearch $tgs $tag_token$id] >= 0} {
+                    del_adaptive_callback $frm $id
+                } else {
+                    add_adaptive_callback $frm $id
                 }
+            }
         }
     }
 }
+    
 
 # --------------------
 
-proc enable_lightcurve_shape {} {
+proc toggle_lightcurve_shape {} {
     #
     global current
     set frm $current(frame)
@@ -554,16 +480,12 @@ proc enable_lightcurve_shape {} {
     switch $binfilt {
         "EVENTS" -
         "STDEVT" {
-            enable_ciao_callback LightcurveShape ciao_lc_plotter_cb {}
+            toggle_ciao_callback LightcurveShape ciao_lc_plotter_cb
         }
         default {
             tk_messageBox -message "Lightcurve only works with EVENT files." -type ok
         }
     }
-}
-
-proc disable_lightcurve_shape {} {
-    disable_ciao_callback LightcurveShape ciao_lc_plotter_cb {}
 }
 
 proc run_dmextract_ltc {tag_token id} {
@@ -608,7 +530,7 @@ proc ciao_lc_plotter_cb {tag_token id} {
 
 # -----------------------------------------------
 
-proc enable_spectrum_shape {} {
+proc toggle_spectrum_shape {} {
     #
     global current
     set frm $current(frame)
@@ -617,16 +539,12 @@ proc enable_spectrum_shape {} {
     switch $binfilt {
         "EVENTS" -
         "STDEVT" {
-            enable_ciao_callback SpectrumShape ciao_pi_plotter_cb {}
+            toggle_ciao_callback SpectrumShape ciao_pi_plotter_cb
         }
         default {
             tk_messageBox -message "Spectrum only works with EVENT files." -type ok
         }
     }
-}
-
-proc disable_spectrum_shape {} {
-    disable_ciao_callback SpectrumShape ciao_pi_plotter_cb {}
 }
 
 proc run_dmextract_pi {tag_token id} {
@@ -675,7 +593,7 @@ proc ciao_pi_plotter_cb {tag_token id} {
 
 # -------------------------------------
 
-proc enable_glvary_shape {} {
+proc toggle_glvary_shape {} {
     #
     global current
     set frm $current(frame)
@@ -684,16 +602,12 @@ proc enable_glvary_shape {} {
     switch $binfilt {
         "EVENTS" -
         "STDEVT" {
-            enable_ciao_callback GLvaryShape ciao_glvary_plotter_cb {}
+            toggle_ciao_callback GLvaryShape ciao_glvary_plotter_cb
         }
         default {
             tk_messageBox -message "glvary only works with EVENT files." -type ok
         }
     }
-}
-
-proc disable_glvary_shape {} {
-    disable_ciao_callback GLvaryShape ciao_glvary_plotter_cb {}
 }
 
 proc run_glvary {tag_token id} {
@@ -740,26 +654,4 @@ proc ciao_glvary_plotter_cb {tag_token id} {
 
     ciao_plotter $tag_token $id data label
 }
-
-
-
-#~ bind . <F3> enable_lightcurve_shape
-#~ bind . <F4> disable_lightcurve_shape
-#~ bind . <Shift-F3> enable_spectrum_shape
-#~ bind . <Shift-F4> disable_spectrum_shape
-#~ bind . <Control-F3> enable_glvary_shape
-#~ bind . <Control-F4> disable_glvary_shape
-
-
-#~ bind . <F5> make_count_shape
-#~ bind . <F7> enable_count_ellipse
-#~ bind . <F8> disable_count_ellipse
-
-#~ bind . <F9> make_adaptive_ellipse
-#~ bind . <F11> enable_adaptive_ellipse
-#~ bind . <F12> disable_adaptive_ellipse
-
-
-
-
 
