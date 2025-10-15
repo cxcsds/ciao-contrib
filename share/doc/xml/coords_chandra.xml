@@ -5,7 +5,7 @@
 <cxchelptopics>
   <ENTRY key="coords_chandra" context="contrib"
          refkeywords="coord coordinate coordinate coords convert
-		      cel_to_chandra sky_to_chandra
+                      cel_to_chandra sky_to_chandra
                       position pos ra dec long longitude lat latitude
                       coords.utils sky chip det theta phi off axis angle
                       det detector msc mirror spherical focal plane fpc
@@ -19,7 +19,9 @@
     <SYNTAX>
       <LINE>from coords.chandra import cel_to_chandra</LINE>
       <LINE>from coords.chandra import sky_to_chandra</LINE>
+      <LINE>from coords.chandra import get_coord_keywords</LINE>
       <LINE/>
+      <LINE>keyword_list = get_coord_keywords(filename)</LINE>
       <LINE>cel_to_chandra(keyword_list, ra_vals, dec_vals)</LINE>
       <LINE>sky_to_chandra(keyword_list, x_vals, y_vals)</LINE>
     </SYNTAX>
@@ -39,15 +41,16 @@
       See <HREF link="https://cxc.harvard.edu/ciao/ahelp/coords.html">ahelp coords</HREF> for more information on
       the Chandra coordinate systema.
     </PARA>
+    <PARA>It also contains a helper routine to retrieve the
+    header keywords these routines need from either a file or
+    crate.</PARA>
 
     <PARA title="Parameter values">
-      The first input to each routine is a dictionary of header keywords. One way
-      to access them is with the following code:
+      The first input to each routine is a dictionary of header keywords.
     </PARA>
 <VERBATIM>
-&pr; from pycrates import read_file
-&pr; cr = read_file(infile)
-&pr; keywords = {n: cr.get_key_value(n) for n in cr.get_keynames()}
+&pr; from coords.chandra import get_coord_keywords
+&pr; keywords = get_coord_keywords(filename)
 </VERBATIM>
   
     <PARA>
@@ -59,61 +62,67 @@
   <QEXAMPLELIST>
     <QEXAMPLE>
       <SYNTAX>
-<LINE>&pr; from coords.chandra import sky_to_chandra</LINE>
-<LINE>&pr; sky_to_chandra(keywords, 4096.5, 4096.5)</LINE>
-<LINE>{'dety': [4096.5], 'detx': [4096.5], 'phi': [0.0], 'ra': [246.82474880852999], 'chipy': [996.6745464316374], 'chip_id': [3], 'theta': [0.0], 'chipx': [975.2463325198958], 'dec': [-24.573378630717002], 'pixsize': 0.492}</LINE>
+        <LINE>&pr; from coords.chandra import sky_to_chandra</LINE>
+        <LINE>&pr; sky_to_chandra(keywords, 4096.5, 4096.5)</LINE>
+        <LINE>{'dety': [4096.5], 'detx': [4096.5], 'phi': [0.0], 'ra': [246.82474880852999], 'chipy': [996.6745464316374], 'chip_id': [3], 'theta': [0.0], 'chipx': [975.2463325198958], 'dec': [-24.573378630717002], 'pixsize': 0.492}</LINE>
       </SYNTAX>
       <DESC>
       <PARA>
-	In this example a single set of sky X,Y values is input and 
-	a dictionary listing the coordinates in a variety of systems
-	are returned.
+        In this example a single set of sky X,Y values is input and 
+        a dictionary listing the coordinates in a variety of systems
+        are returned.
       </PARA>
       </DESC>
     </QEXAMPLE>
   
     <QEXAMPLE>
       <SYNTAX>
-	<LINE>&pr; from coords.chandra import cel_to_chandra</LINE>
-	<LINE>&pr; from pycrates import read_file</LINE>
-	<LINE>&pr; srclist = read_file("wavedetect.src")</LINE>
-	<LINE>&pr; keywords = {n: cr.get_key_value(n) for n in srclist.get_keynames()}</LINE>
-	<LINE>&pr; ra = srclist.get_column("RA").values</LINE>
-	<LINE>&pr; dec = srclist.get_column("DEC").values</LINE>
-	<LINE>&pr; coords = cel_to_chandra(keywords, ra, dec)</LINE>
-	<LINE>&pr; print(sorted(coords.keys()))</LINE>
-	<LINE>['chip_id', 'chipx', 'chipy', 'detx', 'dety', 'phi', 'pixsize', 'theta', 'x', 'y']</LINE>
+        <LINE>&pr; from coords.chandra import cel_to_chandra, get_coord_keywords</LINE>
+        <LINE>&pr; from pycrates import read_file</LINE>
+        <LINE>&pr; srclist = read_file("wavedetect.src")</LINE>
+        <LINE>&pr; keywords = get_coord_keywords(srclist)</LINE>
+        <LINE>&pr; ra = srclist.get_column("RA").values</LINE>
+        <LINE>&pr; dec = srclist.get_column("DEC").values</LINE>
+        <LINE>&pr; coords = cel_to_chandra(keywords, ra, dec)</LINE>
+        <LINE>&pr; print(sorted(coords.keys()))</LINE>
+        <LINE>['chip_id', 'chipx', 'chipy', 'detx', 'dety', 'phi', 'pixsize', 'theta', 'x', 'y']</LINE>
       </SYNTAX>
       <DESC>
       <PARA>
-	In this longer example the RA and DEC values for each source
-	in a wavdetect source list is read in using pycrates.  The
-	Chandra coordinates are computed for all the source positions.
+        In this longer example the RA and DEC values for each source
+        in a wavdetect source list is read in using pycrates.  The
+        Chandra coordinates are computed for all the source positions.
       </PARA>
       <PARA>
-	The pixsize value is the only value not returned as a list.  It
-	is in units of arcsec/pixel.
-      </PARA>
-
-      <PARA>
-	The following code will plot up the SKY coordinates using Matplotlib
-	(loading it if necessary):
+        The pixsize value is the only value not returned as a list.  It
+        is in units of arcsec/pixel.
       </PARA>
 
       <PARA>
-	<SYNTAX>
-	  <LINE>&pr; import matplotlib.pyplot as plt</LINE>
-	  <LINE>&pr; plt.scatter(coords["x"], coords["y"])</LINE>
-	  <LINE>&pr; plt.xlabel('X')</LINE>
-	  <LINE>&pr; plt.ylabel('Y')</LINE>
-	  <LINE>&pr; plt.show()</LINE>
-	</SYNTAX>
+        The following code will plot up the SKY coordinates using Matplotlib
+        (loading it if necessary):
+      </PARA>
+
+      <PARA>
+        <SYNTAX>
+          <LINE>&pr; import matplotlib.pyplot as plt</LINE>
+          <LINE>&pr; plt.scatter(coords["x"], coords["y"])</LINE>
+          <LINE>&pr; plt.xlabel('X')</LINE>
+          <LINE>&pr; plt.ylabel('Y')</LINE>
+          <LINE>&pr; plt.show()</LINE>
+        </SYNTAX>
       </PARA>
       </DESC>
 
     </QEXAMPLE>
   </QEXAMPLELIST>
 
+    <ADESC title="Changes in scripts 4.17.2 (September 2025) release">
+      <PARA>
+          Added new get_coord_keywords routine.  Note: ahelp file was
+          updated in 4.18.0.
+      </PARA>
+    </ADESC>
     <ADESC title="Changes in scripts 4.11.4 (August 2019) release">
       <PARA>
       Improvements to the docstrings to identify the required 
@@ -134,7 +143,7 @@
       </PARA>
     </ADESC>
 
-    <LASTMODIFIED>June 2019</LASTMODIFIED>
+    <LASTMODIFIED>October 2025</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
 
