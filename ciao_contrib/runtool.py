@@ -2768,7 +2768,7 @@ parinfo['csmooth'] = {
 parinfo['dax'] = {
     'istool': False,
     'req': [],
-    'opt': [ParValue("outdir","f","Location of the output files for dax",'${ASCDS_WORK_PATH}/ds9_dax.${USER}'),ParValue("tile","b","Change ds9 into tile mode when adding new images?",False),ParValue("progress_bar","b","Show progress bar when tasks are running?",True),ParValue("random_seed","i","Random seed for any tasks the require one",-1),ParValue("prism","b","Launch prism to view output tables?",False)],
+    'opt': [ParValue("outdir","f","Location of the output files for dax",'${ASCDS_WORK_PATH}/ds9_dax.${USER}'),ParValue("tile","b","Change ds9 into tile mode when adding new images?",False),ParValue("progress_bar","b","Show progress bar when tasks are running?",True),ParValue("random_seed","i","Random seed for any tasks the require one",-1),ParValue("prism","b","Launch prism to view output tables?",False),ParValue("lc_binsize","r","Interative lightcurve bin size (sec)",1000),ParSet("grptype","s","Grouping type",'NUM_CTS',["NONE","BIN","SNR","NUM_BINS","NUM_CTS","ADAPTIVE","ADAPTIVE_SNR","BIN_WIDTH","MIN_SLOPE","MAX_SLOPE","BIN_FILE"]),ParValue("grpval","r","Grouping type value",1),ParValue("grpbin","s","Binning specification",None)],
     }
 
 

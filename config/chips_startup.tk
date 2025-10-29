@@ -20,16 +20,16 @@ proc ChangeDaxOutdir {} {
     if { $dir ne "" } {
         set env(DAX_OUTDIR) $dir
         file mkdir $env(DAX_OUTDIR)
-    }    
+    }
 }
 
 
 # Add a progress bar for long running processes
 
-proc start_dax_progress { tnam } {    
+proc start_dax_progress { tnam } {
 
   if { [exec -ignorestderr pget dax progress_bar] == "no"} {
-    return   
+    return
   }
 
   set winnam "dax_"
@@ -41,9 +41,9 @@ proc start_dax_progress { tnam } {
   ttk::frame .${winnam}.dp
   grid .${winnam}.dp -row 0 -column 0
   ttk::label .${winnam}.dp.toolname -text $tnam
-  grid .${winnam}.dp.toolname -padx 5 -pady 5 -row 0 -column 0 
+  grid .${winnam}.dp.toolname -padx 5 -pady 5 -row 0 -column 0
 
-  ttk::progressbar .${winnam}.dp.toolname_pb -mode indeterminate -max 15 
+  ttk::progressbar .${winnam}.dp.toolname_pb -mode indeterminate -max 15
   grid .${winnam}.dp.toolname_pb -padx 5 -pady 5 -row 0 -column 1
   .${winnam}.dp.toolname_pb start
 }
@@ -51,12 +51,12 @@ proc start_dax_progress { tnam } {
 proc stop_dax_progress {tnam} {
 
   if { [exec -ignorestderr pget dax progress_bar] == "no"} {
-    return   
+    return
   }
 
   set winnam "dax_"
   append winnam $tnam
-  
+
   if { [winfo exists .${winnam}] } {
     .${winnam}.dp.toolname_pb stop
     destroy .${winnam}
@@ -99,7 +99,7 @@ proc run_tgcoords { frame id } {
 
     # I need to put this into the background so that the script,
     # ds9_itgcoords, can make XPA calls.  Otherwise, the Tk event loop is
-    # hung at this command and the XPA command in ds9_itgcoords times out.  
+    # hung at this command and the XPA command in ds9_itgcoords times out.
     exec {ds9_itgcoords} $ds9(title) $tgcoords_order $x0 $y0 $x1 $y1 $frame $id &
 }
 
@@ -107,7 +107,7 @@ proc run_tgcoords { frame id } {
 proc launch_tgcoords_ui {frame id } {
     # The TK widget to display the results
 
-    global tgcoords_frame 
+    global tgcoords_frame
     global tgcoords_id
 
     if {[winfo exists .tgcoords ]} {
@@ -127,7 +127,7 @@ proc launch_tgcoords_ui {frame id } {
     ttk::label .tgcoords.frm.tgd_label -text {TG_D [deg]}
     ttk::label .tgcoords.frm.eng_label -text {Energy [keV]}
     ttk::label .tgcoords.frm.wav_label -text {Wavelength [A]}
-    ttk::entry .tgcoords.frm.arm_value -textvariable tgcoords_arm 
+    ttk::entry .tgcoords.frm.arm_value -textvariable tgcoords_arm
     ttk::entry .tgcoords.frm.ord_value -textvariable tgcoords_order
     ttk::entry .tgcoords.frm.tgr_value -textvariable tgcoords_tg_r
     ttk::entry .tgcoords.frm.tgd_value -textvariable tgcoords_tg_d
@@ -140,7 +140,7 @@ proc launch_tgcoords_ui {frame id } {
     grid .tgcoords.frm.tgd_label -row 4 -column 1 -padx 5
     grid .tgcoords.frm.eng_label -row 5 -column 1 -padx 5
     grid .tgcoords.frm.wav_label -row 6 -column 1 -padx 5
-    
+
     grid .tgcoords.frm.arm_value -row 1 -column 2 -padx 5
     grid .tgcoords.frm.ord_value -row 2 -column 2 -padx 5
     grid .tgcoords.frm.tgr_value -row 3 -column 2 -padx 5
@@ -149,7 +149,7 @@ proc launch_tgcoords_ui {frame id } {
     grid .tgcoords.frm.wav_value -row 6 -column 2 -padx 5
 
     bind .tgcoords.frm.ord_value <Return> {run_tgcoords $tgcoords_frame $tgcoords_id}
-        
+
 }
 
 
@@ -173,5 +173,485 @@ proc display_tgcoords { tgr tgd energy arm frame id} {
     if {[winfo exists .tgcoords ] == 0} {
         launch_tgcoords_ui $frame $id
     }
+}
+
+
+# --------------------------------------------------------------------
+# --------------------------------------------------------------------
+# --------------------------------------------------------------------
+# These routines add "elastic ellipse" capabilities
+
+
+proc get_ciao_filename {tag_token id} {
+
+    # Create CIAO compatible filename from the
+    # on disk file, region, binning+filtering, blocking, cropping
+
+    global current
+
+    set frm [set current(frame)]
+    set filename [$frm get fits file name full base]
+
+    # Get column/axis names
+    set cols [$frm get bin cols]
+    if {$cols eq ""} {
+        set cols {x y}
+    }
+    set xcol [lindex $cols 0]
+    set ycol [lindex $cols 1]
+
+    # Get CIAO region string, requires only 1 region
+    # We filter on tag to get individual shape
+    set tid_ $tag_token$id
+    set tag_ "tag = $tid_"
+    set ciaoreg [$frm marker list ciao physical no {} $tag_ ]
+
+    if {[llength $ciaoreg] == 0} {
+        error "Cannot find region with correct tag" "No Region" 405
+    } elseif {[llength $ciaoreg] > 1} {
+        error "More than one region has same tag" "Too Many Selected" 406
+    }
+    set ciao [string trim $ciaoreg "\n"]
+
+    # Get image crop
+    set crpfilt [$frm get crop physical]
+    set crp [regsub -all " " $crpfilt ","];   # xlo, ylo, xhi, yhi
+    set crop_ rectangle($crp)
+
+    # We need to AND shape and the crop rectangle
+    set shape_ ($xcol,$ycol)=$ciao*$crop_
+
+    # If event list, get any filter. Will be blank for images
+    set binfilt [$frm get bin filter]
+
+    # Construct filter expression
+    if {$binfilt eq ""} {
+        set posfilt "\[$shape_\]"
+    } else {
+        set posfilt "\[$shape_,$binfilt\]"
+    }
+
+    # Get blocking factor
+    set blck [$frm get block factor]
+    set xblk [lindex $blck 0]
+    set yblk [lindex $blck 1]
+
+    # For event list we need to bin into an image
+    set cols [$frm get bin cols]
+    if {$cols eq ""} {
+        set bincmd "\[bin #1=$xblk,#2=$yblk\]"
+    } else {
+        # For events, multiply bin and block factors. This is not
+        # technically correct due to partial pixels but best we can do.
+        set binsize [$frm get bin factor]
+        set xbin [expr [lindex $binsize 0] * $xblk]
+        set ybin [expr [lindex $binsize 1] * $yblk]
+        set bincmd "\[bin $xcol=$xbin,$ycol=$ybin\]"
+    }
+
+    # Construct full file name
+    return $filename$posfilt$bincmd
+
+}
+
+# ----------------------------------------------
+# CIAO plotting routines
+
+proc ciao_plotter {tag_token id data label} {
+    # "Simple" XY plotter
+
+    # based on markeranalysishist.tcl
+    global current
+
+    set frm $current(frame)
+
+    set vvarname [string tolower ${tag_token}${id}${frm}]
+    upvar #0 $vvarname vvar
+    global $vvarname
+
+    set vvar(frame) $frm
+    set vvar(id) $id
+    set xdata ${vvarname}xx
+    set ydata ${vvarname}yy
+    global $xdata $ydata
+
+    upvar 1 $label mylabel
+    upvar 1 $data mydata
+
+    if {[info command $xdata] == {}} {
+        blt::vector create $xdata $ydata
+    }
+
+    # BLT set vectors
+    $xdata set $mydata(xx)
+    $ydata set $mydata(yy)
+
+    if {![PlotPing $vvarname]} {
+        PlotDialog $vvarname [string totitle ${tag_token}${id}] true
+        PlotAddGraph $vvarname line
+        PlotTitle $vvarname $mylabel(title) $mylabel(xlabel) $mylabel(ylabel)
+
+        set vvar(graph,ds,xdata) $xdata
+        set vvar(graph,ds,ydata) $ydata
+        set vvar(graph,ds,line,smooth) step
+        set vvar(graph,ds,line,fill) 0
+        PlotExternal $vvarname xy
+    }
+
+    PlotStats $vvarname
+    PlotList $vvarname
+}
+
+proc add_ciao_callback {frm id tag_token cb } {
+    # Add callback to marker
+    $frm marker $id callback move $cb $tag_token
+    $frm marker $id callback edit $cb $tag_token
+    $frm marker $id callback rotate $cb $tag_token
+    $frm marker $id tag $tag_token$id
+
+}
+
+proc delete_ciao_callback {frm id tag_token cb} {
+    # Delete callback from marker
+    $frm marker $id delete tag $tag_token$id
+    $frm marker $id delete callback move $cb
+    $frm marker $id delete callback edit $cb
+    $frm marker $id delete callback rotate $cb
+}
+
+proc toggle_ciao_callback {tag_token cb} {
+    global current
+    set frm [set current(frame)]
+    set slct [$frm get marker select]
+
+    foreach id $slct {
+        set shp [$frm get marker $id type]
+        switch $shp {
+            circle -
+            ellipse -
+            box -
+            polygon -
+            annulus -
+            point {
+                set tgs [$frm get marker $id tag]
+                if {[lsearch $tgs $tag_token$id] >= 0} {
+                    delete_ciao_callback $frm $id $tag_token $cb
+                } else {
+                    add_ciao_callback $frm $id $tag_token $cb
+                }
+            }
+        }
+    }
+}
+
+
+# ---------------------------
+#
+# These routines are used to add a callback to ellipse regions
+# that will set the Text of the ellipse to the sum of the pixel
+# values (aka counts).
+#
+
+proc get_counts_CB { tag_token id } {
+    # The callback that will compute the counts in the region
+    # and set the regions text to it.
+
+    global current
+    set frm [set current(frame)]
+
+    #Construct CIAO syntax for filename w/ filters, bin, block, crops
+    set infile [get_ciao_filename $tag_token $id]
+
+    # Run dmstat and return out_sum value
+    # TODO: fix race condition PFILES
+    exec dmstat $infile cen- sig- med- verb=0
+    set sumval [exec -ignorestderr pget dmstat out_sum]
+
+    # Have to use escaped brackets since sumval is an integer
+    $frm marker $id text \{$sumval\}
+
+}
+
+proc toggle_count_ellipse {} {
+    toggle_ciao_callback CountShape get_counts_CB
+}
+
+
+# --------------------
+# These routines will create an elastic ellipse that will snap to
+# the size, angle, and centoid of the data.
+
+proc get_ellipse_CB {tag_token id} {
+    # The elastic ellipse callback
+
+    global current
+    set frm [set current(frame)]
+
+    #Construct CIAO syntax for filename w/ filters, bin, block, crops
+    set infile [get_ciao_filename $tag_token $id]
+
+    # Run the imgmoment CIAO tool to get centroid, angle, and sizes
+    exec imgmoment $infile
+    set vals [regsub -all "\n" [exec -ignorestderr pget imgmoment x_mu y_mu xsig ysig phi] " "]
+
+    # If the pixel values have low stddev, then probably background
+    # and the region will artificially expand ad nauseam. This is a simple
+    # check to see if pixel values are all the same, if so then small sigma
+    # and do not scale by the sqrt(2) needed to scale imgmoment "sig" values
+    exec dmstat $infile centroid- sig+ med- verb=0
+    set sigma [exec -ignorestderr pget dmstat out_sigma]
+
+    set tt [$frm get marker $id type]
+    if {$tt eq "ellipse"} {
+        set factor [expr {$sigma < 1 ? 1.0 : 1.4142135623730951}]
+    } else {
+        set factor [expr {$sigma < 1 ? 1.5 : 2.0}]
+    }
+
+    set xx [lindex $vals 0]
+    set yy [lindex $vals 1]
+    set r1 [expr [lindex $vals 2] * $factor]
+    set r2 [expr [lindex $vals 3] * $factor]
+    set aa [lindex $vals 4]
+
+    $frm marker $id $tt radius $r1 $r2 physical
+    $frm marker $id angle $aa physical
+    $frm marker $id move to physical $xx $yy
+}
+
+proc add_adaptive_callback {frm id} {
+    # Since the CB "moves", "edits", and "rotates" the shape,
+    # we need to specify that this should only be run at the END
+    # action.  Otherwise the callback goes into an infinite loop
+    # and ds9 crashes.
+
+    set tag_token AdaptiveShape
+    $frm marker $id callback end move get_ellipse_CB $tag_token
+    $frm marker $id callback end edit get_ellipse_CB $tag_token
+    $frm marker $id callback end rotate get_ellipse_CB $tag_token
+    $frm marker $id tag $tag_token$id
+    $frm marker $id highlite
+    $frm marker $id color violet
+
+}
+
+proc del_adaptive_callback {frm id} {
+    set tag_token AdaptiveShape
+    $frm marker $id delete tag $tag_token$id
+    $frm marker $id delete callback end move get_ellipse_CB
+    $frm marker $id delete callback end edit get_ellipse_CB
+    $frm marker $id delete callback end rotate get_ellipse_CB
+    $frm marker $id unhighlite
+    $frm marker $id color green
+}
+
+proc toggle_adaptive_ellipse {} {
+    global current
+
+    set frm [set current(frame)]
+    set slct [$frm get marker select]
+    set tag_token AdaptiveShape
+
+    foreach id $slct {
+        set shp [$frm get marker $id type]
+        switch $shp {
+            ellipse -
+            box {
+                set tgs [$frm get marker $id tag]
+                if {[lsearch $tgs $tag_token$id] >= 0} {
+                    del_adaptive_callback $frm $id
+                } else {
+                    add_adaptive_callback $frm $id
+                }
+            }
+        }
+    }
+}
+
+
+# --------------------
+
+proc toggle_lightcurve_shape {} {
+    #
+    global current
+    set frm $current(frame)
+
+    set binfilt [$frm get fits header keyword extname]
+    switch $binfilt {
+        "EVENTS" -
+        "STDEVT" {
+            toggle_ciao_callback LightcurveShape ciao_lc_plotter_cb
+        }
+        default {
+            tk_messageBox -message "Lightcurve only works with EVENT files." -type ok
+        }
+    }
+}
+
+proc run_dmextract_ltc {tag_token id} {
+    # Run dmextract in light curve mode
+
+    set binsize [exec -ignorestderr pget dax lc_binsize]
+
+    set infile [get_ciao_filename $tag_token $id]
+    set infile [regsub {\[bin .*\]} $infile ""]
+    set infile "${infile}\[bin time=::${binsize}\]"
+
+    set vals [exec dmextract ${infile} \
+                          out=- op=ltc1 bkg="" exp="" bkgexp=""  | \
+                          dmlist -\[cols\ dt,count_rate\] data,clean | \
+                          grep -v COUNT_RATE ]
+
+    set x_ {}
+    set y_ {}
+    foreach {i j} [regsub -all "\n" $vals " " ] {
+        lappend x_ [expr $i / 1000.0]
+        lappend y_ $j
+    }
+
+    set retval {}
+    lappend retval $x_
+    lappend retval $y_
+    return $retval
+}
+
+proc ciao_lc_plotter_cb {tag_token id} {
+    # Run CIAO command to get xy values to plot
+    set xy [run_dmextract_ltc $tag_token $id]
+
+    set data(xx) [lindex $xy 0]
+    set data(yy) [lindex $xy 1]
+    set label(title) {Lightcurve}
+    set label(xlabel) {Delta Time [ksec]}
+    set label(ylabel) {Count Rate [c/sec]}
+
+    ciao_plotter $tag_token $id data label
+}
+
+# -----------------------------------------------
+
+proc toggle_spectrum_shape {} {
+    #
+    global current
+    set frm $current(frame)
+
+    set binfilt [$frm get fits header keyword extname]
+    switch $binfilt {
+        "EVENTS" -
+        "STDEVT" {
+            toggle_ciao_callback SpectrumShape ciao_pi_plotter_cb
+        }
+        default {
+            tk_messageBox -message "Spectrum only works with EVENT files." -type ok
+        }
+    }
+}
+
+proc run_dmextract_pi {tag_token id} {
+    # Run dmextract in spectral mode
+
+    set grp [exec -ignorestderr pget dax grptype]
+    set grpval [exec -ignorestderr pget dax grpval]
+    set binspec [exec -ignorestderr pget dax grpbin]
+
+    set infile [get_ciao_filename $tag_token $id]
+    set infile [regsub {\[bin .*\]} $infile ""]
+    set infile "${infile}\[bin pi=1:1024:1\]"
+
+    set vals [exec dmextract ${infile} \
+                        out=- op=pha1 bkg="" exp="" bkgexp=""  | \
+                   dmgroup - - \
+                        grouptype=$grp grouptypeval=$grpval binspec=$binspec xcol=channel ycol=counts | \
+                   dmlist "-\[grouping=1\]\[cols channel,grp_data\]" data,clean | \
+                          grep -v CHANNEL ]
+
+    set x_ {}
+    set y_ {}
+    foreach {i j} [regsub -all "\n" $vals " " ] {
+        lappend x_ $i
+        lappend y_ $j
+    }
+
+    set retval {}
+    lappend retval $x_
+    lappend retval $y_
+    return $retval
+}
+
+proc ciao_pi_plotter_cb {tag_token id} {
+    # Run CIAO command to get xy values to plot
+    set xy [run_dmextract_pi $tag_token $id]
+
+    set data(xx) [lindex $xy 0]
+    set data(yy) [lindex $xy 1]
+    set label(title) {Spectrum}
+    set label(xlabel) {PI}
+    set label(ylabel) {Counts}
+
+    ciao_plotter $tag_token $id data label
+}
+
+# -------------------------------------
+
+proc toggle_glvary_shape {} {
+    #
+    global current
+    set frm $current(frame)
+
+    set binfilt [$frm get fits header keyword extname]
+    switch $binfilt {
+        "EVENTS" -
+        "STDEVT" {
+            toggle_ciao_callback GLvaryShape ciao_glvary_plotter_cb
+        }
+        default {
+            tk_messageBox -message "glvary only works with EVENT files." -type ok
+        }
+    }
+}
+
+proc run_glvary {tag_token id} {
+    # Run glvary
+    global env
+
+    set infile [get_ciao_filename $tag_token $id]
+    set infile [regsub {\[bin .*\]} $infile ""]
+
+    # Glvary does not accept - to write to stdout. Bummer. So
+    # write to file on disk.
+    set tchan [file tempfile tmpfile $env(DAX_OUTDIR)/glvary.fits]
+    close $tchan
+    file delete $tmpfile
+    set lc ${tmpfile}.lc
+    set prb ${tmpfile}.prb
+    exec glvary infile=${infile} outfile=${prb} lcfile=${lc} eff="" mode=h clobber=yes verbose=0
+    file delete $prb
+    set vals [exec dmlist "${lc}\[cols time,count_rate\]" data,clean | grep -v Time]
+    file delete $lc
+
+    set x_ {}
+    set y_ {}
+    foreach {i j} [regsub -all "\n" $vals " " ] {
+        lappend x_ $i
+        lappend y_ $j
+    }
+
+    set retval {}
+    lappend retval $x_
+    lappend retval $y_
+    return $retval
+}
+
+proc ciao_glvary_plotter_cb {tag_token id} {
+    # Run CIAO command to get xy values to plot
+    set xy [run_glvary $tag_token $id]
+
+    set data(xx) [lindex $xy 0]
+    set data(yy) [lindex $xy 1]
+    set label(title) {GL}
+    set label(xlabel) {Delta Time [ksec]}
+    set label(ylabel) {Count Rate [c/sec]}
+
+    ciao_plotter $tag_token $id data label
 }
 

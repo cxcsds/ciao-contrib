@@ -1,5 +1,5 @@
-    
-# 
+
+#
 #  Copyright (C) 2004-2023  Smithsonian Astrophysical Observatory
 #
 #
@@ -19,10 +19,10 @@
 #
 
 
-    
+
 # Image processing tasks
-    
-    
+
+
 # ---------------
 # dmimgblob
 # ---------------
@@ -113,7 +113,7 @@ param project
 endparam
 
 param poly_params
-  poly_method menu {Weighting} closest|average|weight|minimum|maximum|furthest {Interpolation method} 
+  poly_method menu {Weighting} closest|average|weight|minimum|maximum|furthest {Interpolation method}
   poly_plot menu {Plot X-axis} x|y|angle|radius|rownum {What to plot data versus}
 endparam
 
@@ -139,7 +139,7 @@ param filth
 endparam
 
 param histogram
-  bincol entry {Column to bin} 
+  bincol entry {Column to bin}
   binspec entry {Binning specification}
 endparam
 
@@ -212,14 +212,14 @@ param dl_obsid
   dlobi entry {Chandra OBS_ID} {} {only public OBS_IDs are accessible}
   dldir entry {Download directory} {./} {default will download to directory where ds9 was launched.}
   dlview menu {Load evt2 file?} {yes|no}
-endparam  
+endparam
 
 
 param dl_csc
   dlobi entry {Chandra OBS_ID} {} {only public OBS_IDs are accessible}
   dldir entry {Download directory} {./} {default will download to directory where ds9 was launched.}
   dlview menu {Load catalog?} {yes|no}
-endparam  
+endparam
 
 
 param radial_profile
@@ -255,7 +255,7 @@ endparam
 
 param celldetect
     cell_expmap open {Exposure map} {} {Exposure map file name, leave blank for none}
-    cell_psfmap open {PSF map} {} {PSF map file name, leave blank for none} 
+    cell_psfmap open {PSF map} {} {PSF map file name, leave blank for none}
     cell_sig entry {Sigma Threshold} {3} {SNR threshold for sources}
     cell_size entry {Fixed cell size} {0} {Fixed cell size. 0 : use psfmap}
 endparam
@@ -263,7 +263,7 @@ endparam
 param wavdetect
     wav_scales entry {Wavelet scales} {1.4,2,4,8} {Wavelet scales}
     wav_expmap open {Exposure map} {} {Exposure map file name, leave blank for none}
-    wav_psfmap open {PSF map} {} {PSF map file name, leave blank for none} 
+    wav_psfmap open {PSF map} {} {PSF map file name, leave blank for none}
     wav_sig entry {Sig. Threshold} {1e-06} {Significance threshold (false positives per pixel)}
 endparam
 
@@ -375,6 +375,12 @@ buttonbar
     *
     button
     $param(filth); ds9_imgproc_wrapper $xpa_method dmfilth $fillmeth |& $text
+
+    Toggle Elastic Ellipse
+    *
+    button
+    xpaset -p $xpa_method tcl toggle_adaptive_ellipse |& $text
+
 endbuttonbar
 
 
@@ -396,7 +402,7 @@ hmenu CIAO tools (DAX)
 #NEW#    $param(dl_csc); ds9_dl_csc.sh $xpa_method $dlobi $dldir $dlview  |& $text
 #NEW#
 #NEW#  endhmenu
-#NEW#  
+#NEW#
 #NEW#  ---
 
   find chandra obsid
@@ -421,16 +427,16 @@ hmenu CIAO tools (DAX)
     help
 
 
-    Net Counts - [dmextract] computes simple net counts, and count-rates 
-    
-    Photometry - [srcflux]  computes photon and energy fluxes assuming 
+    Net Counts - [dmextract] computes simple net counts, and count-rates
+
+    Photometry - [srcflux]  computes photon and energy fluxes assuming
     a user specified spectral model.
 
     endhelp
-    
-    
+
+
   endhmenu
- 
+
   ---
 
   hmenu Statistics
@@ -444,7 +450,7 @@ hmenu CIAO tools (DAX)
     *
     menu
     ds9_imgproc_wrapper $xpa_method dmstat |& $text
-       
+
     Moments
     *
     menu
@@ -455,26 +461,26 @@ hmenu CIAO tools (DAX)
     menu
     $param(srcextent); ds9_imgproc_wrapper $xpa_method srcextent $makepsf $se_mono_e|& $text
 
-    
+
     ---
-    
+
     help
 
-    Statistics - [dmstat]  compute various image pixel statistics: 
+    Statistics - [dmstat]  compute various image pixel statistics:
     centroid, min, max, mean, median, standard deviation, sum, and area.
 
-    moments - [imgmoment] computes the 2nd order image moments and some 
-    derived values such as ellipticity, major and minor axes, and rotation 
-    angle. 
+    moments - [imgmoment] computes the 2nd order image moments and some
+    derived values such as ellipticity, major and minor axes, and rotation
+    angle.
 
-    
+
     endhelp
-    
-    
+
+
   endhmenu
-    
+
   ---
-    
+
   hmenu Histograms
 
     Arbitrary Column Histogram
@@ -482,14 +488,14 @@ hmenu CIAO tools (DAX)
     menu
     $param(histogram); ds9_imgproc_wrapper $xpa_method dme_generic $bincol $binspec |& $text
 
-    --- 
+    ---
 
     Spectrum (PI)
     *evt* *EVT*
     menu
     ds9_imgproc_wrapper $xpa_method dme_pi |& $text
 
-    Spectrum (PHA) 
+    Spectrum (PHA)
     *evt* *EVT*
     menu
     ds9_imgproc_wrapper $xpa_method dme_pha  |& $text
@@ -506,7 +512,7 @@ hmenu CIAO tools (DAX)
     ds9_imgproc_wrapper $xpa_method dme_expno "$entry(Expno Bin Size)" |& $text
 
     ---
-    
+
     Pixel
     *
     menu
@@ -531,10 +537,10 @@ hmenu CIAO tools (DAX)
     *
     menu
     $param(poly_params); ds9_imgproc_wrapper $xpa_method dmimgpick $poly_method $poly_plot |& $text
-    
-    
+
+
     ---
-    
+
     Period Fold
     *evt* *EVT*
     menu
@@ -570,15 +576,15 @@ hmenu CIAO tools (DAX)
 
        Project - [dmimgproject] compute projections of data in region onto X or Y axes
 
-       Radial Profile - [dmextract] compute surface brightness 
+       Radial Profile - [dmextract] compute surface brightness
 
        Extract Along Polygon - [dmimgpick] get pixel values at polygon end points
 
        Period Fold - [pfold] a simple period fold search
 
        G-L Vary - [glvary] Gregory-Laredo Bayesian Lightcurve
-       
-       Dither Region - [dither_region] computes the fraction of the 
+
+       Dither Region - [dither_region] computes the fraction of the
           region area exposed. (Chandra Only).
 
     endhelp
@@ -586,11 +592,11 @@ hmenu CIAO tools (DAX)
 
 
   endhmenu
-    
+
   ---
-    
+
   hmenu Coordinates
-    
+
     Chandra Coordinates
     *
     menu
@@ -624,17 +630,17 @@ hmenu CIAO tools (DAX)
 ##    $param(colden); prop_colden data $miss eval $x(fk5,sexagesimal) $y(fk5,sexagesimal) |& $text
 
   ---
-    
+
     help
 
     Chandra Coordinates - [dmcoords] computes various Chandra specific coordinates
-    (chip, det, tdet, off-axis-angles) at the location of the 
+    (chip, det, tdet, off-axis-angles) at the location of the
     crosshair, or the 1st selected region.
-    
+
     Chandra Field-of-View - [skyfov] computes a polygon enclosing
     each CCD.
 
-    Chandra Grating Energy Lookup - [dmcoords] show where the dispersed 
+    Chandra Grating Energy Lookup - [dmcoords] show where the dispersed
     energy+order will be imaged using the zero order position taken from
     the location of the crosshair or the 1st selected region
 
@@ -642,21 +648,21 @@ hmenu CIAO tools (DAX)
     it draw a vector with the non-arrow end point located at the grating
     0th order location.  As the user moves the arrow end point around,
     a dialogue will open that provides the grating coordinates and energy.
-    For HETG observations it will pick the grating arm , HEG or MEG, 
+    For HETG observations it will pick the grating arm , HEG or MEG,
     closest to the end point.  Users can change the order by typing it
     into the dialogue and pressing Enter.
-    
+
     endhelp
-    
-    
-    
+
+
+
   endhmenu
-    
-    
+
+
   ---
-    
+
   hmenu Detect
-    
+
     wavdetect
     *
     menu
@@ -672,51 +678,51 @@ hmenu CIAO tools (DAX)
     *
     menu
     $param(vtp); ds9_imgproc_wrapper $xpa_method vtpdetect e"$vtp_expmap" $vtp_scale $vtp_limit |& $text
-    
+
     get_src_region
     *
     menu
     ds9_imgproc_wrapper $xpa_method get_src_region  |& $text
-    
+
     ---
-    
+
     help
 
     wavdetect - [wavdetect] uses a Marr wavelet detection algorithm.
     User inputs the list of wavelet scales to search; values are typically
     powers of 2.
-    
+
     celldetect - [celldetect] a simple sliding cell source detection.
     User inputs the detect cell size (must be an integer multiple of 3).
-    
-    vtpdetect - [vtpdetect] source detect using Voronoi Tesselation and 
+
+    vtpdetect - [vtpdetect] source detect using Voronoi Tesselation and
     Percolation; useful to find faint diffuse emission.
-    
-    get_src_region - [get_src_region] a fast algorithm to identify 
+
+    get_src_region - [get_src_region] a fast algorithm to identify
     pixels above background.
 
-    
+
     endhelp
-   
+
   endhmenu
 
   ---
-    
+
   hmenu Regions
 
     Lasso
     *
     menu
     $param(lasso); ds9_imgproc_wrapper $xpa_method dmimglasso $min_pix $max_pix |& $text
-    
+
     Contour
     *
     menu
     $param(contour_lvs); ds9_imgproc_wrapper $xpa_method dmcontour $c_levels |& $text
 
-    
+
     ---
-    
+
     Ellipse
     *
     menu
@@ -726,7 +732,7 @@ hmenu CIAO tools (DAX)
     *
     menu
     $param(myell); ds9_imgproc_wrapper $xpa_method dmellipse "$ellipse_frac" rotbox |& $text
-    
+
     ---
 
     Convex Hull
@@ -739,7 +745,7 @@ hmenu CIAO tools (DAX)
 
     # The background is restricted to evt files, so I'll do the same for
     # src region here too.
-    
+
     PSF Contour
     *evt* *EVT*
     menu
@@ -751,45 +757,119 @@ hmenu CIAO tools (DAX)
     $param(bkgcounts); ds9_imgproc_wrapper $xpa_method bkg_fixed_counts $bc_min_counts "$bc_fov" $bc_inner $bc_energy $bc_max "$bc_src" |& $text
 
 
-   
+
     ---
-    
+
     help
-    
+
     Lasso - [dmimglasso] (crosshair mode only) create a region that
-    encloses the current crosshair location with pixel in specified 
+    encloses the current crosshair location with pixel in specified
     range of values.
-    
-    Contour - [dmcontour] create contour regions at specified levels.  
+
+    Contour - [dmcontour] create contour regions at specified levels.
     Interior regions (ie holes) will be automatically excluded.
-    
-    Ellipse - [dmellipse] find ellipse that encloses a fraction 
+
+    Ellipse - [dmellipse] find ellipse that encloses a fraction
     of the total flux.
-    
-    Rotbox - [dmellipse] find a rotated box that encloses a fraction 
+
+    Rotbox - [dmellipse] find a rotated box that encloses a fraction
     of the total flux.
-    
+
     Convex Hull - [dmimghull] computes the convex hull around the
     pixels in region above the threshold.
-    
+
     PSF Contour - [psf_contour] simulate the PSF at the selected region
     positions (or all position if non are selected) and generates a region
     the encloses the specified fraction of the PSF.
-    
+
     Fixed Counts Background - [bkg_fixed_counts] will generate a background
-    annulus at each selected source position (or all if none are selected). 
+    annulus at each selected source position (or all if none are selected).
     The inner annulus radius is determined to exclude a fraction of the PSF
     and the outer radius is selected to enclose the total number of counts,
     which excluding any overlapping regions.
-    
+
     endhelp
-    
+
   endhmenu
-    
+
+  ---
+
+  hmenu Interactive Regions
+
+      Toggle Counts Label
+      *
+      menu
+      xpaset -p $xpa_method tcl toggle_count_ellipse | $null
+
+      Toggle Elastic Ellipses
+      *
+      menu
+      xpaset -p $xpa_method tcl toggle_adaptive_ellipse | $null
+
+      Toggle Lightcurve Plots
+      *EVT* *evt*
+      menu
+      xpaset -p $xpa_method tcl toggle_lightcurve_shape | $null
+
+      Toggle Spectrum Plots
+      *EVT* *evt*
+      menu
+      xpaset -p $xpa_method tcl toggle_spectrum_shape |& $null
+
+      Toggle GLVary Plots
+      *EVT* *evt*
+      menu
+      xpaset -p $xpa_method tcl toggle_glvary_shape |& $text
+
+      ---
+
+      help
+
+        These tasks will enable interactive functionality for the
+        currently **selected** regions.  After toggling on the functionality
+        the region must be moved or edited. These tasks operate on
+        files on disk, so things like smoothing do not affect the results.
+
+        The tasks are described below:
+
+        Counts - display the sum of the pixel values in the text box above
+            the selected region.
+
+        Elastic Ellipse - This task only works with ellipse and box shapes.
+            When activated, the shape changes color to violet. After the
+            shape is moved, edited, or rotated, the shape will resize,
+            reorient, and recenter itself to match the image moments of the
+            data inside the shape. When disabled the color of the shape will
+            change to green.
+
+        Lightcurve - As the region is moved, a plot of the lightcurve
+            (count rate vs time) is updated. By default the spectrum is
+            creates with 1000second bins. This value can be changed
+            by changing the "lc_binsize" in dax.par
+
+                    pset dax lc_binzie=100
+
+        Spectrum - As the region is moved, a plot of the spectrum
+            (channel vs. counts). By default the spectrum is grouped to
+            have 1 count per group. This can be changed by changing
+            the 'grptype' 'grpval' 'grpbin' in dax.par
+            These parameters are the same as grptype, grptypeval,
+            and binspec in the dmgroup tool.
+
+                    pset dax grptype=NONE
+
+        GLVary - As the region is moved, the GLVary Bayesian blocks
+            lightcurve is plotted.
+
+
+      endhelp
+
+  endhmenu
+
   ---
 
   hmenu Chandra PSF
-    
+
     PSF Size
     *
     menu
@@ -816,16 +896,16 @@ hmenu CIAO tools (DAX)
 
     PSF Size - [] Creates a circular region as the current location
     that encloses the specified fraction at the specified energy.
-    
+
     PSF Fraction - (circles only) computes the fraction of the PSF
-    inside the current circle at the specified energy.    
+    inside the current circle at the specified energy.
 
     Simulate PSF with MARX [simulate_psf] - simulates monochromatic PSF
     using MARX. Uses crosshair location or selected source region.
-    
+
     endhelp
-  
-  
+
+
   endhmenu
 
 
@@ -838,7 +918,7 @@ hmenu CIAO tools (DAX)
     *EVT* *evt*
     menu
     $param(spectral); ds9_specfit.sh $xpa_method $model $add_model $grpcts $elo $ehi $specfit_method $specfit_stat $specfit_absmodel $specfit_absxtra '$extra' |& $text
- 
+
     ---
 
     2D Image Fit
@@ -853,7 +933,7 @@ hmenu CIAO tools (DAX)
 
 
      ---
-     
+
      Radial Profile Fit
      *
      menu
@@ -861,53 +941,53 @@ hmenu CIAO tools (DAX)
 
 
      ---
-     
+
       help
-      
+
       Spectral Fit - [specextract, sherpa] extracts the source
-      and background spectra and then fits the spectra with sherpa.  
+      and background spectra and then fits the spectra with sherpa.
 
             Model       Description:
 
-            xszbbody    Black Body              
-            xszpowerlw  Power Law               
-            xsbknpower  Broken Pow Law          
-            xscutoffpl  Pow Law w/ cutoff       
-            xszgauss    Gaussian                
-            xsdiskline  Disk Line Emission      
-            xsapec      APEC                    
-            xsbapec     BAPEC                   
-            xsmekal     Mekal                   
-            xsvmekal    Mekal (abund)           
-            xsraymond   Raymond-Smith           
-            xszbremss   Thermal Brems           
-            xscemekl    Multi-temp Plasma       
+            xszbbody    Black Body
+            xszpowerlw  Power Law
+            xsbknpower  Broken Pow Law
+            xscutoffpl  Pow Law w/ cutoff
+            xszgauss    Gaussian
+            xsdiskline  Disk Line Emission
+            xsapec      APEC
+            xsbapec     BAPEC
+            xsmekal     Mekal
+            xsvmekal    Mekal (abund)
+            xsraymond   Raymond-Smith
+            xszbremss   Thermal Brems
+            xscemekl    Multi-temp Plasma
 
 
-      
+
       2D Image Fit - [sherpa] fit the image data inside
       the region with a 2D model
-      
-      Radial Profile Fit - [dmextract, sherpa] extract a 
+
+      Radial Profile Fit - [dmextract, sherpa] extract a
       radial profile from source and background region and fit.
-      
+
       endhelp
 
 
   endhmenu
- 
+
 
 
   ---
-    
+
   hmenu Image Processing
-    
-    
+
+
     Blob
     *
     menu
     $param(blob); ds9_imgproc_wrapper $xpa_method dmimgblob $threshold |& $text
-    
+
     Adaptive Smooth
     *
     menu
@@ -917,23 +997,23 @@ hmenu CIAO tools (DAX)
     *
     menu
     $param(csmooth); ds9_imgproc_wrapper $xpa_method csmooth $kernel $sigmin $sigmax $sclmin $sclmax |& $text
-    
+
     Non-Linear Filter
     *
     menu
     $param(filt); ds9_imgproc_wrapper $xpa_method dmimgfilt $function $mask $niter |& $text
-    
-    
+
+
     Threshold
     *
     menu
     $param(threshold); ds9_imgproc_wrapper $xpa_method dmimgthresh $cut $thr_value |& $text
-    
+
 #    Gradient
 #    *
 #    menu
 #    $param(grad); ds9_imgproc_wrapper $xpa_method dmimggrad $grad $graddir |& $text
-    
+
     Adaptive Bin
     *
     menu
@@ -943,7 +1023,7 @@ hmenu CIAO tools (DAX)
     *
     menu
     $param(dmradar); ds9_imgproc_wrapper $xpa_method dmradar $rad_snr $rad_xcen $rad_ycen $rad_meth $rad_shape $rad_in $rad_out $rad_start $rad_range $rad_ell $rad_rot $rad_radmin $rad_angmin |& $text
-    
+
     Distance Transform
     *
     menu
@@ -954,21 +1034,21 @@ hmenu CIAO tools (DAX)
     menu
     ds9_imgproc_wrapper $xpa_method arestore |& $text
 
-    
+
     ---
-    
+
     Smoothing
     *
     menu
     $param(convolve); ds9_imgproc_wrapper $xpa_method aconvolve $smker $xxsig $zoobar $speed |& $text
-    
+
     ---
-    
+
     Source Fill
     *
     menu
     $param(filth); ds9_imgproc_wrapper $xpa_method dmfilth $fillmeth |& $text
-    
+
 
     ---
 
@@ -997,7 +1077,7 @@ hmenu CIAO tools (DAX)
     *
     menu
     ds9_imgproc_wrapper $xpa_method acrosscorr_auto |& $text
-    
+
     Cross Correlate with previous frame
     *
     menu
@@ -1005,7 +1085,7 @@ hmenu CIAO tools (DAX)
 
     ---
     help
-    
+
     Various image processing tasks
 
       Blob - [dmimgblob] group pixels > threshold together. Output is a mask with
@@ -1023,9 +1103,9 @@ hmenu CIAO tools (DAX)
       Adaptive Bin - [dmnautilus] quad-tree algorithm to group pixels together until
 	     the SNR of the group drops below threshold
 
-      Distance Transform - [dmimgdist] computes the distance from each pixel to 
+      Distance Transform - [dmimgdist] computes the distance from each pixel to
           the closest edge (where edge is pixels below threshold)
-      
+
       Richardson Lucy Deconvolution - [arestore] Lucy Richardson deconvolution; draw a region around
 	     what is believed to be a point source and it is used as the PSF.
 
@@ -1039,33 +1119,33 @@ hmenu CIAO tools (DAX)
          and Y axes, and rotate the image about an arbitrary center.
 
       Reproject - [reproject_image] reprojects the current frame to the
-         same coordinate system and grid in the previous frame.  
+         same coordinate system and grid in the previous frame.
          Use method=sum to preserve flux (pixels may not remain integers)
          or method=average to preserve the mean value (eg when reprojecting
          exposure maps or psfmaps).
 
       Powerspectrum - [apowerspectrum] compute |FFT| of image
 
-      Autocorrelate - [acrosscorr] compute correlation of image with itself     
+      Autocorrelate - [acrosscorr] compute correlation of image with itself
 
       Cross Correlate - [acrosscorr] compute correlation of the current image with the
           image in the previous frame. Images should be on same tangent plane (use
           Reproject task before hand if necessary).
-    
+
     endhelp
-    
-    
+
+
   endhmenu
 
   ---
-  
+
   hmenu Image Calculator
-  
+
       ADD: previous frame to current frame (c+p)
       *
       menu
       ds9_imgproc_wrapper $xpa_method dmimgcalc add |& $text
-  
+
       SUB1: subtract previous frame from current (c-p)
       *
       menu
@@ -1092,7 +1172,7 @@ hmenu CIAO tools (DAX)
       ds9_imgproc_wrapper $xpa_method dmimgcalc div_p/c |& $text
 
       ---
-      
+
       Constant scale (c*n)
       *
       menu
@@ -1107,7 +1187,7 @@ hmenu CIAO tools (DAX)
       *
       menu
       ds9_imgproc_wrapper $xpa_method dmimgcalc pow "$entry(Power Exponent)" |& $text
-      
+
       Modulo (c%n)
       *
       menu
@@ -1232,19 +1312,19 @@ hmenu CIAO tools (DAX)
         menu
         ds9_imgproc_wrapper $xpa_method dmimgcalc tanh |& $text
 
-   
+
       endhmenu
 
 
   endhmenu
-  
+
 
   ---
   Custom DAX output directory
   *
   menu
   xpaset -p $xpa_method tcl "{ChangeDaxOutdir}" | $text
-    
+
   ---
 
   Custom Color Map
@@ -1259,15 +1339,15 @@ hmenu CIAO tools (DAX)
   *
   menu
   ahelp -n 80 dax | $text
-  
-    
 
-    
-    
+
+
+
+
     #
     # end CIAO
     #
 endhmenu
-    
-    
-    
+
+
+
