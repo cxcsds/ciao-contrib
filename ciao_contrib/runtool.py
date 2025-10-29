@@ -2548,6 +2548,13 @@ parinfo['acis_set_ardlib'] = {
     }
 
 
+parinfo['acis_split_evt_by_fptemp'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","Input event file",None),ParValue("outroot","f","Output root file name",None)],
+    'opt': [ParValue("mtlfile","f","Mission time line file",'INDEF'),ParValue("clobber","b","Delete existing output files",False),ParRange("verbose","i","Tool chatter",1,0,5)],
+    }
+
+
 parinfo['acis_streak_map'] = {
     'istool': True,
     'req': [ParValue("infile","f","Evt file",None),ParValue("fovfile","f","FOV file",None),ParValue("bkgroot","f","Output background file root",None),ParValue("regfile","f","Output streak region file",None)],
