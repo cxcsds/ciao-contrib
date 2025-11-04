@@ -9,7 +9,7 @@
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
 #
-# This program is distributed in the hope that it will be useful,
+# This program is distributed in the hope that it wiLl be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
@@ -27,12 +27,13 @@ Routines to support the specextract tool.
 
 __modulename__ = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "4 September 2025"
+__revision__ = "31 October 2025"
 
 import os
 import sys
+import tempfile
 
-from multiprocessing import cpu_count
+from multiprocessing import cpu_count, Manager
 import numpy
 
 import cxcdm
@@ -94,7 +95,7 @@ class suppress_stdout_stderr(object):
     # when probing for blank sky files
     #
     #########################################################
-    '''
+    """
     A context manager for doing a "deep suppression" of stdout and stderr in
     Python, i.e. will suppress all print, even if the print originates in a
     compiled C/Fortran sub-function.
@@ -104,7 +105,7 @@ class suppress_stdout_stderr(object):
     exited (at least, I think that is why it lets exceptions through).
 
     https://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
-    '''
+    """
 
     def __init__(self):
         # Open a pair of null files
@@ -408,19 +409,20 @@ data with chandra_repro or add the keywords to the event file(s) with r4_header_
         keys = []
 
         for fn in stack:
-            try:
-                kval = fileio.get_keys_from_file(f"{fn}[#row=0]")[keyname]
-            except KeyError:
+
+            kval = fileio.get_keys_from_file(f"{fn}[#row=0]").get(keyname)
+
+            if kval is None:
                 v1(f"WARNING: The {keyname} header keyword is missing from {fn}")
-                kval = None
 
             keys.append(kval)
 
         return keys
 
 
-    def _check_event_stats(self,file,refcoord_check=None,
-                           weights_check=None,ewmap_range_check=None):
+    def _check_event_stats(self, file,
+                           refcoord_check=None, weights_check=None,
+                           ewmap_range_check=None, resp_pos_type=None):
         """
         Use dmlist to determine the event counts
         and appropriately error out or proceed with the script
@@ -443,7 +445,12 @@ data with chandra_repro or add the keywords to the event file(s) with r4_header_
         if counts == "0":
             try:
                 if refcoord_check.lower() in ["","none","indef"]:
-                    raise IOError(f"{file} has zero counts. Check that the region formatting is correct (e.g. wrong region, coordinates not in sky pixels or degrees) or use the 'refcoord' parameter.")
+                    if isinstance(resp_pos_type,str) and resp_pos_type.upper() == "REGION":
+                        v1(f"{file} has zero counts. Using the region defined position for reference.")
+                        return True
+
+                    raise IOError(f"{file} has zero counts. Check that the region formatting is correct \
+(e.g. wrong region, coordinates not in sky pixels or degrees) or use the 'refcoord' parameter.")
 
                 if weights_check:
                     v1("WARNING: Unweighted responses will be created at the 'refcoord' position.\n")
@@ -473,65 +480,70 @@ data with chandra_repro or add the keywords to the event file(s) with r4_header_
         which isn't appropriate for this quantity).
         """
 
-        if colname in ["x","y","chipx","chipy"]:
-            if colname in ["x","y"]:
+        match colname:
+            case "x" | "y":
                 bin_setting = "[bin sky=2]"
 
-            if colname in ["chipx","chipy"]:
+            case "chipx" | "chipy":
                 bin_setting = "[bin chipx=2,chipy=2]"
 
-            if args is not None:
-                if args["weight"] == "no" and args["correct"] == "yes":
-                    binarfcorr = max(args["binarfcorr"], 1) # if binarfcorr < 1, set to 1
+            case "ccd_id" | "chip_id":
+                # Use pycrates to retrieve ccd_id/chip_id values from user-input event
+                # extraction region. Compute the mode of the ccd_id/chip_id values
+                # stored in the array.
 
-                    if colname in ["x","y"]:
-                        bin_setting = f"[bin sky={binarfcorr}]"
+                cr = pcr.read_file(file)
 
-                    if colname in ["chipx","chipy"]:
-                        bin_setting = f"[bin chipx={binarfcorr},chipy={binarfcorr}]"
+                if cr is None:
+                    raise IOError(f"Unable to read from file {file}")
+
+                vals = cr.get_column(colname).values
+
+                chips,counts = numpy.unique(vals,return_counts=True)
+
+                mode = chips[counts.tolist().index(max(counts))]
+
+                del cr
+
+                return mode
+
+            case _:
+                raise IOError("This function presently only supports the 'x'|'y'|'chipx'|'chipy'|'ccd_id'|'chip_id' column names.")
 
 
-            with new_pfiles_environment(ardlib=False,copyuser=False):
-                dmstat = make_tool("dmstat")
+        if args is not None and args["weight"] == "no" and args["correct"] == "yes":
+            binarfcorr = max(args["binarfcorr"], 1) # if binarfcorr < 1, set to 1
 
-                dmstat.punlearn()
-                dmstat.verbose = 0
+            if colname in ["x","y"]:
+                bin_setting = f"[bin sky={binarfcorr}]"
 
-                dmstat(f"{file}{bin_setting}")
+            else:
+                bin_setting = f"[bin chipx={binarfcorr},chipy={binarfcorr}]"
 
-                src_x,src_y = dmstat.out_max_loc.split(",")
 
-            if colname == "x":
+        with new_pfiles_environment(ardlib=False,copyuser=False):
+            dmstat = make_tool("dmstat")
+
+            dmstat.punlearn()
+            dmstat.verbose = 0
+
+            dmstat(f"{file}{bin_setting}")
+
+            src_x,src_y = dmstat.out_max_loc.split(",")
+
+
+        match colname:
+            case "x":
                 return src_x
 
-            if colname == "y":
+            case "y":
                 return src_y
 
-            if colname == "chipx":
+            case "chipx":
                 return int(float(src_x))
 
-            if colname == "chipy":
+            case "chipy":
                 return int(float(src_y))
-
-        if colname in ["ccd_id", "chip_id"]:
-            # Use pycrates to retrieve ccd_id/chip_id values from user-input event
-            # extraction region. Compute the mode of the ccd_id/chip_id values
-            # stored in the array.
-
-            cr = pcr.read_file(file)
-
-            if cr is None:
-                raise IOError(f"Unable to read from file {file}")
-
-            vals = cr.get_column(colname).values
-
-            chips,counts = numpy.unique(vals,return_counts=True)
-
-            mode = chips[counts.tolist().index(max(counts))]
-
-            del cr
-
-            return mode
 
         return None
 
@@ -561,7 +573,7 @@ data with chandra_repro or add the keywords to the event file(s) with r4_header_
             for regfile in regfiles:
                 ## check if region is FITS or text format ##
                 try:
-                    with open(regfile, mode="rt") as binarycheckfile:
+                    with open(regfile, mode="rt", encoding="ascii") as binarycheckfile:
                         binarycheckfile.read() # a FITS/binary file will throw a UnicodeDecodeError
                                                # when opened in 'read-text' mode then read()
 
@@ -578,6 +590,48 @@ Unix-compatible line feed only.")
 
                 except UnicodeDecodeError:
                     pass
+
+
+    def _isect_fov(self, evt: str, asol: str|None, msk: str|None,
+                   skyx: float|int, skyy: float|int,
+                   bkg_skyx: float|int|None, bkg_skyy: float|int|None) -> bool:
+        """
+        check that a position (in this case unweighted response position) falls
+        on the active detector's FOV
+        """
+
+        skyfov = make_tool("skyfov")
+
+        skyfov.infile = evt
+        skyfov.mskfile = msk
+        skyfov.aspect = asol
+        skyfov.verbose = 0
+        skyfov.clobber = True
+
+        with tempfile.NamedTemporaryFile(suffix="_fov") as _fov:
+            skyfov.outfile = _fov.name
+            skyfov()
+
+            fov = region.CXCRegion(_fov.name)
+
+        s = fov.is_inside(float(skyx),float(skyy))
+
+        ## support background position too and avoid duplicating creation of the same FOV
+        if bkg_skyx is not None and bkg_skyy is not None:
+            bg = fov.is_inside(float(bkg_skyx),float(bkg_skyy))
+        else:
+            bg = None
+
+        return s,bg
+
+
+    def _check_dmcoords_chip(self, evtfile: str, instrument: str, chipid: int) -> bool:
+        if instrument == "HRC":
+            cid = fileio.get_chips(evtfile)
+        else:
+            cid = fileio.get_ccds(evtfile)
+
+        return chipid in cid
 
 
     def _get_region(self,full_filename):
@@ -732,7 +786,7 @@ source files. Exiting.")
 
             if refcoord != "":
                 # returns RA and Dec in decimal degrees
-                ra,dec,delme = utils.parse_refpos(refcoord.replace(","," "))
+                ra,dec,_fn = utils.parse_refpos(refcoord.replace(","," "))
 
                 dmcoords.opt = "cel"
                 dmcoords.ra = ra
@@ -884,7 +938,7 @@ when 'resp_pos' is set to 'MAX' or 'CENTROID'.") from exc
             fef_emin = min(fef_energy)
             fef_emax = max(fef_energy)
 
-            ebin_min,ebin_max,ebin_de = ebin.split(":")
+            ebin_min,ebin_max,_ebin_de = ebin.split(":")
 
             fef_estat = (float(ebin_min) >= fef_emin, float(ebin_max) <= fef_emax)
 
@@ -934,15 +988,8 @@ Merged events files should not be used for spectral analysis.") # or v1 warning?
 
         # check for blank sky files and Maxim's bg files, error out if found:
         with suppress_stdout_stderr():
-            try:
-                blanksky = headerkeys["CDES0001"]
-            except (KeyError,AttributeError):
-                blanksky = None
-
-            try:
-                mm_blanksky = headerkeys["MMNAME"]
-            except (KeyError,AttributeError):
-                mm_blanksky = None
+            blanksky = headerkeys.get("CDES0001")
+            mm_blanksky = headerkeys.get("MMNAME")
 
         if srcbkg_kw == "background":
             if blanksky is not None and "blank sky event" in blanksky.lower():
@@ -1313,12 +1360,13 @@ and/or background files. Assuming source and background file lists have a matchi
 
     def combine_stacks(self,src_stk,bkg_stk,
                        asp,bpixfile,mask,dtffile,dafile,
-                       weight,dobkgresp,refcoord,ewmap,
-                       nproc):
+                       weight,dobkgresp,refcoord,resp_pos_type,
+                       ewmap,nproc):
 
         ## check counts in input files, and exit if necessary, or produce responses for upper-limits
         src_dict = [{"file" : fn,
                      "refcoord_check" : refcoord,
+                     "resp_pos" : resp_pos_type,
                      "weights_check" : False,
                      "ewmap_range_check" : None}
                     for fn in src_stk]
@@ -1335,6 +1383,7 @@ and/or background files. Assuming source and background file lists have a matchi
         ewmap_srcbg_dict = [{"file" : fn,
                              "ewmap_range_check" : ewmap,
                              "refcoord_check" : None,
+                             "resp_pos" : None,
                              "weights_check" : None}
                             for fn in ewmap_srcbg_stk]
 
@@ -1342,6 +1391,7 @@ and/or background files. Assuming source and background file lists have a matchi
         def parallel_event_stats(args):
             file = args["file"]
             refcoord_check = args["refcoord_check"]
+            resp_pos = args["resp_pos"]
             weights_check = args["weights_check"]
             ewmap_range_check = args["ewmap_range_check"]
 
@@ -1349,7 +1399,7 @@ and/or background files. Assuming source and background file lists have a matchi
                 if isinstance(weights_check,bool) and not weights_check:
                     return self._check_event_stats(file,
                                                    refcoord_check=refcoord_check,
-                                                   weights_check=False)
+                                                   weights_check=False,resp_pos_type=resp_pos)
 
                 if ewmap_range_check is not None and fileio.get_keys_from_file(f"{file}[#row=0]")["INSTRUME"] == "ACIS":
                     return self._check_event_stats(file,
@@ -1486,7 +1536,7 @@ Source stack={src_count}     {key} stack={count}")
 
     def obs_args(self,src_stk,out_stk,bkg_stk,asp_stk,bpixfile_stk,rmffile,
                  dtffile_stk,mask_stk,dafile_stk,asolstat,ahiststat,dobpix,
-                 common_args,stk_count):
+                 common_args,stk_count,nproc):
 
         weight = common_args.pop("weight",None) # remove keyword from dictionary and copy value
         dobg = common_args["dobg"]
@@ -1530,11 +1580,15 @@ Source stack={src_count}     {key} stack={count}")
                 cur_stack = src_stk
 
             # Run tools for each item in the current stack.
+            fcount_num_len = len(str(fcount))
+
             for i in range(fcount):
 
                 fullfile = cur_stack[i]
                 filename = self._get_filename(cur_stack[i])
                 instrument = fileio.get_keys_from_file(f"{filename}[#row=0]")["INSTRUME"]
+
+                counterstr = f"{i+1:0{fcount_num_len}}"
 
                 if fcount == 1:
                     iteminfostr = "\n"
@@ -1545,7 +1599,7 @@ Source stack={src_count}     {key} stack={count}")
                     weight = "no"
                     v1("HRC responses will be unweighted.")
 
-                if not self._check_event_stats(fullfile,refcoord_check=refcoord,weights_check=True):
+                if not self._check_event_stats(fullfile,refcoord_check=refcoord,weights_check=True,resp_pos_type=resp_pos):
                     weight = "no"
 
                 # If we're using an output stack, then grab an item off of the stack
@@ -1558,9 +1612,9 @@ Source stack={src_count}     {key} stack={count}")
                     outdir, outhead = utils.split_outroot(out_stk[0])
 
                     if outhead == "":
-                        full_outroot = f"{outdir}{srcbkg}{i+1}"
+                        full_outroot = f"{outdir}{srcbkg}{counterstr}"
                     else:
-                        full_outroot = f"{outdir}{outhead}{srcbkg}{i+1}"
+                        full_outroot = f"{outdir}{outhead}{srcbkg}{counterstr}"
 
                 else:
                     outdir, outhead = utils.split_outroot(out_stk[i])
@@ -1704,6 +1758,11 @@ block corresponding to the source region location will be used.\n")
                                                                              resp_pos,refcoord,
                                                                              binimg=2)
 
+                ### check that 'chip_id' determined by dmcoords is actually present in the event file ###
+                if not self._check_dmcoords_chip(filename, instrument, int(chip_id)):
+                    raise IOError(f"The region 'chip_id' ({chip_id}) determined by 'dmcoords' is \
+not found in the provided event file ({filename})!")
+
                 arg_dict["skyx"] = skyx
                 arg_dict["skyy"] = skyy
                 arg_dict["chip_id"] = chip_id
@@ -1770,7 +1829,72 @@ source location in the Bell Labs HI Survey (the survey covers RA > -40 deg).\n")
                     arg_dict["rmffile"] = rmffile
 
                 # set src/bkg item dictionary
-                specextract_dict[f"{srcbkg}{i+1}"] = {**arg_dict, **common_args}
+                specextract_dict[f"{srcbkg}{counterstr}"] = {**arg_dict, **common_args}
+
+
+        ### check if unweighted response position falls on a chip within the FOV ###
+        if weight == "no" and any([resp_pos.lower() == "region", refcoord != ""]):
+            badreg = Manager().list()
+            #isect_fov_check = [(srcid,argdict,badreg) for srcid,argdict in specextract_dict.items()]
+
+            isect_fov_check = []
+            for k,v in specextract_dict.items():
+                if k.startswith("src"):
+                    if v["dobg"]:
+                        _k = k.replace("src","bkg")
+
+                        v["_bkg_skyx"] = specextract_dict[_k]["skyx"]
+                        v["_bkg_skyy"] = specextract_dict[_k]["skyy"]
+                        v["_bkg_fullfile"] = specextract_dict[_k]["fullfile"]
+
+                    isect_fov_check.append((k,v,badreg))
+
+            def parallel_isectfov_check(args_tup):
+                ID, args, reglist = args_tup
+
+                fn = args["fullfile"]
+                msk = args["msk"]
+                x = args["skyx"]
+                y = args["skyy"]
+
+                bg_x = args.get("_bkg_skyx")
+                bg_y = args.get("_bkg_skyy")
+                bg_fn = args.get("_bkg_fullfile")
+
+                asol = args.get("asol") # if asolstat is True, asol is not None
+                ahist = args.get("asphist") # if ahiststat is True, asphist is not None
+
+                if asol is not None and ahist is None:
+                    src_isect_stat, bkg_isect_stat = self._isect_fov(fn, asol, msk,
+                                                                     x, y, bg_x, bg_y)
+
+                    if not src_isect_stat:
+                        reglist.append((ID, fn))
+                    if isinstance(bkg_isect_stat, bool) and not bkg_isect_stat:
+                        reglist.append((ID.replace("src","bkg"), bg_fn))
+
+            self.paralleltests(parallel_isectfov_check, isect_fov_check, method="map", numcores=nproc)
+
+            if (_blen := len(badreg)) > 0:
+                _ = ( f"{ID:>{len(ID)+4}}: {breg}" for ID,breg in sorted(badreg) )
+                _breg = "{}".format("\n".join(_))
+
+                if _blen > 1:
+                    _center = "centers"
+                    _fall = "fall off the FOV of their"
+                else:
+                    _center = "center"
+                    _fall = "falls off the FOV of its"
+
+                msg = f'''
+The region {_center} of:
+
+{_breg}
+
+{_fall} respective detector!
+                       '''
+
+                raise IOError(f"{msg}\n")
 
         return specextract_dict
 
@@ -1815,13 +1939,14 @@ source location in the Bell Labs HI Survey (the survey covers RA > -40 deg).\n")
                                                                                common_dict["weight"],
                                                                                common_dict["dobkgresp"],
                                                                                common_dict["refcoord"],
+                                                                               common_dict["resp_pos"],
                                                                                common_dict["ewmap"],
                                                                                self.nproc)
 
         obs_dict = self.obs_args(src_stk,out_stk,bkg_stk,stk_dict["asol"],
                                  stk_dict["badpix"],self.rmffile,stk_dict["dead time factor"],
                                  stk_dict["mask"],stk_dict["dead area"],asolstat,
-                                 ahiststat,dobpix,common_dict,stk_count)
+                                 ahiststat,dobpix,common_dict,stk_count,self.nproc)
 
         return obs_dict
 
@@ -1839,9 +1964,10 @@ def _check_filename_set(filename):
     return True
 
 
+
 def _arcsec_quotes(fullfile):
     """
-    workaround parameter interface bug with double quotes used to 
+    workaround parameter interface bug with double quotes used to
     express arcseconds (https://cxc.cfa.harvard.edu/ciao/bugs/parameter.html#quotes)
     """
 
@@ -1852,6 +1978,7 @@ def _arcsec_quotes(fullfile):
         return fullfile.replace(reg, _reg)
 
     return fullfile
+
 
 
 def get_region_filter(full_filename):
@@ -1878,49 +2005,44 @@ def get_region_filter(full_filename):
     # it into the output spectrum as it should, causing a
     # calquiz error downstream).
 
-    if "sky=" in full_filename:
-        reg_filter = True
-        region_temp = full_filename.split("sky=")[1]
+    reg_filter = True
 
-    elif "(x,y)=" in full_filename:
-        reg_filter = True
-        region_temp = full_filename.split("(x,y)=")[1]
+    match full_filename:
+        case x if "sky=" in x:
+            region_temp = full_filename.split("sky=")[1]
+        case x if "(x,y)=" in x:
+            region_temp = full_filename.split("(x,y)=")[1]
+        case x if "pos=" in x:
+            region_temp = full_filename.split("pos=")[1]
+        case _:
+            reg_filter = False
+            reg = full_filename
 
-    elif "pos=" in full_filename:
-        reg_filter = True
-        region_temp = full_filename.split("pos=")[1]
-
-    else:
-        reg_filter = False
-
-        if full_filename.startswith("@"):
-            # deal with stacks
-            region_temp = None
-
-        else:
-            region_temp = full_filename
-            v1(f"WARNING: A supported spatial region filter was not detected for {full_filename}\n")
+            if full_filename.startswith("@"):
+                # deal with stacks
+                region_temp = None
+            else:
+                region_temp = full_filename
+                v1(f"WARNING: A supported spatial region filter was not detected for {full_filename}\n")
 
     if reg_filter:
-        if ")," in region_temp and ") ," in region_temp:
-            region_temp2 = region_temp.partition("),")[0]+")"
+        match region_temp:
+            case x if all([")," in x,  ") ," in x]):
+                region_temp2 = region_temp.partition("),")[0] + ")"
 
-            if ") ," in region_temp2:
-                reg = region_temp2.partition(") ,")[0]+")"
-            else:
-                reg = region_temp2
+                if ") ," in region_temp2:
+                    reg = region_temp2.partition(") ,")[0] + ")"
+                else:
+                    reg = region_temp2
 
-        elif ")," in region_temp:
-            reg = region_temp.partition("),")[0]+")"
+            case x if ")," in x:
+                reg = region_temp.partition("),")[0] + ")"
 
-        elif ") ," in region_temp:
-            reg = region_temp.partition(") ,")[0]+")"
+            case x if  ") ," in x:
+                reg = region_temp.partition(") ,")[0] + ")"
 
-        else:
-            reg = region_temp.rpartition("]")[0]
-
-    else:
-        reg = full_filename
+            case _:
+                reg = region_temp.rpartition("]")[0]
 
     if not _check_filename_set(reg):
         raise IOError(f"Please specify a valid spatial region filter for {full_filename} or use FOV region files.")

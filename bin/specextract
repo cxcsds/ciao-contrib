@@ -31,9 +31,9 @@ Script:
 	command line, within the CIAO environment.
 """
 
-__version__ = "CIAO 4.17"
+__version__ = "CIAO 4.18"
 __toolname__ = "specextract"
-__revision__ = "4 September 2025"
+__revision__ = "30 October 2025"
 
 ##########################################################################
 #
@@ -47,6 +47,7 @@ __revision__ = "4 September 2025"
 # Load the necessary libraries.
 
 import os
+import resource
 import sys
 import shutil
 import tempfile
@@ -85,7 +86,8 @@ vprogress = spec._set_verbose_progressbar(sys.argv,toolname=__toolname__)
 
 
 def make_combined_outroot(outroot: str, label: str) -> str:
-    """create the outroot for combined data.
+    """
+    Create the outroot for combined data.
 
     Do we really need to send in label or can we assume
     it is always "src1"?
@@ -278,17 +280,21 @@ def readout_streak_spec(specfile,infile,src_x,src_y):
 
     del cr_ccd
 
-    streak_exposure = nframes * nrows * xfer_time
+    streak_exposure = f"{nframes * nrows * xfer_time:.12}"
 
     v1(f"The readout streak extraction region encompasses {nrows} pixel \
 rows of ACIS-{ccd_id[0]} with an effective exposure time of \
-{streak_exposure:.12} [s].")
+{streak_exposure} [s].")
 
-    edit_headers(0, specfile, "EXPOSURE", f"{streak_exposure:.12}", unit="s",
-                 comment="effective readout streak exposure time")
+    hdr_items = ( {"key" : "EXPOSURE",
+                   "val" : float(streak_exposure),
+                   "unit" : "s",
+                   "comment" : "effective readout streak exposure time"},
+                  {"key" : "NROW_STRK",
+                   "val" : nrows,
+                   "comment" : "number of ACIS rows from readout streak extraction"} )
 
-    edit_headers(0,specfile,"NROW_STRK",nrows,
-                 comment="number of ACIS rows from readout streak extraction")
+    edit_header_multi_keys(specfile, hdr_items)
 
 
 
@@ -691,11 +697,13 @@ reprocess the dataset or re-download the observation from the archive.")
     shutil.copyfile(rmf,rmffile)
 
     # establish detsubsys
-    if instrument == "HRC":
-        if chip_id == "0":
+    match instrument:
+        case "HRC" if chip_id == "0":
             detname = "HRC-I"
-        else:
+        case "HRC":
             detname = f"HRC-S{chip_id}"
+        case _:
+            raise RuntimeError(f"Function argument {instrument=}! This function should only be used with HRC data.")
 
     # determine matrix block name since it can either be "SPECRESP MATRIX" or "MATRIX"
     blnames = [bl[0].lower() for bl in get_info_from_file(f"{rmffile}[#row=0]")]
@@ -981,35 +989,69 @@ def group_spectrum(ptype, full_outroot, val, binspec, gtype,
 
 
 
-def edit_headers(verbose, infile, key, val, *args, **kwargs):
+def edit_header(infile_cr: str|pcr.TABLECrate|pcr.IMAGECrate, key, val, **kwargs) -> None:
     """
     Update or add the infile header keyword with a specified value.
+    If 'infile' is a string that points to a file, keywords directly
+    written, if it is a data Crate, the crate header is modified,
+    which can then be saved later to a file.
     """
 
-    unit = kwargs.get("unit",None) # optional argument
-    comment = kwargs.get("comment",None)
+    ## optional argument ##
+    unit = kwargs.get("unit", None)
+    comment = kwargs.get("comment", None)
 
-    if verbose == 2:
-        verbose = 1
-
-    dmhedit = make_tool("dmhedit")
-
-    dmhedit.punlearn()
-
-    dmhedit.infile = infile
-    dmhedit.filelist = "none"
-    dmhedit.operation = "add"
-    dmhedit.key = key
-    dmhedit.value = str(val)
-    dmhedit.verbose = verbose
+    crkw = pcr.CrateKey()
+    crkw.name = key
+    crkw.value = val
 
     if unit is not None:
-        dmhedit.unit  = str(unit)
+        crkw.unit  = unit
 
     if comment is not None:
-        dmhedit.comment = str(comment)
+        crkw.desc = comment
 
-    dmhedit()
+    match infile_cr:
+        case str() if os.path.isfile(infile_cr):
+            cr = pcr.read_dataset(infile_cr)
+            _cr = cr.get_crate(2) # first interesting block
+            _cr.add_key(crkw)
+            cr.write(infile_cr, clobber=True)
+
+        case pcr.TABLECrate() | pcr.IMAGECrate():
+            infile_cr.add_key(crkw)
+
+        case _:
+            raise IOError("'edit_header' requires a file name string or data crate as input!")
+
+
+
+def edit_header_multi_keys(infile, kwdicts: tuple[dict]|list[dict], blkno: int|None=None) -> None:
+    """
+    Update or add header keywords to a file using a list or
+    tuple of dictionaries.
+    """
+
+    cr = pcr.read_dataset(infile)
+
+    if blkno is None:
+        blkno = cr.get_current_crate() # first interesting block number
+
+    _cr = cr.get_crate(blkno)
+
+    for _kwargs in kwdicts:
+        kwargs = _kwargs.copy()
+
+        try:
+            key = kwargs.pop("key")
+            val = kwargs.pop("val")
+        except KeyError as exc:
+            raise RuntimeError(f"{exc}\nRequired: list or tuple of dictionaries with 'key' \
+keyword and 'val' value, with optional 'unit' and 'comment' dictionary items.") from exc
+
+        edit_header(_cr, key, val, **kwargs)
+
+    cr.write(infile, clobber=True) # cr.write(cr.get_filename(), clobber=True)
 
 
 
@@ -1115,23 +1157,11 @@ def build_acis_arf(args):
     iteminfostr = args["iteminfostr"]
 
     weight = args["weight"]
-
     tdetwmap = args["tdetwmap"]
 
-    try:
-        bpix = args["bpix"]
-    except KeyError:
-        bpix = None
-
-    try:
-        da = args["da"]
-    except KeyError:
-        da = None
-
-    try:
-        msk = args["msk"]
-    except KeyError:
-        msk = None
+    bpix = args.get("bpix")
+    da = args.get("da")
+    msk = args.get("msk")
 
     ###########################
     #
@@ -1218,10 +1248,7 @@ def build_acis_rmf(args):
     verbose = args["verbose"]
     iteminfostr = args["iteminfostr"]
 
-    try:
-        bpix = args["bpix"]
-    except KeyError:
-        bpix = None
+    bpix = args.get("bpix")
 
     tdetwmap = args["tdetwmap"]
     feffile = args["feffile"]
@@ -1244,23 +1271,19 @@ def build_acis_rmf(args):
         try:
             if any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
                 if all([weight == "yes",weight_rmf == "yes"]):
-                    respfile = build_rmf_ext(rmftool,ptype,full_outroot,
-                                             ebin,rmfbin,clobber,verbose,
-                                             phafile,weightfile,wmap_clip,
-                                             tdetwmap, infostr)
+                    return build_rmf_ext(rmftool,ptype,full_outroot,
+                                         ebin,rmfbin,clobber,verbose,
+                                         phafile,weightfile,wmap_clip,
+                                         tdetwmap, infostr)
 
-                else:
-                    respfile = build_rmf_ps(rmftool,filename,ptype,full_outroot,
-                                            ebin,rmfbin,clobber,verbose,phafile,feffile,
-                                            ccd_id,chipx,chipy,infostr)
+                return build_rmf_ps(rmftool,filename,ptype,full_outroot,
+                                    ebin,rmfbin,clobber,verbose,phafile,feffile,
+                                    ccd_id,chipx,chipy,infostr)
+
+            return None # `if srcbkg == "bkg" and not dobkgresp`
 
         except Exception as exc:
             raise IOError(f"Failed to create RMF for {fullfile}") from exc
-
-    if srcbkg == "bkg" and not dobkgresp:
-        return None
-
-    return respfile
 
 
 
@@ -1300,20 +1323,12 @@ def spectra(args):
 
     outreg = args["outreg"]
 
-    try:
-        bpix = args["bpix"]
-    except KeyError:
-        bpix = None
+    bpix = args.get("bpix")
 
-    try:
-        nrao_nh = args["nrao_nh"]
-    except KeyError:
-        nrao_nh = None
+    nrao_nh = args.get("nrao_nh")
+    bell_nh = args.get("bell_nh")
 
-    try:
-        bell_nh = args["bell_nh"]
-    except KeyError:
-        bell_nh = None
+    pardict = {}
 
     with new_pfiles_environment(ardlib=True,copyuser=False):
         ###################################
@@ -1343,13 +1358,13 @@ for this file, which is required input for this step.\n")
 
                     correct = "no"
 
-                    pardict = {key_id : {"correct" : correct}}
+                    pardict[key_id] = {"correct" : correct}
 
                 else:
                     v3(f"Converting source region to physical coordinates {iteminfostr}")
 
                     fullfile = convert_region(fullfile,filename,outreg,True,verbose)
-                    pardict = {key_id : {"fullfile" : fullfile}}
+                    pardict[key_id] = {"fullfile" : fullfile}
 
         ###########################
         #
@@ -1391,23 +1406,23 @@ parameter of dmextract will be set to use DET coordinates instead.\n")
 
         try:
             pardict[key_id].update({"phafile" : phafile})
-        except NameError:
-            pardict = {key_id : {"phafile" : phafile}}
+        except (KeyError,NameError):
+            pardict[key_id] = {"phafile" : phafile}
 
         ## add nH values to phafile header ##
         if nrao_nh is not None:
             # Galactic neutral hydrogen column density at the source position using
             # the NRAO all-sky interpolation, via COLDEN.
 
-            edit_headers(verbose,phafile,"NRAO_nH",float(f"{nrao_nh:.6}"),unit="10**22 cm**-2",
-                         comment="galactic HI column density")
+            edit_header(phafile, "NRAO_nH", float(f"{nrao_nh:.6}"), unit="10**22 cm**-2",
+                        comment="galactic HI column density")
 
         if bell_nh is not None:
             # Galactic neutral hydrogen column density at the source position using
             # the Bell Labs survey, via COLDEN.
 
-            edit_headers(verbose,phafile,"Bell_nH",float(f"{bell_nh:.6}"),unit="10**22 cm**-2",
-                         comment="galactic HI column density")
+            edit_header(phafile, "Bell_nH", float(f"{bell_nh:.6}"), unit="10**22 cm**-2",
+                        comment="galactic HI column density")
 
 
         ############################################################
@@ -1443,8 +1458,8 @@ parameter of dmextract will be set to use DET coordinates instead.\n")
 
                 bkgscale = fileio.get_keys_from_file(fullfile)[f"BKGSCAL{ccdid}"]
 
-                edit_headers(verbose, phafile, "AREASCAL", 1/bkgscale,
-                             comment=f"1/BKGSCAL{ccdid} using the 'blanksky' scaling factor") #, set to 1.0 if subtracting background")
+                edit_header(phafile, "AREASCAL", 1/bkgscale,
+                            comment=f"1/BKGSCAL{ccdid} using the 'blanksky' scaling factor") #, set to 1.0 if subtracting background")
 
                 v1(f"{phafile} AREASCAL keyword set to the inverse of \
 the 'blanksky' BKGSCAL{ccdid} value for automated background spectrum \
@@ -1479,15 +1494,8 @@ def _resps_preprocess_wrapper(args_dict):
         asphist = args_dict["asphist"]
         asolstat = False
 
-    try:
-        bpix = args_dict["bpix"]
-    except KeyError:
-        bpix = None
-
-    try:
-        dtf = args_dict["dtf"]
-    except KeyError:
-        dtf = None
+    bpix = args_dict.get("bpix")
+    dtf = args_dict.get("dtf")
 
     kdict = {}
 
@@ -1560,11 +1568,7 @@ def _build_resps(args):
     verbose = args["verbose"]
     iteminfostr = args["iteminfostr"]
 
-    try:
-        bpix = args["bpix"]
-
-    except KeyError:
-        bpix = None
+    bpix = args.get("bpix")
 
     # try:
     #     dtf = args["dtf"]
@@ -1644,11 +1648,12 @@ def _build_resps(args):
                         raise IOError(f"Failed to create RMF for {fullfile}") from exc
 
             else:
-                if mkresp == "ARF":
-                    ancrfile = build_acis_arf(args)
+                match mkresp:
+                    case "ARF":
+                        ancrfile = build_acis_arf(args)
 
-                if mkresp == "RMF":
-                    respfile = build_acis_rmf(args)
+                    case "RMF":
+                        respfile = build_acis_rmf(args)
 
         else:
             ##########################################
@@ -1683,11 +1688,12 @@ def _build_resps(args):
     if srcbkg == "bkg" and not dobkgresp:
         return None
 
-    if mkresp == "ARF":
-        return {key_id : {"ARF" : ancrfile}}
+    match mkresp:
+        case "ARF":
+            return {key_id : {"ARF" : ancrfile}}
 
-    if mkresp == "RMF":
-        return {key_id : {"RMF" : respfile}}
+        case "RMF":
+            return {key_id : {"RMF" : respfile}}
 
     assert mkresp == "ARF+RMF", f"Unknown 'mkresp={mkresp}'"
 
@@ -1779,45 +1785,28 @@ def groupspec(args):
     phafile = args["phafile"]
     ptype = args["ptype"]
 
-    try:
-        gtype = args["gtype"]
-    except KeyError:
-        gtype = None
-    try:
-        gval = args["gval"]
-    except KeyError:
-        gval = None
-    try:
-        binspec = args["binspec"]
-    except KeyError:
-        binspec = None
+    gtype = args.get("gtype")
+    gval = args.get("gval")
+    binspec = args.get("binspec")
 
-    try:
-        bggtype = args["bggtype"]
-    except KeyError:
-        bggtype = None
-    try:
-        bggval = args["bggval"]
-    except KeyError:
-        bggval = None
-    try:
-        bgbinspec = args["bgbinspec"]
-    except KeyError:
-        bgbinspec = None
+    bggtype = args.get("bggtype")
+    bggval = args.get("bggval")
+    bgbinspec = args.get("bgbinspec")
 
     try:
         v3(f"Grouping {srcbkg} spectrum {iteminfostr}")
         grpfile = None
 
-        if all([srcbkg == "src", dogroup]):
-            grpfile = group_spectrum(ptype,full_outroot,
-                                     gval,binspec,gtype,
-                                     clobber,verbose,phafile)
+        match srcbkg:
+            case "src" if dogroup:
+                grpfile = group_spectrum(ptype,full_outroot,
+                                        gval,binspec,gtype,
+                                        clobber,verbose,phafile)
 
-        if all([srcbkg == "bkg", bgdogroup]):
-            grpfile = group_spectrum(ptype,full_outroot,
-                                     bggval,bgbinspec,bggtype,
-                                     clobber,verbose,phafile)
+            case "bkg" if bgdogroup:
+                grpfile = group_spectrum(ptype,full_outroot,
+                                         bggval,bgbinspec,bggtype,
+                                         clobber,verbose,phafile)
 
     except OSError as exc:
         raise IOError(f"Failed to group spectrum for {phafile}") from exc
@@ -1829,13 +1818,17 @@ def groupspec(args):
 def add_history_scriptver(fn,toolname,params,toolversion,modname,modversion):
     add_tool_history(fn, toolname, params, toolversion=toolversion)
 
+    hdr_items = [ {"key" : "SCRPTVER",
+                   "val" : f"{toolname} - {toolversion}"},
+                  {"key" : "SCRPTMOD",
+                   "val" : f"{modname} - {modversion}"} ]
+
     if isinstance(fn,str):
-        edit_headers(0, fn, "SCRPTVER", f"{toolname} - {toolversion}")
-        edit_headers(0, fn, "SCRPTMOD", f"{modname} - {modversion}")
+        edit_header_multi_keys(fn, hdr_items)
+
     else:
         for f in fn:
-            edit_headers(0, f, "SCRPTVER", f"{toolname} - {toolversion}")
-            edit_headers(0, f, "SCRPTMOD", f"{modname} - {modversion}")
+            edit_header_multi_keys(f, hdr_items)
 
 
 
@@ -1854,26 +1847,13 @@ def add_header_keys(args):
     dogroup = args["dogroup"]
     bgdogroup = args["bgdogroup"]
 
-    verbose = args["verbose"]
-
     pars = args["pars_specextract"]
 
     bkgresp = pars["bkgresp"]
 
-    try:
-        ancrfile = args["ARF"]
-    except KeyError:
-        ancrfile = None
-
-    try:
-        respfile = args["RMF"]
-    except KeyError:
-        respfile = None
-
-    try:
-        grpfile = args["grpfile"]
-    except KeyError:
-        grpfile = None
+    ancrfile = args.get("ARF")
+    respfile = args.get("RMF")
+    grpfile = args.get("grpfile")
 
     ####################################
     #
@@ -1891,22 +1871,29 @@ def add_header_keys(args):
                     respfile = args["specdicts"][key_id.replace("bkg","src")]["RMF"]
                     ancrfile = args["specdicts"][key_id.replace("bkg","src")]["ARF"]
 
-                    edit_headers(verbose, fn, "RESPFILE", os.path.basename(respfile))
-                    edit_headers(verbose, fn, "ANCRFILE", os.path.basename(ancrfile))
+                    hdr_items = ( {"key" : "RESPFILE",
+                                   "val" : os.path.basename(respfile)},
+                                  {"key" : "ANCRFILE",
+                                   "val" : os.path.basename(ancrfile)} )
+
+                    edit_header_multi_keys(fn, hdr_items)
 
             else:
                 v2(f"Updating header of {fn} with RESPFILE and ANCRFILE keywords.\n")
 
-                edit_headers(verbose, fn, "RESPFILE", os.path.basename(respfile))
-                edit_headers(verbose, fn, "ANCRFILE", os.path.basename(ancrfile))
+                hdr_items = [ {"key" : "RESPFILE",
+                               "val" : os.path.basename(respfile)},
+                              {"key" : "ANCRFILE",
+                               "val" : os.path.basename(ancrfile)} ]
+
+                edit_header_multi_keys(fn, hdr_items)
 
                 # If the source or background spectrum was grouped, add the respfile
                 # and ancrfile keys there, too.
                 if all([srcbkg == "src", dogroup]) or all([srcbkg == "bkg", bgdogroup]):
                     v2(f"Updating header of {grpfile} with RESPFILE and ANCRFILE keywords.\n")
 
-                    edit_headers(verbose, grpfile, "RESPFILE", os.path.basename(respfile))
-                    edit_headers(verbose, grpfile, "ANCRFILE", os.path.basename(ancrfile))
+                    edit_header_multi_keys(grpfile, hdr_items)
 
         except Exception as exc:
             print(exc)
@@ -1921,7 +1908,7 @@ def add_header_keys(args):
                 backpha = args["specdicts"][key_id.replace("src","bkg")]["phafile"]
 
                 v2(f"Updating header of {fn} with BACKFILE keyword.\n")
-                edit_headers(verbose, fn, "BACKFILE", os.path.basename(backpha))
+                edit_header(fn, "BACKFILE", os.path.basename(backpha))
 
                 # If the source spectrum was grouped, add the
                 # backfile key to the grouped source spectrum.
@@ -1936,7 +1923,7 @@ def add_header_keys(args):
                         backpha = args["specdicts"][key_id.replace("src","bkg")]["grpfile"]
 
                     v2(f"Updating header of {grpfile} with BACKFILE keyword.\n")
-                    edit_headers(verbose, grpfile, "BACKFILE", os.path.basename(backpha))
+                    edit_header(grpfile, "BACKFILE", os.path.basename(backpha))
 
         except Exception as exc:
             print(exc)
@@ -2180,7 +2167,7 @@ def get_par(args):
         if out_root.endswith("/"):
             raise ValueError("outroot path must include a file root name and cannot be just a directory.")
 
-        outdir,outhead = utils.split_outroot(out_root)
+        outdir,_outhead = utils.split_outroot(out_root)
 
         if outdir != "":
             fileio.validate_outdir(outdir)
@@ -2228,6 +2215,32 @@ def update_param_args_and_dict(dict_update,dict_orig,args_list,cmd_pars_history)
                 for key in dict_orig.keys()]
 
     return args_list
+
+
+
+def _check_open_file_limits(nfiles: int, Ntemp: int = 4, Npad: int = 20) -> None:
+    """
+    Check number of open files the working shell supports; opening too many
+    temporary files exceeding the suported value will throw an OSError.
+
+    This would be the equivalent of using:
+
+    bash:
+    'ulimit -n' and 'ulimit -Sn <softlim>'
+
+    csh:
+    'limit descriptors' and 'limit descriptors <softlim>'
+
+    from within Python.
+    """
+
+    open_file_lim = resource.RLIMIT_NOFILE
+    softlim, hardlim = resource.getrlimit(open_file_lim)
+
+    N_open_file = Ntemp * nfiles + Npad
+
+    if softlim < N_open_file:
+        resource.setrlimit(open_file_lim, (N_open_file, hardlim))
 
 
 
@@ -2329,6 +2342,8 @@ cannot contain any spaces")
             def parallelize(func,args,numcores=nproc,progress=None,prefix=None):
                 return [func(arg) for arg in args]
 
+    ## check open file limits on the system ##
+    _check_open_file_limits(len(specextract_args))
 
     ###########################
     #
@@ -2346,7 +2361,6 @@ cannot contain any spaces")
 
     # update parameters dictionary if necessary, and the list passed to parallelization
     specextract_args = update_param_args_and_dict(pardict_update_spectra,specdicts,specextract_args,pars)
-
 
     ###########################
     #
@@ -2377,10 +2391,12 @@ cannot contain any spaces")
     #
     ###########################
 
-    dobg = specdicts["src1"]["dobg"]
-    dobkgresp = specdicts["src1"]["dobkgresp"]
-    dogroup = specdicts["src1"]["dogroup"]
-    bgdogroup = specdicts["src1"]["bgdogroup"]
+    _srcno,_specdict = next(iter(specdicts.items()))
+
+    dobg = _specdict["dobg"]
+    dobkgresp = _specdict["dobkgresp"]
+    dogroup = _specdict["dogroup"]
+    bgdogroup = _specdict["bgdogroup"]
 
     sdvals = specdicts.values()
 
@@ -2460,7 +2476,7 @@ cannot contain any spaces")
     ###########################
 
     if combine == "yes":
-        combine_outroot = make_combined_outroot(specdicts["src1"]["full_outroot"],"src1")
+        combine_outroot = make_combined_outroot(_specdict["full_outroot"],_srcno)
 
         coadd(combine_outroot,
               src_spec,bkg_spec,
