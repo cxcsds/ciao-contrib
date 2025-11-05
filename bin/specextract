@@ -33,7 +33,7 @@ Script:
 
 __version__ = "CIAO 4.18"
 __toolname__ = "specextract"
-__revision__ = "30 October 2025"
+__revision__ = "5 November 2025"
 
 ##########################################################################
 #
@@ -59,6 +59,7 @@ import paramio
 import caldb4
 import stk
 import region
+import cxcdm
 import pycrates as pcr
 
 import ciao_contrib._tools.specextract as spec
@@ -989,7 +990,53 @@ def group_spectrum(ptype, full_outroot, val, binspec, gtype,
 
 
 
-def edit_header(infile_cr: str|pcr.TABLECrate|pcr.IMAGECrate, key, val, **kwargs) -> None:
+# def edit_headers(verbose, infile, key, val, *args, **kwargs):
+#     """
+#     Update or add the infile header keyword with a specified value.
+#     """
+#
+#     unit = kwargs.get("unit",None) # optional argument
+#     comment = kwargs.get("comment",None)
+#
+#     if verbose == 2:
+#         verbose = 1
+#
+#     dmhedit = make_tool("dmhedit")
+#
+#     dmhedit.punlearn()
+#
+#     dmhedit.infile = infile
+#     dmhedit.filelist = "none"
+#     dmhedit.operation = "add"
+#     dmhedit.key = key
+#     dmhedit.value = str(val)
+#     dmhedit.verbose = verbose
+#
+#     if unit is not None:
+#         dmhedit.unit  = str(unit)
+#
+#     if comment is not None:
+#         dmhedit.comment = str(comment)
+#
+#     dmhedit()
+
+
+
+def _cxcdm_header_info(fn: str, blkno: int|None=None) -> tuple[cxcdm.dmDataset, cxcdm.dmBlock]:
+    dataset = cxcdm.dmDatasetOpen(fn, update=True)
+
+    if blkno is None or blkno < 1:
+        blkno = 2 # first interesting block number
+
+    blkname = cxcdm.dmDatasetGetBlockName(dataset, blkno)
+    blk = cxcdm.dmBlockOpen(blkname, dataset, update=True)
+
+    return dataset, blk
+
+
+
+def edit_header(fn_cr: str|pcr.TABLECrate|pcr.IMAGECrate, key, val,
+                blkno: int|None=None, crate: bool=False, **kwargs) -> None:
     """
     Update or add the infile header keyword with a specified value.
     If 'infile' is a string that points to a file, keywords directly
@@ -997,61 +1044,124 @@ def edit_header(infile_cr: str|pcr.TABLECrate|pcr.IMAGECrate, key, val, **kwargs
     which can then be saved later to a file.
     """
 
-    ## optional argument ##
-    unit = kwargs.get("unit", None)
-    comment = kwargs.get("comment", None)
+    if crate:
+        ## optional argument ##
+        unit = kwargs.get("unit", None)
+        comment = kwargs.get("comment", None)
 
-    crkw = pcr.CrateKey()
-    crkw.name = key
-    crkw.value = val
+        crkw = pcr.CrateKey()
+        crkw.name = key
+        crkw.value = val
 
-    if unit is not None:
-        crkw.unit  = unit
+        if unit is not None:
+            crkw.unit  = unit
 
-    if comment is not None:
-        crkw.desc = comment
+        if comment is not None:
+            crkw.desc = comment
 
-    match infile_cr:
-        case str() if os.path.isfile(infile_cr):
-            cr = pcr.read_dataset(infile_cr)
-            _cr = cr.get_crate(2) # first interesting block
-            _cr.add_key(crkw)
-            cr.write(infile_cr, clobber=True)
+        match fn_cr:
+            case str() if os.path.isfile(fn_cr):
+                cr = pcr.read_dataset(fn_cr)
+                blkno = cr.get_current_crate()
+                _cr = cr.get_crate(blkno) # first interesting block
+                _cr.add_key(crkw)
+                cr.write(fn_cr, clobber=True)
 
-        case pcr.TABLECrate() | pcr.IMAGECrate():
-            infile_cr.add_key(crkw)
+            case pcr.TABLECrate() | pcr.IMAGECrate():
+                fn_cr.add_key(crkw)
 
-        case _:
-            raise IOError("'edit_header' requires a file name string or data crate as input!")
+            case _:
+                raise IOError("'edit_header' requires a file name string or data crate as input!")
+
+    else:
+        ds,blk = _cxcdm_header_info(fn_cr, blkno)
+
+        if "comment" in kwargs:
+            kwargs["desc"] = kwargs.pop("comment")
+
+        try:
+            cxcdm.dmKeyWrite(blk, key, val, **kwargs)
+
+        except KeyError as exc:
+            raise RuntimeError(f"{exc}\nRequired: list or tuple of dictionaries with 'key' \
+keyword and 'val' value, with optional 'unit' and 'comment' dictionary items.") from exc
+
+        cxcdm.dmBlockClose(blk)
+        cxcdm.dmDatasetClose(ds)
 
 
 
-def edit_header_multi_keys(infile, kwdicts: tuple[dict]|list[dict], blkno: int|None=None) -> None:
+def edit_header_multi_keys(fn_cr: str|pcr.TABLECrate|pcr.IMAGECrate, kwdicts: tuple[dict]|list[dict],
+                           blkno: int|None=None, crate: bool=False) -> None:
     """
     Update or add header keywords to a file using a list or
     tuple of dictionaries.
     """
 
-    cr = pcr.read_dataset(infile)
+    if crate:
+        cr = pcr.read_dataset(fn_cr)
 
-    if blkno is None:
-        blkno = cr.get_current_crate() # first interesting block number
+        if blkno is None:
+            blkno = cr.get_current_crate() # first interesting block number
 
-    _cr = cr.get_crate(blkno)
+        _cr = cr.get_crate(blkno)
 
-    for _kwargs in kwdicts:
-        kwargs = _kwargs.copy()
+        for _kwargs in kwdicts:
+            kwargs = _kwargs.copy()
 
-        try:
-            key = kwargs.pop("key")
-            val = kwargs.pop("val")
-        except KeyError as exc:
-            raise RuntimeError(f"{exc}\nRequired: list or tuple of dictionaries with 'key' \
+            try:
+                key = kwargs.pop("key")
+                val = kwargs.pop("val")
+            except KeyError as exc:
+                raise RuntimeError(f"{exc}\nRequired: list or tuple of dictionaries with 'key' \
 keyword and 'val' value, with optional 'unit' and 'comment' dictionary items.") from exc
 
-        edit_header(_cr, key, val, **kwargs)
+            edit_header(_cr, key, val, crate=True, **kwargs)
 
-    cr.write(infile, clobber=True) # cr.write(cr.get_filename(), clobber=True)
+        cr.write(fn_cr, clobber=True) # cr.write(cr.get_filename(), clobber=True)
+
+    else:
+        ds,blk = _cxcdm_header_info(fn_cr, blkno)
+
+        for _kwargs in kwdicts:
+            kwargs = _kwargs.copy()
+
+            if "comment" in kwargs:
+                kwargs["desc"] = kwargs.pop("comment")
+
+            try:
+                key = kwargs.pop("key")
+                val = kwargs.pop("val")
+            except KeyError as exc:
+                raise RuntimeError(f"{exc}\nRequired: list or tuple of dictionaries with 'key' \
+keyword and 'val' value, with optional 'unit' and 'comment' dictionary items.") from exc
+
+            cxcdm.dmKeyWrite(blk, key, val, **kwargs)
+
+        cxcdm.dmBlockClose(blk)
+        cxcdm.dmDatasetClose(ds)
+
+
+
+# import timeit
+#
+# def _edit_header(*args, **kwargs):
+#     infile_cr, key, val = args
+#
+#     t = timeit.Timer(lambda: edit_header(infile_cr, key, val, **kwargs))
+#     try:
+#         _ = t.timeit(number=1)
+#         print(f"cxcdm write {key}={val}: {_} (s)")
+#     except:
+#         t.print_exc()
+
+# def _edit_header_multi_keys(infile, kwdicts, blkno=None):
+#     t = timeit.Timer(lambda: edit_header_multi_keys(infile,kwdicts,blkno))
+#     try:
+#         _ = t.timeit(number=1)
+#         print(f"cxcdm write multi-keys: {_} (s)")
+#     except:
+#         t.print_exc()
 
 
 
