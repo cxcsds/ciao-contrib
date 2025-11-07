@@ -1,9 +1,6 @@
-from __future__ import absolute_import
-
-# Python35Support
-
 #
-#  Copyright (C) 2009, 2010, 2016  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2009, 2010, 2016, 2025
+#  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -30,6 +27,7 @@ This loads in the following modules
   sherpa_contrib.profiles
   sherpa_contrib.chart
   sherpa_contrib.marx
+  sherpa_contrib.stats.kaastra17
 
 """
 
@@ -37,3 +35,4 @@ from .utils import *
 from .profiles import *
 from .chart import *
 from .marx import *
+from .stats.kaastra17 import *
