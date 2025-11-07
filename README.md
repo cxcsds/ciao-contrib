@@ -86,6 +86,18 @@ with a version file that looks like
 At present there is no system to automatically look up the version
 number.
 
+An alternative approach is to install the Python [`build`
+module](https://build.pypa.io/en/stable/) and then use:
+
+    % python -m build . --sdist
+
+The compressed tar file will be available at
+
+    dist/ciao_contrib-<version>.tar.gz
+
+but it's not yet clear how different this is to the `mk_script_tarfile`
+output.
+
 ## Updating the runtool module
 
 The `./mk_runtool.py` command is used to create the ciao_contrib.runtool
