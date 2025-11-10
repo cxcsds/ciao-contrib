@@ -1,0 +1,206 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr  'sherpa>'>
+
+<!ENTITY calc '<LINE>calc_cstat_gof_kaastra17(id=None, *otherids, bkg_only=False)</LINE>'>
+<!ENTITY show '<LINE>show_cstat_gof_kaastra17(id=None, *otherids, bkg_only=False, outfile=None, clobber=False)</LINE>'>
+<!ENTITY simulate '<LINE>simulate_stats(id=None, *otherids, bkg_only=False, niter=1000, method=None)</LINE>'>
+
+]>
+<cxchelptopics>
+  <ENTRY key="sherpa_kaastra17" context="contrib" pkg="sherpa"
+	 refkeywords="sherpa_contrib.stats.kaastra17
+		      kaastra kaastra17 kaastra2017 2017
+		      kastra kastra17 kastra2017 k17 k2017
+		      cstat approximation approx gof goodnes-of-fit
+                      simulate verify validate
+		      calc_cstat_gof_kaastra17 show_cstat_gof_kaastra17
+		      calc_cstat_gof_kaastra show_cstat_gof_kaastra
+		      calc_cstat_kaastra17 show_cstat_kaastra17
+		      calc_cstat_kaastra show_cstat_kaastra
+		      calc_cstat show_cstat
+		      calc_stat_gof show_cstat_gof
+		      calc_gof show_gof
+		      cstat_kaastra cstat_kaastra17 cstat_kaastra2017
+		      kaastra_cstat kaastra17_cstat kaastra2017_cstat
+		      simulate_stats simulate_stat
+		      "
+	 seealsogroups="sh.stats">
+
+    <SYNOPSIS>
+      Use the Kaastra 2017 approximation as a goodness-of-fit for the CStat statistic
+    </SYNOPSIS>
+
+    <SYNTAX>
+      <LINE>from sherpa_contrib.stats.kaastra17 import *</LINE>
+      <LINE/>
+      &calc;
+      &show;
+      &simulate;
+    </SYNTAX>
+
+    <DESC>
+      <PARA>
+	The paper by
+	<HREF link="https://ui.adsabs.harvard.edu/abs/2017A%26A...605A..51K/abstract">Kaastra 2017 (A&amp;A 605, A51)</HREF>
+	provides an approximation for the CStat statistic that
+	provides a "goodness-of-fit" metric.
+      </PARA>
+
+      <PARA title="Loading the routines">
+        The module can be loaded into Sherpa with:
+      </PARA>
+
+<VERBATIM>
+from sherpa_contrib.stats.kaastra17 import *
+</VERBATIM>
+
+      <PARA title="Contents">
+	The kaastra17 module currenly provides the following routines:
+      </PARA>
+
+      <PARA title="calc_cstat_gof_kaastra17">
+	Calculate the expected CStat, and its variance, for the
+	current model using the Kaastra 2017 approximation.
+      </PARA>
+
+      <PARA><SYNTAX>&calc;</SYNTAX></PARA>
+
+      <PARA>
+	The calculation will default to all fitted datasets.
+      </PARA>
+
+      <PARA title="show_cstat_gof_kaastra17">
+	Compare the current statistic to the expected value from the
+	Kaastra 2017 approximation.
+      </PARA>
+
+      <PARA><SYNTAX>&show;</SYNTAX></PARA>
+
+      <PARA>
+	The calculation will default to all fitted datasets.
+      </PARA>
+
+      <PARA title="simulate_stats">
+	Use Poisson statistics to simulate the data given the current
+	model and calculate the statistic value.
+      </PARA>
+
+      <PARA><SYNTAX>&simulate;</SYNTAX></PARA>
+
+      <PARA>
+	The calculation will default to all fitted datasets. The niter
+	argument controls the number of statistic values that will be
+	returned. The method argument controls how the random
+	realisation of the model is created (the default is to use a
+	Poisson distribution).
+      </PARA>
+
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; get_stat_name()</LINE>
+	  <LINE>'cstat'</LINE>
+
+	  <LINE>&pr; calc_stat()</LINE>
+	  <LINE>472.76671442887954</LINE>
+
+	  <LINE>&pr; calc_cstat_gof_kaastra17()</LINE>
+	  <LINE>Using fit results from dataset: 1</LINE>
+	  <LINE>(485.2926987513286, 860.8742628407508)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    After a fit with CStat the best fit statistic is
+	    472.767 and the approximation from Kaastra 2017 suggests
+	    that a range around 485.293 with a variance of 860.874
+	    is expected. This suggests that this is a good fit.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; show_cstat_gof_kaastra17()</LINE>
+	</SYNTAX>
+	<DESC>
+<VERBATIM>
+Dataset              = 1
+Statistic            = cstat
+  calculated         = 472.76671442887954
+  model prediction   = 485.2926987513286 +/- 29.3406588685522
+  separation         = -0.4269 sigma
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; got = calc_cstat_gof_kaastra17(2, 4)</LINE>
+	  <LINE>Using fit results from datasets: 2, 4</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Restrict the analysis to just datasets 2 and 4.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; from sherpa.utils.logging import SherpaVerbosity</LINE>
+	  <LINE>&pr; with SherpaVerbosity("WARN"):</LINE>
+	  <LINE>...: got = calc_cstat_gof_kaastra17(2, 4)</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    Avoid the screen output from the command
+	    with the
+	    <HREF link="https://cxc.harvard.edu/sherpa/faq/verbose0.html">SherpaVerbosity</HREF>
+	    context manager.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+	<SYNTAX>
+	  <LINE>&pr; stats = simulate_stats()</LINE>
+	  <LINE>Using fit results from dataset: 1</LINE>
+	  <LINE>&pr; plot_cdf(trace)</LINE>
+	  <LINE>&pr; mean, var = calc_cstat_gof_kaastra17()</LINE>
+	  <LINE>Using fit results from dataset: 1</LINE>
+	  <LINE>&pr; print(f"{mean:.3f} +/- {np.sqrt(var):.3f}")</LINE>
+	  <LINE>485.293 +/- 29.341</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    The takes the current model and simulates 1000 datasets
+	    assuming Poisson statistics, and calculates the fit statistic
+	    for each simulation. The stats array contains these values,
+	    and plot_cdf is used to plot this distribution. The plot
+	    marks the median and +/1 1 sigma range, which can be
+	    compared to the Kaastra 2017 approximation.
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <ADESC title="Changes in the scripts 4.18.0 (December 2025) release">
+      <PARA>
+        The sherpa_contrib.stats.kaastra17 module is new.
+      </PARA>
+    </ADESC>
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/sherpa/bugs/">bugs pages</HREF>
+	for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>December 2025</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
