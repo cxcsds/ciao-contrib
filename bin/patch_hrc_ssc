@@ -70,7 +70,7 @@ from ciao_contrib.runtool import make_tool
 from pycrates import read_file
 
 __toolname__ = "patch_hrc_ssc"
-__revision__ = "10 October 2024"
+__revision__ = "05 November 2025"
 
 lw.initialize_logger(__toolname__)
 
@@ -165,26 +165,24 @@ def patch_dtf(infile, outfile, threshold, smooth_count, median_dtf, median_dtf_e
     # ~ verb2(vv)
 
 
-def create_new_limits(mtl_in, tmpdir):
-    'Create new "limits" table excluding the row containing the HRC "*LV" filters'
+def create_new_limits(mtl_in, tmpdir, threshold):
+    'Create new "limits" table modify the row containing the HRC "*LV" filters'
 
     verb1("Creating new GTI limits")
 
-    outfile = NamedTemporaryFile(suffix="_limits.fits",
+    outfile = NamedTemporaryFile(suffix="_limits.dat",
                                  dir=tmpdir, delete=False)
 
     tab = read_file(f"{mtl_in}[LIMITS]")
 
-    rows = [f"{i+1}" for i, x in enumerate(tab.get_column(0).values) if 'LV' in x]
+    with open(outfile.name, "w", encoding="ascii") as fp:
+        fp.write("#TEXT/SIMPLE\n#gti_limits\n")
 
-    rows_str = ",".join(rows)
-    exclude = f"[exclude #row={rows_str}]"
-
-    dmcopy = make_tool("dmcopy")
-    dmcopy.infile = f"{mtl_in}[LIMITS]{exclude}"
-    dmcopy.outfile = outfile.name
-    vv = dmcopy(clobber=True)
-    verb2(vv)
+        for row in tab.get_column("gti_limits").values:
+            if 'LV' in row:
+                fp.write(f"{row}&&(total_evt_count<{threshold})\n")
+            else:
+                fp.write(f"{row}\n")
 
     return outfile.name
 
@@ -316,7 +314,8 @@ def main():
               pars["smooth_count"], median_dtf, median_dtf_err)
     os.unlink(mod_mtl)
 
-    mod_limits = create_new_limits(pars["mtl_infile"], pars["tmpdir"])
+    mod_limits = create_new_limits(pars["mtl_infile"], pars["tmpdir"],
+                                   pars["threshold"])
 
     make_new_gti(outfile.name, pars["gti_outfile"], mod_limits)
     os.unlink(mod_limits)
