@@ -393,7 +393,7 @@ proc get_ellipse_CB {tag_token id} {
 
     # Run the imgmoment CIAO tool to get centroid, angle, and sizes
     exec imgmoment $infile
-    set vals [regsub -all "\n" [exec -ignorestderr pget imgmoment x_mu y_mu xsig ysig phi] " "]
+    set vals [regsub -all "\n" [exec -ignorestderr pget imgmoment x_mu y_mu xsig ysig phi m_0_2 m_2_0 m_1_1] " "]
 
     # If the pixel values have low stddev, then probably background
     # and the region will artificially expand ad nauseam. This is a simple
@@ -414,6 +414,20 @@ proc get_ellipse_CB {tag_token id} {
     set r1 [expr [lindex $vals 2] * $factor]
     set r2 [expr [lindex $vals 3] * $factor]
     set aa [lindex $vals 4]
+
+    set mm02 [lindex $vals 5]
+    set mm20 [lindex $vals 6]
+    set mdiff [expr $mm20 - $mm02 ]
+    set mm11 [lindex $vals 7]
+
+    # Bug in imgmoment that computes phi wrong
+    if {$mdiff > 0} {
+        set phi [expr 0.5 * (180.0/3.141592)*atan( (2.0 * $mm11) / $mdiff )]
+        if {$phi < 0} {
+            set phi [expr $phi + 180]
+        }
+      set aa $phi
+    }
 
     $frm marker $id $tt radius $r1 $r2 physical
     $frm marker $id angle $aa physical
