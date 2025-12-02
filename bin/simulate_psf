@@ -26,7 +26,7 @@ import sys
 import subprocess
 
 toolname = "simulate_psf"
-__revision__ = "12 June 2025"
+__revision__ = "28 November 2025"
 
 
 from cxcdm import *
@@ -98,7 +98,7 @@ def check_setup( pars ):
             raise Exception("Missing SAOTrace perl libraries")
         os.environ["PERL5LIB"] = os.path.join(pars["saotrace_install"],"lib","perl5")
 
-        
+
     if "marx" in [pars["simulator"], pars["projector"]]:
         if is_none( pars["marx_root"]):
             from shutil import which
@@ -171,6 +171,8 @@ def run_task(command, params, punlearn=False):
         value = params[key]
         sub_cmd.append( '{}={}'.format(key,value))
     sub_cmd.append( "mode=hl" )
+
+    verb3(sub_cmd)
 
     try:
         subprocess.check_call( sub_cmd )
@@ -290,7 +292,7 @@ def resolve_parameter_dependencies( pars ):
     if int(pars["random_seed"]) <= 0:
         import random as random
         pars["random_seed"] = str( random.getrandbits(29) )
-        
+
     if pars["numiter"] == "INDEF":
         if pars["numrays"] == "INDEF":
             raise RuntimeError("Please specify the number of iterations or number of rays")
@@ -300,7 +302,7 @@ def resolve_parameter_dependencies( pars ):
             verb0("WARNING: Cannot specify both number of iterations "+
                   "and number of rays. Using number of iterations")
         pars["numrays"] = "INDEF"  # numiter wins
-            
+
 
 
 def check_rayfiles( raystk ):
@@ -716,13 +718,23 @@ def run_marx_exe( pars, obi_info, src_info, detector, sim ):
             marx["DitherPeriod_RA"]  = 1087
             marx["DitherPeriod_Dec"] = 768
 
+    marx_par = pars["marx_root"] + "/share/marx/pfiles/marx.par"
+
+    verb_type = pio.pget(marx_par, "Verbose.p_type")
+
+    if verb_type == 'i':
+        marx["Verbose"] = "0" if int(pars["verbose"]) < 2 else "1"
+    elif verb_type == 'b':
+        marx["Verbose"] = "no" if int(pars["verbose"]) < 2 else "yes"
+    else:
+        raise ValueError("Unknown datatype for marx.par's Verbose parameter")
+
 
     marx["AspectBlur"]         = pars["blur"]
     marx["RandomSeed"]         = int(pars["random_seed"])
 
     marx["DetectorType"]       = detector
     marx["GratingType"]        = obi_info["grating"]
-    marx["Verbose"]            = "no" if int(pars["verbose"]) < 2 else "yes"
     marx["ACIS_Exposure_Time"] = obi_info["exptime"]
     marx["ExposureTime"]       = float(obi_info["tstop"]) - float(obi_info["tstart"]) - 5
 
@@ -760,7 +772,7 @@ def run_marx_exe( pars, obi_info, src_info, detector, sim ):
         import stat as stat
         import shutil as shutil
 
-        shutil.copyfile( pars["marx_root"] + "/share/marx/pfiles/marx.par",
+        shutil.copyfile( marx_par,
                      pars["_outroot_"]+"_marx.par" )
         make_write = os.stat( pars["_outroot_"]+"_marx.par" ).st_mode
         os.chmod( pars["_outroot_"]+"_marx.par", make_write|stat.S_IRUSR|stat.S_IWUSR)
@@ -1032,7 +1044,7 @@ def get_obi_info( pars ):
     if "ACIS" == obi_info["instrume"]:
 
         if get_dm_key(tab, "readmode") == "CONTINUOUS":
-            raise ValueError("ERROR: Unable to simulate a PSF for Continuous Clocking Mode observations")    
+            raise ValueError("ERROR: Unable to simulate a PSF for Continuous Clocking Mode observations")
 
         ## This should be OK for interleaved mode since
         # TIMEDEL should equal A or B depedning on P/S
@@ -1306,10 +1318,10 @@ def cleanup_iterations( pars ):
 def check_numrays(numiter, numrays, pars, rayfile, fudge_factor=1.0):
     "Compute number of rays"
 
-    numiter = numiter + 1    
+    numiter = numiter + 1
     if pars["numrays"] == "INDEF":
         return numiter, numrays
-        
+
     from pycrates import read_file
     tab = read_file(rayfile)
     nrays = tab.get_nrows()
@@ -1318,7 +1330,7 @@ def check_numrays(numiter, numrays, pars, rayfile, fudge_factor=1.0):
     if (numrays*fudge_factor) < int(pars["numrays"]):
         nextiter = int(pars["numiter"])+1
         pars["numiter"] = str(nextiter)
-    
+
     return numiter, numrays
 
 
@@ -1347,7 +1359,7 @@ def iteration_loop( pars, obi_info, src_info ):
             if pars["projector"] == "none":
                 nn, numrays = check_numrays(nn, numrays, pars, pars["_rayfile_"], fudge_factor=0.7)
                 continue
-                                
+
         elif "file" == pars["simulator"]:
             pars["_rayfile_"] = stk.build(pars["rayfile"])[nn]
 
@@ -1362,7 +1374,7 @@ def iteration_loop( pars, obi_info, src_info ):
 
     if nn == 10000:
         verb0("WARNING: Could not get requested number of rays in 10000 iterations. Stopping now.")
- 
+
 #
 # Main Routine
 #
@@ -1382,7 +1394,7 @@ def main():
                                 "pileup","ideal","extended","binsize",
                                 "numsig","minsize","maxsize","numiter",
                                 "numrays","keepiter","asolfile",
-                                "marx_root","verbose",)                      
+                                "marx_root","verbose",)
                       )
 
     # Hard code these for now, restore w/o underscore when ready
