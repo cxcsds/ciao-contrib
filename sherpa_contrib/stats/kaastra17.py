@@ -235,6 +235,10 @@ def simulate_stats(id: IdType | None = None,
     stats
        An array of the predicted statistic value.
 
+    See Also
+    --------
+    calc_cstat_gof_kaastra17, show_cstat_gof_kaastra17
+
     Notes
     -----
 
@@ -244,6 +248,24 @@ def simulate_stats(id: IdType | None = None,
     individual channels and then combined.
 
     This will not work with the WStat statistic.
+
+    Examples
+    --------
+
+    Take the current model and simulate 1000 data sets, assuming
+    Poisson statistics, and calculate the fit statistic for each
+    simulation. The plot_cdf command is used to display the
+    distribution of these values, and it marks the mean and +/- 1
+    sigma range, which can be compared to the Kaastra 2017
+    approximation.
+
+    >>> stats = simulate_stats()
+    Using fit results from dataset: 1
+    >>> plot_cdf(stats)
+    >>> mean, var = calc_cstat_gof_kaastra17()
+    Using fit results from dataset: 1
+    >>> print(f"{mean:.3f} +/- {np.sqrt(var):.3f}")
+    485.293 +/- 29.341
 
     """
 
@@ -592,11 +614,27 @@ def calc_cstat_gof_kaastra17(id: IdType | None = None,
 
     See Also
     --------
-    show_cstat_gof_kaastra17
+    show_cstat_gof_kaastra17, simulate_stats
 
     Notes
     -----
     This code assumes the data has already been fit.
+
+    Examples
+    --------
+
+    >>> set_stat('cstat')
+    >>> fit()
+    >>> calc_cstat_gof_kaastra17()
+    Using fit results from dataset: 1
+    (485.2926987513286, 860.8742628407508)
+
+    >>> got = calc_stat_gof_kaastra17(2, 4)
+    Using fit results from datasets: 2, 4
+
+    >>> from sherpa.utils.logging import SherpaVerbosity
+    >>> with SherpaVerbosity("WARN"):
+    ...     got = calc_cstat_gof_kaastra(1, 2, 4)
 
     """
 
@@ -652,6 +690,18 @@ def show_cstat_gof_kaastra17(id: IdType | None = None,
     Notes
     -----
     This code assumes the data has already been fit.
+
+    Examples
+    --------
+
+    >>> set_stat('cstat')
+    >>> fit()
+    >>> show_cstat_gof_kaastra17()
+    Dataset              = 1
+    Statistic            = cstat
+      calculated         = 472.76671442887954
+      model prediction   = 485.2926987513286 +/- 29.3406588685522
+      separation         = -0.4269 sigma
 
     """
 
