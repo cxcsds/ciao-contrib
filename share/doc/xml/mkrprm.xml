@@ -6,7 +6,7 @@
     <DESC>
       <PARA>
         'mkrprm' will approximate the contribution of the PSF
-        scattering in each region from all regions. Phrased 
+        scattering in each region from all regions. Phrased
         slightly differently: it will compute an approximate aperture
         correction for each region.
       </PARA>
@@ -203,15 +203,11 @@ rad.prof[component=5]
         <SYNOPSIS>The method used to convolve with the PSF.</SYNOPSIS>
         <DESC>
           <PARA>
-            Details of the PSF map method are described in the
+            Details of the PSF 'map' method are described in the
             Algorithms section below.
           </PARA>
-          <PARA>Currently users can only select psfmethod=map.</PARA>
           <PARA>
-            There is a method that uses MARX to simulate the PSF
-            convolution with each region; however there is a bug in
-            MARX when using images as input that currently makes this
-            choice unusable.
+            The 'marx' option requires MARX 6.0.1 or later.
           </PARA>
         </DESC>
       </PARAM>
@@ -256,23 +252,21 @@ rad.prof[component=5]
         </DESC>
       </PARAM>
       <PARAM name="flux" type="real" units="photon/cm**2/sec">
-        <SYNOPSIS>The flux for the marx method. Not currently used.</SYNOPSIS>
-        <!--
+        <SYNOPSIS>The flux for the marx method. </SYNOPSIS>
              <DESC>
              <PARA>
-             The more simulated photon marx produces, the better the 
+             The more simulated photon marx produces, the better the
              approximation will be; however, it will take longer to
-             compute. Adjusting the flux value allows users to 
+             compute. Adjusting the flux value allows users to
              examine the trade off between accuracy and speed.
              </PARA>
              </DESC>
-        -->
       </PARAM>
       <PARAM name="random_seed" type="integer" def="-1">
         <SYNOPSIS>Initial random seed for simulations.</SYNOPSIS>
         <DESC>
           <PARA>
-            The random_seed is set to initialize the simulation.  
+            The random_seed is set to initialize the simulation.
             With random_seed equal to the default value of -1, the
             script will use a random value for the
             initial random_seed.
@@ -282,7 +276,9 @@ rad.prof[component=5]
       <PARAM name="marx_root" type="file">
         <SYNOPSIS>The directory where MARX was installed.</SYNOPSIS>
         <DESC>
-          <PARA>The marx executable must be $marx_root/bin/marx.</PARA>
+          <PARA>If marx_root is blank, the tool expects to be able find
+          marx in the user's PATH.</PARA>
+          <PARA>If marx_root is not blank, then the marx executable must be $marx_root/bin/marx.</PARA>
         </DESC>
       </PARAM>
       <PARAM name="tmpdir" type="file" def="${ASCDS_WORK_PATH}">
@@ -302,13 +298,13 @@ rad.prof[component=5]
         thread.
       </PARA>
       <PARA>
-        First the PSF map is created using the mkpsfmap tool at the 
+        First the PSF map is created using the mkpsfmap tool at the
         requested input energy and ecf values.  The units are set to
         "logical" pixel size which is required for the dmimgadapt step.
       </PARA>
       <PARA>
-        Next an image is created for each input region; it is the same size 
-        as the infile image. Pixels inside the region are set to 1 divided by 
+        Next an image is created for each input region; it is the same size
+        as the infile image. Pixels inside the region are set to 1 divided by
         the region area (specifically number of pixels).  Pixels
         outside the region are set to 0.
       </PARA>
@@ -322,13 +318,12 @@ rad.prof[component=5]
         convolution function. We then just iterated through all the region
         to determine the fraction of the PSF imaged in each region.
       </PARA>
-      <PARA title="psfmethod=marx">This option is not currently available.</PARA>
-      <!--
-           <PARA>
-           This method uses MARX to simulate the PSF effects on 
+
+      <PARA title="psfmethod=marx">
+           This method uses MARX to simulate the PSF effects on
            each region.  First we set up the MARX parameters to
            match the observation (SIM location, detector, etc).
-           Then we create an image for each region where the 
+           Then we create an image for each region where the
            pixel values inside the region are 1 and outside are 0.
            This image is then input to MARX using the "SourceType=IMAGE"
            and "S-ImageFile={temporary file name}" parameter setting;
@@ -340,15 +335,14 @@ rad.prof[component=5]
            As with the psfmap method: then we iterate through all regions to
            compute the fraction of the simulated PSF image is imaged in each.
            </PARA>
-      -->
     </ADESC>
     <ADESC title="Including the Response Matrix when fitting with Sherpa">
       <PARA>
         The traditional spectral RMF is specific to fitting energy distributions and
-        cannot be used for fitting radial profiles. 
+        cannot be used for fitting radial profiles.
       </PARA>
       <PARA>
-        To use the radial response matrix requires a generic matrix multiplication 
+        To use the radial response matrix requires a generic matrix multiplication
         model. The MatrixModel is available in the sherpa_contrib package.
         Below is an example of fitting a 1D Gaussian to a radial profile
         that includes convolution with the radial profile
@@ -371,12 +365,21 @@ ui.fit()
       </VERBATIM>
       <PARA>
           The matrix values are loaded using pycrates' "read_file" routine
-          and along with the full set of X-coordinates (x_vals) 
-          are used to instantiate the MatrixModel: mymatrix. 
-          The matrix is then applied to Gaussian model, gg2, 
+          and along with the full set of X-coordinates (x_vals)
+          are used to instantiate the MatrixModel: mymatrix.
+          The matrix is then applied to Gaussian model, gg2,
           in the "set_source(mymatrix(gg))" command and fit().
           The MatrixModel is the type of convolution model akin to the
           traditional spectral RMF model.
+      </PARA>
+    </ADESC>
+
+    <ADESC title="Changes in the scripts 4.18.1 (March 2026) release">
+      <PARA>
+          With MARX 6, the bug affecting image inputs has been fixed.
+          This change allows users to set psfmethod=marx and to allow the
+          marx_root parameter to be blank (will use the executables in the
+          user's PATH).
       </PARA>
     </ADESC>
 
@@ -405,6 +408,6 @@ ui.fit()
         on the CIAO website for an up-to-date listing of known bugs.
       </PARA>
     </BUGS>
-    <LASTMODIFIED>December 2024</LASTMODIFIED>
+    <LASTMODIFIED>December 2026</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
