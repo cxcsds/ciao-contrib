@@ -1,4 +1,22 @@
 #!/usr/bin/env python
+#
+#
+# Copyright (C) 2024,2026 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
 
 
 'Patch "Secondary Science Corruption" (SSC) in HRC data.'
@@ -70,7 +88,7 @@ from ciao_contrib.runtool import make_tool
 from pycrates import read_file
 
 __toolname__ = "patch_hrc_ssc"
-__revision__ = "10 October 2024"
+__revision__ = "05 January 2026"
 
 lw.initialize_logger(__toolname__)
 
@@ -165,8 +183,26 @@ def patch_dtf(infile, outfile, threshold, smooth_count, median_dtf, median_dtf_e
     # ~ verb2(vv)
 
 
-def create_new_limits(mtl_in, tmpdir):
+def create_new_limits(mtl_in, threshold, dtf_in, tmpdir):
     'Create new "limits" table excluding the row containing the HRC "*LV" filters'
+
+    def get_new_tstart():
+        'Get new tstart as time when LV limit is good'
+        tab = read_file(f"{mtl_in}[MTL_S]")  # smoothed mission time line
+
+        # The MTL_S extension has the limit_status column that contains
+        # a bit-coded to match the LIMITS extension. Bits start from left
+        # to right ; so LIMITS row=1 will be bit 0 counting left-to-right.
+        # Crates (currently!) stores bits in an np.array of uchars.
+        stts = tab.get_column("limit_status")
+        times = tab.get_column("time")
+        t0 = min(times.values[stts.values[:,rows]==0])
+
+        tab = read_file(dtf_in)
+        cts = tab.get_column("total_evt_count")
+        times = tab.get_column("time")
+        t1 = min(times.values[cts.values < float(threshold)])
+        return max(t0, t1)
 
     verb1("Creating new GTI limits")
 
@@ -175,10 +211,16 @@ def create_new_limits(mtl_in, tmpdir):
 
     tab = read_file(f"{mtl_in}[LIMITS]")
 
-    rows = [f"{i+1}" for i, x in enumerate(tab.get_column(0).values) if 'LV' in x]
+    rows = [i for i, x in enumerate(tab.get_column(0).values) if 'LV' in x]
 
-    rows_str = ",".join(rows)
-    exclude = f"[exclude #row={rows_str}]"
+    if len(rows) == 0:
+        raise IOError("Cannot find LV limits")
+    if len(rows) > 1:
+        raise IOError("Too many LV limits found")
+
+    rows = rows[0]
+
+    exclude = f"[exclude #row={rows+1}]"
 
     dmcopy = make_tool("dmcopy")
     dmcopy.infile = f"{mtl_in}[LIMITS]{exclude}"
@@ -186,10 +228,12 @@ def create_new_limits(mtl_in, tmpdir):
     vv = dmcopy(clobber=True)
     verb2(vv)
 
-    return outfile.name
+    tstart = get_new_tstart()
+    verb1(f"New TSTART = {tstart}")
+    return outfile.name, tstart
 
 
-def make_new_gti(mtl_file, gti_out, mod_limits):
+def make_new_gti(mtl_file, gti_out, mod_limits, tstart):
     '''# make  new output file w/ gti table, fflt_out
     # using the edited "limits" table:'''
 
@@ -199,6 +243,7 @@ def make_new_gti(mtl_file, gti_out, mod_limits):
     dmgti.infile = mtl_file
     dmgti.outfile = gti_out
     dmgti.lkupfile = mod_limits
+    dmgti.userlimit = f"(time>={tstart})"
     vv = dmgti(clobber=True)
     verb2(vv)
 
@@ -316,9 +361,11 @@ def main():
               pars["smooth_count"], median_dtf, median_dtf_err)
     os.unlink(mod_mtl)
 
-    mod_limits = create_new_limits(pars["mtl_infile"], pars["tmpdir"])
+    mod_limits, tstart = create_new_limits(pars["mtl_infile"],
+                                   pars["threshold"],
+                                   pars["dtf_infile"], pars["tmpdir"])
 
-    make_new_gti(outfile.name, pars["gti_outfile"], mod_limits)
+    make_new_gti(outfile.name, pars["gti_outfile"], mod_limits, tstart)
     os.unlink(mod_limits)
 
     dtcor = compute_dtcor(pars["dtf_outfile"], pars["gti_outfile"],
