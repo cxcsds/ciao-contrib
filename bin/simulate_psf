@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 #
-#
-#
 # Copyright (C) 2012, 2014, 2016, 2018, 2020-2026
 # Smithsonian Astrophysical Observatory
 #
@@ -21,31 +19,35 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+'Simulate the Chandra PSF using SAOTrace and/or MARX|psf_project_ray'
+
+
 import os
 import sys
 import subprocess
 
-toolname = "simulate_psf"
-__revision__ = "28 January 2026"
-
-
 from cxcdm import *
 import paramio as pio
-import stk as stk
-
+import stk
 
 import ciao_contrib.logger_wrapper as logWrap
-logWrap.initialize_logger(toolname)
-verb0 = logWrap.get_logger(toolname).verbose0
-verb1 = logWrap.get_logger(toolname).verbose1
-verb2 = logWrap.get_logger(toolname).verbose2
-verb3 = logWrap.get_logger(toolname).verbose3
-from ciao_contrib.logger_wrapper import handle_ciao_errors
+from ciao_contrib.logger_wrapper import handle_ciao_errors  # set_handle_ciao_errors_debug
 from ciao_contrib.runtool import make_tool
+import pycrates as pc
 
 
+__toolname__ = "simulate_psf"
+__revision__ = "13 January 2026"
 
-class verboseCall( object ):
+logWrap.initialize_logger(__toolname__)
+verb0 = logWrap.get_logger(__toolname__).verbose0
+verb1 = logWrap.get_logger(__toolname__).verbose1
+verb2 = logWrap.get_logger(__toolname__).verbose2
+verb3 = logWrap.get_logger(__toolname__).verbose3
+# ~ set_handle_ciao_errors_debug(True)
+
+
+class VerboseCall():
     """
     Wrap the routines with a verbose check
     """
@@ -60,63 +62,64 @@ class verboseCall( object ):
         if verblvl == 3:
             self.verb_print = verb3
 
-    def __call__(self, func ):
+    def __call__(self, func):
         """
         call the wrapped function
         """
-        def wrapped_func( *args ):
-            self.verb_print("Started "+func.__name__)
+        def wrapped_func(*args):
+            self.verb_print("Started " + func.__name__)
             pdq = func(*args)
-            self.verb_print("Finished "+func.__name__)
+            self.verb_print("Finished " + func.__name__)
             return pdq
         return wrapped_func
 
 
-def gorm( infile ):
+def gorm(infile):
     """
     Wrapper around the os.remove command -- setting SAVE_ALL to anything
     will keep all temp products for debugging
     """
     if 'SAVE_ALL' not in os.environ:
-        if os.path.exists( infile ):
+        if os.path.exists(infile):
             os.remove(infile)
 
 
-@verboseCall(1)
-def check_setup( pars ):
+@VerboseCall(1)
+def check_setup(pars):
     """
     Check that marx and saotrace are setup
     """
 
     if pars["simulator"] == "saotrace":
-        if is_none( pars["saotrace_db"] ):
-            raise Exception("SAOTrace database not provided in parameter saotrace_db")
-        if is_none( pars["saotrace_install"] ):
-            raise Exception("SAOTrace path not provided in parameter saotrace_install")
+        if is_none(pars["saotrace_db"]):
+            raise ValueError("SAOTrace database not provided in parameter saotrace_db")
+        if is_none(pars["saotrace_install"]):
+            raise ValueError("SAOTrace path not provided in parameter saotrace_install")
 
-        if not os.path.exists(os.path.join(pars["saotrace_install"],"lib","perl5")):
-            raise Exception("Missing SAOTrace perl libraries")
-        os.environ["PERL5LIB"] = os.path.join(pars["saotrace_install"],"lib","perl5")
-
+        if os.path.exists(os.path.join(pars["saotrace_install"], "lib", "perl5")):
+            os.environ["PERL5LIB"] = os.path.join(pars["saotrace_install"], "lib", "perl5")
+        elif os.path.exists(os.path.join(pars["saotrace_install"], "private", "lib", "perl5")):
+            # This is SAOTrace v2.1. No need to add to PERL5LIB
+            pass
+        else:
+            raise IOError("Missing SAOTrace perl libraries")
 
     if "marx" in [pars["simulator"], pars["projector"]]:
-        if is_none( pars["marx_root"]):
+        if is_none(pars["marx_root"]):
             from shutil import which
             marx = which('marx')
             if marx is None:
-                raise Exception("ERROR: Cannot determine marx_root. Please specify marx installation directory.")
+                raise IOError("ERROR: Cannot determine marx_root. Please specify marx installation directory.")
 
             bindir = os.path.dirname(marx)               # ie ".."
             pars["marx_root"] = os.path.dirname(bindir)  # another ".."
 
     if "yes" == pars["pileup"]:
-        verb1("\n# {0} ({1}): Pileup warning:  PSF images are not correctly normalized when pileup=yes is used.\n".format(toolname,__revision__))
+        verb1("WARNING: PSF images are not correctly normalized when pileup = yes is used.\n")
 
-#
-# set_env_vars routine
-#
-@verboseCall(2)
-def set_env_vars( pars ):
+
+@VerboseCall(2)
+def set_env_vars(pars):
     """
     Setup the environment varialbes needed by SAOTrace and
     optionally Marx
@@ -141,8 +144,8 @@ def set_env_vars( pars ):
     pfile_env = os.getenv("PFILES")
     os.environ["PFILES"] = pfile_env + ":" + pars["marx_root"] + "/share/marx/pfiles"
 
-    verb3( "PFILES = {0}".format( os.environ["PFILES"] ))
-    verb3( "PATH   = {0}".format( os.environ["PATH"] ))
+    verb3(f"PFILES = {os.environ['PFILES']}")
+    verb3(f"PATH = {os.environ['PATH']}")
 
 
 #
@@ -150,7 +153,7 @@ def set_env_vars( pars ):
 #
 def run_task(command, params, punlearn=False):
     """
-    Run a parameter, key=value style tool; quotes values to protect from
+    Run a parameter, key = value style tool; quotes values to protect from
     shell.
 
     TODO: Could create a custon runtool; parameters are long though
@@ -161,44 +164,43 @@ def run_task(command, params, punlearn=False):
         pio.punlearn(cmd)
 
     for key in params:
-        value = params[key]
         # construct the command line
+        value = params[key]
         cmd += " " + key + "=" + "\"" + str(value) + "\""
-    cmd += " mode=\"hl\"" # always add a mode=h to the end
 
-    sub_cmd = [ str(command) ]
+    cmd += " mode = \"hl\""   # always add a mode = h to the end
+
+    sub_cmd = [str(command)]
     for key in params:
         value = params[key]
-        sub_cmd.append( '{}={}'.format(key,value))
-    sub_cmd.append( "mode=hl" )
+        sub_cmd.append(f'{key}={value}')
+    sub_cmd.append("mode=hl")
 
     verb3(sub_cmd)
 
     try:
-        subprocess.check_call( sub_cmd )
-    except:
-        raise Exception("Problem running {0}".format(cmd))
+        subprocess.check_call(sub_cmd)
+    except Exception as bad:
+        raise RuntimeError(f"Problem running '{cmd}'") from bad
 
 
-#
-# cleanup all the temp files left behind by saotrace
-#
-@verboseCall(3)
-def cleanup_saotrace( outroot ):
+@VerboseCall(3)
+def cleanup_saotrace(outroot):
+    'cleanup all the temp files left behind by saotrace'
     import glob as glob
 
-    for extn in [ "log", "block", "lua", "summary.yml", "gi", "totwt-in", "totwt-out"]:
-        for tt in glob.glob( outroot+r"_00[1346][\._]*"+extn ):
-            gorm( tt )
+    for extn in ["log", "block", "lua", "summary.yml", "gi", "totwt-in", "totwt-out"]:
+        for tt in glob.glob(outroot + r"_00[1346][\._]*" + extn):
+            gorm(tt)
         if extn not in ["log", "lua", "gi"]:
-            gorm( outroot + "." + extn )
+            gorm(outroot + "." + extn)
 
 
-def is_none( val ):
+def is_none(val):
     """
     Check for a non/blank/empty string
     """
-    if None == val:
+    if val is None:
         return True
     if 0 == len(val):
         return True
@@ -207,56 +209,55 @@ def is_none( val ):
     return False
 
 
-@verboseCall(2)
-def resolve_parameter_dependencies( pars ):
+@VerboseCall(2)
+def resolve_parameter_dependencies(pars):
     """
     Depending on the parameters, different restrictions are
     imposed by saotrace or marx
     """
-    pars["__has_asp"]     = True
-    pars["__has_spect"]   = True
-    pars["__use_ra_dec"]  = True
-    pars["__marxmodel"]   = "SAOSAC"
-    pars["__usemarx"]     = False
-    pars["_rayfile_"]     = None
-    pars["__xygrid"]      = None
-    pars["__imgstk"]      = []
-    pars["__raystk"]      = []
-    pars["__spectrum"]    = None
-    pars["__flux"]        = 1.0
+    pars["__has_asp"] = True
+    pars["__has_spect"] = True
+    pars["__use_ra_dec"] = True
+    pars["__marxmodel"] = "SAOSAC"
+    pars["__usemarx"] = False
+    pars["_rayfile_"] = None
+    pars["__xygrid"] = None
+    pars["__imgstk"] = []
+    pars["__raystk"] = []
+    pars["__spectrum"] = None
+    pars["__flux"] = 1.0
 
-    if pars["asolfile"].strip() in [ "", "INDEF"]:
+    if pars["asolfile"].strip() in ["", "INDEF"]:
         from ciao_contrib.ancillaryfiles import find_ancillary_files
         try:
             ff = find_ancillary_files(pars["infile"], ["asol", ])
-            if ff is None:
+            if ff is None or ff[0] is None:
                 raise ValueError("")
             ff = ff[0]
-            if any(map( is_none, ff)):
+            if any(is_none(f) for f in ff):
                 raise ValueError("")
-            pars["asolfile"] = ",".join(ff)
-        except:
+            pars["asolfile"] = ", ".join(ff)
+        except ValueError:
             sys.stderr.write("Cannot locate aspect solution file.  Will proceed without it.\n")
-            pars["asolfile"]="none"
+            pars["asolfile"] = "none"
 
-
-    if is_none( pars["asolfile"] ):
+    if is_none(pars["asolfile"]):
         pars["__has_asp"] = False
         pars["__use_ra_dec"] = False
 
-    if is_none( pars["spectrumfile"] ):
+    if is_none(pars["spectrumfile"]):
         pars["__has_spect"] = False
 
-        if (pars['monoenergy']=="INDEF") and ("file"!=pars["simulator"]):
-            raise Exception("energy must be set if spectrum left blank")
+        if (pars['monoenergy'] == "INDEF") and ("file" != pars["simulator"]):
+            raise ValueError("energy must be set if spectrum left blank")
 
-        if (pars["flux"] == "INDEF")  and ("file"!=pars["simulator"]):
-                raise Exception("flux must be set if spectrum left blank")
+        if (pars["flux"] == "INDEF") and ("file" != pars["simulator"]):
+            raise ValueError("flux must be set if spectrum left blank")
 
         pars["__flux"] = pars["flux"]
 
-    else: # specturm is not none
-        pars["__spectrum"] = make_spectrum( pars )
+    else:   # specturm is not none
+        pars["__spectrum"] = make_spectrum(pars)
         if pars["flux"] == "INDEF":
             if "marx" == pars["simulator"]:
                 pars["__flux"] = "-1"
@@ -265,33 +266,31 @@ def resolve_parameter_dependencies( pars ):
         else:
             pars["__flux"] = pars["flux"]
 
-
     if "marx" == pars["simulator"]:
         if "marx" != pars["projector"]:
-            raise Exception("If using simulator='marx' you must also use projector='marx'")
+            raise ValueError("If using simulator = 'marx' you must also use projector = 'marx'")
         pars["__marxmodel"] = "POINT"
-        pars["__usemarx"]   = True
+        pars["__usemarx"] = True
 
     if "marx" == pars["projector"] and "yes" == pars["pileup"] and "yes" == pars["extended"]:
-        raise Exception("ACIS pileup cannot be simulated with extended detectors")
+        raise ValueError("ACIS pileup cannot be simulated with extended detectors")
 
     if "file" == pars["simulator"]:
-        raystk = stk.build( pars["rayfile"] )
-        if len(raystk) != int( pars["numiter"] ):
-            verb1("{} rayfiles provided; ignoring numiter={} parameter".format(len(raystk), pars["numiter"] ))
+        raystk = stk.build(pars["rayfile"])
+        if len(raystk) != int(pars["numiter"]):
+            verb1(f"{len(raystk)} rayfiles provided; ignoring numiter={pars['numiter']} parameter")
         pars["numiter"] = str(len(raystk))
 
         check_rayfiles(raystk)
 
         if ("INDEF" == pars["ra"]) and ("INDEF" == pars["dec"]):
-            from pycrates import read_file
-            f0=read_file(raystk[0])
-            pars["ra"]=f0.get_key_value("SRC_RA")
-            pars["dec"]=f0.get_key_value("SRC_DEC")
+            f0 = pc.read_file(raystk[0])
+            pars["ra"] = f0.get_key_value("SRC_RA")
+            pars["dec"] = f0.get_key_value("SRC_DEC")
 
     if int(pars["random_seed"]) <= 0:
         import random as random
-        pars["random_seed"] = str( random.getrandbits(29) )
+        pars["random_seed"] = str(random.getrandbits(29))
 
     if pars["numiter"] == "INDEF":
         if pars["numrays"] == "INDEF":
@@ -299,31 +298,30 @@ def resolve_parameter_dependencies( pars ):
         pars["numiter"] = "1"   # start w/ 1 will increase as needed
     else:
         if pars["numrays"] != "INDEF":
-            verb0("WARNING: Cannot specify both number of iterations "+
+            verb0("WARNING: Cannot specify both number of iterations " +
                   "and number of rays. Using number of iterations")
         pars["numrays"] = "INDEF"  # numiter wins
 
 
+def check_rayfiles(raystk):
+    'Check to make sure ray files are all consistent'
 
-def check_rayfiles( raystk ):
-    from pycrates import read_file
-
-    keys_to_check = [ "SRC_RA", "SRC_DEC", "CONFFILE", "ASOLFILE" ]
+    keys_to_check = ["SRC_RA", "SRC_DEC", "CONFFILE", "ASOLFILE"]
 
     if 1 == len(raystk):
         return
 
     for k in keys_to_check:
-        k0 = read_file(raystk[0]).get_key_value(k)
+        k0 = pc.read_file(raystk[0]).get_key_value(k)
 
         for r in raystk[1:]:
-            kn = read_file(r).get_key_value(k)
+            kn = pc.read_file(r).get_key_value(k)
             if k0 != kn:
-                raise RuntimeError("Mismatch in ray file keyword {} in {}".format(k, r))
+                raise RuntimeError(f"Mismatch in ray file keyword {k} in {r}")
 
 
-@verboseCall(2)
-def make_spectrum( pars ):
+@VerboseCall(2)
+def make_spectrum(pars):
     """
     Take the inputs saotrace file and convert it into
     an .rdb file format that can be used by saotrace.
@@ -334,93 +332,84 @@ def make_spectrum( pars ):
     This will create a temp file that will get cleaned up
     when saotrace is done.
     """
-    import pycrates as pyc
     import numpy as np
 
-    infile=pars["spectrumfile"]
-    outfile=pars["outroot"]+"spectrum.rdb"
+    infile = pars["spectrumfile"]
+    outfile = pars["outroot"] + "spectrum.rdb"
 
     if infile.lower().endswith(".rdb"):
         # DM/crates will not read .rdb files
         raise ValueError("Input spectrum file name cannot end with '.rdb'")
 
-    tab = pyc.read_file( infile )  # crates won't open files with  .rdb file name
+    tab = pc.read_file(infile)  # crates won't open files with  .rdb file name
 
     if "saotrace" == pars["simulator"]:
-        if len( tab.get_colnames() ) != 3:
-            raise Exception("SAOTrace spectrum file '{0}' must have 3 columns: energy_lo, energy_hi, and flux".format(infile))
+        if len(tab.get_colnames()) != 3:
+            raise IOError(f"SAOTrace spectrum file '{infile}' must have 3 columns: energy_lo, energy_hi, and flux")
         elo = tab.get_column(0).values
         ehi = tab.get_column(1).values
         flx = tab.get_column(2).values
         de = None
 
     elif "marx" == pars["simulator"]:
-        if len( tab.get_colnames() ) == 2:
+        if len(tab.get_colnames()) == 2:
             elo = tab.get_column(0).values
             ehi = elo
             flx = tab.get_column(1).values
-            de = np.ones_like( elo )
-        elif len( tab.get_colnames() ) == 3:
+            de = np.ones_like(elo)
+        elif len(tab.get_colnames()) == 3:
             elo = tab.get_column(0).values
             ehi = tab.get_column(1).values
             flx = tab.get_column(2).values
             de = ehi - elo
         else:
-            raise Exception("MARX spectrum must have either 2 or 3 columns")
+            raise IOError("MARX spectrum must have either 2 or 3 columns")
     else:
         verb1("Spectrum is ignored for rayfile input")
         return None
 
-    if False == all( np.isreal( elo )):
-        raise Exception("energy_low values must be real values")
+    if all(np.isreal(elo)) is False:
+        raise ValueError("energy_low values must be real values")
 
-    if False == all( np.isreal( ehi )):
-        raise Exception("energy_hi values must be real values")
+    if all(np.isreal(ehi)) is False:
+        raise ValueError("energy_hi values must be real values")
 
-    if False == all( np.isreal( flx )):
-        raise Exceptoin("flux values must be real values")
+    if all(np.isreal(flx)) is False:
+        raise ValueError("flux values must be real values")
 
-    if (min(elo) < 0.1) | ( min(ehi) < 0.1) :
-        raise Exception("Minimum allowed energy is 0.1 keV")
+    if (min(elo) < 0.1) | (min(ehi) < 0.1):
+        raise ValueError("Minimum allowed energy is 0.1 keV")
 
-    if (max(elo) > 10) | (max(ehi) > 10 ):
-        raise Exception("Maximum allowed energy is 10 keV")
+    if (max(elo) > 10) | (max(ehi) > 10):
+        raise ValueError("Maximum allowed energy is 10 keV")
 
-    for lo_hi in zip(elo,ehi):
+    for lo_hi in zip(elo, ehi):
         if lo_hi[0] > lo_hi[1]:
             raise ValueError("Max energy must be >= min energy")
 
     if min(flx) <= 0:
-        raise Exception("Flux cannot be <= 0")
+        raise ValueError("Flux cannot be <= 0")
 
-    fp = open( outfile, "w" )
-
-    if "saotrace" == pars["simulator"]:
-        """
-          SAOTrace is 3 column rdb format
-        """
-        fp.write("emin\temax\tflux\n")
-        fp.write("N\tN\tN\n")
-        for dd in zip( elo, ehi, flx ):
-            fp.write( "{0}\t{1}\t{2}\n".format( dd[0], dd[1], dd[2] ))
-    else:
-        """
-          Marx is 2 column energy flux
-        """
-        for dd in zip( ehi, flx, de ):
-            fp.write( "{0}\t{1}\n".format( dd[0], dd[1]/dd[2]))
-    fp.close()
+    with open(outfile, "w", encoding="ascii") as fp:
+        if "saotrace" == pars["simulator"]:
+            # SAOTrace is 3 column rdb format
+            fp.write("emin\temax\tflux\n")
+            fp.write("N\tN\tN\n")
+            for dd in zip(elo, ehi, flx):
+                fp.write(f"{dd[0]}\t{dd[1]}\t{dd[2]}\n")
+        else:
+            # Marx is 2 column energy flux
+            for dd in zip(ehi, flx, de):
+                fp.write(f"{dd[0]}\t{dd[1]/dd[2]}\n")
 
     return outfile
-
-
 
 
 #
 # Build srcpars parameter string
 #
-@verboseCall(2)
-def build_source_pars( pars, obi_info, src_info):
+@VerboseCall(2)
+def build_source_pars(pars, obi_info, src_info):
     """
     There are 3 parts to the src param / lua script that is fed
     to saotrace
@@ -432,49 +421,48 @@ def build_source_pars( pars, obi_info, src_info):
     """
     srcpars = ""
 
-    #put together the srcpars parameter
+    # put together the srcpars parameter
     if pars['__has_asp']:
         srcpars += "dither_asol{ "
-        srcpars += "  file = '"+pars["asolfile"]+"', "
-        srcpars += "  ra = "  +str(obi_info["ra_pnt"])+", "
-        srcpars += "  dec = " +str(obi_info["dec_pnt"])+", "
-        srcpars += "  roll = "+str(obi_info["roll_pnt"])
+        srcpars += "  file = '" + pars["asolfile"] + "', "
+        srcpars += "  ra = " + str(obi_info["ra_pnt"]) + ", "
+        srcpars += "  dec = " + str(obi_info["dec_pnt"]) + ", "
+        srcpars += "  roll = " + str(obi_info["roll_pnt"])
         srcpars += "};"
-    srcpars +=     "point{ "
-    srcpars +=     "  position = { "
+    srcpars += "point{ "
+    srcpars += "  position = { "
     if pars['__use_ra_dec']:
-        srcpars += "    ra = '"    +str(src_info["ra_src"])+"', "
-        srcpars += "    dec = '"   +str(src_info["dec_src"])+"', "
-        srcpars += "    ra_aimpt=" +str(obi_info["ra_pnt"])+", "
-        srcpars += "    dec_aimpt="+str(obi_info["dec_pnt"])
+        srcpars += "    ra = '" + str(src_info["ra_src"]) + "', "
+        srcpars += "    dec = '" + str(src_info["dec_src"]) + "', "
+        srcpars += "    ra_aimpt = " + str(obi_info["ra_pnt"]) + ", "
+        srcpars += "    dec_aimpt = " + str(obi_info["dec_pnt"])
     else:
-        srcpars += "    theta = "+str(src_info["theta"])+", "
-        srcpars += "    phi = "+str(src_info["phi"])+", "
-    srcpars +=     "  },"
+        srcpars += "    theta = " + str(src_info["theta"]) + ", "
+        srcpars += "    phi = " + str(src_info["phi"]) + ", "
+    srcpars += "  }, "
 
     if pars['__has_spect']:
-        srcpars += "  spectrum={ { "
-        srcpars += "    file='"+pars["__spectrum"]+"',"
-        srcpars += "    units='photons/s/cm2',"
-        srcpars += "    format='rdb',"
-        srcpars += "    scale="+str(pars["__flux"])
+        srcpars += "  spectrum = { { "
+        srcpars += "    file = '" + pars["__spectrum"] + "', "
+        srcpars += "    units = 'photons/s/cm2', "
+        srcpars += "    format = 'rdb', "
+        srcpars += "    scale = " + str(pars["__flux"])
         srcpars += "  }}"
     else:
         srcpars += "  spectrum = { { "
-        srcpars += "    "+str(pars["monoenergy"]) +","
-        srcpars += "    "+str(pars["__flux"])
+        srcpars += "    " + str(pars["monoenergy"]) + ", "
+        srcpars += "    " + str(pars["__flux"])
         srcpars += "  }}"
-    srcpars +=     "}"
+    srcpars += "}"
 
     return srcpars
-
 
 
 #
 # run_saotrace routine
 #
-@verboseCall(1)
-def run_saotrace(pars, obi_info, src_info ):
+@VerboseCall(1)
+def run_saotrace(pars, obi_info, src_info):
     """
     Run SAO Trace v 2.0.4
       - Currently requires spectrum to be in correct format
@@ -484,152 +472,149 @@ def run_saotrace(pars, obi_info, src_info ):
 
     """
 
-    #create basename for output files
+    # create basename for output files
     outroot = pars["_outroot_"] + "_rays"
 
-    #Running SAO-SAC
+    # Running SAO-SAC
     saotrace = {}
 
     saotrace["limit_type"] = "sec"
-    saotrace["tstart"]    = float(obi_info["tstart"]) + 2.5 # fudge factor
-    saotrace["limit"]     = float(obi_info["tstop"]) - float(obi_info["tstart"]) - 5
+    saotrace["tstart"] = float(obi_info["tstart"]) + 2.5   # fudge factor
+    saotrace["limit"] = float(obi_info["tstop"]) - float(obi_info["tstart"]) - 5
 
-    saotrace["srcpars"]       = build_source_pars( pars, obi_info, src_info )
+    saotrace["srcpars"] = build_source_pars(pars, obi_info, src_info)
 
-    saotrace["tag"]           = outroot
-    saotrace["shells"]        = "all"
-    saotrace["z"]             = "10079.771666816"
-    saotrace["src"]           = "default"
-    saotrace["output"]        = "default"
-    saotrace["output_fmt"]    = "fits-axaf"
-    saotrace["output_coord"]  = "hrma"
+    saotrace["tag"] = outroot
+    saotrace["shells"] = "all"
+    saotrace["z"] = "10079.771666816"
+    saotrace["src"] = "default"
+    saotrace["output"] = "default"
+    saotrace["output_fmt"] = "fits-axaf"
+    saotrace["output_coord"] = "hrma"
     saotrace["output_fields"] = "min"
-    saotrace["seed1"]         = str(pars["random_seed"])
-    saotrace["seed2"]         = "1"
-    saotrace["block"]         = "1"
-    saotrace["block_inc"]     = "100"
-    saotrace["focus"]         = "no"
-    saotrace["tally"]         = "0"
-    saotrace["throttle"]      = "0"
+    saotrace["seed1"] = str(pars["random_seed"])
+    saotrace["seed2"] = "1"
+    saotrace["block"] = "1"
+    saotrace["block_inc"] = "100"
+    saotrace["focus"] = "no"
+    saotrace["tally"] = "0"
+    saotrace["throttle"] = "0"
     saotrace["throttle_poisson"] = "no"
-    saotrace["config_dir"]    = pars["saotrace_db"] + "/ts_config"
-    saotrace["config_db"]     = pars["saotrace_mirror"]
-    saotrace["clean"]         = "rays"
-    saotrace["debug"]         = ""
+    saotrace["config_dir"] = pars["saotrace_db"] + "/ts_config"
+    saotrace["config_db"] = pars["saotrace_mirror"]
+    saotrace["clean"] = "rays"
+    saotrace["debug"] = ""
 
     # Run with unique/temp PFILES so that no colossion if running in parallel
     from ciao_contrib.runtool import new_pfiles_environment
     with new_pfiles_environment() as zoo:
-        run_task(pars["saotrace_install"]+"/bin/trace-nest", saotrace)
+        run_task(pars["saotrace_install"] + "/bin/trace-nest", saotrace)
 
-    cleanup_saotrace( outroot )
+    cleanup_saotrace(outroot)
 
     # cleanup extra keywords
-    del_tdmin_max( pars["_rayfile_"])
-    add_saotrace_metadata( pars, obi_info, src_info )
-
+    del_tdmin_max(pars["_rayfile_"])
+    add_saotrace_metadata(pars, obi_info, src_info)
 
 
 #
 # del_tdmin_max
 #
-@verboseCall(3)
+@VerboseCall(3)
 def del_tdmin_max(raysfile):
     """
     Delete the TDMIN and TDMAX keywords that saotrace writes.  These
     are not dealt with by DM properly when both TDMIN and TLMIN exist.
     """
-    block = dmTableOpen(raysfile, update=True )
+    block = dmTableOpen(raysfile, update=True)
     num_cols = dmTableGetNoCols(block)
 
     # range 1 to num_cols inclusive
     for col in range(1, num_cols + 1):
         try:
             key = dmKeyOpen(block, "TDMIN" + str(col))
-            dmDescriptorDelete( key )
+            dmDescriptorDelete(key)
             key = dmKeyOpen(block, "TDMAX" + str(col))
-            dmDescriptorDelete( key )
-        except:
+            dmDescriptorDelete(key)
+        except Exception as okay:
             pass
     dmDatasetClose(dmBlockGetDataset(block))
 
 
-def add_saotrace_metadata( pars, obi_info, src_info ):
+def add_saotrace_metadata(pars, obi_info, src_info):
     """
-
+    Add keywords to SAOTrace headers
     """
     from datetime import datetime
-    import pycrates as pc
 
-    metadata = [ ('SRC_E'    ,pars["monoenergy"], "[keV] Energy used to generate rays"),
-                 ('SRC_DENS' ,0, "[r/mm^2] Ray density"),
-                 ('SRC_FLUX' ,pars["flux"], "Source flux"),
-                 ('SRC_SPEC' ,pars["spectrumfile"], "Spectrum used to generate rays"),
-                 ('SRC_EXPT' ,float(obi_info["tstop"]) - float(obi_info["tstart"]) - 5, "[sec] Exposure time of simulation"),
-                 ('TOTCTS'   ,0, "Total counts (weight) in PSF image"),
-                 ('SRC_THET' ,src_info['theta'], "[arcmin] input off axis angle"),
-                 ('SRC_PHI'  ,src_info['phi'], "[deg] input azimuthal angle"),
-                 ('SRC_RA'   ,src_info['ra_src'], "[deg] Input source Right Ascension"),
-                 ('SRC_DEC'  ,src_info['dec_src'], "[deg] Input source Declination"),
-                 ('TELESCOP' ,'CHANDRA' , "Telescope"),
-                 ('INSTRUME' ,'TEL', "Instrument"),
-                 ('DETNAM'   ,'HRMA', "Detector"),
-                 ('CREATOR'  ,'saotrace', "Software that created this file"),
-                 ('PSFSEED2' ,pars["random_seed"], "Secondary random seed"),
-                 ('PSFBLOCK' ,1, "Block for saosac"),
-                 ('CONTENT'  ,'RAYS', 'File contains simulated data'),
-                 ('ORIGIN'   ,'Unknown', 'The origin of the FITS file'),
-                 ('DATE'     ,datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "Date FITS file was created"),
-                 ('DATE-OBS' ,obi_info["date-obs"], "Date simulated"),
-                 ('HDUNAME'  ,'PSFRAYS', "" ),
-                 ('HDUCLASS' ,'ASC', ""),
-                 ('HDUCLAS1' ,'RESPONSE', ""),
-                 ('HDUCLAS2' ,'PSF', ""),
-                 ('HDUCLAS3' ,'PSFRAY', ""),
-                 ('HDUVERS1' ,'1.0.0', ""),
-                 ('RAYMETH'  ,'SAOTrace', ""),
-                 ('CONFFILE' ,pars["saotrace_mirror"], ""),
-                 ('ASOLFILE' ,os.path.basename(pars["asolfile"]), ""),
-              ]
+    metadata = [('SRC_E', pars["monoenergy"], "[keV] Energy used to generate rays"),
+                ('SRC_DENS', 0, "[r/mm^2] Ray density"),
+                ('SRC_FLUX', pars["flux"], "Source flux"),
+                ('SRC_SPEC', pars["spectrumfile"], "Spectrum used to generate rays"),
+                ('SRC_EXPT', float(obi_info["tstop"]) - float(obi_info["tstart"]) - 5, "[sec] Exposure time of simulation"),
+                ('TOTCTS', 0, "Total counts (weight) in PSF image"),
+                ('SRC_THET', src_info['theta'], "[arcmin] input off axis angle"),
+                ('SRC_PHI', src_info['phi'], "[deg] input azimuthal angle"),
+                ('SRC_RA', src_info['ra_src'], "[deg] Input source Right Ascension"),
+                ('SRC_DEC', src_info['dec_src'], "[deg] Input source Declination"),
+                ('TELESCOP', 'CHANDRA', "Telescope"),
+                ('INSTRUME', 'TEL', "Instrument"),
+                ('DETNAM', 'HRMA', "Detector"),
+                ('CREATOR', 'saotrace', "Software that created this file"),
+                ('PSFSEED2', pars["random_seed"], "Secondary random seed"),
+                ('PSFBLOCK', 1, "Block for saosac"),
+                ('CONTENT', 'RAYS', 'File contains simulated data'),
+                ('ORIGIN', 'Unknown', 'The origin of the FITS file'),
+                ('DATE', datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "Date FITS file was created"),
+                ('DATE-OBS', obi_info["date-obs"], "Date simulated"),
+                ('HDUNAME', 'PSFRAYS', ""),
+                ('HDUCLASS', 'ASC', ""),
+                ('HDUCLAS1', 'RESPONSE', ""),
+                ('HDUCLAS2', 'PSF', ""),
+                ('HDUCLAS3', 'PSFRAY', ""),
+                ('HDUVERS1', '1.0.0', ""),
+                ('RAYMETH', 'SAOTrace', ""),
+                ('CONFFILE', pars["saotrace_mirror"], ""),
+                ('ASOLFILE', os.path.basename(pars["asolfile"]), ""),
+                ]
 
     tab = pc.read_file(pars["_rayfile_"], mode="rw")
 
-    for key,val,com in metadata:
-        if val == None:  val = "none"
-        pc.set_key( tab, key, val, desc=com)
+    for key, val, com in metadata:
+        if val is None:
+            val = "none"
+        pc.set_key(tab, key, val, desc=com)
 
     tab.write()
-    add_history_to_file( pars["_rayfile_"], pars )
-
+    add_history_to_file(pars["_rayfile_"], pars)
 
 
 #
 #  What marx detector will have the ccd on?
 #
-@verboseCall(2)
-def determine_marx_detector( obi_info, src_info ):
+@VerboseCall(2)
+def determine_marx_detector(obi_info, src_info):
     """
-
     We need to know which ccd the rays are going to hit.
     The way marx works, ACIS-0-3 are only "on" when detector is ACIS-I.
     So we cannot use the SIM_Z location to determine these quantities.
-    (eg ACIS-7 on when sim_z says at -I aimpoint).  We need to know X,Y and map
+    (eg ACIS-7 on when sim_z says at -I aimpoint).  We need to know X, Y and map
     those to chipId.  With chipId then we can set the detector and aimpoint.
 
     """
     aimpoint = ""
     detector = ""
 
-    chip = int( src_info['chip_id'] )
-    if("ACIS" == obi_info["instrume"]):
-        if(chip <= 3):
+    chip = int(src_info['chip_id'])
+    if "ACIS" == obi_info["instrume"]:
+        if chip <= 3:
             aimpoint = "AI2"
             detector = "ACIS-I"
         else:
             aimpoint = "AS1"
             detector = "ACIS-S"
     else:
-        if(chip == 0):
+        if chip == 0:
             aimpoint = "HI1"
             detector = "HRC-I"
         else:
@@ -643,23 +628,23 @@ def determine_marx_detector( obi_info, src_info ):
 # the default SIM location.  These are used to offset
 # to match observation
 #
-@verboseCall(2)
-def determine_marx_sim( pars,aimpoint ):
+@VerboseCall(2)
+def determine_marx_sim(pars, aimpoint):
     """
     Read the SIM values from the pixlib cal file for the current aimpoint
     """
-    from pycrates import read_file as read_file
-    CALFILE = pars["marx_root"] + "/share/marx/data/caldb/telD1999-07-23aimptsN0002.fits"
-    ext = "[aimpoint_name=" + aimpoint + "]"
-    sim = read_file(CALFILE + ext).get_column("AIMPOINT").values
+    calfile = pars["marx_root"] + "/share/marx/data/caldb/telD1999-07-23aimptsN0002.fits"
+    ext = "[aimpoint_name = " + aimpoint + "]"
+    sim = pc.read_file(calfile + ext).get_column("AIMPOINT").values
 
     return sim
+
 
 #
 # Run the marx program
 #
-@verboseCall(2)
-def run_marx_exe( pars, obi_info, src_info, detector, sim ):
+@VerboseCall(2)
+def run_marx_exe(pars, obi_info, src_info, detector, sim):
     """
         Run the marx executable to create rays
     """
@@ -675,19 +660,19 @@ def run_marx_exe( pars, obi_info, src_info, detector, sim ):
     # set the ra/dec and *_nom parameters
     # MARX requires decimal ra/dec
     #
-    marx["SourceRA"]  = src_info["ra_src"]
+    marx["SourceRA"] = src_info["ra_src"]
     marx["SourceDEC"] = src_info["dec_src"]
-    marx["RA_Nom"]    = obi_info["ra_pnt"]
-    marx["Dec_Nom"]   = obi_info["dec_pnt"]
-    marx["Roll_Nom"]  = obi_info["roll_pnt"]
+    marx["RA_Nom"] = obi_info["ra_pnt"]
+    marx["Dec_Nom"] = obi_info["dec_pnt"]
+    marx["Roll_Nom"] = obi_info["roll_pnt"]
 
     #
     # Setup rest of marx parameters
     #
-    marx["SourceType"]         = pars["__marxmodel"]
+    marx["SourceType"] = pars["__marxmodel"]
 
     if "marx" != pars["simulator"]:
-        marx["SAOSACFile"]         = pars["_rayfile_"]
+        marx["SAOSACFile"] = pars["_rayfile_"]
     else:
         if pars["__has_spect"]:
             marx["SpectrumType"] = "FILE"
@@ -700,22 +685,22 @@ def run_marx_exe( pars, obi_info, src_info, detector, sim ):
 
         marx["SourceFlux"] = pars["__flux"]
 
-    marx["OutputDir"]          = pars["_outroot_"]+"_marx.dir"
+    marx["OutputDir"] = pars["_outroot_"] + "_marx.dir"
 
     if pars["__has_asp"]:
-        marx["DitherModel"]        = "FILE"
-        marx["DitherFile"]         = pars["asolfile"]
+        marx["DitherModel"] = "FILE"
+        marx["DitherFile"] = pars["asolfile"]
     else:
         marx["DitherModel"] = "INTERNAL"
         if "ACIS" == obi_info["instrume"]:
-            marx["DitherAmp_RA"]     = 8.0
-            marx["DitherAmp_Dec"]    = 8.0
-            marx["DitherPeriod_RA"]  = 1000
+            marx["DitherAmp_RA"] = 8.0
+            marx["DitherAmp_Dec"] = 8.0
+            marx["DitherPeriod_RA"] = 1000
             marx["DitherPeriod_Dec"] = 707
-        else: # HRC, taken from POG
-            marx["DitherAmp_RA"]     = 20.0
-            marx["DitherAmp_Dec"]    = 20.0
-            marx["DitherPeriod_RA"]  = 1087
+        else:  # HRC, taken from POG
+            marx["DitherAmp_RA"] = 20.0
+            marx["DitherAmp_Dec"] = 20.0
+            marx["DitherPeriod_RA"] = 1087
             marx["DitherPeriod_Dec"] = 768
 
     marx_par = pars["marx_root"] + "/share/marx/pfiles/marx.par"
@@ -729,14 +714,13 @@ def run_marx_exe( pars, obi_info, src_info, detector, sim ):
     else:
         raise ValueError("Unknown datatype for marx.par's Verbose parameter")
 
+    marx["AspectBlur"] = pars["blur"]
+    marx["RandomSeed"] = int(pars["random_seed"])
 
-    marx["AspectBlur"]         = pars["blur"]
-    marx["RandomSeed"]         = int(pars["random_seed"])
-
-    marx["DetectorType"]       = detector
-    marx["GratingType"]        = obi_info["grating"]
+    marx["DetectorType"] = detector
+    marx["GratingType"] = obi_info["grating"]
     marx["ACIS_Exposure_Time"] = obi_info["exptime"]
-    marx["ExposureTime"]       = float(obi_info["tstop"]) - float(obi_info["tstart"]) - 5
+    marx["ExposureTime"] = float(obi_info["tstop"]) - float(obi_info["tstart"]) - 5
 
     #
     # Readout streak?
@@ -765,19 +749,18 @@ def run_marx_exe( pars, obi_info, src_info, detector, sim ):
     #
     run_task("marx", marx, punlearn=True)
 
-    if not os.path.exists( marx["OutputDir"]+"/time.dat"):
+    if not os.path.exists(marx["OutputDir"] + "/time.dat"):
         raise RuntimeError("The output from MARX contains no events.  The flux value(s) is (are) probably too small.")
 
     if pars["keepiter"] == "yes":
         import stat as stat
         import shutil as shutil
 
-        shutil.copyfile( marx_par,
-                     pars["_outroot_"]+"_marx.par" )
-        make_write = os.stat( pars["_outroot_"]+"_marx.par" ).st_mode
-        os.chmod( pars["_outroot_"]+"_marx.par", make_write|stat.S_IRUSR|stat.S_IWUSR)
+        shutil.copyfile(marx_par, pars["_outroot_"] + "_marx.par")
+        make_write = os.stat(pars["_outroot_"] + "_marx.par").st_mode
+        os.chmod(pars["_outroot_"] + "_marx.par", make_write | stat.S_IRUSR | stat.S_IWUSR)
         for mm in marx:
-            pio.pset( pars["_outroot_"]+"_marx.par", mm, str(marx[mm]))
+            pio.pset(pars["_outroot_"] + "_marx.par", mm, str(marx[mm]))
 
     return marx["OutputDir"]
 
@@ -785,61 +768,57 @@ def run_marx_exe( pars, obi_info, src_info, detector, sim ):
 #
 #  Run marx2fits w/ options for pileup
 #
-@verboseCall(2)
-def run_marx2fits( pars, obi_info, output_dir ):
-    #
-    # Optionally run pileup module
-    #
-
+@VerboseCall(2)
+def run_marx2fits(pars, obi_info, output_dir):
+    'Run marx2fits.  Optionally run pileup module'
 
     if "yes" == pars["pileup"]:
-        cmd = "marxpileup MarxOutputDir={0} FrameTime={1} > /dev/null".format(output_dir, obi_info["exptime"])
-        verb3(">>> "+cmd)
+        cmd = f"marxpileup MarxOutputDir={output_dir} FrameTime={obi_info['exptime']} > /dev/null"
+        verb3(">>> " + cmd)
 
         try:
-            with open("/dev/null", "wb") as dev_null:
-                subprocess.check_call(['marxpileup', 'MarxOutputDir='+output_dir,
-                                       'FrameTime={}'.format(obi_info["exptime"])],
+            with open("/dev/null", "w") as dev_null:
+                subprocess.check_call(['marxpileup', 'MarxOutputDir=' + output_dir,
+                                       f'FrameTime={obi_info["exptime"]}'],
                                       stdout=dev_null)
-        except:
-            raise Exception("Problem running {0}".format(cmd))
+        except Exception as bad:
+            raise RuntimeError(f"Problem running '{cmd}'") from bad
 
     #
     # Make into fits file.
-    #  Set the pixadj parmeter based on config
+    # Set the pixadj parmeter based on config
     #
     if "HRC" == obi_info["instrume"]:
         pixadj = "RANDOMIZE"
     elif "NONE" != obi_info["grating"]:
         pixadj = "RANDOMIZE"
-    else: # ACIS, no gratings
+    else:  # ACIS, no gratings
         pixadj = "EDSER"
 
-    cmd = "marx2fits --pixadj="+pixadj+" "
+    cmd = "marx2fits --pixadj=" + pixadj + " "
 
     if "yes" == pars["pileup"]:
         cmd += "--pileup "
-        cmd += output_dir+"/pileup "
+        cmd += output_dir + "/pileup "
     else:
-        cmd += output_dir+" "
-    cmd += pars["_outroot_"]+ "_marx.fits"
-    verb3(">>> "+cmd)
+        cmd += output_dir + " "
+    cmd += pars["_outroot_"] + "_marx.fits"
+    verb3(">>> " + cmd)
 
     sub_cmd = cmd.strip().split(" ")
     try:
-        with open("/dev/null", "wb") as dev_null:
-            subprocess.check_call( sub_cmd, stdout=dev_null )
-    except:
-        raise Exception("Problem running {0}".format(cmd))
-
+        with open("/dev/null", "w") as dev_null:
+            subprocess.check_call(sub_cmd, stdout=dev_null)
+    except Exception as bad:
+        raise RuntimeError(f"Problem running {cmd}") from bad
 
 
 #
 # Run reproject events to get marx data back to same tan plane
 # as original event file.
 #
-@verboseCall(2)
-def run_marx_reproject_events( pars ):
+@VerboseCall(2)
+def run_marx_reproject_events(pars):
     """
         MARX uses the _NOM values in the asol for the tan plane.
 
@@ -851,48 +830,48 @@ def run_marx_reproject_events( pars ):
         The marx files may have events WAY! outside the tlmin/tlmax of the
         column.  We need to filter those out here or it messes up
         the limits and then when you display the ray file the data is
-        centered in a bad place (eg far from 4096,4096 [acis]).
+        centered in a bad place (eg far from 4096, 4096 [acis]).
         """
-        from pycrates import read_file
-        tab = read_file(infile)
-        xl=tab.get_column("x").get_tlmin()
-        xh=tab.get_column("x").get_tlmax()
-        yl=tab.get_column("y").get_tlmin()
-        yh=tab.get_column("y").get_tlmax()
-        retval="[x={}:{},y={}:{}]".format(xl,xh,yl,yh)
+        tab = pc.read_file(infile)
+        xl = tab.get_column("x").get_tlmin()
+        xh = tab.get_column("x").get_tlmax()
+        yl = tab.get_column("y").get_tlmin()
+        yh = tab.get_column("y").get_tlmax()
+        retval = f"[x = {xl}:{xh}, y = {yl}:{yh}]"
         return retval
 
-    limits = get_xy_limits( pars["_outroot_"]+ "_marx.fits"  )
+    limits = get_xy_limits(pars["_outroot_"] + "_marx.fits")
 
     reproject_events = make_tool("reproject_events")
     reproject_events.punlearn()
-    reproject_events.infile  = pars["_outroot_"]+ "_marx.fits"+limits
-    reproject_events.outfile = pars["_outroot_"]+ "_projrays.fits"
-    reproject_events.random  = "-1"       # make sure no randomization
-    reproject_events.match   = pars["infile"]
+    reproject_events.infile = pars["_outroot_"] + "_marx.fits" + limits
+    reproject_events.outfile = pars["_outroot_"] + "_projrays.fits"
+    reproject_events.random = "-1"       # make sure no randomization
+    reproject_events.match = pars["infile"]
     reproject_events.clobber = "yes"
 
     reproject_events()
 
+
 #
 # Cleanup marx intermediate dir
 #
-@verboseCall(3)
-def cleanup_marx( pars, output_dir ):
+@VerboseCall(3)
+def cleanup_marx(pars, output_dir):
     """
      Cleanup marx temp dir
 
     """
     import shutil as sh
-    sh.rmtree( output_dir )
-    gorm( pars["_outroot_"] + "_marx.fits" )
+    sh.rmtree(output_dir)
+    gorm(pars["_outroot_"] + "_marx.fits")
 
 
 #
 # run_marx routine
 #
-@verboseCall(1)
-def run_marx(pars, obi_info, src_info ):
+@VerboseCall(1)
+def run_marx(pars, obi_info, src_info):
     """
     Run SAOTrace rays through marx to match observation
 
@@ -903,115 +882,100 @@ def run_marx(pars, obi_info, src_info ):
          Run reproject events
     """
     #
-    #The aimpoint MARX uses is based on the detector; determined above.  To get
-    #the sim in the corerct location, we need to apply an offset via marx's
-    #DetOffset parameters from the nominal aimpoint to the actual sim location
+    # The aimpoint MARX uses is based on the detector; determined above.  To get
+    # the sim in the corerct location, we need to apply an offset via marx's
+    # DetOffset parameters from the nominal aimpoint to the actual sim location
     #
-    aimpoint,detector = determine_marx_detector( obi_info, src_info )
+    aimpoint, detector = determine_marx_detector(obi_info, src_info)
 
     #
-    #So we get the aimpoint from marx's caldb file and subtract off the actual
-    #SIM location to set the offsets
+    # So we get the aimpoint from marx's caldb file and subtract off the actual
+    # SIM location to set the offsets
     #
-    sim = determine_marx_sim( pars, aimpoint )
+    sim = determine_marx_sim(pars, aimpoint)
 
     # We wrap the actual MARX commands inside their own PFILES so that
     # they could be run in parallel if necessary:
 
     from ciao_contrib.runtool import new_pfiles_environment
     with new_pfiles_environment() as zoo:
-        #
         # Run the marx excutable to project rays onto detector
-        #
-        output_dir = run_marx_exe( pars, obi_info, src_info, detector, sim )
+        output_dir = run_marx_exe(pars, obi_info, src_info, detector, sim)
 
-        #
         # Run marx2fits
-        #
-        run_marx2fits( pars, obi_info, output_dir )
+        run_marx2fits(pars, obi_info, output_dir)
 
-    #
     # Reproject to same tan plane as events
-    #
-    run_marx_reproject_events( pars )
+    run_marx_reproject_events(pars)
 
-    #
     # tweak meta data
-    #
-    add_metadata_to_rays( pars["_outroot_"]+ "_projrays.fits" , pars, obi_info, src_info )
+    add_metadata_to_rays(pars["_outroot_"] + "_projrays.fits", pars, obi_info, src_info)
 
-    #
     # cleanup
-    #
-    cleanup_marx( pars, output_dir )
+    cleanup_marx(pars, output_dir)
 
 
 #
 # run_psf_project routine
 #
-@verboseCall(1)
-def run_psf_project(pars, obi_info, src_info ):
+@VerboseCall(1)
+def run_psf_project(pars, obi_info, src_info):
     """
     Run psf_project_ray to take saotrace rays to detector plane
     """
 
     psf_project_ray = make_tool("psf_project_ray")
-    psf_project_ray.infile   = pars["_rayfile_"]
-    psf_project_ray.evt      = pars["infile"]
+    psf_project_ray.infile = pars["_rayfile_"]
+    psf_project_ray.evt = pars["infile"]
     psf_project_ray.asolfile = pars["asolfile"]
-    psf_project_ray.outfile  = pars["_outroot_"]+"_projrays.fits"
-    psf_project_ray.xblur    = pars["blur"]
+    psf_project_ray.outfile = pars["_outroot_"] + "_projrays.fits"
+    psf_project_ray.xblur = pars["blur"]
     psf_project_ray.randseed = pars["random_seed"]
-    psf_project_ray.clobber  = True
+    psf_project_ray.clobber = True
 
-    verb2( psf_project_ray() )
+    verb2(psf_project_ray())
 
-    add_metadata_to_rays( pars["_outroot_"]+"_projrays.fits", pars, obi_info, src_info )
-
-
+    add_metadata_to_rays(pars["_outroot_"] + "_projrays.fits", pars, obi_info, src_info)
 
 
-#
-# Wrapper around dmKeyRead to get value and toss descriptor
-#
-def get_dm_key( tab, key ):
-    delme,_val = dmKeyRead( tab, key )
+def get_dm_key(tab, key):
+    'Wrapper around dmKeyRead to get value and toss descriptor'
+    delme, _val = dmKeyRead(tab, key)
     try:
         val = _val.decode("ascii")
-    except:
-        val = _val
+    except Exception as okay:
+        val = float(_val)
     return val
+
 
 #
 # provide info about ACIS subarray data
 #
-
-def check_acis_subarray( tab, pars):
+def check_acis_subarray(tab, pars):
     """
     In subarray mode frame time is shorter which should be taken care of but
     the spatial extent is different so things like pileup and readout streak
     (and spatial extent) are not correct.
     """
     try:
-        nrow = get_dm_key( tab, "NROWS")
+        nrow = get_dm_key(tab, "NROWS")
         if 1024 != nrow:
-            verb0("WARNING: This observation used a {} row subarray.  The effects of this may not be correctly modeled especially if trying to simulate pileup and/or the readout streak.".format(nrow))
-    except:
+            verb0(f"WARNING: This observation used a {nrow} row subarray. The effects of this may not be correctly modeled especially if trying to simulate pileup and/or the readout streak.")
+    except Exception as bad:
         # We have to assume full chip
         pass
 
 
-
-def check_acis_interleaved( tab, pars ):
+def check_acis_interleaved(tab, pars):
     """
     In ACIS interleaved mode, there is a large dead time/gap
     that will not be correctly simulated.
     """
     try:
-        tbd = get_dm_key( tab, "TIMEDELB")
+        tbd = get_dm_key(tab, "TIMEDELB")
         if 0.0 != tbd:
             verb0("WARNING: Interleaved mode dataset detected.  The simulation may not be accurate in this mode especially if trying to simulate pileup and/or the readout streak.")
-    except:
+    except Exception as bad:
         # Keyword not found, assume is not interleaved.
         pass
 
@@ -1019,8 +983,8 @@ def check_acis_interleaved( tab, pars ):
 #
 # Get info about the observation
 #
-@verboseCall(2)
-def get_obi_info( pars ):
+@VerboseCall(2)
+def get_obi_info(pars):
     """
         Get info from infile and asol file about observatin.
 
@@ -1028,35 +992,35 @@ def get_obi_info( pars ):
             RA_PNT, DEC_PNT, ROLL_PNT
             SIM_X, SIM_Y, SIM_Z,
             GRATING, INSTRUME,
-            ACIS:  EXPTIME and TIMEDEL [transfer time=(timdel-exptime)]
+            ACIS:  EXPTIME and TIMEDEL [transfer time = (timdel-exptime)]
 
         Asol (if using one):
             TSTART, TSTOP
     """
     obi_info = {}
-    tab = dmBlockOpen( pars["infile"] )
-    for key in [ "ra_pnt", "dec_pnt", "roll_pnt", "sim_x", "sim_y", "sim_z" ]:
-        val = get_dm_key( tab, key )
-        obi_info[key] = "{0:.20g}".format(val)
-    obi_info["grating"]  = get_dm_key( tab, "grating")
-    obi_info["instrume"] = get_dm_key( tab, "instrume")
-    obi_info["date-obs"] = get_dm_key( tab, "date-obs")
+    tab = dmBlockOpen(pars["infile"])
+    for key in ["ra_pnt", "dec_pnt", "roll_pnt", "sim_x", "sim_y", "sim_z"]:
+        val = get_dm_key(tab, key)
+        obi_info[key] = f"{val:.20g}"
+    obi_info["grating"] = get_dm_key(tab, "grating")
+    obi_info["instrume"] = get_dm_key(tab, "instrume")
+    obi_info["date-obs"] = get_dm_key(tab, "date-obs")
 
     if "ACIS" == obi_info["instrume"]:
 
         if get_dm_key(tab, "readmode") == "CONTINUOUS":
             raise ValueError("ERROR: Unable to simulate a PSF for Continuous Clocking Mode observations")
 
-        ## This should be OK for interleaved mode since
+        # This should be OK for interleaved mode since
         # TIMEDEL should equal A or B depedning on P/S
         obi_info["exptime"] = get_dm_key(tab, "exptime")
         tdel = get_dm_key(tab, "TIMEDEL")
-        obi_info["__xfer"] = float(tdel) - float( obi_info["exptime"] )
+        obi_info["__xfer"] = float(tdel) - float(obi_info["exptime"])
 
-        check_acis_subarray( tab, pars )
-        check_acis_interleaved( tab, pars )
+        check_acis_subarray(tab, pars)
+        check_acis_interleaved(tab, pars)
 
-    else:  #HRC
+    else:  # HRC
         obi_info["exptime"] = "0"
         obi_info["__xfer"] = "0"
 
@@ -1065,19 +1029,19 @@ def get_obi_info( pars ):
     # will fall thru to evt file if not using asol
     #
     if pars["__has_asp"]:
-        dmDatasetClose(dmBlockGetDataset( tab ))
-        tab = dmTableOpen( pars["asolfile"] )
-    for key in [ "tstart", "tstop" ]:
-        obi_info[key] = "{0:.20g}".format(get_dm_key(tab, key))
-    dmDatasetClose(dmBlockGetDataset( tab ))
+        dmDatasetClose(dmBlockGetDataset(tab))
+        tab = dmTableOpen(pars["asolfile"])
+    for key in ["tstart", "tstop"]:
+        obi_info[key] = f"{get_dm_key(tab, key):.20g}"
+    dmDatasetClose(dmBlockGetDataset(tab))
     return obi_info
 
 
 #
 # Get coordinates
 #
-@verboseCall(2)
-def get_src_info( pars ):
+@VerboseCall(2)
+def get_src_info(pars):
     """
     Get the src location in various coord systems
     """
@@ -1085,24 +1049,24 @@ def get_src_info( pars ):
     dmcoords = make_tool("dmcoords")
     dmcoords.punlearn()
     dmcoords.infile = pars["infile"]
-    dmcoords.asol   = pars["asolfile"]
-    dmcoords.opt    = "cel"
-    dmcoords.ra     = pars["ra"]
-    dmcoords.dec    = pars["dec"]
+    dmcoords.asol = pars["asolfile"]
+    dmcoords.opt = "cel"
+    dmcoords.ra = pars["ra"]
+    dmcoords.dec = pars["dec"]
     dmcoords.celfmt = "deg"
 
     dmcoords()
 
-    src_info={}
-    src_info["ra_src"]  = dmcoords.ra
+    src_info = {}
+    src_info["ra_src"] = dmcoords.ra
     src_info["dec_src"] = dmcoords.dec
-    src_info["x"]       = dmcoords.x
-    src_info["y"]       = dmcoords.y
-    src_info["theta"]   = dmcoords.theta
-    src_info["phi"]     = dmcoords.phi
+    src_info["x"] = dmcoords.x
+    src_info["y"] = dmcoords.y
+    src_info["theta"] = dmcoords.theta
+    src_info["phi"] = dmcoords.phi
     src_info["chip_id"] = dmcoords.chip_id
-    src_info["chipx"]   = dmcoords.chipx
-    src_info["chipy"]   = dmcoords.chipy
+    src_info["chipx"] = dmcoords.chipx
+    src_info["chipy"] = dmcoords.chipy
 
     return src_info
 
@@ -1110,8 +1074,8 @@ def get_src_info( pars ):
 #
 # Different ways to get grids
 #
-@verboseCall(2)
-def get_xygrid( pars, use_root, src_info):
+@VerboseCall(2)
+def get_xygrid(pars, use_root, src_info):
     """
     Get grid from stats of ray data
     """
@@ -1120,200 +1084,190 @@ def get_xygrid( pars, use_root, src_info):
 
     dmstat = make_tool("dmstat")
     dmstat.punlearn()
-    dmstat.infile  = use_root+"projrays.fits[cols x,y]"
+    dmstat.infile = use_root + "projrays.fits[cols x, y]"
     dmstat.verbose = 0
-    dmstat.sig     = "yes"
-    dmstat.clip    = "yes"
-    dmstat.med     = "no"
+    dmstat.sig = "yes"
+    dmstat.clip = "yes"
+    dmstat.med = "no"
     dmstat()
 
     #
-    # Use sky pixel of ra,dec as center
+    # Use sky pixel of ra, dec as center
     #
-    xx = int(float(src_info["x"])+0.5)+0.5
-    yy = int(float(src_info["y"])+0.5)+0.5
+    xx = int(float(src_info["x"]) + 0.5) + 0.5
+    yy = int(float(src_info["y"]) + 0.5) + 0.5
 
     sigs = [float(r) for r in dmstat.out_sigma.split(",")]
-    xlen = int(float(pars["numsig"]) * int(sigs[0] + 1)+0.5)
-    ylen = int(float(pars["numsig"]) * int(sigs[1] + 1)+0.5)
+    xlen = int(float(pars["numsig"]) * int(sigs[0] + 1) + 0.5)
+    ylen = int(float(pars["numsig"]) * int(sigs[1] + 1) + 0.5)
     mlen = max(xlen, ylen)  # let's make square images, people like those
 
     if "INDEF" != pars["minsize"]:
-        mm = int(int( pars["minsize"] ) / 2.0 )
-        mlen = max( mlen, mm )
+        mm = int(int(pars["minsize"]) / 2.0)
+        mlen = max(mlen, mm)
 
     if "INDEF" != pars["maxsize"]:
-        mm = int(int( pars["maxsize"] ) / 2.0 )
-        mlen = min( mlen, mm )
+        mm = int(int(pars["maxsize"]) / 2.0)
+        mlen = min(mlen, mm)
 
     # TODO integer / half-pixel ize?
     xl = xx - mlen
     xh = xx + mlen
     yl = yy - mlen
     yh = yy + mlen
-    xgrid="x={0}:{1}:{2}".format(xl, xh, pars["binsize"] )
-    ygrid="y={0}:{1}:{2}".format(yl, yh, pars["binsize"] )
+    xgrid = f"x={xl}:{xh}:{pars['binsize']}"
+    ygrid = f"y={yl}:{yh}:{pars['binsize']}"
 
-    pars["__xygrid"] = xgrid+","+ygrid
+    pars["__xygrid"] = xgrid + ", " + ygrid
     return pars["__xygrid"]
+
 
 #
 # Determine normalization factor, may need eg ray weights/etc
 #
-@verboseCall(2)
-def get_normalization( pars, src_info ):
+@VerboseCall(2)
+def get_normalization(pars, src_info):
     """
     Return normalization factor for psf
     """
     dmstat = make_tool("dmstat")
     dmstat.punlearn()
-    dmstat.infile  = pars["_outroot_"]+"_projrays.fits[cols x]"
+    dmstat.infile = pars["_outroot_"] + "_projrays.fits[cols x]"
     dmstat.verbose = 0
-    dmstat.sig     = "no"
-    dmstat.med     = "no"
-    dmstat.clip    = "no"
+    dmstat.sig = "no"
+    dmstat.med = "no"
+    dmstat.clip = "no"
     dmstat()
     totl = int(dmstat.out_good)
     return totl
 
 
-
-@verboseCall(2)
-def add_history_to_file( infile, pars ):
-    """
-    """
+@VerboseCall(2)
+def add_history_to_file(infile, pars):
+    'Add history to output file'
     from ciao_contrib.runtool import add_tool_history
-    tpars = [x for x in pars if not x.startswith("_") ] # remove internal pars
-    tvals = [pars[t] for t in tpars ]
-    add_tool_history( infile,  toolname, dict(zip(tpars,tvals)), toolversion=__revision__)
+    tpars = [x for x in pars if not x.startswith("_")]   # remove internal pars
+    tvals = [pars[t] for t in tpars]
+    add_tool_history(infile,  __toolname__, dict(zip(tpars, tvals)), toolversion=__revision__)
 
 
-
-@verboseCall(2)
-def add_metadata_to_rays( infile, pars, obi_info, src_info ):
+@VerboseCall(2)
+def add_metadata_to_rays(infile, pars, obi_info, src_info):
+    'Add keywords to output file'
     dmlist = make_tool("dmlist")
-    tot = dmlist( infile, "counts")
+    tot = dmlist(infile, "counts")
     dmhedit = make_tool("dmhedit")
-    dmhedit( infile, file="", op="add", key="TOTCTS", value=tot, datatype="long" )
+    dmhedit(infile, file="", op="add", key="TOTCTS", value=tot, datatype="long")
 
 
 #
 # create_psf_image
 #
-@verboseCall(1)
-def create_psf_image(pars, src_info ):
+@VerboseCall(1)
+def create_psf_image(pars, src_info):
     """
     Create an image from the projected ray file.
 
     """
-    xygrid = get_xygrid( pars, pars["_outroot_"]+"_", src_info )
-    totl = get_normalization( pars, src_info )
-    outfile = pars["_outroot_"]+".psf[PSF]"
+    xygrid = get_xygrid(pars, pars["_outroot_"] + "_", src_info)
+    outfile = pars["_outroot_"] + ".psf[PSF]"
 
-    #from ciao_contrib.runtool import dmimgcalc as dmimgcalc
-    #dmimgcalc.punlearn()
-    #dmimgcalc.infile=pars["_outroot_"]+"_projrays.fits[bin {0}][opt type=i4]".format(xygrid)
-    #dmimgcalc.infile2="none"
-    #dmimgcalc.outfile=pars["_outroot_"]+"_psf.img[PSF]"
-    #dmimgcalc.operation="imgout=(img1/((float){0}))".format(totl)
-    #dmimgcalc.clobber="yes"
-    #dmimgcalc()
+    # ~ totl = get_normalization(pars, src_info)
+    # ~ #from ciao_contrib.runtool import dmimgcalc as dmimgcalc
+    # ~ #dmimgcalc.punlearn()
+    # ~ #dmimgcalc.infile = pars["_outroot_"] + "_projrays.fits[bin {0}][opt type=i4]".format(xygrid)
+    # ~ #dmimgcalc.infile2 = "none"
+    # ~ #dmimgcalc.outfile = pars["_outroot_"] + "_psf.img[PSF]"
+    # ~ #dmimgcalc.operation = "imgout=(img1/((float){0}))".format(totl)
+    # ~ #dmimgcalc.clobber = "yes"
+    # ~ #dmimgcalc()
 
     dmcopy = make_tool("dmcopy")
-    dmcopy.infile=pars["_outroot_"]+"_projrays.fits[2][bin {0}][opt type=i4][PSF]".format(xygrid)
-    dmcopy.outfile=outfile
-    dmcopy.clobber=True
+    dmcopy.infile = pars["_outroot_"] + f"_projrays.fits[2][bin {xygrid}][opt type=i4][PSF]"
+    dmcopy.outfile = outfile
+    dmcopy.clobber = True
     dmcopy()
 
     # We need to add here (again) since marx doesn't copy header
-    add_history_to_file( outfile, pars )
+    add_history_to_file(outfile, pars)
 
     # save name in .lis file, only write name, not path since
     # path gets prepended as part of stk_build
-    pars["__imgstk"].append( outfile)
-    pars["__raystk"].append( pars["_outroot_"]+"_projrays.fits" )
+    pars["__imgstk"].append(outfile)
+    pars["__raystk"].append(pars["_outroot_"] + "_projrays.fits")
 
 
-@verboseCall(1)
-def create_average_image( pars, src_info ):
+@VerboseCall(1)
+def create_average_image(pars, src_info):
     """
       Create mean from stack of psf images
 
     """
 
-
     if not pars["__imgstk"]:
-        return
-
-    from pycrates import read_file
+        return None
 
     dmmerge = make_tool("dmmerge")
-    dmmerge( pars["__raystk"], pars["outroot"]+"projrays.fits", clobber=True)
+    dmmerge(pars["__raystk"], pars["outroot"] + "projrays.fits", clobber=True)
 
-    cts = [read_file(i).get_key_value("TOTCTS") for i in pars["__raystk"]]
+    cts = [pc.read_file(i).get_key_value("TOTCTS") for i in pars["__raystk"]]
     cts = sum(cts)
 
     dmhedit = make_tool("dmhedit")
-    dmhedit( dmmerge.outfile, file="", op="add", key="TOTCTS", value=cts)
+    dmhedit(dmmerge.outfile, file="", op="add", key="TOTCTS", value=cts)
 
     pars["__xygrid"] = None
     pars["_outroot_"] = pars["outroot"]
-    xygrid = get_xygrid( pars, pars["outroot"], src_info )
+    xygrid = get_xygrid(pars, pars["outroot"], src_info)
 
     dot = "" if os.path.isdir(pars["outroot"]) else "."
-    outfile = pars["outroot"].rstrip("_")+dot+"psf[PSF]"
+    outfile = pars["outroot"].rstrip("_") + dot + "psf[PSF]"
 
     dmimgcalc = make_tool("dmimgcalc")
-    dmimgcalc.infile=pars["outroot"]+"projrays.fits[2][bin {0}][opt type=i4][PSF]".format(xygrid)
-    dmimgcalc.infile2=""
-    dmimgcalc.outfile=outfile
-    dmimgcalc.operation="imgout=((float)(img1))/img1_totcts"
-    dmimgcalc.clobber=True
+    dmimgcalc.infile = pars["outroot"] + f"projrays.fits[2][bin {xygrid}][opt type=i4][PSF]"
+    dmimgcalc.infile2 = ""
+    dmimgcalc.outfile = outfile
+    dmimgcalc.operation = "imgout=((float)(img1))/img1_totcts"
+    dmimgcalc.clobber = True
     dmimgcalc()
 
-    add_history_to_file( outfile, pars )
+    add_history_to_file(outfile, pars)
 
     return outfile
 
-    """
-    from ciao_contrib.runtool import dmkeypar as kpar
-    from pycrates import read_file
-    cts = [read_file(i).get_key_value("TOTCTS") for i in pars["__imgstk"]]
-    cts = sum(cts)
-
-    from ciao_contrib.runtool import dmimgfilt as dmimgfilt
-    dmimgfilt.punlearn()
-    dmimgfilt.infile = pars["__imgstk"]
-    dmimgfilt.outfile = pars["outroot"]+"psf.img[PSF]"
-    dmimgfilt.function = "sum" # "mean"
-    dmimgfilt.mask = "point(0,0)"
-    dmimgfilt.clobber = "yes"
-    dmimgfilt()
-
-    from ciao_contrib.runtool import dmhedit
-    dmhedit( dmimgfilt.outfile, file="", op="add", key="TOTCTS", value=cts)
-
-    dmhedit( dmmerge.outfile, file="", op="add", key="TOTCTS", value=cts)
-    """
+# Change in the way the PSFs are co-added.
+# ~ from ciao_contrib.runtool import dmkeypar as kpar
+# ~ cts = [pc.read_file(i).get_key_value("TOTCTS") for i in pars["__imgstk"]]
+# ~ cts = sum(cts)
+# ~ from ciao_contrib.runtool import dmimgfilt as dmimgfilt
+# ~ dmimgfilt.punlearn()
+# ~ dmimgfilt.infile = pars["__imgstk"]
+# ~ dmimgfilt.outfile = pars["outroot"] + "psf.img[PSF]"
+# ~ dmimgfilt.function = "sum" # "mean"
+# ~ dmimgfilt.mask = "point(0, 0)"
+# ~ dmimgfilt.clobber = "yes"
+# ~ dmimgfilt()
+# ~ from ciao_contrib.runtool import dmhedit
+# ~ dmhedit(dmimgfilt.outfile, file = "", op = "add", key = "TOTCTS", value = cts)
+# ~ dmhedit(dmmerge.outfile, file = "", op = "add", key = "TOTCTS", value = cts)
 
 
-
-@verboseCall(3)
-def cleanup_iterations( pars ):
+@VerboseCall(3)
+def cleanup_iterations(pars):
     """
       cleanup
     """
     clnextn = [".psf", "_projrays.fits"]
     if "saotrace" == pars["simulator"]:
-        clnextn.append( "_rays.fits" )
+        clnextn.append("_rays.fits")
 
     if "no" == pars["keepiter"]:
         for extn in clnextn:
-            for nn in range( int(pars["numiter"]) ) :
-                gorm( "{0}i{1:04d}{2}".format( pars["outroot"],nn,extn ))
+            for nn in range(int(pars["numiter"])):
+                gorm(f"{pars['outroot']}i{nn:04d}{extn}")
 
     if pars["__spectrum"]:
-        gorm( pars["__spectrum"] )
+        gorm(pars["__spectrum"])
 
 
 def check_numrays(numiter, numrays, pars, rayfile, fudge_factor=1.0):
@@ -1323,19 +1277,18 @@ def check_numrays(numiter, numrays, pars, rayfile, fudge_factor=1.0):
     if pars["numrays"] == "INDEF":
         return numiter, numrays
 
-    from pycrates import read_file
-    tab = read_file(rayfile)
+    tab = pc.read_file(rayfile)
     nrays = tab.get_nrows()
     numrays = numrays + nrays
 
     if (numrays*fudge_factor) < int(pars["numrays"]):
-        nextiter = int(pars["numiter"])+1
+        nextiter = int(pars["numiter"]) + 1
         pars["numiter"] = str(nextiter)
 
     return numiter, numrays
 
 
-def iteration_loop( pars, obi_info, src_info ):
+def iteration_loop(pars, obi_info, src_info):
     """
         Loop over number of iterations to simulate psf.  Each iterations
         file name is stored in a psf.lis file that will get cleaned up
@@ -1346,17 +1299,17 @@ def iteration_loop( pars, obi_info, src_info ):
     numrays = 0
     while nn < int(pars["numiter"]) and nn < 10000:
 
-        pars["_outroot_"] = pars["outroot"]+"i{0:04d}".format(nn)
-        pars["random_seed"] = int( pars["random_seed"] )+nn
+        pars["_outroot_"] = pars["outroot"] + f"i{nn:04d}"
+        pars["random_seed"] = int(pars["random_seed"]) + nn
 
-        verb1( "Performing iteration {0} of {1}".format(nn+1, pars["numiter"]))
-        verb2( "  output root is {0}".format( pars["_outroot_"] ))
-        verb3( "  with seed={0}".format(pars["random_seed"]))
+        verb1(f"Performing iteration {nn+1} of {pars['numiter']}")
+        verb2(f"  output root is {pars['_outroot_']}")
+        verb3(f"  with seed = {pars['random_seed']}")
 
         # run saotrace
         if "saotrace" == pars["simulator"]:
-            pars["_rayfile_"] = pars["_outroot_"]+"_rays.fits"
-            run_saotrace( pars, obi_info, src_info )
+            pars["_rayfile_"] = pars["_outroot_"] + "_rays.fits"
+            run_saotrace(pars, obi_info, src_info)
             if pars["projector"] == "none":
                 nn, numrays = check_numrays(nn, numrays, pars, pars["_rayfile_"], fudge_factor=0.7)
                 continue
@@ -1366,85 +1319,74 @@ def iteration_loop( pars, obi_info, src_info ):
 
         if pars["projector"] == "marx":
             # run marx
-            run_marx( pars, obi_info, src_info )
+            run_marx(pars, obi_info, src_info)
         else:
             # run psf_project_ray
-            run_psf_project( pars, obi_info, src_info )
+            run_psf_project(pars, obi_info, src_info)
         create_psf_image(pars, src_info)
-        nn, numrays = check_numrays(nn, numrays, pars, pars["_outroot_"]+"_projrays.fits")
+        nn, numrays = check_numrays(nn, numrays, pars, pars["_outroot_"] + "_projrays.fits")
 
     if nn == 10000:
         verb0("WARNING: Could not get requested number of rays in 10000 iterations. Stopping now.")
 
-#
-# Main Routine
-#
-@handle_ciao_errors( toolname, __revision__)
+
+@handle_ciao_errors(__toolname__, __revision__)
 def main():
-    """
-    """
+    "Main Routine"
     # get parameters
     from ciao_contrib.param_soaker import get_params
 
     pars = get_params("simulate_psf", "rw", sys.argv,
-                      verbose={"set":logWrap.set_verbosity, "cmd":verb1},
-                      musthave=("infile","outroot","ra","dec",
-                                "spectrumfile","monoenergy","flux",
-                                "simulator","rayfile","projector",
-                                "random_seed","blur","readout_streak",
-                                "pileup","ideal","extended","binsize",
-                                "numsig","minsize","maxsize","numiter",
-                                "numrays","keepiter","asolfile",
-                                "marx_root","verbose",)
+                      verbose={"set": logWrap.set_verbosity, "cmd": verb1},
+                      musthave=("infile", "outroot", "ra", "dec",
+                                "spectrumfile", "monoenergy", "flux",
+                                "simulator", "rayfile", "projector",
+                                "random_seed", "blur", "readout_streak",
+                                "pileup", "ideal", "extended", "binsize",
+                                "numsig", "minsize", "maxsize", "numiter",
+                                "numrays", "keepiter", "asolfile",
+                                "marx_root", "verbose", )
                       )
 
     # Hard code these for now, restore w/o underscore when ready
     # ~ pars["saotrace_install"] = ""
-    # ~ pars["saotrace_db" ] = ""
+    # ~ pars["saotrace_db"] = ""
     # ~ pars["saotrace_mirror"] = "orbit-200809-01f-a"
 
     # check saotrace and marx setup parameters
-    check_setup( pars )
+    check_setup(pars)
 
-
-    if not os.path.isdir( pars["outroot"] ):
-        pars["outroot"] = pars["outroot"]+"_"
+    if not os.path.isdir(pars["outroot"]):
+        pars["outroot"] = pars["outroot"] + "_"
     elif not pars["outroot"].endswith("/"):
-        pars["outroot"] = pars["outroot"]+"/"
+        pars["outroot"] = pars["outroot"] + "/"
     else:
         pass
 
     # check parameter combinations
-    resolve_parameter_dependencies( pars )
+    resolve_parameter_dependencies(pars)
 
     # set up the environment vars for saotrace and marx
-    set_env_vars( pars )
+    set_env_vars(pars)
 
     # Load obs info
-    obi_info = get_obi_info( pars )
+    obi_info = get_obi_info(pars)
 
     # Get src info (coords)
-    src_info = get_src_info( pars )
+    src_info = get_src_info(pars)
 
     # Do n-many simulations
-    iteration_loop( pars, obi_info, src_info )
+    iteration_loop(pars, obi_info, src_info)
 
     # Create an the average from sims
-    outfile = create_average_image( pars, src_info )
+    outfile = create_average_image(pars, src_info)
 
     # Cleanup temp files (rays, projrays, and images)
-    cleanup_iterations( pars )
+    cleanup_iterations(pars)
 
     if outfile:
-        verb1( "\nFinal output PSF image is : "+outfile )
-
+        verb1("\nFinal output PSF image is : " + outfile)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as E:
-        print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
-        sys.exit(1)
-    sys.exit(0)
-
+    main()
