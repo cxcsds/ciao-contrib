@@ -2,7 +2,7 @@ import numpy as np
 from ciao_contrib.runtool import dmstat
 from scipy.optimize import root_scalar
 
-from iocaldb import PSF, psfSize
+from ciao_contrib.psf_contrib import PSF, psfSize
 
 psf = PSF()
 
