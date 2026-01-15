@@ -1,161 +1,28 @@
 import numpy as np
 
-import psf
 import caldb4
 from pycrates import read_file
 from coords.chandra import sky_to_chandra
 
 
-__all__ = ['PSF', 'psfFrac', 'psfSize',
-           'Sky2Chandra',
+__all__ = ['Sky2Chandra',
            'OSIP',
            'CALDBException']
-
-
-class PSF():
-    """The psf module is used to calculate an estimate of the size of the Chandra
-    PSF at a given off-axis position and energy, or the enclosed fraction of
-    energy at a given off-axis position and extraction radius. This module
-    (called ``psf_contrib``) extends the CIAO psf module with an
-    object-oriented user interface.
-
-    What does 'size of the PSF' mean?
-
-    For this module, the size of the PSF refers to the radius of a circular
-    region that encloses a given fraction of the counts from a point
-    source. The values are calculated by interpolating the values from the REEF
-    file found in the CALDB. It is therefore an approximation to the true PSF.
-    """
-    def __init__(self, pdata=None):
-        if pdata is None:
-            cdb = caldb4.Caldb(telescope="CHANDRA", product="REEF")
-            # Need check here that search returns values?
-            reef = cdb.search[0][:-3]
-            cdb.close
-            pdata = psf.psfInit(reef)
-        self.pdata = pdata
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
-
-    def close(self):
-        psf.psfClose(self.pdata)
-
-    def psfFrac(self, energy_keV, theta_arcmin, phi_deg, size_arcsec):
-        """Return approximated enclosed count fraction of a PSF
-
-        Parameters
-        ----------
-        energy : float
-            Energy in keV
-        theta : float
-            off-axis angle in arcmin
-            (see the MSC coordinate system described in "ahelp coords")
-        phi : float
-            angle in degrees
-            (see the MSC coordinate system described in "ahelp coords")
-        size : float
-            radius in arcsec
-
-        Returns
-        -------
-        eef : float
-            enclosed count fraction
-        """
-        return psf.psfFrac(self.pdata, energy_keV, theta_arcmin,
-                           phi_deg, size_arcsec)
-
-    def psfSize(self, energy_keV, theta_arcmin, phi_deg, ecf):
-        """Return approximated enclosed count fraction of a PSF
-
-        Parameters
-        ----------
-        energy : float
-            Energy in keV
-        theta : float
-            off-axis angle in arcmin
-            (see the MSC coordinate system described in "ahelp coords")
-        phi : float
-            angle in degrees
-            (see the MSC coordinate system described in "ahelp coords")
-
-        Returns
-        -------
-        size : float
-            radius in arcsec
-        eef : float
-            enclosed count fraction
-        """
-        return psf.psfSize(self.pdata, energy_keV,
-                           theta_arcmin, phi_deg, ecf)
-
-
-def psfFrac(energy, theta, phi, size):
-    """Return approximated enclosed count fraction of a PSF
-
-    Parameters
-    ----------
-    energy : float
-        Energy in keV
-    theta : float
-        off-axis angle in arcmin
-        (see the MSC coordinate system described in "ahelp coords")
-    phi : float
-        angle in degrees
-        (see the MSC coordinate system described in "ahelp coords")
-    size : float
-        radius in arcsec
-
-    Returns
-    -------
-    eef : float
-        enclosed count fraction
-    """
-    with PSF() as _psf:
-        return _psf.psfFrac(energy, theta, phi, size)
-
-
-def psfSize(energy_keV, theta_arcmin, phi_deg, ecf):
-    """Return approximated enclosed count fraction of a PSF
-
-    Parameters
-    ----------
-    energy : float
-        Energy in keV
-    theta : float
-        off-axis angle in arcmin
-        (see the MSC coordinate system described in "ahelp coords")
-    phi : float
-        angle in degrees
-        (see the MSC coordinate system described in "ahelp coords")
-
-    Returns
-    -------
-    size : float
-        radius in arcsec
-    eef : float
-        enclosed count fraction
-    """
-    with PSF() as _psf:
-        return _psf.psfSize(energy_keV, theta_arcmin, phi_deg, ecf)
 
 
 class Sky2Chandra:
     '''Convert Chandra physical coordinates to other coordinate systems.
 
-    This class is a wimple wrapper around the function `sky_to_chandra` from
+    This class is a simple wrapper around the function `sky_to_chandra` from
     the `coords.chandra` package. When an object of this class is created,
     it reads the header of a fits file to get the WCS information and saves
-    that. The object can then be called to perform coordiante transformations
+    that. The object can then be called to perform coordinate transformations
     without reading the header again.
 
     Parameters
     ----------
     evt : string
-        location (path and filename) to an event files. The WCS information is
+        location (path and filename) to an event file. The WCS information is
         read from the header of that file.
     '''
     def __init__(self, evt):
@@ -167,7 +34,7 @@ class Sky2Chandra:
         Parameters
         ----------
         x, y : float
-            X, Y position in phyical pixels
+            X, Y position in physical pixels
         '''
         return sky_to_chandra(self.keywords, x, y)
 
@@ -190,9 +57,9 @@ class OSIP:
         cdb.stop = cr.get_key_value('TSTOP')
         osipfiles = cdb.search
         if cdb.errmsg is not None:
-            raise CALDBException('Looking for OSIP file based on header kerywords in {} return: {}'.format(evt, cdb.errmsg))
+            raise CALDBException('Looking for OSIP file based on header keywords in {} return: {}'.format(evt, cdb.errmsg))
         if len(osipfiles) == 0:
-            raise CALDBException('Looking for OSIP file based on header kerywords in {} returns no match.'.format(evt))
+            raise CALDBException('Looking for OSIP file based on header keywords in {} returns no match.'.format(evt))
         cdb.close
         self.osip = read_file(osipfiles[0][:-3] + '[AXAF_OSIP]')
         self.skyconverter = Sky2Chandra(evt)
