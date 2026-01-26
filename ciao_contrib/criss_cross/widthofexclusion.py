@@ -3,7 +3,7 @@ from functools import partial
 import numpy as np
 from sherpa.optmethods.optfcts import lmdif
 
-from iocaldb import PSF, psfSize
+from ciao_contrib.psf_contrib import PSF, psfSize
 
 psf = PSF()
 
