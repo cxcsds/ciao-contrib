@@ -152,9 +152,9 @@ def pnt_src_masking_region(evt, osip, skyconverter, x_0order, y_0order,
 
     pnt_src_maxlevel = grt_counts * factor
     coo = skyconverter(x_pnt, y_pnt)
-    if pntsrc_fluxlevel(0., pnt_src_maxlevel, 12.4 / wavelength,
+    if pntsrc_fluxlevel([0.], pnt_src_maxlevel, 12.4 / wavelength,
                         coo['theta'][0], coo['phi'][0],
-                        pnt_src_counts, wavelength_scale[tg_part]) < 0:
+                        pnt_src_counts, wavelength_scale[tg_part])[0] < 0:
         # Point source is so weak that it never contributes more than allowed
         # Nothing needs to be masked.  I just return a interval with size 0 for
         # now, but I think it would be better to have some other mechanism,
