@@ -2013,7 +2013,32 @@ def time_logger(mode, time_started=[], time_counter=[], message=[]):
 		
 	return()
 
-	
+
+def clean_spec(cc_table, pha_file, arf_file):
+
+	"""""
+	Takes the confusion table for a source and zeros out the portion of the spectrum where confusion occurs.
+	"""""
+
+	cc_data = read_file(cc_table)
+	pha_data = read_file(pha_file)
+	arf_data = read_file(arf_file)
+
+	#creates an empty array. Next step is to create a copy of the array and fill in the portions from the confusion table as 0.
+	test_data = np.zeros(len(pha_data.COUNTS.values))
+
+	#replaces the original array with the new array
+	pha_data.COUNTS.values = test_data
+
+	#saves file while maintaining the original header.
+	write_file(pha_data, f'test_pha.fits', clobber=True)
+
+	return(cc_data, pha_data, arf_data)	
+
+src = 449
+obs = 8589
+test_spec_dir = 'input_files/testing/hetg_spectra'
+cc_data, pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_consolidated_obsID_{obs}.fits', pha_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.pha', arf_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.arf')
 
 ######### MAIN CrissCross RUN FUNCTION ##############
 
