@@ -2014,7 +2014,7 @@ def time_logger(mode, time_started=[], time_counter=[], message=[]):
 	return()
 
 
-def clean_spec(cc_table, pha_file, arf_file):
+def clean_spec(cc_table, pha_file, arf_file, src_num):
 
 	"""""
 	Takes the confusion table for a source and zeros out the portion of the spectrum where confusion occurs.
@@ -2024,21 +2024,73 @@ def clean_spec(cc_table, pha_file, arf_file):
 	pha_data = read_file(pha_file)
 	arf_data = read_file(arf_file)
 
-	#creates an empty array. Next step is to create a copy of the array and fill in the portions from the confusion table as 0.
-	test_data = np.zeros(len(pha_data.COUNTS.values))
+	#determine the heg/meg arm and order and obsid
+	tg_part = get_keyval(pha_data, 'TG_PART') #tg_part = 1 = heg; tg_part = 2 = meg
+	tg_m = get_keyval(pha_data, 'TG_M')
+	tg_obs = get_keyval(pha_data, 'OBS_ID')
+	tg_obs_arf = get_keyval(arf_data, 'OBS_ID')
 
-	#replaces the original array with the new array
-	pha_data.COUNTS.values = test_data
+	#check to make sure obsID of arf and pha file are the same. 
+	if tg_obs != tg_obs_arf:
+		print('ERROR -- PHA file and ARF are not from same obsID')
+		return()
+
+	#setup tgpart and order to be consistent with values in confusion tables.
+	if tg_part == 1:
+		pha_arm = 'heg'
+	elif tg_part == 2:
+		pha_arm = 'meg'
+	else:
+		print(f'warning, arm cannot be identified from header in {pha_file}')
+
+	if tg_m > 0:
+		pha_order = f'+{tg_m}'
+	elif tg_m < 0:
+		pha_order = f'-{-1*tg_m}'
+	else:
+		print(f'warning, order cannot be identified from header in {pha_file}')
+
+	#copies the counts column of the PHA file for modification
+	cleaned_spec = pha_data.COUNTS.values.copy()
+	cleaned_staterr = pha_data.STAT_ERR.values.copy()
+
+	#copies the SPECRESP and FRACEXPO columns from the arf
+	cleaned_specresp = arf_data.SPECRESP.values.copy()
+	cleaned_fracexpo = arf_data.FRACEXPO.values.copy()
+
+
+	#loop through the cleaning table for the appropriate arm, order, flag and find elements of pha_spec.bin_lo and pha_spec.bin_hi that fall within the boundaries of cc_data.wave_low and cc_data.wave_high
+	for i in range(0,len(cc_data.wave_low.values)):
+
+		if cc_data.flag.values[i] == 'confused' and cc_data.grating_type.values[i] == pha_arm and cc_data.order.values[i] == pha_order:
+			elements_to_clean = np.where( (pha_data.BIN_LO.values >= cc_data.wave_low.values[i]) & (pha_data.BIN_HI.values <= cc_data.wave_high.values[i]) ) #identify elements
+			cleaned_spec[elements_to_clean] = 0. #set elements that overlap to zero
+			cleaned_staterr[elements_to_clean] = 1.86603 #double check that this makes sense and the stat_err is always this value for zero counts. I suspect instead I should take min of this column and set it to that.
+
+			cleaned_specresp[elements_to_clean] = 0.
+			cleaned_fracexpo[elements_to_clean] = 0.
+
+
+	#replaces the original arrays with the new arrays
+	pha_data.COUNTS.values = cleaned_spec
+	pha_data.STAT_ERR.values = cleaned_staterr
+	arf_data.SPECRESP.values = cleaned_specresp
+	arf_data.FRACEXPO.values = cleaned_fracexpo
 
 	#saves file while maintaining the original header.
-	write_file(pha_data, f'test_pha.fits', clobber=True)
+	write_file(pha_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.pha', clobber=True)
+	write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.arf', clobber=True)
 
 	return(cc_data, pha_data, arf_data)	
 
-src = 449
-obs = 8589
-test_spec_dir = 'input_files/testing/hetg_spectra'
-cc_data, pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_consolidated_obsID_{obs}.fits', pha_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.pha', arf_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.arf')
+####TESTING
+# src = 449
+# obs = 8589
+# test_spec_dir = 'input_files/testing/hetg_spectra'
+# cc_data, pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_consolidated_obsID_{obs}.fits', pha_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.pha', arf_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.arf', src_num = src)
+
+
+#### TESTING END
 
 ######### MAIN CrissCross RUN FUNCTION ##############
 
