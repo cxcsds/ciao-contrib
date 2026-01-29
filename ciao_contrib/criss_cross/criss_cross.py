@@ -2016,13 +2016,153 @@ def time_logger(mode, time_started=[], time_counter=[], message=[]):
 
 def clean_spec(cc_table, pha_file, arf_file, src_num):
 
-	from pycrates import add_record, get_keyval, read_pha, write_pha, is_pha_type1, is_pha_type2
+	from pycrates import add_record, get_keyval, read_pha, write_pha, is_pha_type1, is_pha_type2, update_crate_checksum
 
 	"""""
 	Takes the confusion table for a source and zeros out the portion of the spectrum where confusion occurs.
 	"""""
 
-	cc_data = read_file(cc_table)
+	def convert_order(order_int):
+		"""
+		takes an integer and converts it to a string with a + or - sign in front of it (for compatibility with CrissCross cleaning table)
+		"""
+		if order_int > 0:
+			return(f'+{order_int}')
+		elif order_int < 0:
+			return(f'-{-1*order_int}')
+		else:
+			print('ERROR, 0th order is included and that is not compatible with clean_spec')
+
+	def convert_arm(tg_part_val):
+		"""
+		takes the tg_part value and converts it to 'heg' or 'meg' (for compatibility with CrissCross cleaning table)
+		"""
+
+		if tg_part_val == 1:
+			return('heg')
+		elif tg_part == 2:
+			return('meg')
+		else:
+			print(f'ERROR, arm cannot be identified')
+
+	# def clean_data(cc_table, pha_data_var, arf_data_var, pha_arm_var, pha_order_var, conf_flag_var = 'confused'):
+	# 	"""
+	# 	Docstring for clean_data
+	# 	"""
+	# 	cc_data = read_file(cc_table)
+
+
+	# 	#copies the counts column of the PHA file for modification
+	# 	cleaned_spec_var = pha_data_var.COUNTS.values.copy()
+	# 	cleaned_staterr_var = pha_data_var.STAT_ERR.values.copy()
+
+	# 	#copies the SPECRESP and fracexpo columns from the arf
+	# 	cleaned_specresp_var = arf_data_var.SPECRESP.values.copy()
+	# 	cleaned_fracexpo_var = arf_data_var.fracexpo_var.values.copy()
+
+
+	# 	for i in range(0,len(cc_data.wave_low.values)):
+	# 		if cc_data.flag.values[i] == conf_flag_var and cc_data.grating_type.values[i] == pha_arm_var and cc_data.order.values[i] == pha_order_var:
+	# 			elements_to_clean = np.where( (pha_data_var.BIN_LO.values >= cc_data.wave_low.values[i]) & (pha_data_var.BIN_HI.values <= cc_data.wave_high.values[i]) ) #identify elements
+				
+	# 			#clean PHA (spectrum)
+	# 			cleaned_spec_var[elements_to_clean] = 0. #set elements that overlap to zero
+	# 			cleaned_staterr_var[elements_to_clean] = 1.86603 #double check that this makes sense and the stat_err is always this value for zero counts. I suspect instead I should take min of this column and set it to that.
+
+	# 			#clean ARF
+	# 			cleaned_specresp_var[elements_to_clean] = 0.
+	# 			cleaned_fracexpo_var[elements_to_clean] = 0.
+
+	# 	return(cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var)
+
+
+	# def clean_data2(cc_table, counts_arr, stat_err_arr, specresp_arr, fracexpo_arr, bin_lo_arr, bin_high_arr, pha_arm_var, pha_order_var, conf_flag_var = 'confused'):
+	# 	"""
+	# 	Docstring for clean_data
+	# 	"""
+	# 	cc_data = read_file(cc_table)
+
+
+	# 	#copies the counts column of the PHA file for modification
+	# 	cleaned_spec_var = counts_arr.copy()
+	# 	cleaned_staterr_var = stat_err_arr.copy()
+
+	# 	#copies the SPECRESP and fracexpo columns from the arf
+	# 	cleaned_specresp_var = specresp_arr.copy()
+	# 	cleaned_fracexpo_var = fracexpo_arr.copy()
+
+
+	# 	for i in range(0,len(cc_data.wave_low.values)):
+	# 		if cc_data.flag.values[i] == conf_flag_var and cc_data.grating_type.values[i] == pha_arm_var and cc_data.order.values[i] == pha_order_var:
+	# 			elements_to_clean = np.where( (bin_lo_arr >= cc_data.wave_low.values[i]) & (bin_high_arr <= cc_data.wave_high.values[i]) ) #identify elements
+				
+	# 			#clean PHA (spectrum)
+	# 			cleaned_spec_var[elements_to_clean] = 0. #set elements that overlap to zero
+	# 			cleaned_staterr_var[elements_to_clean] = 1.86603 #double check that this makes sense and the stat_err is always this value for zero counts. I suspect instead I should take min of this column and set it to that.
+
+	# 			#clean ARF
+	# 			cleaned_specresp_var[elements_to_clean] = 0.
+	# 			cleaned_fracexpo_var[elements_to_clean] = 0.
+
+	# 	return(cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var)
+
+
+	def clean_data3(cc_table, pha_data_var, arf_data_var, pha_arm_var, pha_order_var, pha_element, conf_flag_var = 'confused'):
+		"""
+		Docstring for clean_data
+		"""
+		cc_data = read_file(cc_table)
+
+		if is_pha_type1(pha_data_var):
+		
+			counts_arr = pha_data_var.COUNTS.values
+			stat_err_arr = pha_data_var.STAT_ERR.values
+			specresp_arr = arf_data_var.SPECRESP.values
+			fracexpo_arr = arf_data_var.FRACEXPO.values
+			bin_low_arr = pha_data_var.BIN_LO.values
+			bin_high_arr = pha_data_var.BIN_HI.values
+
+		elif is_pha_type2(pha_data_var):
+
+			counts_arr = pha_data_var.COUNTS.values[pha_element]
+			stat_err_arr = pha_data_var.STAT_ERR.values[pha_element]
+			specresp_arr = arf_data_var.SPECRESP.values[pha_element]
+			fracexpo_arr = arf_data_var.FRACEXPO.values[pha_element]
+			bin_low_arr = pha_data_var.BIN_LO.values[pha_element]
+			bin_high_arr = pha_data_var.BIN_HI.values[pha_element]	
+
+		else:
+			print('ERROR -- PHA datatype must be 1 or 2')
+			return()		
+
+
+		#copies the counts column of the PHA file for modification
+		cleaned_spec_var = counts_arr.copy()
+		cleaned_staterr_var = stat_err_arr.copy()
+
+		#copies the SPECRESP and fracexpo columns from the arf
+		cleaned_specresp_var = specresp_arr.copy()
+		cleaned_fracexpo_var = fracexpo_arr.copy()
+
+
+		for i in range(0,len(cc_data.wave_low.values)):
+			if cc_data.flag.values[i] == conf_flag_var and cc_data.grating_type.values[i] == pha_arm_var and cc_data.order.values[i] == pha_order_var:
+				elements_to_clean = np.where( (bin_low_arr >= cc_data.wave_low.values[i]) & (bin_high_arr <= cc_data.wave_high.values[i]) ) #identify elements
+				
+				#clean PHA (spectrum)
+				cleaned_spec_var[elements_to_clean] = 0. #set elements that overlap to zero
+				cleaned_staterr_var[elements_to_clean] = 1.86603 #double check that this makes sense and the stat_err is always this value for zero counts. I suspect instead I should take min of this column and set it to that.
+
+				#clean ARF
+				cleaned_specresp_var[elements_to_clean] = 0.
+				cleaned_fracexpo_var[elements_to_clean] = 0.
+
+		return(cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var)
+
+
+
+
+
 	pha_crate_dataset = read_pha(pha_file) #use read_pha cause it brings along all the neccessary extensions
 	arf_data = read_file(arf_file)
 
@@ -2043,40 +2183,35 @@ def clean_spec(cc_table, pha_file, arf_file, src_num):
 			return()
 
 		#setup tgpart and order to be consistent with values in confusion tables.
-		if tg_part == 1:
-			pha_arm = 'heg'
-		elif tg_part == 2:
-			pha_arm = 'meg'
-		else:
-			print(f'warning, arm cannot be identified from header in {pha_file}')
+		pha_arm = convert_arm(tg_part)
 
-		if tg_m > 0:
-			pha_order = f'+{tg_m}'
-		elif tg_m < 0:
-			pha_order = f'-{-1*tg_m}'
-		else:
-			print(f'warning, order cannot be identified from header in {pha_file}')
+		# if tg_part == 1:
+		# 	pha_arm = 'heg'
+		# elif tg_part == 2:
+		# 	pha_arm = 'meg'
+		# else:
+		# 	print(f'warning, arm cannot be identified from header in {pha_file}')
 
-		#copies the counts column of the PHA file for modification
-		cleaned_spec = pha_data.COUNTS.values.copy()
-		cleaned_staterr = pha_data.STAT_ERR.values.copy()
+		pha_order = convert_order(order_int=tg_m)
 
-		#copies the SPECRESP and FRACEXPO columns from the arf
-		cleaned_specresp = arf_data.SPECRESP.values.copy()
-		cleaned_fracexpo = arf_data.FRACEXPO.values.copy()
+		# if tg_m > 0:
+		# 	pha_order = f'+{tg_m}'
+		# elif tg_m < 0:
+		# 	pha_order = f'-{-1*tg_m}'
+		# else:
+		# 	print(f'warning, order cannot be identified from header in {pha_file}')
+
+		# #copies the counts column of the PHA file for modification
+		# cleaned_spec = pha_data.COUNTS.values.copy()
+		# cleaned_staterr = pha_data.STAT_ERR.values.copy()
+
+		# #copies the SPECRESP and FRACEXPO columns from the arf
+		# cleaned_specresp = arf_data.SPECRESP.values.copy()
+		# cleaned_fracexpo = arf_data.FRACEXPO.values.copy()
 
 
-		#loop through the cleaning table for the appropriate arm, order, flag and find elements of pha_spec.bin_lo and pha_spec.bin_hi that fall within the boundaries of cc_data.wave_low and cc_data.wave_high
-		for i in range(0,len(cc_data.wave_low.values)):
-
-			if cc_data.flag.values[i] == 'confused' and cc_data.grating_type.values[i] == pha_arm and cc_data.order.values[i] == pha_order:
-				elements_to_clean = np.where( (pha_data.BIN_LO.values >= cc_data.wave_low.values[i]) & (pha_data.BIN_HI.values <= cc_data.wave_high.values[i]) ) #identify elements
-				cleaned_spec[elements_to_clean] = 0. #set elements that overlap to zero
-				cleaned_staterr[elements_to_clean] = 1.86603 #double check that this makes sense and the stat_err is always this value for zero counts. I suspect instead I should take min of this column and set it to that.
-
-				cleaned_specresp[elements_to_clean] = 0.
-				cleaned_fracexpo[elements_to_clean] = 0.
-
+		cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data3(cc_table = cc_table, pha_data_var = pha_data, arf_data_var = arf_data, pha_arm_var = pha_arm, pha_order_var = pha_order, pha_element=0, conf_flag_var = 'confused')
+		#cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data2(cc_table = cc_table, counts_arr = pha_data.COUNTS.values, stat_err_arr = pha_data.STAT_ERROR.values, specresp_arr = arf_data.SPECRESP.values, fracexpo_arr = arf_data.FRACEXPO.values, bin_lo_arr = pha_data.BIN_LO.values, bin_high_arr = pha_data.BIN_HI.values, pha_arm_var = pha_arm, pha_order_var = pha_order, conf_flag_var = 'confused')
 
 		#replaces the original arrays with the new arrays
 		pha_data.COUNTS.values = cleaned_spec
@@ -2095,6 +2230,88 @@ def clean_spec(cc_table, pha_file, arf_file, src_num):
 		write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.pha', clobber=True)
 		write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.arf', clobber=True)
 
+
+
+		# cc_data = read_file(cc_table)
+
+		# #loop through the cleaning table for the appropriate arm, order, flag and find elements of pha_spec.bin_lo and pha_spec.bin_hi that fall within the boundaries of cc_data.wave_low and cc_data.wave_high
+		# for i in range(0,len(cc_data.wave_low.values)):
+
+		# 	if cc_data.flag.values[i] == 'confused' and cc_data.grating_type.values[i] == pha_arm and cc_data.order.values[i] == pha_order:
+		# 		elements_to_clean = np.where( (pha_data.BIN_LO.values >= cc_data.wave_low.values[i]) & (pha_data.BIN_HI.values <= cc_data.wave_high.values[i]) ) #identify elements
+		# 		cleaned_spec[elements_to_clean] = 0. #set elements that overlap to zero
+		# 		cleaned_staterr[elements_to_clean] = 1.86603 #double check that this makes sense and the stat_err is always this value for zero counts. I suspect instead I should take min of this column and set it to that.
+
+		# 		cleaned_specresp[elements_to_clean] = 0.
+		# 		cleaned_fracexpo[elements_to_clean] = 0.
+
+
+		# #replaces the original arrays with the new arrays
+		# pha_data.COUNTS.values = cleaned_spec
+		# pha_data.STAT_ERR.values = cleaned_staterr
+		# arf_data.SPECRESP.values = cleaned_specresp
+		# arf_data.FRACEXPO.values = cleaned_fracexpo
+
+		# #appends the original files to the history for record keeping
+		# pha_data.add_record("HISTORY", f"This cleaned spectrum was created using the PHA file: {pha_file} and the CrissCross cleaning table: {cc_table}. ")
+		# arf_data.add_record("HISTORY", f"This cleaned ARF was created using the ARF file: {arf_file} and the CrissCross cleaning table: {cc_table}. ")
+
+		# update_crate_checksum(pha_data)
+		# update_crate_checksum(arf_data)
+
+		# #saves file while maintaining the original header.
+		# write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.pha', clobber=True)
+		# write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.arf', clobber=True)
+
+	elif is_pha_type2(pha_crate_dataset):
+		
+		pha_data_full = pha_crate_dataset.get_crate(2)
+		
+		#check to make sure there are 12 orders (for HETG data)
+		if np.shape(pha_data_full.COUNTS.values[0]) != 12:
+			print('ERROR -- PHA 2 file does not have all 12 HEG/MEG orders. Consider running clean_spec() on individual pha1 order files or a complete PHA 2 file')
+			return()
+
+
+		tg_m_arr = pha_data_full.TG_M.values
+		tg_part_arr = pha_data_full.TG_PART.values
+		pha_counts_arr = pha_data_full.COUNTS.values
+
+		pha_order_arr = []
+		for i in tg_m_arr:
+			pha_order_arr.append(convert_order(order_int=i))
+
+		pha_arm_arr = []
+		for i in tg_part_arr:
+			pha_arm_arr.append(convert_arm(tg_part_val=i))
+
+		#run for every arm and order
+		for i in range(0,12):
+
+			cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data3(cc_table = cc_table, pha_data_var = pha_data_full, arf_data_var = arf_data[i], pha_arm_var = pha_arm[i], pha_order_var = pha_order[i], pha_element = i, conf_flag_var = 'confused')
+
+			#replaces the original arrays with the new arrays
+			pha_data.COUNTS.values[i] = cleaned_spec
+			pha_data.STAT_ERR.values[i] = cleaned_staterr
+			arf_data[i].SPECRESP.values = cleaned_specresp
+			arf_data[i].FRACEXPO.values = cleaned_fracexpo
+
+			arf_data[i].add_record("HISTORY", f"This cleaned ARF was created using the ARF file: {arf_file[i]} and the CrissCross cleaning table: {cc_table}. ")
+			update_crate_checksum(arf_data[i])
+			write_file(arf_data[i], f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.arf', clobber=True)
+
+
+		#appends the original files to the history for record keeping
+		pha_data_full.add_record("HISTORY", f"This cleaned spectrum was created using the PHA file: {pha_file} and the CrissCross cleaning table: {cc_table}. ")
+
+		update_crate_checksum(pha_data_full)
+
+		#saves file while maintaining the original header.
+		write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.pha', clobber=True)
+
+
+	else:
+		print('ERROR -- input PHA file was not a PHA1 or PHA2 type file')
 
 	return(cc_data, pha_data, arf_data)	
 
