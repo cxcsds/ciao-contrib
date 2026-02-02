@@ -37,7 +37,7 @@ from ciao_contrib.runtool import *
 import time 
 from iocaldb import OSIP, Sky2Chandra  #moritz's point source extraction contribution
 from widthofexclusion import * #moritz's point source extraction contribution
-from pycrates import read_file, write_file, TABLECrate, CrateData, add_col 
+from pycrates import read_file, write_file, TABLECrate, CrateData, add_col, add_record, get_keyval, read_pha, write_pha, is_pha_type1, is_pha_type2, update_crate_checksum
 from crates_contrib.utils import make_table_crate
 import csv
 
@@ -2016,7 +2016,7 @@ def time_logger(mode, time_started=[], time_counter=[], message=[]):
 
 def clean_spec(cc_table, pha_file, arf_file, src_num):
 
-	from pycrates import add_record, get_keyval, read_pha, write_pha, is_pha_type1, is_pha_type2, update_crate_checksum
+	
 
 	"""""
 	Takes the confusion table for a source and zeros out the portion of the spectrum where confusion occurs.
@@ -2103,12 +2103,12 @@ def clean_spec(cc_table, pha_file, arf_file, src_num):
 
 
 	pha_crate_dataset = read_pha(pha_file) #use read_pha cause it brings along all the neccessary extensions
-	arf_data = read_file(arf_file)
-
+	
 	if is_pha_type1(pha_crate_dataset):
 
 		pha_data = pha_crate_dataset.get_crate(2) #extension 2 contains the PHA data
-			
+		arf_data = read_file(arf_file)
+
 		#determine the heg/meg arm and order and obsid
 		tg_part = get_keyval(pha_data, 'TG_PART') #tg_part = 1 = heg; tg_part = 2 = meg
 		tg_m = get_keyval(pha_data, 'TG_M')
@@ -2147,6 +2147,10 @@ def clean_spec(cc_table, pha_file, arf_file, src_num):
 	#PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in header
 	elif is_pha_type2(pha_crate_dataset):
 		
+		arf_data_arr = np.zeros(len(arf_file), dtype='object') # create an array to hold the N arfs (one for each order)
+		for i in range(0,len(arf_file)):
+			arf_data_arr[i] = read_file(arf_file[i])
+
 		pha_data_full = pha_crate_dataset.get_crate(2)
 		
 		#check to make sure there are 12 orders (for HETG data)
@@ -2165,20 +2169,21 @@ def clean_spec(cc_table, pha_file, arf_file, src_num):
 		for i in tg_part_arr:
 			pha_arm_arr.append(convert_arm(tg_part_val=i))
 
+
 		#run for every arm and order
 		for i in range(0,12):
-
+			
 			cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data(cc_table = cc_table, pha_crate = pha_crate_dataset, arf_data_var = arf_data[i], pha_arm_var = pha_arm_arr[i], pha_order_var = pha_order_arr[i], pha_element = i, conf_flag_var = 'confused')
 
 			#replaces the original arrays with the new arrays
 			pha_data.COUNTS.values[i] = cleaned_spec
 			pha_data.STAT_ERR.values[i] = cleaned_staterr
-			arf_data[i].SPECRESP.values = cleaned_specresp
-			arf_data[i].FRACEXPO.values = cleaned_fracexpo
+			arf_data_arr[i].SPECRESP.values = cleaned_specresp
+			arf_data_arr[i].FRACEXPO.values = cleaned_fracexpo
 
-			arf_data[i].add_record("HISTORY", f"This cleaned ARF was created using the ARF file: {arf_file[i]} and the CrissCross cleaning table: {cc_table}. ")
-			update_crate_checksum(arf_data[i])
-			write_file(arf_data[i], f'src_{src_num}_obsid_{tg_obs}_{pha_arm_arr}_{pha_order_arr}_cleaned.arf', clobber=True)
+			arf_data_arr[i].add_record("HISTORY", f"This cleaned ARF was created using the ARF file: {arf_file[i]} and the CrissCross cleaning table: {cc_table}. ")
+			update_crate_checksum(arf_data_arr[i])
+			write_file(arf_data_arr[i], f'src_{src_num}_obsid_{tg_obs}_{pha_arm_arr}_{pha_order_arr}_cleaned.arf', clobber=True)
 
 
 		#appends the original files to the history for record keeping
@@ -2193,13 +2198,63 @@ def clean_spec(cc_table, pha_file, arf_file, src_num):
 	else:
 		print('ERROR -- input PHA file was not a PHA1 or PHA2 type file')
 
-	return(pha_data, arf_data)	
+	#return(pha_data, arf_data)	
+	return()	
 
 ####TESTING
-# src = 449
-# obs = 8589
-# test_spec_dir = 'input_files/testing/hetg_spectra'
-# pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_consolidated_obsID_{obs}.fits', pha_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.pha', arf_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.arf', src_num = src)
+src = 449
+obs = 8589
+test_spec_dir = 'input_files/testing/hetg_spectra'
+pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_consolidated_obsID_{obs}.fits', pha_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.pha', arf_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.arf', src_num = src)
+
+
+
+def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
+	from pathlib import Path
+	from pycrates import get_history_records
+
+	pha2_dataset = read_pha(pha2_file)
+	spec_crate = pha2_dataset.get_crate(2)
+
+	#There are two primary ways to get HETG data via simple commands (maybe three if you count downloading manually from tgcat). (1) download an HETG observation from  either chaser or 'download_chandra_obsid' which gives you the archive (DS-reduced) file structure (e.g., response folder). (2) Running chandra_repro on (1) to get a CIAO produced file structure (e.g., tg folder). Users can also rename the spectral files with the 'root' keyword in chandra_repro.
+
+	creator_key = get_keyval(spec_crate, 'CREATOR')
+	
+	if 'Version DS' in creator_key:
+		#if users pha2_file is a long path or a single file, strip the name and check for the root so the arf glob doesn't get any extra unrelated files in the response dir
+		pha_name = Path(pha2_file).name
+		pha_root = pha_name.partition('_pha2.fits')[0]
+		if resp_dir == None:
+			arf_list = glob.glob(f'responses/{pha_root}*arf2.fits*')
+			rmf_list = glob.glob(f'responses/{pha_root}*rmf2.fits*')
+		else:
+			arf_list = glob.glob(f'{resp_dir}/{pha_root}*arf2.fits*')
+			rmf_list = glob.glob(f'{resp_dir}/{pha_root}*rmf2.fits*')			
+
+	elif 'Version CIAO' in creator_key:
+		hist = get_history_records(spec_crate)
+		pha_root = ''
+
+		for i in range(0,len(hist)):
+			if ':root=' in hist[i][1]: #find the line where the :root command was used
+				root_line = hist[i][1].split('=',1)[1].strip() #strip the unnecessary stuff but leaves the extra spaces
+				pha_root = root_line.split(' ')[0] #remove everything after the last character assuming they are separated by spaces
+			else:
+				print('ERROR, cant find the pha_root value')
+
+		if resp_dir == None:
+			arf_list = glob.glob(f'tg/{pha_root}*arf2.fits*')
+			rmf_list = glob.glob(f'tg/{pha_root}*rmf2.fits*')
+		else:
+			arf_list = glob.glob(f'{resp_dir}/{pha_root}*arf2.fits*')
+			rmf_list = glob.glob(f'{resp_dir}/{pha_root}*rmf2.fits*')
+
+	#do some basic checking to make sure the ARFs and RMFs are the same obsID and same source and reorder them to match the order in the pha2_file
+	
+
+
+	return(matched_arf_list, matched_rmf_list)
+
 
 
 #### TESTING END
