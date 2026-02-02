@@ -2210,27 +2210,45 @@ pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_
 
 
 def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
+	"""
+	ASDasdasd
+	"""
+
 	from pathlib import Path
-	from pycrates import get_history_records
+	from pycrates import read_pha, get_keyval, get_history_records, read_file
+	import glob
+	import numpy as np
+
+	def match_response_order():
+		"""
+		Docstring for match_response_order
+		"""
+
+
+	print(f'\n Finding HETG response files that match PHA2 file: {pha2_file}\n')
 
 	pha2_dataset = read_pha(pha2_file)
 	spec_crate = pha2_dataset.get_crate(2)
+	num_spec = len(spec_crate.SPEC_NUM.values) #identify the number of spectra in pha2 file which should be 12 for HETG pipeline responses
 
 	#There are two primary ways to get HETG data via simple commands (maybe three if you count downloading manually from tgcat). (1) download an HETG observation from  either chaser or 'download_chandra_obsid' which gives you the archive (DS-reduced) file structure (e.g., response folder). (2) Running chandra_repro on (1) to get a CIAO produced file structure (e.g., tg folder). Users can also rename the spectral files with the 'root' keyword in chandra_repro.
 
+	#determine which pipeline the PHA2 file came from (Archive vs CIAO user)
 	creator_key = get_keyval(spec_crate, 'CREATOR')
 	
 	if 'Version DS' in creator_key:
 		#if users pha2_file is a long path or a single file, strip the name and check for the root so the arf glob doesn't get any extra unrelated files in the response dir
 		pha_name = Path(pha2_file).name
 		pha_root = pha_name.partition('_pha2.fits')[0]
-		if resp_dir == None:
-			arf_list = glob.glob(f'responses/{pha_root}*arf2.fits*')
-			rmf_list = glob.glob(f'responses/{pha_root}*rmf2.fits*')
-		else:
-			arf_list = glob.glob(f'{resp_dir}/{pha_root}*arf2.fits*')
-			rmf_list = glob.glob(f'{resp_dir}/{pha_root}*rmf2.fits*')			
 
+		if resp_dir != None: #use provided resp_dir
+			arf_list = glob.glob(f'{resp_dir}/{pha_root}*arf2.fits*')
+			rmf_list = glob.glob(f'{resp_dir}/{pha_root}*rmf2.fits*')
+		else:
+			pha_dir = Path(pha2_file).parent #need to get directory where PHA2 file is located
+			arf_list = glob.glob(f'{pha_dir}/responses/{pha_root}*arf2.fits*')
+			rmf_list = glob.glob(f'{pha_dir}/responses/{pha_root}*rmf2.fits*')
+			
 	elif 'Version CIAO' in creator_key:
 		hist = get_history_records(spec_crate)
 		pha_root = ''
@@ -2239,21 +2257,116 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 			if ':root=' in hist[i][1]: #find the line where the :root command was used
 				root_line = hist[i][1].split('=',1)[1].strip() #strip the unnecessary stuff but leaves the extra spaces
 				pha_root = root_line.split(' ')[0] #remove everything after the last character assuming they are separated by spaces
-			else:
-				print('ERROR, cant find the pha_root value')
+				break #stops searching hist for the appropriate line after it is found
 
-		if resp_dir == None:
-			arf_list = glob.glob(f'tg/{pha_root}*arf2.fits*')
-			rmf_list = glob.glob(f'tg/{pha_root}*rmf2.fits*')
+		#if pha_root is not overwritten at this point then throw error because it means it was not found
+		if pha_root == '':
+			print('ERROR -- could not find filename root')
+			return()
+
+		if resp_dir != None: #use provided resp_dir
+			arf_list = glob.glob(f'{resp_dir}/{pha_root}*.arf')
+			rmf_list = glob.glob(f'{resp_dir}/{pha_root}*.rmf')
 		else:
-			arf_list = glob.glob(f'{resp_dir}/{pha_root}*arf2.fits*')
-			rmf_list = glob.glob(f'{resp_dir}/{pha_root}*rmf2.fits*')
+			pha_dir = Path(pha2_file).parent #need to get directory where PHA2 file is located
+			arf_list = glob.glob(f'{pha_dir}/tg/{pha_root}*.arf')
+			rmf_list = glob.glob(f'{pha_dir}/tg/{pha_root}*.rmf')
+
+	else:
+		print('ERROR-- Cannot determine the creator of PHA2 file and responses will have to be loaded manually')
+		return()
+
+
+
+	#check that the length of the arf and RMF lists match the number of PHA spec in the PHA2 file
+	if len(arf_list) != num_spec or len(rmf_list) != num_spec:
+		print(f'ERROR-- The number of ARFs [{len(arf_list)}] and RMFs [{len(rmf_list)}] identified does not match the number of PHA spectra [{num_spec}] in the PHA2 file.')
+		return()
 
 	#do some basic checking to make sure the ARFs and RMFs are the same obsID and same source and reorder them to match the order in the pha2_file
+
+	#identify the file arrangement of the HETG orders and HEG/MEG arms
+	tg_m_arr = spec_crate.TG_M.values
+	tg_part_arr = spec_crate.TG_PART.values
+	tg_obsid = get_keyval(spec_crate, 'OBS_ID')
+
+	arf_m_arr = []
+	rmf_m_arr = []
+	arf_tg_part_arr = []
+	rmf_tg_part_arr = []
+	arf_obsid_arr = []
+	rmf_obsid_arr = []
+
+	for i in range(0,len(arf_list)):
+		arf_data = read_file(arf_list[i])
+		rmf_data = read_file(rmf_list[i])
+
+		arf_m_arr.append(get_keyval(arf_data, 'TG_M'))
+		rmf_m_arr.append(get_keyval(rmf_data, 'TG_M'))
+
+		arf_tg_part_arr.append(get_keyval(arf_data, 'TG_PART'))
+		rmf_tg_part_arr.append(get_keyval(rmf_data, 'TG_PART'))
+
+		arf_obsid_arr.append(get_keyval(arf_data, 'OBS_ID'))
+		rmf_obsid_arr.append(get_keyval(rmf_data, 'OBS_ID'))
+
+	#convert obsid lists to numpy arrays for later use with np.where() for obsID checking
+	tg_obsid = np.array(tg_obsid)
+	arf_obsid_arr = np.array(arf_obsid_arr)
+	rmf_obsid_arr = np.array(rmf_obsid_arr)
+
+	#re-order arrays to make sure they match
+
+	matched_element_arf_arr = [None]*12
+	matched_element_rmf_arr = [None]*12
+	for i in range(0,num_spec):
+		match_arf = np.where((arf_m_arr == tg_m_arr[i]) & (arf_tg_part_arr == tg_part_arr[i]) & (arf_obsid_arr == tg_obsid))[0].tolist()
+		if len(match_arf) == 1:
+			matched_element_arf_arr[i] = match_arf[0] #take 0th element to add to list later for re-ordering
+		else:
+			print(f'ERROR, cannot find ARF match for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
+			#asdasd
+			return()
+
+		match_rmf = np.where((rmf_m_arr == tg_m_arr[i]) & (rmf_tg_part_arr == tg_part_arr[i]) & (rmf_obsid_arr == tg_obsid))[0].tolist()
+		if len(match_rmf) == 1:
+			matched_element_rmf_arr[i] = match_rmf[0] #take 0th element to add to list later for re-ordering
+		else:
+			print(f'ERROR, cannot find RMF match for TG_M={tg_m_arr[i]} and TG_PART={tg_part_arr[i]}')
+			return()
+				
+
+	#re-arrange the arf and rmf list of the matched keywords to be consistent with arrangement of PHA2 spectra.
+	matched_arf_list = [arf_list[i] for i in matched_element_arf_arr]
+	matched_rmf_list = [rmf_list[i] for i in matched_element_rmf_arr]
+
+	if any(x is None for x in matched_arf_list):
+		print('ERROR -- some ARFs were not matched properly. Please manually load arfs')
+		return()
 	
+	if any(x is None for x in matched_rmf_list):
+		print('ERROR -- some RMFs were not matched properly. Please manually load RMFs')
+		return()
+
+	print(f'All responses found\n')
+
+	for i in range(0,num_spec):
+		print(f'ARF: {matched_arf_list[i]},   RMF: {matched_rmf_list[i]}')
 
 
-	return(matched_arf_list, matched_rmf_list)
+	return(matched_arf_list, matched_rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr)
+
+#tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/primary/acisf07438N004_pha2.fits.gz', resp_dir='7438/primary/responses')
+
+#DS produced with response dir input
+#arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/primary/acisf07438N004_pha2.fits.gz', resp_dir='7438/primary/responses') #[WORKS]
+
+#DS produced with no response dir
+#arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/primary/acisf07438N004_pha2.fits.gz') #[WORKS]
+
+
+#CIAO produced with response dir called out
+arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/repro/tw_hya_repro_pha2.fits', resp_dir='7438/repro/tg')
 
 
 
