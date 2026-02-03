@@ -2144,7 +2144,7 @@ def clean_spec(cc_table, pha_file, arf_file, src_num):
 		write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.arf', clobber=True)
 
 
-	#PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in header
+	#PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in header. Also the arfs may be out of order if provided a list of arfs but only one pha2 file.
 	elif is_pha_type2(pha_crate_dataset):
 		
 		arf_data_arr = np.zeros(len(arf_file), dtype='object') # create an array to hold the N arfs (one for each order)
@@ -2211,7 +2211,7 @@ pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_
 
 def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 	"""
-	ASDasdasd
+	Identifies ARFs and RMFs that are associated with an HETG PHA2 file.  This currently only works for pipeline-produced PHA2 files such as an observation downloaded from the chandra archive (which comes with a PHA2 spectrum and responses) or a CIAO tg_extract pipeline produced (chandra_repro) observation. Note, there is currently an issue because chandra_repro only produces +1/-1 orders while the archive contains all 12 orders.
 	"""
 
 	from pathlib import Path
@@ -2227,6 +2227,7 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 
 	print(f'\n Finding HETG response files that match PHA2 file: {pha2_file}\n')
 
+	#reads in the pha2 file and checks how many spectra (orders) it includes.
 	pha2_dataset = read_pha(pha2_file)
 	spec_crate = pha2_dataset.get_crate(2)
 	num_spec = len(spec_crate.SPEC_NUM.values) #identify the number of spectra in pha2 file which should be 12 for HETG pipeline responses
@@ -2249,9 +2250,9 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 			arf_list = glob.glob(f'{pha_dir}/responses/{pha_root}*arf2.fits*')
 			rmf_list = glob.glob(f'{pha_dir}/responses/{pha_root}*rmf2.fits*')
 			
-	elif 'Version CIAO' in creator_key:
+	elif 'Version CIAO' in creator_key: #this is produced via chandra_repro or user custom spectral extraction
 		hist = get_history_records(spec_crate)
-		pha_root = ''
+		pha_root = '' #pha_root is the root name of the file that created the PHA2 file and will by default be the root name of the responses.
 
 		for i in range(0,len(hist)):
 			if ':root=' in hist[i][1]: #find the line where the :root command was used
@@ -2269,7 +2270,7 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 			rmf_list = glob.glob(f'{resp_dir}/{pha_root}*.rmf')
 		else:
 			pha_dir = Path(pha2_file).parent #need to get directory where PHA2 file is located
-			arf_list = glob.glob(f'{pha_dir}/tg/{pha_root}*.arf')
+			arf_list = glob.glob(f'{pha_dir}/tg/{pha_root}*.arf') #use the root name of the PHA2 file to ID the responses. This way users can have many extractions in a single dir but it will only grab the appropriate ones.
 			rmf_list = glob.glob(f'{pha_dir}/tg/{pha_root}*.rmf')
 
 	else:
@@ -2285,7 +2286,7 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 
 	#do some basic checking to make sure the ARFs and RMFs are the same obsID and same source and reorder them to match the order in the pha2_file
 
-	#identify the file arrangement of the HETG orders and HEG/MEG arms
+	#identify the file arrangement of the HETG orders and HEG/MEG arms via the PHA2 file
 	tg_m_arr = spec_crate.TG_M.values
 	tg_part_arr = spec_crate.TG_PART.values
 	tg_obsid = get_keyval(spec_crate, 'OBS_ID')
@@ -2297,6 +2298,7 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 	arf_obsid_arr = []
 	rmf_obsid_arr = []
 
+	#determine the HEG/MEG arm, orders and obsID for each spectra which will later be matched to the PHA2 file to ensure the correct response is identified.
 	for i in range(0,len(arf_list)):
 		arf_data = read_file(arf_list[i])
 		rmf_data = read_file(rmf_list[i])
@@ -2315,10 +2317,10 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 	arf_obsid_arr = np.array(arf_obsid_arr)
 	rmf_obsid_arr = np.array(rmf_obsid_arr)
 
-	#re-order arrays to make sure they match
-
 	matched_element_arf_arr = [None]*12
 	matched_element_rmf_arr = [None]*12
+
+	#identify the elements of of the arf_list which match each PHA2 file order
 	for i in range(0,num_spec):
 		match_arf = np.where((arf_m_arr == tg_m_arr[i]) & (arf_tg_part_arr == tg_part_arr[i]) & (arf_obsid_arr == tg_obsid))[0].tolist()
 		if len(match_arf) == 1:
@@ -2335,7 +2337,6 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 			print(f'ERROR, cannot find RMF match for TG_M={tg_m_arr[i]} and TG_PART={tg_part_arr[i]}')
 			return()
 				
-
 	#re-arrange the arf and rmf list of the matched keywords to be consistent with arrangement of PHA2 spectra.
 	matched_arf_list = [arf_list[i] for i in matched_element_arf_arr]
 	matched_rmf_list = [rmf_list[i] for i in matched_element_rmf_arr]
