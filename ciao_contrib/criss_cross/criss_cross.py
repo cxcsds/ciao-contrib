@@ -2281,8 +2281,7 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 
 	#check that the length of the arf and RMF lists match the number of PHA spec in the PHA2 file
 	if len(arf_list) != num_spec or len(rmf_list) != num_spec:
-		print(f'ERROR-- The number of ARFs [{len(arf_list)}] and RMFs [{len(rmf_list)}] identified does not match the number of PHA spectra [{num_spec}] in the PHA2 file.')
-		return()
+		print(f'WARNING-- The identified number of ARFs [{len(arf_list)}] and RMFs [{len(rmf_list)}] does not match the number of PHA spectra [{num_spec}] in the PHA2 file. Only the responses found will be included.\n')
 
 	#do some basic checking to make sure the ARFs and RMFs are the same obsID and same source and reorder them to match the order in the pha2_file
 
@@ -2291,12 +2290,14 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 	tg_part_arr = spec_crate.TG_PART.values
 	tg_obsid = get_keyval(spec_crate, 'OBS_ID')
 
+	#create empty lists to later append values
 	arf_m_arr = []
 	rmf_m_arr = []
 	arf_tg_part_arr = []
 	rmf_tg_part_arr = []
 	arf_obsid_arr = []
 	rmf_obsid_arr = []
+
 
 	#determine the HEG/MEG arm, orders and obsID for each spectra which will later be matched to the PHA2 file to ensure the correct response is identified.
 	for i in range(0,len(arf_list)):
@@ -2317,43 +2318,47 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 	arf_obsid_arr = np.array(arf_obsid_arr)
 	rmf_obsid_arr = np.array(rmf_obsid_arr)
 
-	matched_element_arf_arr = [None]*12
-	matched_element_rmf_arr = [None]*12
+	#create empty object arrays for hold the final matched response lists matched to the total number of spectra in the PHA2 file
+	matched_arf_list = np.array(['']*num_spec, dtype='object')
+	matched_rmf_list = np.array(['']*num_spec, dtype='object')
 
-	#identify the elements of of the arf_list which match each PHA2 file order
+	#identify the elements of the arf/rmf_list which match each PHA2 file order
 	for i in range(0,num_spec):
 		match_arf = np.where((arf_m_arr == tg_m_arr[i]) & (arf_tg_part_arr == tg_part_arr[i]) & (arf_obsid_arr == tg_obsid))[0].tolist()
 		if len(match_arf) == 1:
-			matched_element_arf_arr[i] = match_arf[0] #take 0th element to add to list later for re-ordering
+			matched_arf_list[i] = arf_list[match_arf[0]] #this is the element in the arf data that match the ith element of the PHA2 file.
+		elif len(match_arf) > 1:
+			print(f'ERROR, more than one ARF match found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}. ')
+			return()
+		elif len(match_arf) == 0:
+			matched_arf_list[i] = 'no match'
+			print(f'Warning, no ARF found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}.')
 		else:
-			print(f'ERROR, cannot find ARF match for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
-			#asdasd
+			print(f'ERROR - Something with wrong identifying ARFs for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
 			return()
 
 		match_rmf = np.where((rmf_m_arr == tg_m_arr[i]) & (rmf_tg_part_arr == tg_part_arr[i]) & (rmf_obsid_arr == tg_obsid))[0].tolist()
 		if len(match_rmf) == 1:
-			matched_element_rmf_arr[i] = match_rmf[0] #take 0th element to add to list later for re-ordering
+			matched_rmf_list[i] = rmf_list[match_rmf[0]] #this is the element in the arf data that match the ith element of the PHA2 file.
+		elif len(match_rmf) > 1:
+			print(f'ERROR, more than one RMF match found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}. ')
+			return()
+		elif len(match_rmf) == 0:
+			matched_rmf_list[i] = 'no match'
+			print(f'Warning, no RMF found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}.\n')
 		else:
-			print(f'ERROR, cannot find RMF match for TG_M={tg_m_arr[i]} and TG_PART={tg_part_arr[i]}')
+			print(f'ERROR - Something with wrong identifying RMFs for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
 			return()
 				
-	#re-arrange the arf and rmf list of the matched keywords to be consistent with arrangement of PHA2 spectra.
-	matched_arf_list = [arf_list[i] for i in matched_element_arf_arr]
-	matched_rmf_list = [rmf_list[i] for i in matched_element_rmf_arr]
+	print('\nThe following response files were found\n')
 
-	if any(x is None for x in matched_arf_list):
-		print('ERROR -- some ARFs were not matched properly. Please manually load arfs')
-		return()
-	
-	if any(x is None for x in matched_rmf_list):
-		print('ERROR -- some RMFs were not matched properly. Please manually load RMFs')
-		return()
+	#name the arm and order something more readable for output message
+	arm = lambda x: 'HEG' if x==1 else 'MEG' if x ==2 else 'ERROR'
+	order = lambda x: '+1' if x > 0 else '-1' if x < 0 else 'ERROR'
 
-	print(f'All responses found\n')
-
-	for i in range(0,num_spec):
-		print(f'ARF: {matched_arf_list[i]},   RMF: {matched_rmf_list[i]}')
-
+	print()
+	for i in range(0,num_spec):		
+		print(f'{arm(tg_part_arr[i])} {order(tg_m_arr[i])} -- ARF: {matched_arf_list[i]},   RMF: {matched_rmf_list[i]}')
 
 	return(matched_arf_list, matched_rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr)
 
@@ -2367,7 +2372,15 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 
 
 #CIAO produced with response dir called out
-arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/repro/tw_hya_repro_pha2.fits', resp_dir='7438/repro/tg')
+#arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/repro/tw_hya_repro_pha2.fits', resp_dir='7438/repro/tg')
+# arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/repro/acisf07438_repro_pha2.fits', resp_dir='7438/repro/tg')
+
+#CIAO produced with no response dir called out
+# arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/repro/acisf07438_repro_pha2.fits')
+
+#CIAO produced custom name
+# arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('custom_spec/tw_hya_repro_pha2.fits', resp_dir='custom_spec/tg')
+# arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('custom_spec/tw_hya_repro_pha2.fits')
 
 
 
