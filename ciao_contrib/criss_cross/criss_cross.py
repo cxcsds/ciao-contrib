@@ -2212,6 +2212,9 @@ pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_
 def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 	"""
 	Identifies ARFs and RMFs that are associated with an HETG PHA2 file.  This currently only works for pipeline-produced PHA2 files such as an observation downloaded from the chandra archive (which comes with a PHA2 spectrum and responses) or a CIAO tg_extract pipeline produced (chandra_repro) observation. Note, there is currently an issue because chandra_repro only produces +1/-1 orders while the archive contains all 12 orders.
+
+	pha2_file -- a PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after running chandra_repro on a chandra HETG obsID.
+	resp_dir -- the directory where the HETG response files associated with your PHA2 file are located. If none provided, it will attempt to search for them.
 	"""
 
 	from pathlib import Path
@@ -2219,10 +2222,41 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 	import glob
 	import numpy as np
 
-	def match_response_order():
+
+	def match_resp_order(num_spec, resp_list, resp_m_arr, resp_tg_part_arr, resp_obsid_arr, tg_m_arr, tg_part_arr,tg_obsid, resp_type):
 		"""
-		Docstring for match_response_order
+		This uses the PHA2 file structure and matches the response files (ARF/RMF) in resp_list to the appropriate PHA2 spectrum using the header keywords tg_m, tg_part and obsid.
+		
+		:param num_spec: Description
+		:param matched_resp_list: Description
+		:param resp_m_arr: Description
+		:param resp_tg_part_arr: Description
+		:param resp_obsid: Description
+		:param tg_m_arr: Description
+		:param tg_part_arr: Description
+		:param tg_obsid: Description
 		"""
+
+		#create empty object arrays for hold the final matched response lists matched to the total number of spectra in the PHA2 file
+		matched_resp_list = np.array(['']*num_spec, dtype='object')
+
+		for i in range(0,num_spec):
+			match_resp = np.where((resp_m_arr == tg_m_arr[i]) & (resp_tg_part_arr == tg_part_arr[i]) & (resp_obsid_arr == tg_obsid))[0].tolist()
+			if len(match_resp) == 1:
+				matched_resp_list[i] = resp_list[match_resp[0]] #this is the element in the response array that match the i_th element of the PHA2 file.
+			elif len(match_resp) > 1:
+				print(f'ERROR, more than one {resp_type} match found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}. ')
+				return()
+			elif len(match_resp) == 0:
+				matched_resp_list[i] = 'no match'
+				print(f'Warning, no {resp_type} found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}.')
+			else:
+				print(f'ERROR - Something with wrong identifying {resp_type}s for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
+				return()
+			
+		return(matched_resp_list)
+
+
 
 
 	print(f'\n Finding HETG response files that match PHA2 file: {pha2_file}\n')
@@ -2278,7 +2312,6 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 		return()
 
 
-
 	#check that the length of the arf and RMF lists match the number of PHA spec in the PHA2 file
 	if len(arf_list) != num_spec or len(rmf_list) != num_spec:
 		print(f'WARNING-- The identified number of ARFs [{len(arf_list)}] and RMFs [{len(rmf_list)}] does not match the number of PHA spectra [{num_spec}] in the PHA2 file. Only the responses found will be included.\n')
@@ -2318,50 +2351,25 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 	arf_obsid_arr = np.array(arf_obsid_arr)
 	rmf_obsid_arr = np.array(rmf_obsid_arr)
 
-	#create empty object arrays for hold the final matched response lists matched to the total number of spectra in the PHA2 file
-	matched_arf_list = np.array(['']*num_spec, dtype='object')
-	matched_rmf_list = np.array(['']*num_spec, dtype='object')
+	#Match the ARF and RMF lists to the PHA2 file arrangement
+	matched_arf_list = match_resp_order(num_spec=num_spec, resp_list=arf_list, resp_m_arr=arf_m_arr, resp_tg_part_arr=arf_tg_part_arr, resp_obsid_arr=arf_obsid_arr, tg_m_arr=tg_m_arr, tg_part_arr=tg_part_arr,tg_obsid=tg_obsid, resp_type='ARF')
+	matched_rmf_list = match_resp_order(num_spec=num_spec, resp_list=rmf_list, resp_m_arr=rmf_m_arr, resp_tg_part_arr=rmf_tg_part_arr, resp_obsid_arr=rmf_obsid_arr, tg_m_arr=tg_m_arr, tg_part_arr=tg_part_arr,tg_obsid=tg_obsid, resp_type='RMF')
 
-	#identify the elements of the arf/rmf_list which match each PHA2 file order
-	for i in range(0,num_spec):
-		match_arf = np.where((arf_m_arr == tg_m_arr[i]) & (arf_tg_part_arr == tg_part_arr[i]) & (arf_obsid_arr == tg_obsid))[0].tolist()
-		if len(match_arf) == 1:
-			matched_arf_list[i] = arf_list[match_arf[0]] #this is the element in the arf data that match the ith element of the PHA2 file.
-		elif len(match_arf) > 1:
-			print(f'ERROR, more than one ARF match found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}. ')
-			return()
-		elif len(match_arf) == 0:
-			matched_arf_list[i] = 'no match'
-			print(f'Warning, no ARF found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}.')
-		else:
-			print(f'ERROR - Something with wrong identifying ARFs for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
-			return()
-
-		match_rmf = np.where((rmf_m_arr == tg_m_arr[i]) & (rmf_tg_part_arr == tg_part_arr[i]) & (rmf_obsid_arr == tg_obsid))[0].tolist()
-		if len(match_rmf) == 1:
-			matched_rmf_list[i] = rmf_list[match_rmf[0]] #this is the element in the arf data that match the ith element of the PHA2 file.
-		elif len(match_rmf) > 1:
-			print(f'ERROR, more than one RMF match found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}. ')
-			return()
-		elif len(match_rmf) == 0:
-			matched_rmf_list[i] = 'no match'
-			print(f'Warning, no RMF found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}.\n')
-		else:
-			print(f'ERROR - Something with wrong identifying RMFs for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
-			return()
 				
 	print('\nThe following response files were found\n')
 
 	#name the arm and order something more readable for output message
 	arm = lambda x: 'HEG' if x==1 else 'MEG' if x ==2 else 'ERROR'
-	order = lambda x: '+1' if x > 0 else '-1' if x < 0 else 'ERROR'
+	order = lambda x: f'+{x}' if x > 0 else f'-{-1*x}' if x < 0 else 'ERROR'
 
 	print()
 	for i in range(0,num_spec):		
-		print(f'{arm(tg_part_arr[i])} {order(tg_m_arr[i])} -- ARF: {matched_arf_list[i]},   RMF: {matched_rmf_list[i]}')
+		print(f'{arm(tg_part_arr[i])+order(tg_m_arr[i])} -- ARF: {matched_arf_list[i]},   RMF: {matched_rmf_list[i]}')
 
 	return(matched_arf_list, matched_rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr)
 
+
+#TESTING COMMANDS
 #tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/primary/acisf07438N004_pha2.fits.gz', resp_dir='7438/primary/responses')
 
 #DS produced with response dir input
@@ -2382,9 +2390,12 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 # arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('custom_spec/tw_hya_repro_pha2.fits', resp_dir='custom_spec/tg')
 # arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('custom_spec/tw_hya_repro_pha2.fits')
 
-
-
 #### TESTING END
+
+
+
+
+
 
 ######### MAIN CrissCross RUN FUNCTION ##############
 
