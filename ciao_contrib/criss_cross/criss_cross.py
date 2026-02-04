@@ -2209,11 +2209,12 @@ pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_
 
 
 
-def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
+def find_hetg_pipeline_resp(pha2_file, resp_type_par, resp_dir=None):
 	"""
 	Identifies ARFs and RMFs that are associated with an HETG PHA2 file.  This currently only works for pipeline-produced PHA2 files such as an observation downloaded from the chandra archive (which comes with a PHA2 spectrum and responses) or a CIAO tg_extract pipeline produced (chandra_repro) observation. Note, there is currently an issue because chandra_repro only produces +1/-1 orders while the archive contains all 12 orders.
 
 	pha2_file -- a PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after running chandra_repro on a chandra HETG obsID.
+	resp_type_par -- 'arf' for ARF files and 'rmf' for RMF files. Case sensitive.
 	resp_dir -- the directory where the HETG response files associated with your PHA2 file are located. If none provided, it will attempt to search for them.
 	"""
 
@@ -2245,21 +2246,24 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 			if len(match_resp) == 1:
 				matched_resp_list[i] = resp_list[match_resp[0]] #this is the element in the response array that match the i_th element of the PHA2 file.
 			elif len(match_resp) > 1:
-				print(f'ERROR, more than one {resp_type} match found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}. ')
+				print(f'ERROR, more than one {resp_type.upper()} match found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}. ')
 				return()
 			elif len(match_resp) == 0:
 				matched_resp_list[i] = 'no match'
-				print(f'Warning, no {resp_type} found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}.')
+				print(f'Warning, no {resp_type.upper()} found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}.')
 			else:
-				print(f'ERROR - Something with wrong identifying {resp_type}s for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
+				print(f'ERROR - Something with wrong identifying {resp_type.upper()}s for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
 				return()
 			
 		return(matched_resp_list)
 
+	#check to make sure responses are either arf or rmf
+	if resp_type_par != 'arf' and resp_type_par != 'rmf':
+		print('ERROR -- response type must be either arf or rmf')
+		return()
 
 
-
-	print(f'\n Finding HETG response files that match PHA2 file: {pha2_file}\n')
+	print(f'\n Finding HETG {resp_type_par.upper()} response files that match PHA2 file: {pha2_file}\n')
 
 	#reads in the pha2 file and checks how many spectra (orders) it includes.
 	pha2_dataset = read_pha(pha2_file)
@@ -2272,17 +2276,15 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 	creator_key = get_keyval(spec_crate, 'CREATOR')
 	
 	if 'Version DS' in creator_key:
-		#if users pha2_file is a long path or a single file, strip the name and check for the root so the arf glob doesn't get any extra unrelated files in the response dir
+		#if users pha2_file is a long path or a single file, strip the name and check for the root so the resp glob doesn't get any extra unrelated files in the response dir
 		pha_name = Path(pha2_file).name
 		pha_root = pha_name.partition('_pha2.fits')[0]
 
 		if resp_dir != None: #use provided resp_dir
-			arf_list = glob.glob(f'{resp_dir}/{pha_root}*arf2.fits*')
-			rmf_list = glob.glob(f'{resp_dir}/{pha_root}*rmf2.fits*')
+			resp_list = glob.glob(f'{resp_dir}/{pha_root}*{resp_type_par}2.fits*')
 		else:
 			pha_dir = Path(pha2_file).parent #need to get directory where PHA2 file is located
-			arf_list = glob.glob(f'{pha_dir}/responses/{pha_root}*arf2.fits*')
-			rmf_list = glob.glob(f'{pha_dir}/responses/{pha_root}*rmf2.fits*')
+			resp_list = glob.glob(f'{pha_dir}/responses/{pha_root}*{resp_type_par}2.fits*')
 			
 	elif 'Version CIAO' in creator_key: #this is produced via chandra_repro or user custom spectral extraction
 		hist = get_history_records(spec_crate)
@@ -2300,12 +2302,10 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 			return()
 
 		if resp_dir != None: #use provided resp_dir
-			arf_list = glob.glob(f'{resp_dir}/{pha_root}*.arf')
-			rmf_list = glob.glob(f'{resp_dir}/{pha_root}*.rmf')
+			resp_list = glob.glob(f'{resp_dir}/{pha_root}*.{resp_type_par}')
 		else:
 			pha_dir = Path(pha2_file).parent #need to get directory where PHA2 file is located
-			arf_list = glob.glob(f'{pha_dir}/tg/{pha_root}*.arf') #use the root name of the PHA2 file to ID the responses. This way users can have many extractions in a single dir but it will only grab the appropriate ones.
-			rmf_list = glob.glob(f'{pha_dir}/tg/{pha_root}*.rmf')
+			resp_list = glob.glob(f'{pha_dir}/tg/{pha_root}*.{resp_type_par}') #use the root name of the PHA2 file to ID the responses. This way users can have many extractions in a single dir but it will only grab the appropriate ones.
 
 	else:
 		print('ERROR-- Cannot determine the creator of PHA2 file and responses will have to be loaded manually')
@@ -2313,8 +2313,8 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 
 
 	#check that the length of the arf and RMF lists match the number of PHA spec in the PHA2 file
-	if len(arf_list) != num_spec or len(rmf_list) != num_spec:
-		print(f'WARNING-- The identified number of ARFs [{len(arf_list)}] and RMFs [{len(rmf_list)}] does not match the number of PHA spectra [{num_spec}] in the PHA2 file. Only the responses found will be included.\n')
+	if len(resp_list) != num_spec:
+		print(f'WARNING-- The identified number of {resp_type_par.upper()}s [{len(resp_list)}] does not match the number of PHA spectra [{num_spec}] in the PHA2 file. Only the responses found will be included.\n')
 
 	#do some basic checking to make sure the ARFs and RMFs are the same obsID and same source and reorder them to match the order in the pha2_file
 
@@ -2324,37 +2324,27 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 	tg_obsid = get_keyval(spec_crate, 'OBS_ID')
 
 	#create empty lists to later append values
-	arf_m_arr = []
-	rmf_m_arr = []
-	arf_tg_part_arr = []
-	rmf_tg_part_arr = []
-	arf_obsid_arr = []
-	rmf_obsid_arr = []
+	resp_m_arr = []
+	resp_tg_part_arr = []
+	resp_obsid_par = []
 
 
 	#determine the HEG/MEG arm, orders and obsID for each spectra which will later be matched to the PHA2 file to ensure the correct response is identified.
-	for i in range(0,len(arf_list)):
-		arf_data = read_file(arf_list[i])
-		rmf_data = read_file(rmf_list[i])
+	for i in range(0,len(resp_list)):
+		resp_data = read_file(resp_list[i])
 
-		arf_m_arr.append(get_keyval(arf_data, 'TG_M'))
-		rmf_m_arr.append(get_keyval(rmf_data, 'TG_M'))
+		resp_m_arr.append(get_keyval(resp_data, 'TG_M'))
 
-		arf_tg_part_arr.append(get_keyval(arf_data, 'TG_PART'))
-		rmf_tg_part_arr.append(get_keyval(rmf_data, 'TG_PART'))
+		resp_tg_part_arr.append(get_keyval(resp_data, 'TG_PART'))
 
-		arf_obsid_arr.append(get_keyval(arf_data, 'OBS_ID'))
-		rmf_obsid_arr.append(get_keyval(rmf_data, 'OBS_ID'))
+		resp_obsid_par.append(get_keyval(resp_data, 'OBS_ID'))
 
 	#convert obsid lists to numpy arrays for later use with np.where() for obsID checking
 	tg_obsid = np.array(tg_obsid)
-	arf_obsid_arr = np.array(arf_obsid_arr)
-	rmf_obsid_arr = np.array(rmf_obsid_arr)
+	resp_obsid_par = np.array(resp_obsid_par)
 
 	#Match the ARF and RMF lists to the PHA2 file arrangement
-	matched_arf_list = match_resp_order(num_spec=num_spec, resp_list=arf_list, resp_m_arr=arf_m_arr, resp_tg_part_arr=arf_tg_part_arr, resp_obsid_arr=arf_obsid_arr, tg_m_arr=tg_m_arr, tg_part_arr=tg_part_arr,tg_obsid=tg_obsid, resp_type='ARF')
-	matched_rmf_list = match_resp_order(num_spec=num_spec, resp_list=rmf_list, resp_m_arr=rmf_m_arr, resp_tg_part_arr=rmf_tg_part_arr, resp_obsid_arr=rmf_obsid_arr, tg_m_arr=tg_m_arr, tg_part_arr=tg_part_arr,tg_obsid=tg_obsid, resp_type='RMF')
-
+	matched_resp_list = match_resp_order(num_spec=num_spec, resp_list=resp_list, resp_m_arr=resp_m_arr, resp_tg_part_arr=resp_tg_part_arr, resp_obsid_arr=resp_obsid_par, tg_m_arr=tg_m_arr, tg_part_arr=tg_part_arr,tg_obsid=tg_obsid, resp_type=resp_type_par)
 				
 	print('\nThe following response files were found\n')
 
@@ -2364,31 +2354,31 @@ def find_hetg_pipeline_resp(pha2_file, resp_dir=None):
 
 	print()
 	for i in range(0,num_spec):		
-		print(f'{arm(tg_part_arr[i])+order(tg_m_arr[i])} -- ARF: {matched_arf_list[i]},   RMF: {matched_rmf_list[i]}')
+		print(f'{arm(tg_part_arr[i])+order(tg_m_arr[i])} -- {resp_type_par.upper()}: {matched_resp_list[i]}')
 
-	return(matched_arf_list, matched_rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr)
-
-
-#TESTING COMMANDS
-#tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/primary/acisf07438N004_pha2.fits.gz', resp_dir='7438/primary/responses')
-
-#DS produced with response dir input
-#arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/primary/acisf07438N004_pha2.fits.gz', resp_dir='7438/primary/responses') #[WORKS]
-
-#DS produced with no response dir
-#arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/primary/acisf07438N004_pha2.fits.gz') #[WORKS]
+	return(matched_resp_list)
 
 
-#CIAO produced with response dir called out
-#arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/repro/tw_hya_repro_pha2.fits', resp_dir='7438/repro/tg')
-# arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/repro/acisf07438_repro_pha2.fits', resp_dir='7438/repro/tg')
+# #TESTING COMMANDS
+# resp_list = find_hetg_pipeline_resp('7438/primary/acisf07438N004_pha2.fits.gz', resp_type_par='arf', resp_dir='7438/primary/responses')
 
-#CIAO produced with no response dir called out
-# arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/repro/acisf07438_repro_pha2.fits')
+# #DS produced with response dir input
+# resp_list = find_hetg_pipeline_resp('7438/primary/acisf07438N004_pha2.fits.gz', resp_type_par = 'rmf', resp_dir='7438/primary/responses') #[WORKS]
 
-#CIAO produced custom name
-# arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('custom_spec/tw_hya_repro_pha2.fits', resp_dir='custom_spec/tg')
-# arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('custom_spec/tw_hya_repro_pha2.fits')
+# #DS produced with no response dir
+# resp_list = find_hetg_pipeline_resp('7438/primary/acisf07438N004_pha2.fits.gz', resp_type_par = 'arf') #[WORKS]
+
+
+# #CIAO produced with response dir called out
+# resp_list = find_hetg_pipeline_resp('7438/repro/tw_hya_repro_pha2.fits', resp_type_par='rmf', resp_dir='7438/repro/tg')
+# # arf_list, rmf_list, tg_m_arr, arf_m_arr, rmf_m_arr = find_hetg_pipeline_resp('7438/repro/acisf07438_repro_pha2.fits', resp_dir='7438/repro/tg')
+
+# #CIAO produced with no response dir called out
+# resp_list = find_hetg_pipeline_resp('7438/repro/acisf07438_repro_pha2.fits', resp_type_par='rmf')
+
+# #CIAO produced custom name
+# resp_list = find_hetg_pipeline_resp('new_dir/acisf07438_repro_pha2.fits', resp_type_par='rmf', resp_dir='new_dir/tg')
+# resp_list = find_hetg_pipeline_resp('new_dir/acisf07438_repro_pha2.fits', resp_type_par='arf')
 
 #### TESTING END
 
