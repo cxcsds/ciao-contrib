@@ -2016,30 +2016,47 @@ def time_logger(mode, time_started=[], time_counter=[], message=[]):
 
 def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par):
 	"""
-	Identifies ARFs and RMFs that are associated with an HETG PHA2 file.  This currently only works for pipeline-produced PHA2 files such as an observation downloaded from the chandra archive (which comes with a PHA2 spectrum and responses) or a CIAO tg_extract pipeline produced (chandra_repro) observation.
-	
-	pha2_file_par -- a PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after running chandra_repro on a chandra HETG obsID.
-	resp_type_par -- 'arf' for ARF files and 'rmf' for RMF files. Case sensitive.
-	resp_dir_par -- the directory where the HETG response files associated with your PHA2 file are located. If none provided, it will attempt to search for them.
+	Identifies ARFs and RMFs that are associated with an HETG PHA2 file.  This currently utilizes the 'response' and 'tg' directories created by the data systems and chandra_repro pipelines and thus might not work for all PHA2 HETG files.
+
+	Parameters
+	----------
+
+	pha2_file_par : PHA2 fits file 
+		 PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after running chandra_repro on a chandra HETG obsID.
+	resp_type_par: 'arf' or 'rmf'
+		The type of response files for matchign to PHA spectra
+	resp_dir_par: directory
+		The directory where the HETG response files associated with the PHA2 file are located. If none provided, it will attempt to search for them.
+
+	Returns
+	----------
+	resp_list_par: list
+	Returns a list of ARF or RMF files found.
 
 	"""
 
-	#There are two primary ways to get HETG data via simple commands (maybe three if you count downloading manually from tgcat). (1) download an HETG observation from  either chaser or 'download_chandra_obsid' which gives you the archive (DS-reduced) file structure (e.g., response folder). (2) Running chandra_repro on (1) to get a CIAO produced file structure (e.g., tg folder). Users can also rename the spectral files with the 'root' keyword in chandra_repro.
+	#if user enters 'ARF' or 'RMF' then lower case for later glob use
+	resp_type_par = resp_type_par.lower() 
 
 	#check to make sure responses are either arf or rmf
 	if resp_type_par != 'arf' and resp_type_par != 'rmf':
 		print('ERROR -- response type must be either arf or rmf')
 		return()	
 
+	#load the pha2 file and obtain the crate where relevant information is stored
 	pha2_dataset = read_pha(pha2_file_par)
 	spec_crate_par = pha2_dataset.get_crate(2)
-	num_spec_par = len(spec_crate_par.TG_M.values) #determine the number of spectra in the PHA2 file
+	
+	#identify the number of spectra in the PHA2 file
+	num_spec_par = len(spec_crate_par.TG_M.values)
 
-	#determine which pipeline the PHA2 file came from (Archive vs CIAO user)
+	#determine which pipeline the PHA2 file came from (archive vs CIAO user)
 	creator_key = get_keyval(spec_crate_par, 'CREATOR')
 	
 	if 'Version DS' in creator_key:
-		#if users pha2_file_par is a long path or a single file, strip the name and check for the root so the resp glob doesn't get any extra unrelated files in the response dir
+
+		#if users pha2_file_par is a long path or a single file, strip the name and check for the root so the resp glob doesn't get any extra unrelated files in the response dir.
+		# Note, the strings in this section are based on the DS standard naming. 
 		pha_name = Path(pha2_file_par).name
 		pha_root = pha_name.partition('_pha2.fits')[0]
 
@@ -2050,32 +2067,41 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par):
 			resp_list_par = glob.glob(f'{pha_dir}/responses/{pha_root}*{resp_type_par}2.fits*')
 			
 	elif 'Version CIAO' in creator_key: #this is produced via chandra_repro or user custom spectral extraction
+		
+		#read the header to search for the PHA2 root name which is often the same root as the responses
 		hist = get_history_records(spec_crate_par)
-		pha_root = '' #pha_root is the root name of the file that created the PHA2 file and will by default be the root name of the responses.
+		pha_root = ''  #set to '' for checking later in case pha_root not found
 
+		#if chandra_repro was used to produce the PHA2 file then a ':root" value is saved in the header history. This identifies that value.
 		for i in range(0,len(hist)):
 			if ':root=' in hist[i][1]: #find the line where the :root command was used
 				root_line = hist[i][1].split('=',1)[1].strip() #strip the unnecessary stuff but leaves the extra spaces
-				pha_root = root_line.split(' ')[0] #remove everything after the last character assuming they are separated by spaces
+				pha_root = root_line.split(' ')[0] #remove everything after the root value
 				break #stops searching hist for the appropriate line after it is found
 
 		#if pha_root is not overwritten at this point then throw error because it means it was not found
 		if pha_root == '':
-			print('ERROR -- could not find filename root')
+			print('ERROR -- could not identify PHA2 file root. Please load responses manually.')
 			return()
 
+		#use glob and pha_root to find the responses
 		if resp_dir_par != None: #use provided resp_dir_par
 			resp_list_par = glob.glob(f'{resp_dir_par}/{pha_root}*.{resp_type_par}')
 		else:
 			pha_dir = Path(pha2_file_par).parent #need to get directory where PHA2 file is located
 			resp_list_par = glob.glob(f'{pha_dir}/tg/{pha_root}*.{resp_type_par}') #use the root name of the PHA2 file to ID the responses. This way users can have many extractions in a single dir but it will only grab the appropriate ones.
-
+	
+	#if the creator of the PHA2 file is not DS or CIAO then exit.
 	else:
 		print('ERROR-- Cannot determine the creator of PHA2 file and responses will have to be loaded manually')
 		return()
+	
+	#check to make sure at least some files were found
+	if len(resp_list_par) < 1:
+		print('ERROR -- Could not identify responses. Please load responses manually.')
+		return()
 
-
-	#check that the length of the arf and RMF lists match the number of PHA spec in the PHA2 file
+	#check that the length of the arf or RMF lists match the number of PHA spec in the PHA2 file
 	if len(resp_list_par) != num_spec_par:
 		print(f'WARNING-- The identified number of {resp_type_par.upper()}s [{len(resp_list_par)}] does not match the number of PHA spectra [{num_spec_par}] in the PHA2 file. Only the responses found will be included.\n')
 
@@ -2084,16 +2110,24 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par):
 
 def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 	"""
-	This uses the PHA2 file structure and matches the response files (ARF/RMF) in resp_list_par to the appropriate PHA2 spectrum using the header keywords tg_m, tg_part and obsid.
+	This uses the PHA2 file structure and matches the input response file list/array (resp_list_par) to the appropriate PHA2 spectrum using the header keywords tg_m, tg_part and obsid. This function is designed to take the output of find_resp_files() and put them in order of the PHA2 spectra. 
 	
-	:param num_spec_pha2: Description
-	:param matched_resp_list_par: Description
-	:param resp_m_arr: Description
-	:param resp_tg_part_arr: Description
-	:param resp_obsid: Description
-	:param tg_m_arr: Description
-	:param tg_part_arr: Description
-	:param tg_obsid: Description
+	Parameters
+	----------
+
+	pha2_file_par : PHA2 fits file 
+		 PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after running chandra_repro on a chandra HETG obsID.
+	resp_type_par: 'arf' or 'rmf'
+		The type of response files for matchign to PHA spectra
+	resp_dir_par: directory
+		The directory where the HETG response files associated with the PHA2 file are located. If none provided, it will attempt to search for them.
+
+	Returns
+	----------
+	
+	matched_resp_list_par: array
+		Returns an array of ARF or RMF file paths matched to the order (arrangement) of the input PHA2 file. The string value 'no match' is returned for elements where there is a spectrum in the PHA2 file but no matching response file.
+
 	"""
 
 	#check to make sure responses are either arf or rmf
@@ -2105,44 +2139,38 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 	pha2_dataset = read_pha(pha2_file_par)
 	spec_crate_par = pha2_dataset.get_crate(2)
 
-	#do some basic checking to make sure the ARFs and RMFs are the same obsID and same source and reorder them to match the order in the pha2_file
-
 	#identify the file arrangement of the HETG orders and HEG/MEG arms via the PHA2 file
 	tg_m_arr = spec_crate_par.TG_M.values
 	tg_part_arr = spec_crate_par.TG_PART.values
 	tg_obsid = get_keyval(spec_crate_par, 'OBS_ID')
 
-	#determine the number of spectra in the pha2 file ased on the length of one of the tg arrays:
+	#determine the number of spectra in the pha2 file based on the length of one of the tg arrays:
 	num_spec_pha2 = len(tg_m_arr)
 
 	#warn user if the number of PHA2 spectra are different than the number of response files (either found automatically or provided manually)
 	if len(resp_list_par) != num_spec_pha2:
 		print(f'WARNING -- The number of {resp_type_par} files [{len(resp_list_par)} does not equal the number of spectra in the PHA2 file [{num_spec_pha2}]. Only responses that match to PHA2 spectra will be included.')
 
-	#create empty lists to later append values
+	#create empty lists to later append HEG/MEG arm, order and obsID values from the response files headers
 	resp_m_arr = []
 	resp_tg_part_arr = []
 	resp_obsid_arr = []
 
-
-	#determine the HEG/MEG arm, orders and obsID for each spectra which will later be matched to the PHA2 file to ensure the correct response is identified.
+	#read each response file and append appropriate header value
 	for i in range(0,len(resp_list_par)):
 		resp_data = read_file(resp_list_par[i])
-
 		resp_m_arr.append(get_keyval(resp_data, 'TG_M'))
-
 		resp_tg_part_arr.append(get_keyval(resp_data, 'TG_PART'))
-
 		resp_obsid_arr.append(get_keyval(resp_data, 'OBS_ID'))
 
 	#convert obsid lists to numpy arrays for later use with np.where() for obsID checking
 	tg_obsid = np.array(tg_obsid)
 	resp_obsid_arr = np.array(resp_obsid_arr)
 
-
-	#create empty object arrays for hold the final matched response lists matched to the total number of spectra in the PHA2 file
+	#create an empty object array the same size as the PHA2 file (number of spectra) to hold either 'no match' or the path to the matched response file
 	matched_resp_list_par = np.array(['']*num_spec_pha2, dtype='object')
 
+	#for each spectra, use tg_m, tg_part and obsID to match to a single response file. Print appropriate errors.
 	for i in range(0,num_spec_pha2):
 		match_resp = np.where((resp_m_arr == tg_m_arr[i]) & (resp_tg_part_arr == tg_part_arr[i]) & (resp_obsid_arr == tg_obsid))[0].tolist()
 		if len(match_resp) == 1:
@@ -2157,6 +2185,7 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 			print(f'ERROR - Something with wrong identifying {resp_type_par.upper()}s for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
 			return()
 
+	#report the files matched to the screen in a nice format so it is clear it worked or didn't work
 	print('\nThe following response files were found\n')
 
 	#name the arm and order something more readable for output message
@@ -2166,7 +2195,9 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 	print()
 	for i in range(0,num_spec_pha2):		
 		print(f'{arm(tg_part_arr[i])+order(tg_m_arr[i])} -- {resp_type_par.upper()}: {matched_resp_list_par[i]}')
+	print()
 
+	#returns the array of matched responses in the same order as the PHA2 spectra
 	return(matched_resp_list_par)
 
 
@@ -2227,12 +2258,27 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
 	"""""
-	Takes the confusion table for a source and zeros out the portion of the spectrum where confusion occurs.
+	Uses confusion tables produced by CrissCross to create 'cleaned' PHA1 or PHA2 spectra and ARF response files. The confusion tables identify portions of a source's spectrum that may have erroneous events that should not be included in any spectral analysis.  This function sets the appropriate PHA (COUNTS, STAT_ERROR) and ARF (SPECRESP, FRACEXPO) columns to zero where confusion occurs within the wavelength bounds indicated in the confusion table. This function does not overwrite the original PHA or ARF file but creates a 'cleaned' copy.
+
+	Parameters
+	----------
+
+	cc_table: fits table
+		CrissCross produced confusion table for a single source and single obsID.
+	pha_file: fits file
+		HETG PHA1 or PHA2 spectral file of the source that needs cleaning.
+	src_num: string
+		A source identifier for file naming purposes.
+	arf_file: string or list
+		A file path or list of file paths to ARFs matching the input pha file.
+	resp_dir: directory
+		The directory where the ARFs associated with the pha_file is stored.
+
 	"""""
 
 	def convert_order(order_int):
 		"""
-		takes an integer and converts it to a string with a + or - sign in front of it (for compatibility with CrissCross cleaning table)
+		Converts an integer to a string with a + or - sign in front of it (e.g., '+1' or '-1'; for compatibility with CrissCross cleaning table)
 		"""
 		if order_int > 0:
 			return(f'+{order_int}')
@@ -2243,9 +2289,8 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
 	def convert_arm(tg_part_val):
 		"""
-		takes the tg_part value and converts it to 'heg' or 'meg' (for compatibility with CrissCross cleaning table)
+		Converts the HETG tg_part value to a string (e.g., 'heg' or 'meg'; for compatibility with CrissCross cleaning table)
 		"""
-
 		if tg_part_val == 1:
 			return('heg')
 		elif tg_part_val == 2:
@@ -2256,12 +2301,39 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
 	def clean_data(cc_table, pha_crate, arf_data_var, pha_arm_var, pha_order_var, pha_element, conf_flag_var = 'confused'):
 		"""
-		Docstring for clean_data
+		Creates copies of the relevant PHA1/PHA2 and ARF columns and modifies them (sets to zero) using a CrissCross confusion table. 
+		
+		Parameters
+		----------
+
+		cc_table: fits table
+			CrissCross produced confusion table for a single source and single obsID.
+		pha_crate: Crate object
+			The Crate data for a single spectrum (e.g., HEG+1)
+		arf_data_var: Crate object
+			The Crate data for a single ARF response matched to a spectrum (e.g., HEG+1)
+		pha_arm_var: int (1 or 2)
+			The tg_part value associated with the spectrum (1 = HEG, 2 = MEG)
+		pha_order_var: int (-3, -2, -1, 1, 2, 3)
+			The order associated with the spectrum (e.g., 1 for HEG+1 and -3 for MEG-3)
+		pha_element: integer
+			The element of the PHA2 file assocaited with the spectrum 'pha_crate'. If standard HETG PHA2 file [order,element] = HEG: -3,0; -2,1; -1,2; +1,3; +2,4; +3,5 MEG: -3,6; -2,7; -1,8; +1,9; +2,10; +3,11) 
+		conf_flag_var: string 'confused' 
+			The string associated with spectral confusion. If 'confused', spectra will be cleaned by setting all 'confused' values to zero. A future update will allow 'confused' and/or 'warn' to be zeroed out.
+		
+
+		Returns
+		----------
+		
+		cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var: arrays
+			Returns a copy of the SPEC, STAT_ERR, SPECRESP, and FRACEXPO arrays with values associated with the identified wavelengths of confusion set to zero (or 1.86603 for STAT_ERR).			
 		"""
+		
+		#reads in the confusion and PHA data
 		cc_data = read_file(cc_table)
 		pha_data_var = pha_crate.get_crate(2)
 
-
+		#PHA1 and PHA2 files have to be treated slightly differently because of how crates stores values. This is to avoid having to slice off each crate spectrum from the PHA2 file.
 		if is_pha_type1(pha_crate):
 		
 			counts_arr = pha_data_var.COUNTS.values
@@ -2285,7 +2357,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 			return()		
 
 
-		#copies the counts column of the PHA file for modification
+		#copies the counts and stat_err column of the PHA file for modification
 		cleaned_spec_var = counts_arr.copy()
 		cleaned_staterr_var = stat_err_arr.copy()
 
@@ -2293,7 +2365,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 		cleaned_specresp_var = specresp_arr.copy()
 		cleaned_fracexpo_var = fracexpo_arr.copy()
 
-
+		#for every row of the confusion table that match the input PHA spectrum order and tg_part, identify the elements (rows) associated with wavelengths (bin_low and bin_hi) that need to be cleaned. Note, this assumes the PHA bin_lo and bin_hi values are identical to the ARF file (which should be the case).
 		for i in range(0,len(cc_data.wave_low.values)):
 			if cc_data.flag.values[i] == conf_flag_var and cc_data.grating_type.values[i] == pha_arm_var and cc_data.order.values[i] == pha_order_var:
 				elements_to_clean = np.where( (bin_low_arr >= cc_data.wave_low.values[i]) & (bin_high_arr <= cc_data.wave_high.values[i]) ) #identify elements
@@ -2302,10 +2374,11 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 				cleaned_spec_var[elements_to_clean] = 0. #set elements that overlap to zero
 				cleaned_staterr_var[elements_to_clean] = 1.86603 #double check that this makes sense and the stat_err is always this value for zero counts. I suspect instead I should take min of this column and set it to that.
 
-				#clean ARF
+				#clean ARF (response)
 				cleaned_specresp_var[elements_to_clean] = 0.
 				cleaned_fracexpo_var[elements_to_clean] = 0.
 
+		#return the cleaned arrays values.
 		return(cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var)
 
 
