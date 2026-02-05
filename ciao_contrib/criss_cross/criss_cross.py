@@ -37,10 +37,10 @@ from ciao_contrib.runtool import *
 import time 
 from iocaldb import OSIP, Sky2Chandra  #moritz's point source extraction contribution
 from widthofexclusion import * #moritz's point source extraction contribution
-from pycrates import read_file, write_file, TABLECrate, CrateData, add_col, add_record, get_keyval, read_pha, write_pha, is_pha_type1, is_pha_type2, update_crate_checksum
+from pycrates import read_file, write_file, TABLECrate, CrateData, add_col, add_record, get_keyval, read_pha, write_pha, is_pha_type1, is_pha_type2, update_crate_checksum, get_history_records
 from crates_contrib.utils import make_table_crate
 import csv
-
+from pathlib import Path
 
 
 
@@ -2014,231 +2014,6 @@ def time_logger(mode, time_started=[], time_counter=[], message=[]):
 	return()
 
 
-def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
-
-	"""""
-	Takes the confusion table for a source and zeros out the portion of the spectrum where confusion occurs.
-	"""""
-
-	def convert_order(order_int):
-		"""
-		takes an integer and converts it to a string with a + or - sign in front of it (for compatibility with CrissCross cleaning table)
-		"""
-		if order_int > 0:
-			return(f'+{order_int}')
-		elif order_int < 0:
-			return(f'-{-1*order_int}')
-		else:
-			print('ERROR, 0th order is included and that is not compatible with clean_spec')
-
-	def convert_arm(tg_part_val):
-		"""
-		takes the tg_part value and converts it to 'heg' or 'meg' (for compatibility with CrissCross cleaning table)
-		"""
-
-		if tg_part_val == 1:
-			return('heg')
-		elif tg_part == 2:
-			return('meg')
-		else:
-			print(f'ERROR, arm cannot be identified')
-
-
-	def clean_data(cc_table, pha_crate, arf_data_var, pha_arm_var, pha_order_var, pha_element, conf_flag_var = 'confused'):
-		"""
-		Docstring for clean_data
-		"""
-		cc_data = read_file(cc_table)
-		pha_data_var = pha_crate.get_crate(2)
-
-
-		if is_pha_type1(pha_crate):
-		
-			counts_arr = pha_data_var.COUNTS.values
-			stat_err_arr = pha_data_var.STAT_ERR.values
-			specresp_arr = arf_data_var.SPECRESP.values
-			fracexpo_arr = arf_data_var.FRACEXPO.values
-			bin_low_arr = pha_data_var.BIN_LO.values
-			bin_high_arr = pha_data_var.BIN_HI.values
-
-		elif is_pha_type2(pha_crate):
-
-			counts_arr = pha_data_var.COUNTS.values[pha_element]
-			stat_err_arr = pha_data_var.STAT_ERR.values[pha_element]
-			specresp_arr = arf_data_var.SPECRESP.values[pha_element]
-			fracexpo_arr = arf_data_var.FRACEXPO.values[pha_element]
-			bin_low_arr = pha_data_var.BIN_LO.values[pha_element]
-			bin_high_arr = pha_data_var.BIN_HI.values[pha_element]	
-
-		else:
-			print('ERROR -- PHA datatype must be 1 or 2')
-			return()		
-
-
-		#copies the counts column of the PHA file for modification
-		cleaned_spec_var = counts_arr.copy()
-		cleaned_staterr_var = stat_err_arr.copy()
-
-		#copies the SPECRESP and fracexpo columns from the arf
-		cleaned_specresp_var = specresp_arr.copy()
-		cleaned_fracexpo_var = fracexpo_arr.copy()
-
-
-		for i in range(0,len(cc_data.wave_low.values)):
-			if cc_data.flag.values[i] == conf_flag_var and cc_data.grating_type.values[i] == pha_arm_var and cc_data.order.values[i] == pha_order_var:
-				elements_to_clean = np.where( (bin_low_arr >= cc_data.wave_low.values[i]) & (bin_high_arr <= cc_data.wave_high.values[i]) ) #identify elements
-				
-				#clean PHA (spectrum)
-				cleaned_spec_var[elements_to_clean] = 0. #set elements that overlap to zero
-				cleaned_staterr_var[elements_to_clean] = 1.86603 #double check that this makes sense and the stat_err is always this value for zero counts. I suspect instead I should take min of this column and set it to that.
-
-				#clean ARF
-				cleaned_specresp_var[elements_to_clean] = 0.
-				cleaned_fracexpo_var[elements_to_clean] = 0.
-
-		return(cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var)
-
-
-
-	pha_crate_dataset = read_pha(pha_file) #use read_pha cause it brings along all the neccessary extensions
-	
-	if is_pha_type1(pha_crate_dataset):
-
-		pha_data = pha_crate_dataset.get_crate(2) #extension 2 contains the PHA data
-		arf_data = read_file(arf_file)
-
-		#determine the heg/meg arm and order and obsid
-		tg_part = get_keyval(pha_data, 'TG_PART') #tg_part = 1 = heg; tg_part = 2 = meg
-		tg_m = get_keyval(pha_data, 'TG_M')
-		tg_obs = get_keyval(pha_data, 'OBS_ID')
-		tg_obs_arf = get_keyval(arf_data, 'OBS_ID')
-
-		#check to make sure obsID of arf and pha file are the same. 
-		if tg_obs != tg_obs_arf:
-			print('ERROR -- PHA file and ARF are not from same obsID')
-			return()
-
-		#setup tgpart and order to be consistent with values in confusion tables.
-		pha_arm = convert_arm(tg_part)
-		pha_order = convert_order(tg_m)
-
-		cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data(cc_table = cc_table, pha_crate = pha_crate_dataset, arf_data_var = arf_data, pha_arm_var = pha_arm, pha_order_var = pha_order, pha_element=0, conf_flag_var = 'confused')
-
-		#replaces the original arrays with the new arrays
-		pha_data.COUNTS.values = cleaned_spec
-		pha_data.STAT_ERR.values = cleaned_staterr
-		arf_data.SPECRESP.values = cleaned_specresp
-		arf_data.FRACEXPO.values = cleaned_fracexpo
-
-		#appends the original files to the history for record keeping
-		pha_data.add_record("HISTORY", f"This cleaned spectrum was created using the PHA file: {pha_file} and the CrissCross cleaning table: {cc_table}. ")
-		arf_data.add_record("HISTORY", f"This cleaned ARF was created using the ARF file: {arf_file} and the CrissCross cleaning table: {cc_table}. ")
-
-		update_crate_checksum(pha_data)
-		update_crate_checksum(arf_data)
-
-		#saves file while maintaining the original header.
-		write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.pha', clobber=True)
-		write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}_{pha_order}_cleaned.arf', clobber=True)
-
-
-	#PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in header. Also the arfs may be out of order if provided a list of arfs but only one pha2 file.
-	elif is_pha_type2(pha_crate_dataset):
-
-		#if user enters their own arf or list of arfs then make sure they match the PHA2 file format (e.g., pha2 meg+1 has to be same array element as arf meg+1)
-		if arf_file != None:
-			if type(arf_file) == str:
-				arf_file = list([arf_file]) #if user enters a single string (e.g., 'file1' or an array ['file1','file2'] it will still obtain correct size for loop)
-			
-			arf_data_arr = np.zeros(len(arf_file), dtype='object') # create an array to hold the N arfs (one for each order)
-			for i in range(0,len(arf_file)):
-				arf_data_arr[i] = read_file(arf_file[i])
-
-			#check and arrange that the user input arf file(s) are in the correct order of the PHA2 spectra
-			matched_resp_list = match_resp_order(pha2_file=pha_file, resp_list_par = arf_file, resp_type_par='arf')
-
-		#if user doesn't enter arfs then try to find them either using the user included response dir or the standard CIAO-produced file structure
-		else:
-			print('Warning, no ARF response files provided in parameter arf_file. Attempting to find them.')
-			resp_list = find_resp_files(pha2_file_par=pha_file, resp_type_par='arf', resp_dir_par=resp_dir)
-
-			if len(resp_list) == 0:
-				print('ERROR -- no response files found. Try including a directory with resp_dir_par or include a list of response paths with arf_file parameter.')
-				return()
-			
-			matched_resp_list = match_resp_order(pha2_file=pha_file, resp_list_par = resp_list, resp_type_par='arf')
-
-
-		pha_data_full = pha_crate_dataset.get_crate(2)
-		
-		# #check to make sure there are 12 orders (for HETG data)
-		# if np.shape(pha_data_full.COUNTS.values[0]) != 12:
-		# 	print('ERROR -- PHA 2 file does not have all 12 HEG/MEG orders. Consider running clean_spec() on individual pha1 order files or a complete PHA 2 file')
-		# 	return()
-
-		tg_m_arr = pha_data_full.TG_M.values
-		tg_part_arr = pha_data_full.TG_PART.values
-
-		pha_order_arr = []
-		for i in tg_m_arr:
-			pha_order_arr.append(convert_order(order_int=i))
-
-		pha_arm_arr = []
-		for i in tg_part_arr:
-			pha_arm_arr.append(convert_arm(tg_part_val=i))
-
-
-		#only run clean_data for the spectra that have a matched response file so identify which elements of the matched_resp_list have both a PHA2 spectrum and associated ARF.
-		spec_to_clean = np.where(matched_resp_list != 'no match')[0] #note, the 'no match' string comes from match_resp_order so be careful if that changes.
-
-		#run for every arm and order which have a spectrum and matching ARF
-		for i in spec_to_clean:
-			
-			cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data(cc_table = cc_table, pha_crate = pha_crate_dataset, arf_data_var = arf_data[i], pha_arm_var = pha_arm_arr[i], pha_order_var = pha_order_arr[i], pha_element = i, conf_flag_var = 'confused')
-
-			#replaces the original arrays with the new arrays
-			pha_data.COUNTS.values[i] = cleaned_spec
-			pha_data.STAT_ERR.values[i] = cleaned_staterr
-			arf_data_arr[i].SPECRESP.values = cleaned_specresp
-			arf_data_arr[i].FRACEXPO.values = cleaned_fracexpo
-
-			arf_data_arr[i].add_record("HISTORY", f"This cleaned ARF was created using the ARF file: {arf_file[i]} and the CrissCross cleaning table: {cc_table}. ")
-			update_crate_checksum(arf_data_arr[i])
-			write_file(arf_data_arr[i], f'src_{src_num}_obsid_{tg_obs}_{pha_arm_arr}_{pha_order_arr}_cleaned.arf', clobber=True)
-
-
-		#appends the original files to the history for record keeping
-		pha_data_full.add_record("HISTORY", f"This cleaned spectrum was created using the PHA file: {pha_file} and the CrissCross cleaning table: {cc_table}. ")
-
-		update_crate_checksum(pha_data_full)
-
-		#saves file while maintaining the original header.
-		write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_{pha_arm_arr}_{pha_order_arr}_cleaned.pha2', clobber=True)
-
-
-	else:
-		print('ERROR -- input PHA file was not a PHA1 or PHA2 type file')
-
-	#return(pha_data, arf_data)	
-	return()	
-
-
-
-
-####TESTING
-src = 449
-obs = 8589
-test_spec_dir = 'input_files/testing/hetg_spectra'
-pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_consolidated_obsID_{obs}.fits', pha_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.pha', arf_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.arf', src_num = src)
-
-
-
-from pathlib import Path
-from pycrates import read_pha, get_keyval, get_history_records, read_file
-import glob
-import numpy as np
-
-
 def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par):
 	"""
 	Identifies ARFs and RMFs that are associated with an HETG PHA2 file.  This currently only works for pipeline-produced PHA2 files such as an observation downloaded from the chandra archive (which comes with a PHA2 spectrum and responses) or a CIAO tg_extract pipeline produced (chandra_repro) observation.
@@ -2443,6 +2218,234 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 # matched_resp_list = match_resp_order(pha2_file_par=pha2_file, resp_list_par=resp_list, resp_type_par=resp_type)
 
 #### TESTING END
+
+
+
+
+
+
+def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
+
+	"""""
+	Takes the confusion table for a source and zeros out the portion of the spectrum where confusion occurs.
+	"""""
+
+	def convert_order(order_int):
+		"""
+		takes an integer and converts it to a string with a + or - sign in front of it (for compatibility with CrissCross cleaning table)
+		"""
+		if order_int > 0:
+			return(f'+{order_int}')
+		elif order_int < 0:
+			return(f'-{-1*order_int}')
+		else:
+			print('ERROR, 0th order is included and that is not compatible with clean_spec')
+
+	def convert_arm(tg_part_val):
+		"""
+		takes the tg_part value and converts it to 'heg' or 'meg' (for compatibility with CrissCross cleaning table)
+		"""
+
+		if tg_part_val == 1:
+			return('heg')
+		elif tg_part_val == 2:
+			return('meg')
+		else:
+			print(f'ERROR, arm cannot be identified')
+
+
+	def clean_data(cc_table, pha_crate, arf_data_var, pha_arm_var, pha_order_var, pha_element, conf_flag_var = 'confused'):
+		"""
+		Docstring for clean_data
+		"""
+		cc_data = read_file(cc_table)
+		pha_data_var = pha_crate.get_crate(2)
+
+
+		if is_pha_type1(pha_crate):
+		
+			counts_arr = pha_data_var.COUNTS.values
+			stat_err_arr = pha_data_var.STAT_ERR.values
+			specresp_arr = arf_data_var.SPECRESP.values
+			fracexpo_arr = arf_data_var.FRACEXPO.values
+			bin_low_arr = pha_data_var.BIN_LO.values
+			bin_high_arr = pha_data_var.BIN_HI.values
+
+		elif is_pha_type2(pha_crate):
+
+			counts_arr = pha_data_var.COUNTS.values[pha_element]
+			stat_err_arr = pha_data_var.STAT_ERR.values[pha_element]
+			specresp_arr = arf_data_var.SPECRESP.values #ARFs are not in PHA2 (array) format and thus don't need a pha_element
+			fracexpo_arr = arf_data_var.FRACEXPO.values #ARFs are not in PHA2 (array) format and thus don't need a pha_element
+			bin_low_arr = pha_data_var.BIN_LO.values[pha_element]
+			bin_high_arr = pha_data_var.BIN_HI.values[pha_element]	
+
+		else:
+			print('ERROR -- PHA datatype must be 1 or 2')
+			return()		
+
+
+		#copies the counts column of the PHA file for modification
+		cleaned_spec_var = counts_arr.copy()
+		cleaned_staterr_var = stat_err_arr.copy()
+
+		#copies the SPECRESP and fracexpo columns from the arf
+		cleaned_specresp_var = specresp_arr.copy()
+		cleaned_fracexpo_var = fracexpo_arr.copy()
+
+
+		for i in range(0,len(cc_data.wave_low.values)):
+			if cc_data.flag.values[i] == conf_flag_var and cc_data.grating_type.values[i] == pha_arm_var and cc_data.order.values[i] == pha_order_var:
+				elements_to_clean = np.where( (bin_low_arr >= cc_data.wave_low.values[i]) & (bin_high_arr <= cc_data.wave_high.values[i]) ) #identify elements
+				
+				#clean PHA (spectrum)
+				cleaned_spec_var[elements_to_clean] = 0. #set elements that overlap to zero
+				cleaned_staterr_var[elements_to_clean] = 1.86603 #double check that this makes sense and the stat_err is always this value for zero counts. I suspect instead I should take min of this column and set it to that.
+
+				#clean ARF
+				cleaned_specresp_var[elements_to_clean] = 0.
+				cleaned_fracexpo_var[elements_to_clean] = 0.
+
+		return(cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var)
+
+
+
+	pha_crate_dataset = read_pha(pha_file) #use read_pha cause it brings along all the neccessary extensions
+	
+	if is_pha_type1(pha_crate_dataset):
+
+		pha_data = pha_crate_dataset.get_crate(2) #extension 2 contains the PHA data
+		arf_data = read_file(arf_file)
+
+		#determine the heg/meg arm, order and obsID and make sure it matches the ARF
+		tg_part = get_keyval(pha_data, 'TG_PART') #tg_part = 1 = heg; tg_part = 2 = meg
+		tg_m = get_keyval(pha_data, 'TG_M')
+		tg_obs = get_keyval(pha_data, 'OBS_ID')
+		tg_part_arf = get_keyval(arf_data, 'TG_PART')
+		tg_m_arf = get_keyval(arf_data, 'TG_M')
+		tg_obs_arf = get_keyval(arf_data, 'OBS_ID')
+
+		if tg_obs != tg_obs_arf or tg_m != tg_m_arf or tg_part != tg_part_arf:
+			print('ERROR -- One of the following is not consistent between the PHA file and ARF: HEG/MEG arm, order, obsID')
+			return()
+
+		#setup tgpart and order to be consistent with values in confusion tables.
+		pha_arm = convert_arm(tg_part)
+		pha_order = convert_order(tg_m)
+
+		cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data(cc_table = cc_table, pha_crate = pha_crate_dataset, arf_data_var = arf_data, pha_arm_var = pha_arm, pha_order_var = pha_order, pha_element=0, conf_flag_var = 'confused')
+
+		#replaces the original arrays with the new arrays
+		pha_data.COUNTS.values = cleaned_spec
+		pha_data.STAT_ERR.values = cleaned_staterr
+		arf_data.SPECRESP.values = cleaned_specresp
+		arf_data.FRACEXPO.values = cleaned_fracexpo
+
+		#appends the original files to the history for record keeping
+		pha_data.add_record("HISTORY", f"This cleaned spectrum was created using the PHA file: {pha_file} and the CrissCross cleaning table: {cc_table}. ")
+		arf_data.add_record("HISTORY", f"This cleaned ARF was created using the ARF file: {arf_file} and the CrissCross cleaning table: {cc_table}. ")
+
+		update_crate_checksum(pha_data)
+		update_crate_checksum(arf_data)
+
+		#saves file while maintaining the original header.
+		write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}{pha_order}_cleaned.pha', clobber=True)
+		write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}{pha_order}_cleaned.arf', clobber=True)
+
+
+	#PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in header. Also the arfs may be out of order if provided a list of arfs but only one pha2 file.
+	elif is_pha_type2(pha_crate_dataset):
+
+		#if user enters their own arf or list of arfs then make sure they match the PHA2 file format (e.g., pha2 meg+1 has to be same array element as arf meg+1)
+		if arf_file != None:
+			if type(arf_file) == str:
+				arf_file = list([arf_file]) #if user enters a single string (e.g., 'file1' or an array ['file1','file2'] it will still obtain correct size for loop)
+			
+
+
+			#check and arrange that the user input arf file(s) are in the correct order of the PHA2 spectra
+			matched_resp_list = match_resp_order(pha2_file_par=pha_file, resp_list_par = arf_file, resp_type_par='arf')
+
+		#if user doesn't enter arfs then try to find them either using the user included response dir or the standard CIAO-produced file structure
+		else:
+			print('Warning, no ARF response files provided in parameter arf_file. Attempting to find them.')
+			resp_list = find_resp_files(pha2_file_par=pha_file, resp_type_par='arf', resp_dir_par=resp_dir)
+
+			if len(resp_list) == 0:
+				print('ERROR -- no response files found. Try including a directory with resp_dir_par or include a list of response paths with arf_file parameter.')
+				return()
+			
+			matched_resp_list = match_resp_order(pha2_file=pha_file, resp_list_par = resp_list, resp_type_par='arf')
+
+
+		pha_data_full = pha_crate_dataset.get_crate(2)
+		
+		tg_m_arr = pha_data_full.TG_M.values
+		tg_part_arr = pha_data_full.TG_PART.values
+
+		tg_obs = get_keyval(pha_data_full, 'OBS_ID')
+
+		pha_order_arr = []
+		for i in tg_m_arr:
+			pha_order_arr.append(convert_order(order_int=i))
+
+		pha_arm_arr = []
+		for i in tg_part_arr:
+			pha_arm_arr.append(convert_arm(tg_part_val=i))
+
+
+		#only run clean_data for the spectra that have a matched response file so identify which elements of the matched_resp_list have both a PHA2 spectrum and associated ARF.
+		spec_to_clean = np.where(matched_resp_list != 'no match')[0] #note, the 'no match' string comes from match_resp_order so be careful if that changes.
+
+		#run for every arm and order which have a spectrum and matching ARF
+		for i in spec_to_clean:
+			
+			arf_data = read_file(matched_resp_list[i]) # load the arf from match_resp_list because it is already matched to the appropriate PHA2 file
+
+			cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data(cc_table = cc_table, pha_crate = pha_crate_dataset, arf_data_var = arf_data, pha_arm_var = pha_arm_arr[i], pha_order_var = pha_order_arr[i], pha_element = i, conf_flag_var = 'confused')
+
+			#replaces the original arrays with the new arrays
+			pha_data_full.COUNTS.values[i] = cleaned_spec
+			pha_data_full.STAT_ERR.values[i] = cleaned_staterr
+			arf_data.SPECRESP.values = cleaned_specresp
+			arf_data.FRACEXPO.values = cleaned_fracexpo
+
+			arf_data.add_record("HISTORY", f"This cleaned ARF was created using the ARF file: {matched_resp_list[i]} and the CrissCross cleaning table: {cc_table}. ")
+			update_crate_checksum(arf_data)
+			write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm_arr[i]}{pha_order_arr[i]}_cleaned.arf', clobber=True)
+
+
+		#appends the original files to the history for record keeping
+		pha_data_full.add_record("HISTORY", f"This cleaned spectrum was created using the PHA file: {pha_file} and the CrissCross cleaning table: {cc_table}. ")
+
+		update_crate_checksum(pha_data_full)
+
+		#saves file while maintaining the original header.
+		write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_cleaned.pha2', clobber=True)
+
+
+	else:
+		print('ERROR -- input PHA file was not a PHA1 or PHA2 type file')
+
+	#return(pha_data, arf_data)	
+	return()	
+
+
+
+
+####TESTING
+# src = 449
+# obs = 8589
+# test_spec_dir = 'input_files/testing/hetg_spectra'
+#PHA1
+
+
+#pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_consolidated_obsID_{obs}.fits', pha_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.pha', arf_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.arf', src_num = src)
+#PHA2
+#pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_consolidated_obsID_{obs}.fits', pha_file = f'{test_spec_dir}/src_449_obsid_8589_repro_pha2.fits', arf_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.arf', src_num = src)
+
+
+
 
 
 
