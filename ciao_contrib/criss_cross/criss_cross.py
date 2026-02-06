@@ -2258,7 +2258,7 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
 	"""""
-	Uses confusion tables produced by CrissCross to create 'cleaned' PHA1 or PHA2 spectra and ARF response files. The confusion tables identify portions of a source's spectrum that may have erroneous events that should not be included in any spectral analysis.  This function sets the appropriate PHA (COUNTS, STAT_ERROR) and ARF (SPECRESP, FRACEXPO) columns to zero where confusion occurs within the wavelength bounds indicated in the confusion table. This function does not overwrite the original PHA or ARF file but creates a 'cleaned' copy.
+	Uses confusion tables produced by CrissCross to create 'cleaned' PHA1 or PHA2 spectra and ARF response files. The confusion tables identify portions of a source's spectrum that may have erroneous events that should not be included in any spectral analysis. After identifying the PHA type (1 vs 2), this function checks to make sure the ARF files provided match the PHA spectra (order and arm) and uses clean_data() to set the appropriate PHA (COUNTS, STAT_ERROR) and ARF (SPECRESP, FRACEXPO) columns to zero where confusion occurs. This function writes a 'cleaned' copy of the input PHA and ARF files.
 
 	Parameters
 	----------
@@ -2382,15 +2382,15 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 		return(cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var)
 
 
-
-	pha_crate_dataset = read_pha(pha_file) #use read_pha cause it brings along all the neccessary extensions
+	#Read the PHA file and determine if PHA1 or PHA2. Uses read_pha() to bring along the necessary PHA extensions.
+	pha_crate_dataset = read_pha(pha_file)
 	
 	if is_pha_type1(pha_crate_dataset):
 
-		pha_data = pha_crate_dataset.get_crate(2) #extension 2 contains the PHA data
+		pha_data = pha_crate_dataset.get_crate(2) #Crate 2 contains the PHA data
 		arf_data = read_file(arf_file)
 
-		#determine the heg/meg arm, order and obsID and make sure it matches the ARF
+		#determine the heg/meg arm, order and obsID of the PHA spectrum and make sure it matches the ARF
 		tg_part = get_keyval(pha_data, 'TG_PART') #tg_part = 1 = heg; tg_part = 2 = meg
 		tg_m = get_keyval(pha_data, 'TG_M')
 		tg_obs = get_keyval(pha_data, 'OBS_ID')
@@ -2398,17 +2398,15 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 		tg_m_arf = get_keyval(arf_data, 'TG_M')
 		tg_obs_arf = get_keyval(arf_data, 'OBS_ID')
 
+		#if parameters dont match between ARF and PHA then throw error
 		if tg_obs != tg_obs_arf or tg_m != tg_m_arf or tg_part != tg_part_arf:
 			print('ERROR -- One of the following is not consistent between the PHA file and ARF: HEG/MEG arm, order, obsID')
 			return()
 
-		#setup tgpart and order to be consistent with values in confusion tables.
-		pha_arm = convert_arm(tg_part)
-		pha_order = convert_order(tg_m)
-
+		#use clean_data() to create copies of the appropriate PHA and ARF arrays where wavelenghts with confusion are set to 0
 		cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data(cc_table = cc_table, pha_crate = pha_crate_dataset, arf_data_var = arf_data, pha_arm_var = pha_arm, pha_order_var = pha_order, pha_element=0, conf_flag_var = 'confused')
 
-		#replaces the original arrays with the new arrays
+		#replaces the original arrays in the loaded crates with the new arrays
 		pha_data.COUNTS.values = cleaned_spec
 		pha_data.STAT_ERR.values = cleaned_staterr
 		arf_data.SPECRESP.values = cleaned_specresp
@@ -2421,22 +2419,24 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 		update_crate_checksum(pha_data)
 		update_crate_checksum(arf_data)
 
-		#saves file while maintaining the original header.
+		#setup tgpart and order to be consistent with values in confusion tables for file naming.
+		pha_arm = convert_arm(tg_part)
+		pha_order = convert_order(tg_m)
+
+		#saves a new file while maintaining the original header.
 		write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}{pha_order}_cleaned.pha', clobber=True)
 		write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}{pha_order}_cleaned.arf', clobber=True)
 
 
-	#PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in header. Also the arfs may be out of order if provided a list of arfs but only one pha2 file.
+	#PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in header. Also the arfs may be out of order if user provides a list of arfs.
 	elif is_pha_type2(pha_crate_dataset):
 
 		#if user enters their own arf or list of arfs then make sure they match the PHA2 file format (e.g., pha2 meg+1 has to be same array element as arf meg+1)
 		if arf_file != None:
 			if type(arf_file) == str:
-				arf_file = list([arf_file]) #if user enters a single string (e.g., 'file1' or an array ['file1','file2'] it will still obtain correct size for loop)
-			
+				arf_file = list([arf_file]) #make sure arf_file variable is a list just in case user enters a single file as 'file1' instead of ['file1'].
 
-
-			#check and arrange that the user input arf file(s) are in the correct order of the PHA2 spectra
+			#check and arrange that the user input arf file(s) are in the correct order of the PHA2 spectra. matched_resp_list will create an array that matches the PHA2 format.
 			matched_resp_list = match_resp_order(pha2_file_par=pha_file, resp_list_par = arf_file, resp_type_par='arf')
 
 		#if user doesn't enter arfs then try to find them either using the user included response dir or the standard CIAO-produced file structure
@@ -2448,16 +2448,17 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 				print('ERROR -- no response files found. Try including a directory with resp_dir_par or include a list of response paths with arf_file parameter.')
 				return()
 			
+			#matched_resp_list will create an array that matches the PHA2 format.
 			matched_resp_list = match_resp_order(pha2_file=pha_file, resp_list_par = resp_list, resp_type_par='arf')
 
-
+		#read the PHA data and obtain the tg_m, tg_part and obsID values
 		pha_data_full = pha_crate_dataset.get_crate(2)
 		
 		tg_m_arr = pha_data_full.TG_M.values
 		tg_part_arr = pha_data_full.TG_PART.values
-
 		tg_obs = get_keyval(pha_data_full, 'OBS_ID')
 
+		#convert order and arm parameters into format consistent with confusion tables for file-naming purposes only
 		pha_order_arr = []
 		for i in tg_m_arr:
 			pha_order_arr.append(convert_order(order_int=i))
@@ -2467,10 +2468,10 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 			pha_arm_arr.append(convert_arm(tg_part_val=i))
 
 
-		#only run clean_data for the spectra that have a matched response file so identify which elements of the matched_resp_list have both a PHA2 spectrum and associated ARF.
-		spec_to_clean = np.where(matched_resp_list != 'no match')[0] #note, the 'no match' string comes from match_resp_order so be careful if that changes.
+		#only run clean_data() for the spectra that have a matched response file so identify which elements of the matched_resp_list have both a spectrum and associated ARF.
+		spec_to_clean = np.where(matched_resp_list != 'no match')[0] #note, the 'no match' string comes from match_resp_order() so be careful if that changes.
 
-		#run for every arm and order which have a spectrum and matching ARF
+		#run clean_data() for every arm and order which have a spectrum and matching ARF
 		for i in spec_to_clean:
 			
 			arf_data = read_file(matched_resp_list[i]) # load the arf from match_resp_list because it is already matched to the appropriate PHA2 file
@@ -2483,24 +2484,25 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 			arf_data.SPECRESP.values = cleaned_specresp
 			arf_data.FRACEXPO.values = cleaned_fracexpo
 
+			#update the ARF header and write out the file
 			arf_data.add_record("HISTORY", f"This cleaned ARF was created using the ARF file: {matched_resp_list[i]} and the CrissCross cleaning table: {cc_table}. ")
 			update_crate_checksum(arf_data)
+
 			write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm_arr[i]}{pha_order_arr[i]}_cleaned.arf', clobber=True)
 
 
-		#appends the original files to the history for record keeping
+		#appends the original files to the history of the new file for record keeping
 		pha_data_full.add_record("HISTORY", f"This cleaned spectrum was created using the PHA file: {pha_file} and the CrissCross cleaning table: {cc_table}. ")
 
 		update_crate_checksum(pha_data_full)
 
-		#saves file while maintaining the original header.
+		#saves a new PHA2 file while maintaining the original header.
 		write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_cleaned.pha2', clobber=True)
 
 
 	else:
 		print('ERROR -- input PHA file was not a PHA1 or PHA2 type file')
 
-	#return(pha_data, arf_data)	
 	return()	
 
 
