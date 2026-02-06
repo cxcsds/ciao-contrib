@@ -2149,7 +2149,7 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 
 	#warn user if the number of PHA2 spectra are different than the number of response files (either found automatically or provided manually)
 	if len(resp_list_par) != num_spec_pha2:
-		print(f'WARNING -- The number of {resp_type_par} files [{len(resp_list_par)} does not equal the number of spectra in the PHA2 file [{num_spec_pha2}]. Only responses that match to PHA2 spectra will be included.')
+		print(f'\nWARNING -- The number of {resp_type_par} files [{len(resp_list_par)}] does not equal the number of spectra in the PHA2 file [{num_spec_pha2}]. Only responses that match with a spectrum will be included.\n')
 
 	#create empty lists to later append HEG/MEG arm, order and obsID values from the response files headers
 	resp_m_arr = []
@@ -2199,59 +2199,6 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 
 	#returns the array of matched responses in the same order as the PHA2 spectra
 	return(matched_resp_list_par)
-
-
-#TESTING COMMANDS
-
-# #DS produced with response dir input
-# resp_list = []
-# matched_resp_list = []
-# pha2_file = '7438/primary/acisf07438N004_pha2.fits.gz'
-# resp_type='arf'
-# resp_dir = '7438/primary/responses'
-
-# resp_list = find_resp_files(pha2_file_par=pha2_file, resp_type_par=resp_type, resp_dir_par=resp_dir)
-# matched_resp_list = match_resp_order(pha2_file_par=pha2_file, resp_list_par=resp_list, resp_type_par=resp_type)
-
-# #DS produced with no response dir 
-# resp_list = find_resp_files(pha2_file_par=pha2_file, resp_type_par=resp_type, resp_dir_par=None)
-# matched_resp_list = match_resp_order(pha2_file_par=pha2_file, resp_list_par=resp_list, resp_type_par=resp_type)
-
-
-# # #CIAO produced with response dir called out
-# resp_list = []
-# matched_resp_list = []
-# pha2_file = '7438/repro/tw_hya_repro_pha2.fits'
-# resp_type='rmf'
-# resp_dir = '7438/repro/tg'
-
-# resp_list = find_resp_files(pha2_file_par=pha2_file, resp_type_par=resp_type, resp_dir_par=resp_dir)
-# matched_resp_list = match_resp_order(pha2_file_par=pha2_file, resp_list_par=resp_list, resp_type_par=resp_type)
-
-# #CIAO produced with no response dir 
-# resp_list = find_resp_files(pha2_file_par=pha2_file, resp_type_par=resp_type, resp_dir_par=None)
-# matched_resp_list = match_resp_order(pha2_file_par=pha2_file, resp_list_par=resp_list, resp_type_par=resp_type)
-
-
-# # #CIAO produced custom name
-
-# resp_list = []
-# matched_resp_list = []
-# pha2_file = 'new_dir/acisf07438_repro_pha2.fits'
-# resp_type='arf'
-# resp_dir = 'new_dir/tg'
-
-# resp_list = find_resp_files(pha2_file_par=pha2_file, resp_type_par=resp_type, resp_dir_par=resp_dir)
-# matched_resp_list = match_resp_order(pha2_file_par=pha2_file, resp_list_par=resp_list, resp_type_par=resp_type)
-
-# #CIAO produced with no response dir 
-# resp_list = find_resp_files(pha2_file_par=pha2_file, resp_type_par=resp_type, resp_dir_par=None)
-# matched_resp_list = match_resp_order(pha2_file_par=pha2_file, resp_list_par=resp_list, resp_type_par=resp_type)
-
-#### TESTING END
-
-
-
 
 
 
@@ -2504,25 +2451,6 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 		print('ERROR -- input PHA file was not a PHA1 or PHA2 type file')
 
 	return()	
-
-
-
-
-####TESTING
-# src = 449
-# obs = 8589
-# test_spec_dir = 'input_files/testing/hetg_spectra'
-#PHA1
-
-
-#pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_consolidated_obsID_{obs}.fits', pha_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.pha', arf_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.arf', src_num = src)
-#PHA2
-#pha_data, arf_data = clean_spec(cc_table = f'{test_spec_dir}/confused_src_{src}_consolidated_obsID_{obs}.fits', pha_file = f'{test_spec_dir}/src_449_obsid_8589_repro_pha2.fits', arf_file = f'{test_spec_dir}/src_449_obsid_8589_repro_meg_p1.arf', src_num = src)
-
-
-
-
-
 
 
 
