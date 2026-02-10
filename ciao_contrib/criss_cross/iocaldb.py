@@ -3,9 +3,11 @@ import numpy as np
 import caldb4
 from pycrates import read_file
 from coords.chandra import sky_to_chandra
+from coords.chandra import cel_to_chandra
 
 
 __all__ = ['Sky2Chandra',
+           'Cel2chandra',
            'OSIP',
            'CALDBException']
 
@@ -38,6 +40,33 @@ class Sky2Chandra:
         '''
         return sky_to_chandra(self.keywords, x, y)
 
+class Cel2Chandra:
+    '''Convert Celestial coordinates to other coordinate systems.
+
+    This class is a simple wrapper around the function `cel_to_chandra` from
+    the `coords.chandra` package. When an object of this class is created,
+    it reads the header of a fits file to get the WCS information and saves
+    that. The object can then be called to perform coordinate transformations
+    without reading the header again.
+
+    Parameters
+    ----------
+    evt : string
+        location (path and filename) to an event file. The WCS information is
+        read from the header of that file.
+    '''
+    def __init__(self, evt):
+        cr = read_file(evt)
+        self.keywords = {n: cr.get_key_value(n) for n in cr.get_keynames()}
+
+    def __call__(self, x, y):
+        '''
+        Parameters
+        ----------
+        x, y : float
+            X, Y position in physical pixels
+        '''
+        return cel_to_chandra(self.keywords, x, y)
 
 class CALDBException(Exception):
     pass
