@@ -7,8 +7,6 @@
 
 #CrissCross needs to know the number of 0th order counts associated with each source in an observation's field of view. As such, a wavedetect sourcelist table is necessary for crisscross to match known sources in FOV via an input list to the wavedetect table results. Wavedetect results alone can't be used because wavedetect will detect tons of erroneous sources from the dispersed HETG events. This complicated step can be mitigated if one could run wavedetect using a list of input sources so the wavedetect output would exclusively be detected sources within some threshold of an input source. Alternatively, one could try to use the input source list and dmstat to estimate the number of 0th order counts but then you would need to use off-axis angle and PSF size to get accurate aperture. Perhaps I could get this to work with counts_circl_band in widthofexlusion.py?
 
-#include a function to modify the PHA files for each confused source to mark confused regions as bad for spectral fitting.
-
 #add back in ds9 figure generation so users can see where confusion occurs on the evt2 fits image.
 
 #create tutorial for using code with a simple case
@@ -35,8 +33,8 @@ import glob
 import shutil
 from ciao_contrib.runtool import *
 import time 
-from iocaldb import OSIP, Sky2Chandra  #moritz's point source extraction contribution
-from widthofexclusion import * #moritz's point source extraction contribution
+from iocaldb import OSIP, Sky2Chandra, Cel2Chandra
+from widthofexclusion import *
 from pycrates import read_file, write_file, TABLECrate, CrateData, add_col, add_record, get_keyval, read_pha, write_pha, is_pha_type1, is_pha_type2, update_crate_checksum, get_history_records
 from crates_contrib.utils import make_table_crate
 import csv
@@ -168,29 +166,24 @@ def load_sourcelist_csv(filename):
 
 
 
-def calc_physical_coords(fits_par, RA_par, DEC_par, celfmt_par = 'deg', option_par = 'cel'):
+def calc_physical_coords(fits_par, RA_par, DEC_par):
     """
-    Converts from RA and DEC in WCS to Chandra physical coordinates using dmcoords.
+    Converts from RA and DEC in WCS degrees to Chandra physical coordinates. This also determines the off-axis angle in arcseconds.
     """
+    
+    cel_convert = Cel2Chandra(fits_par)
 
-    src_pos_x_par=np.zeros(len(RA_par))
-    src_pos_y_par=np.zeros(len(DEC_par))
-
+    pos_x_par = np.zeros(len(RA_par))
+    pos_y_par = np.zeros(len(DEC_par))
+    off_axis_ang = np.zeros(len(RA_par))
 
     for i in range(0,len(RA_par)):
-        dmcoords.punlearn()
-        dmcoords.ra = RA_par[i]
-        dmcoords.dec = DEC_par[i]
-        dmcoords.infile = fits_par
-        dmcoords.celfmt=celfmt_par
-        dmcoords.option=option_par
-        a = dmcoords()
-        src_pos_x_par[i] = dmcoords.x
-        src_pos_y_par[i] = dmcoords.y
+        a = cel_convert(RA_par[i], DEC_par[i])
+        pos_x_par[i] = a['x'][0]
+        pos_y_par[i] = a['y'][0]
+        off_axis_ang[i] = a['theta'][0] * 60.0 #convert from arcmin to arcsec
 
-
-    return(src_pos_x_par, src_pos_y_par)
-
+    return(pos_x_par, pos_y_par, off_axis_ang)
 
 
 def find_closest_source(src_x_arr, src_y_arr, wave_file, max_offset = 3.0):
@@ -281,33 +274,6 @@ def write_matched_file(srcid_arr, ra_arr, dec_arr, counts_arr, fileroot = 'match
         np.savetxt(fileroot+'.txt', filestack, delimiter='\t', fmt=['%d', '%.6f', '%.6f', '%.1f'], header = 'ID,RA,DEC,0th_counts', comments='')
 
     return()
-
-
-
-def calc_off_axis_angle(fits_list_par, src_pos_x_par, src_pos_y_par):
-    """
-    Calculates the off-axis angle for each source.
-    """
-    observation_pointing_RA = get_header_par(fits_file = fits_list_par, keyword_par = 'RA_PNT')
-    observation_pointing_DEC = get_header_par(fits_file = fits_list_par, keyword_par = 'DEC_PNT')		
-
-    
-    dmcoords.punlearn()
-    dmcoords.ra = observation_pointing_RA
-    dmcoords.dec = observation_pointing_DEC
-    dmcoords.infile = fits_list_par
-    dmcoords.celfmt='deg'
-    dmcoords.option='cel'
-    a = dmcoords()
-    obsid_pointing_physical_RA = dmcoords.x
-    obsid_pointing_physical_DEC = dmcoords.y
-
-    src_off_axis = np.zeros(len(src_pos_x_par))
-
-    src_off_axis = 0.492 * np.sqrt(np.abs(src_pos_x_par - obsid_pointing_physical_RA)**2 + np.abs(src_pos_y_par - obsid_pointing_physical_DEC)**2)
-
-    return(src_off_axis)
-
 
 
 def determine_line_intersect_values(src_pos_x_par, src_pos_y_par, heg_ang_par, meg_ang_par):
@@ -740,14 +706,12 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
                     if (spec_conf_arr[primary_arm+n]['flag_comment'][i,j] != flag_99): #dont run counts_circle_band unless there is at least some evidence of confusion - note I am leaving of 999 here cause there could be a case of confusion near the edges where the osip range brings into the real band
 
                         #if the region in the extracted spectrum where confusion occurs is outside the valid wavelength range then flag as warning and continue
-                        #DAVE NOTE --> I dont think I need to divide by order in this line cause every order's wavelength is determined IN THAT order (not relative to order 1). Every order will have a 1.1 A photon... I think they will also have the same heg/meg cutoff cause it is set by instrument and order 1?
-                        #DAVE NOTE --> Think about this more! Do I even need to check other orders? The key thing here is I am checking against the wavelengths within each order. Does this issue extend to the OSIP WINDOW CALCULATIONS?
 
                         ##KEEP THIS COMMENT--> First check if the intersection between two spectra occur in the possible range of wavelengths for the extracted spectra. If not, it doesn't matter what order or wavelength the other source is, it will NEVER contribute to confusion cause effective area will zero out any flux outside valid range of wave for each source.
                         if spec_conf_arr[primary_arm+n]['wave'][i,j] < (arm_cutoff_low) or spec_conf_arr[primary_arm+n]['wave'][i,j] > (arm_cutoff_high):
                         #if spec_conf_arr[primary_arm+n]['wave'][i,j] < (arm_cutoff_low/np.abs(int(n))) or spec_conf_arr[primary_arm+n]['wave'][i,j] > (arm_cutoff_high/np.abs(int(n))):
                             spec_conf_arr[primary_arm+n]['flag'][i,j] = flag_warn
-                            spec_conf_arr[primary_arm+n]['flag_comment'][i,j] = spec_conf_arr[primary_arm+n]['flag_comment'][i,j] + flag_995	#DAVE consider making this its own unique flag
+                            spec_conf_arr[primary_arm+n]['flag_comment'][i,j] = spec_conf_arr[primary_arm+n]['flag_comment'][i,j] + flag_995
 
                         #if the intersection occurs within the valid bounds of the extracted source then check all the orders of the confusing source to see if those are within THEIR respective valid bounds. If they are outside their own bounds then confusion will not occur
                         else:
@@ -2481,8 +2445,8 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         #save the RA, DEC and SRCID from the subset input list
         subset_RA, subset_DEC, subset_arr = load_sourcelist_csv(subset_arr_list)
 
-        #convert from RA/DEC in degrees to Chandra Sky physical coordinates
-        src_pos_x, src_pos_y = calc_physical_coords(fits_par=fits_list[k], RA_par = RA_wcs, DEC_par = DEC_wcs)
+        #convert from RA/DEC in degrees to Chandra Sky physical coordinates and determine off-axis angle in arcsec
+        src_pos_x, src_pos_y, src_off_axis = calc_physical_coords(fits_par=fits_list[k], RA_par = RA_wcs, DEC_par = DEC_wcs)
 
 
         time_message = 'Finished converting RA/DEC into chandra coords'
@@ -2495,15 +2459,10 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         #create an output file of the input source list with the wave-detect-matched 0th order counts
         write_matched_file(srcid_arr = srcID, ra_arr = RA_wcs, dec_arr = DEC_wcs, counts_arr = counts, fileroot = f'src_list_{obsid[k]}')
 
-        #calculate off-axis angle for each input source
-        src_off_axis = calc_off_axis_angle(fits_list_par = fits_list[k], src_pos_x_par = src_pos_x, src_pos_y_par = src_pos_y)
-
         #Print to the screen the number of sources that satisfy the above conditions as well as the total number of sources in input list.
         src_num = len(src_pos_x)
 
-        counts_intercept_num = len(counts[counts > counts_intercept_thresh_i]) #will count the number of sources that are above the threshold #https://stackoverflow.com/questions/12995937/count-all-values-in-a-matrix-greater-than-a-value
-
-        counts_contam_pntsrc_num = len(counts[counts > counts_contam_pntsrc_thresh]) #number of point sources that are above some thresh that are capable of contaminating the other sources. Note, couldn't get it to easily work to only report the this value based on thenumber of sources bright enough for spectra in the first place. Instead it just counts all sources above X counts.
+        counts_intercept_num = len(counts[counts > counts_intercept_thresh_i]) #will count the number of sources that are above the threshold
 
         print("The total number of sources input is %s." % (src_num))
         print("The number of sources above the contamination intercept threshold of %s counts for ObsID %s is %s." % (counts_intercept_thresh_i,obsid[k], counts_intercept_num))
@@ -2566,8 +2525,8 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_meg, fits_list_par = fits_list[k], subset_arr_par=subset_arr, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='meg', moritz_factor_par=0.1, logfile_par=f'pnt_src_confuse_{obsid[k]}_log.txt')
 
         #sets the flags for point source confusion
-        pntsrc_conf_par = pntsrc_flag_set(pntsrc_conf_par=pntsrc_conf, src_pos_x_par=src_pos_x, arm_par='heg', subset_arr_par = subset_arr)
-        pntsrc_conf_par = pntsrc_flag_set(pntsrc_conf_par=pntsrc_conf, src_pos_x_par=src_pos_x, arm_par='meg', subset_arr_par = subset_arr)
+        pntsrc_conf = pntsrc_flag_set(pntsrc_conf_par=pntsrc_conf, src_pos_x_par=src_pos_x, arm_par='heg', subset_arr_par = subset_arr)
+        pntsrc_conf = pntsrc_flag_set(pntsrc_conf_par=pntsrc_conf, src_pos_x_par=src_pos_x, arm_par='meg', subset_arr_par = subset_arr)
 
 
         time_message = 'Finished assigning point source confusion.'
