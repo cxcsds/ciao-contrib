@@ -94,11 +94,19 @@ mm_per_pix = 0.023987  #pixel size in mm for acis same for I and S;  pix size in
 #############FUNCTION DEFINITIONS###############
 
 
-def make_output_dir(working_dir):
+def make_output_dir(working_dir, obsid_par):
     """
     Creates the working directory if it doesn't already exist
     """
     os.makedirs(working_dir, exist_ok = True)
+    output_dir = f'{working_dir}/output_dir_obsid_{obsid_par}'
+    os.makedirs(output_dir, exist_ok = True)
+
+    return(output_dir)
+
+        # os.system(f'mkdir -p {working_dir}/output_dir_obsid_{obsid[i]}')
+        # output_dir_list.append(f'{working_dir}/output_dir_obsid_{obsid[i]}')
+
 
 
 def get_header_par(fits_file, keyword_par):
@@ -116,6 +124,40 @@ def get_header_par(fits_file, keyword_par):
 #&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 #See wavedetect open question at top 
 #&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+def run_wavdetect(evt2_file=None, outroot='sdetect', binsize=2.0, bands='broad', psfecf=0.9, verbose=0, clobber='yes'):
+    """
+    Run fluximage and wavdetect if user does not provide wavdetect source file and return the wavdetect table name.
+    """
+
+    print(f'\nNo input wavdetect source fits table provided so running wavdetect on {evt2_file} with binsize={binsize}, bands={bands} and psfecf={psfecf}.') 
+    print('If you wish to use other wavdetect parameters please run wavdetect and provide a wavdetect source fits table.\n')
+
+    fluximage.punlearn()
+    fluximage.infile=evt2_file
+    fluximage.outroot=outroot
+    fluximage.binsize=binsize
+    fluximage.bands=bands
+    fluximage.psfecf=psfecf
+    fluximage.verbose=verbose
+    fluximage.clobber='yes'
+
+    fluximage()
+
+    wavdetect.punlearn()
+    wavdetect.infile=f'{outroot}_{bands}_thresh.img'
+    wavdetect.psffile=f'{outroot}_{bands}_thresh.psfmap'
+    wavdetect.outfile=f'{outroot}_src.fits'
+    wavdetect.scellfile=f'{outroot}_scell.fits'
+    wavdetect.imagefile=f'{outroot}_imgfile.fits'
+    wavdetect.defnbkgfile=f'{outroot}_nbgd.fits'
+    wavdetect.regfile=f'{outroot}_src.reg'
+    wavdetect.verbose=verbose
+    wavdetect.clobber=clobber
+
+    wavdetect()
+
+    return(f'{outroot}_src.fits')
+
 
 def wavedetect_match_obsid(fits_list_par, wavedetect_list_par):
     """
@@ -2344,7 +2386,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
 
 
-def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files', main_list = 'input_files/full_coup_src_list.csv', subset_arr_list = 'input_files/subset_onc.csv'):
+def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files', main_list = 'input_files/full_coup_src_list.csv', subset_arr_list = 'input_files/subset_onc.csv', evt2_file=None, wavdetect_file=None):
     """
     Main function for running criss cross.
 
@@ -2361,53 +2403,49 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
 
     #input_dir = 'input_files' #dir with the necessary input files (fits files, wavedetect lists, src_list, etc)
 
-    fits_list = sorted(glob.glob(f'{input_dir}/*repro_evt2.fits')) #users need a list of evt2 fits files to operate on. 
+    #fits_list = sorted(glob.glob(f'{input_dir}/*repro_evt2.fits')) #users need a list of evt2 fits files to operate on. 
 
-    wavedetect_list = sorted(glob.glob(f'{input_dir}/*wavdetect*')) #users need a list of wavedetect source fits files to later MATCH to main_list and subset_arr_list. 
+    #wavedetect_list = sorted(glob.glob(f'{input_dir}/*wavdetect*')) #users need a list of wavedetect source fits files to later MATCH to main_list and subset_arr_list. 
 
     #main_list = f'{input_dir}/full_coup_src_list.csv' # CSV list of known sources that are in the field of view in the format ('RA', 'DEC', 'ID') with RA and Dec in degrees. This can include sources also outside of a particular field of view. These will be matched to a wavedetect output file to obtain the number of 0th order counts for each source detected.
 
     #subset_arr_list = f'{input_dir}/subset_onc.csv' # list of sources to determine if confusion occurs for spectral fitting in the format ('RA', 'DEC', 'ID') with RA and Dec in degrees. Typically, this would be a small subset of the sources in the FOV (main list) and only those bright enough for HETG spectral fitting. 
 
 
+    #sanitize the evt2_file input so it is a list
+    if evt2_file == None:
+        print('ERROR-- Please provide an evt2 file')
+        return()
+    #convert a single file into a list so it can work with loop
+    elif type(evt2_file) == str:
+        evt2_file = [evt2_file]
+    elif type(evt2_file) != list:
+        print('Unknown type of input for evt2_files. Please include a single file or a list of files')
+        return()
+    else:
+        print('Error -- Something went wrong reading evt2_file')
 
+    if wavdetect_file != None:
+        if type(wavdetect_file) == str:
+            wavdetect_file = [wavdetect_file]
+        elif type(wavdetect_file) != list:
+            print('Unknown type of input for wavdetect_file. Please include a single file or a list of files')
+            return()
+        else:
+            print('Error -- Something went wrong reading wavdetect file')    
 
-    #resetting the ardlib
-    ardlib.punlearn()
-
-
-    #create the output files directory
-    make_output_dir(working_dir)
-
-    #use dmkeypar to obtain the obsid and roll angle for each observation for file naming purposes
-    obsid = np.empty(len(fits_list), dtype=object)
-    roll_nom_arr = np.empty(len(fits_list), dtype=float)
-    heg_ang_arr = np.empty(len(fits_list), dtype=float)
-    meg_ang_arr = np.empty(len(fits_list), dtype=float)
-
-                            
-    for i in range(0,len(fits_list)):
-        obsid[i] = get_header_par(fits_file = fits_list[i], keyword_par = 'obs_id')
-        roll_nom_arr[i] = get_header_par(fits_file = fits_list[i], keyword_par = 'ROLL_NOM')
-
-        grating_rotang = read_file(f'{fits_list[i]}[REGION]') #always reads the region block because the block number is variable
-        heg_ang_arr[i] = grating_rotang.ROTANG.values[1] #tg_part = 1
-        meg_ang_arr[i] = grating_rotang.ROTANG.values[2] #tg_part = 2
-
-
-    wavedetect_list = wavedetect_match_obsid(fits_list_par = fits_list, wavedetect_list_par = wavedetect_list) #make sure wavedetect source tables are in same order as evt2 fits files.
-
-
-    #make all the output dirs and then create an array from them to store for file output at end
-
-    output_dir_list = []
-    for i in range(len(fits_list)):
-        os.system(f'mkdir -p {working_dir}/output_dir_obsid_{obsid[i]}')
-        output_dir_list.append(f'{working_dir}/output_dir_obsid_{obsid[i]}')
-
+    #check to make sure the number of evt2 files match the number of wavdetect source lists
+    if wavdetect_file != None and len(wavdetect_file) != len(evt2_file):
+        print('ERROR -- the number of input evt2_files and wavdetect source table fits files do not match. Please include a wavdetect table for each evt2 file.')
+        return()
+    
+    #run wavedetect_match_obsid before the loop starts to ensure input files are in correct order
+    if wavdetect_file != None:
+        wavdetect_file = wavedetect_match_obsid(fits_list_par = evt2_file, wavedetect_list_par = wavdetect_file)
+    
 
     #for k in range(0,2):
-    for k in range(len(fits_list)):
+    for k in range(len(evt2_file)):
     #for k in range(1,3):
     #for k in range(3, len(fits_list)): #if you want to start at a specific spot in the fits list
 
@@ -2417,10 +2455,14 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         #start the time logger for printing steps to the screen
         time_log_start, time_log_counter = time_logger(mode='start')
 
+        # os.system(f'mkdir -p {working_dir}/output_dir_obsid_{obsid[i]}')
+        # output_dir_list.append(f'{working_dir}/output_dir_obsid_{obsid[i]}')        
+
         #print the tweakable paramters to the screen and then record them near the end along with the time it took to run.
         print('\n')
-        print('This run is for observation %s' % fits_list[k])
-        print('This run is using the wavedetect file %s' %wavedetect_list[k])
+        print('This run is for observation %s' % evt2_file[k])
+        if wavdetect_file != None:
+            print('This run is using the wavedetect file %s' %wavdetect_file[k])
         print('The contamination offset threshold is set to %s pixels.' %contam_offset_thresh)
         print('The counts threshold to be considered a spectrum of interest is set to %s counts.' % counts_intercept_thresh_i)
         print('The counts threshold to be considered a potential contaminating spectral source is %s counts.' %counts_intercept_thresh_j)
@@ -2430,14 +2472,24 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         print('The minimum counts in Src Bs 0th order to assess total arm confusion in source A is %s ' % (min_HETG_counts))
 
         #set a few obsid_specific parameters
-        heg_ang = heg_ang_arr[k]
-        meg_ang = meg_ang_arr[k]
-        roll_nom = roll_nom_arr[k]
+        obsid = get_header_par(fits_file = evt2_file[k], keyword_par = 'obs_id')
+        roll_nom = float(get_header_par(fits_file = evt2_file[k], keyword_par = 'ROLL_NOM'))
+        grating_rotang = read_file(f'{evt2_file[k]}[REGION]') #always reads the region block because the block number is variable
+        heg_ang = grating_rotang.ROTANG.values[1] #tg_part = 1
+        meg_ang = grating_rotang.ROTANG.values[2] #tg_part = 2
+
         
         print('The HEG/MEG angles for this observation are %s and %s degrees.' % (heg_ang, meg_ang))
 
         print('The roll angle of this observation is %s' % roll_nom)
 
+        #create the output files directory
+        output_dir = make_output_dir(working_dir, obsid)
+
+        #run wavdetect if the user did not input a wavdetect source table. 
+        if wavdetect_file == None:
+            wavdetect_file = run_wavdetect(evt2_file[k], outroot=f'wavdetect_obsid_{obsid}')
+            wavdetect_file = [wavdetect_file]
 
         #save the RA, DEC and SRCID from the main input list
         RA_wcs, DEC_wcs, srcID = load_sourcelist_csv(main_list)
@@ -2446,7 +2498,7 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         subset_RA, subset_DEC, subset_arr = load_sourcelist_csv(subset_arr_list)
 
         #convert from RA/DEC in degrees to Chandra Sky physical coordinates and determine off-axis angle in arcsec
-        src_pos_x, src_pos_y, src_off_axis = calc_physical_coords(fits_par=fits_list[k], RA_par = RA_wcs, DEC_par = DEC_wcs)
+        src_pos_x, src_pos_y, src_off_axis = calc_physical_coords(fits_par=evt2_file[k], RA_par = RA_wcs, DEC_par = DEC_wcs)
 
 
         time_message = 'Finished converting RA/DEC into chandra coords'
@@ -2454,10 +2506,10 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
 
 
         #match input source list to wavedetect table to catalog 0th order counts for each source in each obsid
-        final_match_arr, final_dist_arr, counts = find_closest_source(src_x_arr = src_pos_x, src_y_arr = src_pos_y, wave_file = wavedetect_list[k], max_offset = 3.0)
+        final_match_arr, final_dist_arr, counts = find_closest_source(src_x_arr = src_pos_x, src_y_arr = src_pos_y, wave_file = wavdetect_file[k], max_offset = 3.0)
 
         #create an output file of the input source list with the wave-detect-matched 0th order counts
-        write_matched_file(srcid_arr = srcID, ra_arr = RA_wcs, dec_arr = DEC_wcs, counts_arr = counts, fileroot = f'src_list_{obsid[k]}')
+        write_matched_file(srcid_arr = srcID, ra_arr = RA_wcs, dec_arr = DEC_wcs, counts_arr = counts, fileroot = f'src_list_{obsid}')
 
         #Print to the screen the number of sources that satisfy the above conditions as well as the total number of sources in input list.
         src_num = len(src_pos_x)
@@ -2465,7 +2517,7 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         counts_intercept_num = len(counts[counts > counts_intercept_thresh_i]) #will count the number of sources that are above the threshold
 
         print("The total number of sources input is %s." % (src_num))
-        print("The number of sources above the contamination intercept threshold of %s counts for ObsID %s is %s." % (counts_intercept_thresh_i,obsid[k], counts_intercept_num))
+        print("The number of sources above the contamination intercept threshold of %s counts for ObsID %s is %s." % (counts_intercept_thresh_i,obsid, counts_intercept_num))
 
         #calculate relevant parameters for when two lines intersect in the Chandra FOV
         m_heg, m_meg, b_heg, b_meg, xintercept_heg, xintercept_meg, yintercept_heg, yintercept_meg, xoff, yoff = determine_line_intersect_values(src_pos_x_par = src_pos_x, src_pos_y_par = src_pos_y, heg_ang_par = heg_ang, meg_ang_par = meg_ang)
@@ -2487,10 +2539,10 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         spec_conf = spec_confuse_wave_bounds(spec_conf, highest_order= 3, src_pos_x_par = src_pos_x)
         
         #Determine OSIP wavelength range expected at the location and energy of spectral confusion for each source.
-        spec_conf = spec_calc_osip_bounds(spec_conf, highest_order = 3, osip_frac_par = osip_frac, subset_arr_par = subset_arr, src_pos_x_par = src_pos_x, fits_list_par=fits_list[k], obsid_par = obsid[k])
+        spec_conf = spec_calc_osip_bounds(spec_conf, highest_order = 3, osip_frac_par = osip_frac, subset_arr_par = subset_arr, src_pos_x_par = src_pos_x, fits_list_par=evt2_file[k], obsid_par = obsid)
 
         #determine whether spectral confusion has occured and set the appropriate arm/order flags
-        spec_conf = spec_flag_set(spec_conf, src_pos_x_par = src_pos_x, src_pos_y_par = src_pos_y, subset_arr_par = subset_arr, fits_list_par = fits_list[k], input_dir_par = input_dir)
+        spec_conf = spec_flag_set(spec_conf, src_pos_x_par = src_pos_x, src_pos_y_par = src_pos_y, subset_arr_par = subset_arr, fits_list_par = evt2_file[k], input_dir_par = input_dir)
 
 
         time_message = 'Finished assigning spectral confusion.'
@@ -2521,8 +2573,8 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
 
         #determine whether confusion occurs for all point sources
-        pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_heg, fits_list_par = fits_list[k], subset_arr_par=subset_arr, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='heg', moritz_factor_par=0.1, logfile_par=f'pnt_src_confuse_{obsid[k]}_log.txt')
-        pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_meg, fits_list_par = fits_list[k], subset_arr_par=subset_arr, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='meg', moritz_factor_par=0.1, logfile_par=f'pnt_src_confuse_{obsid[k]}_log.txt')
+        pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_heg, fits_list_par = evt2_file[k], subset_arr_par=subset_arr, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='heg', moritz_factor_par=0.1, logfile_par=f'pnt_src_confuse_{obsid}_log.txt')
+        pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_meg, fits_list_par = evt2_file[k], subset_arr_par=subset_arr, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='meg', moritz_factor_par=0.1, logfile_par=f'pnt_src_confuse_{obsid}_log.txt')
 
         #sets the flags for point source confusion
         pntsrc_conf = pntsrc_flag_set(pntsrc_conf_par=pntsrc_conf, src_pos_x_par=src_pos_x, arm_par='heg', subset_arr_par = subset_arr)
@@ -2570,10 +2622,10 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
 
         #Call write_full_conf_table to produce the 'full' and 'consolidated' tables for each source in the run obsID.
         for i in subset_arr:
-            write_full_conf_table(spec_conf_par = spec_conf, pntsrc_conf_par = pntsrc_conf, arm_conf_par = arm_conf, row_num = i, srcID_par = srcID, counts_par = counts, working_dir_par = working_dir, remove_clean = 'yes', obsid_par = obsid[k], consolidate_table = True)
+            write_full_conf_table(spec_conf_par = spec_conf, pntsrc_conf_par = pntsrc_conf, arm_conf_par = arm_conf, row_num = i, srcID_par = srcID, counts_par = counts, working_dir_par = working_dir, remove_clean = 'yes', obsid_par = obsid, consolidate_table = True)
 
         #move output files into final directories and cleanup
-        end_of_run_cleanup(output_dir_list_par = output_dir_list[k], obsid_par = obsid[k], working_dir_par = working_dir)
+        end_of_run_cleanup(output_dir_list_par = output_dir, obsid_par = obsid, working_dir_par = working_dir)
 
 
 
@@ -2582,10 +2634,10 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
 
 
-        log_file = open('LOG_'+obsid[k]+'.txt', 'w')	
+        log_file = open('LOG_'+obsid+'.txt', 'w')	
         
-        log_file.write('This run is for observation %s. \n' % fits_list[k])
-        log_file.write('The wavdetect source list used for this observation is %s. \n' % wavedetect_list[k])
+        log_file.write('This run is for observation %s. \n' % evt2_file[k])
+        log_file.write('The wavdetect source list used for this observation is %s. \n' % wavdetect_file[k])
         log_file.write('The roll angle of this observation is %s degrees. \n' % round(roll_nom,2))
         log_file.write('MEG angle = %s degrees and HEG angle = %s degrees. \n' % (round(meg_ang,2),round(heg_ang,2)))
         if roll_nom > 80 and roll_nom < 100:
@@ -2599,7 +2651,7 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
         log_file.write('The distance in pixels required for two very bright sources to be considered for ARM REMOVAL --tis but a scratch-- is %s pixels. \n' % dist_to_super_bright_perp)
         log_file.write('The fraction of the OSIP window to include when considering two arm overlaps is set at %s percent. \n' % (osip_frac*100))
         log_file.write('\nThe total number of sources input is %s. \n' % (src_num))
-        log_file.write('The number of sources above the contamination intercept threshold of %s counts for ObsID %s is %s. \n' % (counts_intercept_thresh_i,obsid[k], counts_intercept_num))
+        log_file.write('The number of sources above the contamination intercept threshold of %s counts for ObsID %s is %s. \n' % (counts_intercept_thresh_i,obsid, counts_intercept_num))
         log_file.write('The minimum counts in Src Bs 0th order to assess total arm confusion in source A is %s. \n ' % (min_HETG_counts))
 
         log_file.write('The HEG/MEG angles for this observation are %s and %s degrees. \n ' % (heg_ang, meg_ang))	
@@ -2612,12 +2664,12 @@ def run_crisscross(working_dir = 'criss_cross_output', input_dir = 'input_files'
 
         total_time = time_logger(mode='end',time_started=time_log_start)
 
-        log_file.write('\nThe total elapsed time for obsID %s is %s minutes. \n' % (obsid[k], total_time))
+        log_file.write('\nThe total elapsed time for obsID %s is %s minutes. \n' % (obsid, total_time))
 
         log_file.close()
         
         #now we move the log to the output directory
-        subprocess.call("mv LOG_%s.txt %s" %(obsid[k], output_dir_list[k]), shell=True)
+        subprocess.call("mv LOG_%s.txt %s" %(obsid, output_dir), shell=True)
 
 
 
