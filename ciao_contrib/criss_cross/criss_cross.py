@@ -260,11 +260,10 @@ def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, round_sig = 6):
     for i in range(0,len(RA_sub)):
         element[i] = np.where((np.round(RA_sub[i],round_sig) == np.round(RA_main,round_sig)) & (np.round(DEC_sub[i],round_sig) == np.round(DEC_main,round_sig)))[0]
         if len(element[i]) == 0:
-            print(f'ERROR -- No match in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please remove from list or fix position.')
-            return()
+            raise ValueError(f'ERROR -- No match in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please make sure RA and DEC value of source to clean matches a source in main_list.')
+        
         elif len(element[i]) >1:
-            print(f'ERROR -- Multiple matches [{len(element[i])}] in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please make sure there are no duplicate entries in main list or subset_list')
-            return()
+            raise ValueError(f'ERROR -- Multiple matches [{len(element[i])}] in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please make sure there are no duplicate entries in main list or subset_list')
         #strip array to provide only integer value
         else:
             element[i] = element[i][0]
@@ -1569,7 +1568,7 @@ def main_flag_set(conf_dict_par, src_pos_x_par, subset_arr_par):
 
 
 
-def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_par, output_dir_par, srcID_par, counts_par ,remove_clean = 'yes', row_num=808, consolidate_table = False):
+def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_par, output_dir_par, srcID_par, counts_par, RA_par, DEC_par, remove_clean = 'yes', row_num=808, consolidate_table = False):
 
     """
     Extracts a single source (row) from the three nested dictionaries (one for each confusion type) and creates a fits table summarizing the detected confusion parameters. The user has the option of saving every source and their associated parameter values but most of the time there is no confusion and its unneccesary to include everything. Users can filter to only produce tables where confusion occurs (flag='confused') or where confusion was close to occuring (flag='warn'). This is a relatively complex function to accomodate pycrates as a fits-writing tool throughout CrissCross. This function could be made significantly simpler using astropy or pandas tables.
@@ -1770,6 +1769,9 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
     merged_crate = merge_conf_crates(conf_crate_par = pntsrc_conf_crate, merged_crate_par = merged_crate)
     merged_crate = merge_conf_crates(conf_crate_par = arm_conf_crate, merged_crate_par = merged_crate)
 
+    #Add RA and DEC of the confused source to the header of the crates table.
+    set_key(merged_crate, name='RA_conf', data=RA_par, unit='deg', desc='RA of src with potential HETG confusion')
+    set_key(merged_crate, name='DEC_conf', data=DEC_par, unit='deg', desc='Dec of src with potential HETG confusion')
 
     write_file(merged_crate, f'{output_dir_par}/confused_src_{row_num}_full_obsID_{obsid_par}.fits', clobber=True)
 
@@ -1871,6 +1873,10 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
         add_col(consolidated_crate,col7)	
         add_col(consolidated_crate,col8)	
         add_col(consolidated_crate,col9)	
+
+        #Add RA and DEC of the confused source to the header of the crates table.
+        set_key(consolidated_crate, name='RA_conf', data=RA_par, unit='deg', desc='RA of src with potential HETG confusion')
+        set_key(consolidated_crate, name='DEC_conf', data=DEC_par, unit='deg', desc='Dec of src with potential HETG confusion')
 
         write_file(consolidated_crate, f'{output_dir_par}/confused_src_{row_num}_consolidated_obsID_{obsid_par}.fits', clobber=True)
 
@@ -2528,8 +2534,8 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         if clean_single_RA == None and clean_single_DEC == None:
             subset_RA, subset_DEC = load_sourcelist(filename=subset_arr_list, subset_list=True)
         else:
-            subset_RA = clean_single_RA
-            subset_DEC = clean_single_DEC
+            subset_RA = [float(clean_single_RA)]
+            subset_DEC = [float(clean_single_DEC)]
 
         #match the element number of the subset list to the main list using RA and DEC to 6 digits accuracy.
         subset_arr = match_subset_to_main(RA_main=RA_wcs, DEC_main=DEC_wcs, RA_sub=subset_RA, DEC_sub=subset_DEC)
@@ -2662,7 +2668,7 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
 
         #Call write_full_conf_table to produce the 'full' and 'consolidated' confusion tables for each source in the run obsID.
         for i in subset_arr:
-            write_full_conf_table(spec_conf_par = spec_conf, pntsrc_conf_par = pntsrc_conf, arm_conf_par = arm_conf, row_num = i, srcID_par = srcID, counts_par = counts, output_dir_par = output_dir, remove_clean = 'yes', obsid_par = obsid, consolidate_table = True)
+            write_full_conf_table(spec_conf_par = spec_conf, pntsrc_conf_par = pntsrc_conf, arm_conf_par = arm_conf, row_num = i, srcID_par = srcID, counts_par = counts, output_dir_par = output_dir, remove_clean = 'yes', obsid_par = obsid, RA_par=RA_wcs[i], DEC_par=DEC_wcs[i], consolidate_table = True)
 
         #move output files into final directories and cleanup
         end_of_run_cleanup(output_dir_list_par = output_dir, obsid_par = obsid, wavdetect_par=run_wave)
