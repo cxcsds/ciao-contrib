@@ -35,7 +35,7 @@ from ciao_contrib.runtool import *
 import time 
 from iocaldb import OSIP, Sky2Chandra, Cel2Chandra
 from widthofexclusion import *
-from pycrates import read_file, write_file, TABLECrate, CrateData, add_col, add_record, get_keyval, read_pha, write_pha, is_pha_type1, is_pha_type2, update_crate_checksum, get_history_records
+from pycrates import read_file, write_file, TABLECrate, CrateData, add_col, add_record, get_keyval, read_pha, write_pha, is_pha_type1, is_pha_type2, update_crate_checksum, get_history_records, set_key
 from crates_contrib.utils import make_table_crate
 import csv
 from pathlib import Path
@@ -190,30 +190,87 @@ def wavedetect_match_obsid(fits_list_par, wavedetect_list_par):
     
 
 
-def load_sourcelist_csv(filename):
+def load_sourcelist(filename=None, subset_list=False):
     """
-    Loads in source and subset lists
+    Uses pycrates to load an ascii, tsv for fits file with RA, DEC and ID columns. If and ID column is not found then one is generated. If subset_list = True then only RA and DEC will be loaded and it will NOT create an ID column. This functionality is for loading the subset of sources to produce cleaning tables. The subset sources are matched to the main_list sources using match_subset_to_main().
     """
 
-    RA = []
-    DEC = []
-    ID = []
+    if filename != None:
+        gen_id = False
+        cratedata = read_file(filename)
+        colnames = cratedata.get_colnames()
+        crate_len = len(colnames)
 
-    with open(filename, newline='') as f:
-        readfile = csv.DictReader(f)
-        for row in readfile:
-            RA.append(row["RA"])
-            DEC.append(row["DEC"])
-            ID.append(row["ID"])    
+        #check to see if user forgot to put hash in front of column header which woudl result in crate being type <U17
+        if cratedata.get_column(colnames[0]).values.dtype == '<U17':
+            raise TypeError('\nFirst row of file cannot be of string format. If header columns are present please ensure # is first character of line.\n')
+
+        elif crate_len < 2:
+            raise TypeError(f'\nERROR reading "{filename}". Please ensure file type is ascii or tsv and there are at least two columns (RA DEC) in degrees\n')
+        
+        #if len=2 then probably only RA and DEC present. For the subset_list, do NOT create new ID values because they must match the main_list IDs.
+        elif crate_len == 2 and subset_list == False:
+            print(f'No ID column found so IDs will be generated from 0 to length of file')
+            gen_id = True
+
+        elif crate_len == 3:
+            
+            idcol_test = cratedata.get_column(colnames[2]).values
+            try:
+                idcol_test.astype(int)
+            except:
+                raise TypeError('Third column of input file need to be integers')
+                
+            if len(np.unique(idcol_test)) != len(idcol_test):
+                raise TypeError('ID column does not contain unique identifier for each source')
+            
+            if colnames[2] != 'ID' and colnames[2] != 'id':
+                print(f'Warning -- Column 2 of "{filename}" is not ID or id. Assuming it is ID from now on.')
+
+        else:
+            print(f'File "{filename}" contains more than three columns and the rest will be ignored.')
+
+        if colnames[0] != 'RA' and colnames[0] != 'ra':
+            print(f'Warning -- Column 1 of "{filename}" is not RA or ra. Assuming it is RA from now on.')
+        if colnames[1] != 'DEC' and colnames[1] != 'dec':
+            print(f'Warning -- Column 2 of "{filename}" is not DEC or dec. Assuming it is DEC from now on.')
+
+        RA = cratedata.get_column(colnames[0]).values
+        DEC = cratedata.get_column(colnames[1]).values
+        if gen_id == True:
+            ID = np.arange(0, len(RA))
+        elif subset_list == False:
+            ID = cratedata.get_column(colnames[2]).values.astype(int)
+
+        if subset_list == False:            
+            return(RA, DEC, ID)
+        elif subset_list == True:
+            return(RA, DEC)
+        else:
+            print('ERROR -- something went wrong with subset_list truth value.')
+
+
+def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, round_sig = 6):
+    """
+    Returns the element number of RA_main/DEC_main that correspondds to the RA and DEC of each subset_list source.
     
-    RA = np.array(RA, dtype=float)
-    DEC = np.array(DEC, dtype=float)
-    ID = np.array(ID, dtype = int)
+    """
 
-    f.close()
+    element = [None] * len(RA_sub)
+    for i in range(0,len(RA_sub)):
+        element[i] = np.where((np.round(RA_sub[i],round_sig) == np.round(RA_main,round_sig)) & (np.round(DEC_sub[i],round_sig) == np.round(DEC_main,round_sig)))[0]
+        if len(element[i]) == 0:
+            print(f'ERROR -- No match in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please remove from list or fix position.')
+            return()
+        elif len(element[i]) >1:
+            print(f'ERROR -- Multiple matches [{len(element[i])}] in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please make sure there are no duplicate entries in main list or subset_list')
+            return()
+        #strip array to provide only integer value
+        else:
+            element[i] = element[i][0]
+        
 
-    return(RA, DEC, ID)
-
+    return(element)
 
 
 def calc_physical_coords(fits_par, RA_par, DEC_par):
@@ -2371,7 +2428,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
 
 
-def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_files', main_list = 'input_files/full_coup_src_list.csv', subset_arr_list = 'input_files/subset_onc.csv', evt2_file=None, wavdetect_file=None, clobber_par=False):
+def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_files', main_list = 'input_files/full_coup_src_list.csv', subset_arr_list = 'input_files/subset_onc.csv', clean_single_RA=None, clean_single_DEC=None, evt2_file=None, wavdetect_file=None, clobber_par=False):
     """
     Main function for running criss cross. It will take event files and 0th order locations to produce confusion tables. If users have appropriate PHA files they can run clean_spec() using the CrissCross confusion tables as input to remove confused counts from their spectra.
 
@@ -2465,10 +2522,17 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
             #wavdetect_file[k] = [wavdetect_file]
 
         #save the RA, DEC and SRCID from the main input list
-        RA_wcs, DEC_wcs, srcID = load_sourcelist_csv(main_list)
+        RA_wcs, DEC_wcs, srcID = load_sourcelist(filename=main_list)
 
-        #save the RA, DEC and SRCID from the subset input list
-        subset_RA, subset_DEC, subset_arr = load_sourcelist_csv(subset_arr_list)
+        #save the RA, DEC from the subset input list or the user input individual source
+        if clean_single_RA == None and clean_single_DEC == None:
+            subset_RA, subset_DEC = load_sourcelist(filename=subset_arr_list, subset_list=True)
+        else:
+            subset_RA = clean_single_RA
+            subset_DEC = clean_single_DEC
+
+        #match the element number of the subset list to the main list using RA and DEC to 6 digits accuracy.
+        subset_arr = match_subset_to_main(RA_main=RA_wcs, DEC_main=DEC_wcs, RA_sub=subset_RA, DEC_sub=subset_DEC)
 
         #convert from RA/DEC in degrees to Chandra Sky physical coordinates and determine off-axis angle in arcsec
         src_pos_x, src_pos_y, src_off_axis = calc_physical_coords(fits_par=evt2_file[k], RA_par = RA_wcs, DEC_par = DEC_wcs)
