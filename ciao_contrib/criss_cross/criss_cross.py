@@ -1,23 +1,18 @@
 #See README.me for general info about CrissCross
 
+#List of things I still need to do:
 
-#1/12/26 -- THINGS TO DO STILL
+    #add back in ds9 figure generation so users can see where confusion occurs on the evt2 fits image.
 
-#figure out best way for users to input necessary files (fits, tables, wavdetect stuff)
+    #create tutorial for using code with a simple case
 
-#CrissCross needs to know the number of 0th order counts associated with each source in an observation's field of view. As such, a wavedetect sourcelist table is necessary for crisscross to match known sources in FOV via an input list to the wavedetect table results. Wavedetect results alone can't be used because wavedetect will detect tons of erroneous sources from the dispersed HETG events. This complicated step can be mitigated if one could run wavedetect using a list of input sources so the wavedetect output would exclusively be detected sources within some threshold of an input source. Alternatively, one could try to use the input source list and dmstat to estimate the number of 0th order counts but then you would need to use off-axis angle and PSF size to get accurate aperture. Perhaps I could get this to work with counts_circl_band in widthofexlusion.py?
+    #add functionality for user to calculate confusion between two selected sources in a field of view and print results to screen.
 
-#add back in ds9 figure generation so users can see where confusion occurs on the evt2 fits image.
+    #spec_flag_set takes a lot of time to run and should be made more efficient.
 
-#create tutorial for using code with a simple case
+    #finalize documentation for all functions
 
-#add functionality for user-supplied list of 0th order sources and their counts (instead of matching to a wavedetect table)
-
-#add functionality for user to calculate confusion between two selected sources in a field of view and print results to screen.
-
-#make code more efficient
-
-
+    #format code to fix character limit to < 120 characters
 
 ##########################################################################################
 ##########################################################################################
@@ -169,7 +164,7 @@ def run_wavdetect(evt2_file=None, outdir=None, outroot='sdetect', binsize=2.0, b
 
 def wavedetect_match_obsid(fits_list_par, wavedetect_list_par):
     """
-    Uses the obsID header from the evt files (fits_list) and wavedetect source tables (wavedetect_list) to make sure the user input wavedetect_list is in the approrpriate order (e.g., evt2 obsid = wavedetect obsid)
+    Uses the obsID header from the evt files (fits_list) and wavedetect source tables (wavedetect_list) to reorder the wavdetect_list to match the evt2_list (e.g., wavdetect obsID = evt2 obsID).
     """
 
     fits_obsid = []
@@ -192,11 +187,17 @@ def wavedetect_match_obsid(fits_list_par, wavedetect_list_par):
 
 def load_sourcelist(filename=None, subset_list=False):
     """
-    Uses pycrates to load an ascii, tsv for fits file with RA, DEC and ID columns. If and ID column is not found then one is generated. If subset_list = True then only RA and DEC will be loaded and it will NOT create an ID column. This functionality is for loading the subset of sources to produce cleaning tables. The subset sources are matched to the main_list sources using match_subset_to_main().
+    Uses pycrates to load an ascii, tsv or fits file with RA, DEC and ID columns. If an ID column is not found then one is generated. The file is expected to have a header column of #RA DEC ID. If it does not then the first two columns read in will be treated as RA and DEC and a warning message is printed to screen. If subset_list = True then only RA and DEC will be loaded and it will NOT create an ID column. This functionality is for loading the subset of sources to produce cleaning tables. The subset sources are matched to the main_list sources using match_subset_to_main().
+
+    filename
+    subset_list
     """
 
     if filename != None:
+        #default to setting a flag to no generate the ID column
         gen_id = False
+        
+        #read the data file in and get info about columns
         cratedata = read_file(filename)
         colnames = cratedata.get_colnames()
         crate_len = len(colnames)
@@ -254,7 +255,13 @@ def load_sourcelist(filename=None, subset_list=False):
 
 def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, round_sig = 6):
     """
-    Returns the element number of RA_main/DEC_main that correspondds to the RA and DEC of each subset_list source.
+    The list of sources for which CrissCross will generate confusion tables (subset_list) needs to be matched to the element number of main_list. This function identifies the match by ensuring the subset_list sources have matching RA and DECs with the main_list sources up to round_sig (6) decimal places. If none or multiple matches are found it will raise an error.
+
+    RA_main
+    DEC_main
+    RA_sub
+    DEC_sub
+    round_sig
     
     """
 
