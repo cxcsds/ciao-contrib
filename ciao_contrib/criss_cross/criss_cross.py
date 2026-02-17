@@ -2402,8 +2402,7 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         elif type(wavdetect_file) != list:
             print('Unknown type of input for wavdetect_file. Please include a single file or a list of files')
             return()
-        else:
-            print('Error -- Something went wrong reading wavdetect file')    
+    
 
     #check to make sure the number of evt2 files match the number of wavdetect source lists
     if wavdetect_file != None and len(wavdetect_file) != len(evt2_file):
@@ -2551,6 +2550,7 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
 
         #determine whether confusion occurs for all point sources
         pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_heg, fits_list_par = evt2_file[k], subset_arr_par=subset_arr, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='heg', moritz_factor_par=0.1, logfile_par=f'{output_dir}/pnt_src_confuse_{obsid}_log.txt')
+
         pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_meg, fits_list_par = evt2_file[k], subset_arr_par=subset_arr, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='meg', moritz_factor_par=0.1, logfile_par=f'{output_dir}/pnt_src_confuse_{obsid}_log.txt')
 
         #sets the flags for point source confusion
@@ -2586,18 +2586,17 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         arm_conf = arm_flag_set(arm_conf_par=arm_conf, arm_par='heg', src_pos_x_par = src_pos_x, res_power_arm_maxed_par=res_power_heg_maxed, hetg_arr_arm_par=hetg_arr_heg, subset_arr_par = subset_arr, nsig_par=6)
         arm_conf = arm_flag_set(arm_conf_par=arm_conf, arm_par='meg', src_pos_x_par = src_pos_x, res_power_arm_maxed_par=res_power_meg_maxed, hetg_arr_arm_par=hetg_arr_meg, subset_arr_par = subset_arr, nsig_par=6)
 
-
-
         time_message = 'Finished assigning arm confusion.'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
 
+        #Set MAIN flag for every source pair (if there is any confusion of any type in any order then flag as confused)
 
         #using the results of the individual confusion functions above, set the main confusion flag for every source. E.g., if any order is confused then main confusion flag is set to 'confused'.
         spec_conf = main_flag_set(conf_dict_par = spec_conf, src_pos_x_par = src_pos_x, subset_arr_par = subset_arr)
         pntsrc_conf = main_flag_set(conf_dict_par = pntsrc_conf, src_pos_x_par = src_pos_x, subset_arr_par = subset_arr)
         arm_conf = main_flag_set(conf_dict_par = arm_conf, src_pos_x_par = src_pos_x, subset_arr_par = subset_arr)
 
-        #Call write_full_conf_table to produce the 'full' and 'consolidated' tables for each source in the run obsID.
+        #Call write_full_conf_table to produce the 'full' and 'consolidated' confusion tables for each source in the run obsID.
         for i in subset_arr:
             write_full_conf_table(spec_conf_par = spec_conf, pntsrc_conf_par = pntsrc_conf, arm_conf_par = arm_conf, row_num = i, srcID_par = srcID, counts_par = counts, output_dir_par = output_dir, remove_clean = 'yes', obsid_par = obsid, consolidate_table = True)
 
@@ -2605,11 +2604,8 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         end_of_run_cleanup(output_dir_list_par = output_dir, obsid_par = obsid, wavdetect_par=run_wave)
 
 
-
-
         time_message = 'Finished Running CrissCross!.'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
-
 
         log_file = open(f'{output_dir}/LOG_{obsid}.txt', 'w')	
         
