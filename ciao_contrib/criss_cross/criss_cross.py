@@ -247,7 +247,9 @@ def load_sourcelist(filename=None, subset_list=False):
         elif subset_list == True:
             return(RA, DEC)
         else:
-            print('ERROR -- something went wrong with subset_list truth value.')
+            raise ValueError('Something went wrong with subset_list truth value.')
+    else:
+        raise ValueError('CrissCross needs to be run with a list of known sources RA and DEC.')
 
 
 def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, round_sig = 6):
@@ -260,10 +262,10 @@ def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, round_sig = 6):
     for i in range(0,len(RA_sub)):
         element[i] = np.where((np.round(RA_sub[i],round_sig) == np.round(RA_main,round_sig)) & (np.round(DEC_sub[i],round_sig) == np.round(DEC_main,round_sig)))[0]
         if len(element[i]) == 0:
-            raise ValueError(f'ERROR -- No match in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please make sure RA and DEC value of source to clean matches a source in main_list.')
+            raise ValueError(f'No match in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please make sure RA and DEC value of source to clean matches a source in main_list.')
         
         elif len(element[i]) >1:
-            raise ValueError(f'ERROR -- Multiple matches [{len(element[i])}] in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please make sure there are no duplicate entries in main list or subset_list')
+            raise ValueError(f'Multiple matches [{len(element[i])}] in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please make sure there are no duplicate entries in main list or subset_list')
         #strip array to provide only integer value
         else:
             element[i] = element[i][0]
@@ -613,8 +615,7 @@ def spec_calc_osip_bounds(spec_conf_arr, highest_order, subset_arr_par, src_pos_
                 elif 'meg' in m:
                     arm = 'meg'
                 else:
-                    print('Error, arm value not in spec_conf_arr dictionary')
-                    return()
+                    raise ValueError(f'Arm value not in spec_conf_arr dictionary')
 
                 if spec_conf_arr[m]['wave'][i,j] != 0: #dont run for sources with no potential confusion
                     energy_low = []
@@ -801,8 +802,7 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
             secondary_arf=  read_file(f'{arf_ratios_dir_par}/HEG_Nth_0th_order_ratios_mkarf.fits')
 
         else:
-            print('ERROR-- arm_par not "heg" or "meg"  ')
-            return() 
+            raise ValueError('arm_par not "heg" or "meg" ') 
 
         #for each primary arm, determine if confusion can/has occured and set the appropriate flags and flag_comments.
         for i in subset_arr_par:
@@ -874,16 +874,15 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
                                             elif int(n) < 0:
                                                 primary_order = f'm{-1*int(n)}_to_0'
                                             else:
-                                                print('Error -- cannot set primary_order variable')
-                                                return()
+                                                raise ValueError('Cannot set primary_order variable for ARF ratios')
 
                                             if int(m) > 0:
                                                 secondary_order = f'p{int(m)}_to_0'
                                             elif int(m) < 0:
                                                 secondary_order = f'm{-1*int(m)}_to_0'
                                             else:
-                                                print('Error -- cannot set secondary_order variable')
-                                                return()
+                                                raise ValueError('Cannot set secondary_order variable for ARF ratios')
+                                                
                                             
                                             #The estimated number of dispersed counts from the primary (confused) source at the location of the spectral intersection (confusion)
                                             confused_counts_primary = []
@@ -1086,8 +1085,7 @@ def pntsrc_confuse_wave_bounds(pntsrc_conf_par, perp_dist_to_spec_arm_par, fits_
     elif arm_par == 'meg':
         tg_part = 2
     else:
-        print('ERROR -- cannot identify tg_part value from arm_par')
-        return()
+        raise ValueError('Cannot identify tg_part value from arm_par')
     
     osip = OSIP(fits_list_par)
     skyconverter = Sky2Chandra(fits_list_par)
@@ -1145,7 +1143,7 @@ def pntsrc_flag_set(pntsrc_conf_par, src_pos_x_par, arm_par, subset_arr_par, heg
         cutoff_low = meg_cutoff_low_par
         cutoff_high = meg_cutoff_high_par
     else:
-        print('ERROR WRONG ARM PAR USED IN pntsrc_flag_set')
+        raise ValueError(' WRONG ARM PAR USED IN pntsrc_flag_set')
 
     for i in subset_arr_par:
         for j in range(0,len(src_pos_x_par)):
@@ -1360,8 +1358,7 @@ def calc_ccd_energy_res(arm_par):
         max_wave = 32 #must be int
         res_element = 0.02
     else:
-        print('ERROR -- could not set max_wave or res_element because arm_par could not be identified as meg or heg')
-        return()
+        raise ValueError('Could not set max_wave or res_element because arm_par could not be identified as meg or heg')
 
 
     planck = 4.135667696E-15
@@ -1422,8 +1419,7 @@ def arm_flag_set(arm_conf_par, arm_par, src_pos_x_par, res_power_arm_maxed_par, 
     elif arm_par == 'meg' or arm_par == 'MEG':
         arm_cutoff_high = meg_cutoff_high_par
     else:
-        print('ERROR -- could not set arm_cutoff_high because arm_par value was not heg or meg')
-        return()
+        raise ValueError('Could not set arm_cutoff_high because arm_par value was not heg or meg')
 
 
 
@@ -2015,8 +2011,7 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par):
 
     #check to make sure responses are either arf or rmf
     if resp_type_par != 'arf' and resp_type_par != 'rmf':
-        print('ERROR -- response type must be either arf or rmf')
-        return()	
+        raise ValueError('Response type must be either arf or rmf')	
 
     #load the pha2 file and obtain the crate where relevant information is stored
     pha2_dataset = read_pha(pha2_file_par)
@@ -2056,8 +2051,7 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par):
 
         #if pha_root is not overwritten at this point then throw error because it means it was not found
         if pha_root == '':
-            print('ERROR -- could not identify PHA2 file root. Please load responses manually.')
-            return()
+            raise ValueError('Could not identify PHA2 file root. Please load responses manually.')
 
         #use glob and pha_root to find the responses
         if resp_dir_par != None: #use provided resp_dir_par
@@ -2068,13 +2062,11 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par):
     
     #if the creator of the PHA2 file is not DS or CIAO then exit.
     else:
-        print('ERROR-- Cannot determine the creator of PHA2 file and responses will have to be loaded manually')
-        return()
+        raise ValueError('Cannot determine the creator of PHA2 file and responses will have to be loaded manually')
     
     #check to make sure at least some files were found
     if len(resp_list_par) < 1:
-        print('ERROR -- Could not identify responses. Please load responses manually.')
-        return()
+        raise ValueError('Could not identify responses. Please load responses manually.')
 
     #check that the length of the arf or RMF lists match the number of PHA spec in the PHA2 file
     if len(resp_list_par) != num_spec_par:
@@ -2107,8 +2099,7 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 
     #check to make sure responses are either arf or rmf
     if resp_type_par != 'arf' and resp_type_par != 'rmf':
-        print('ERROR -- response type must be either arf or rmf')
-        return()
+        raise ValueError('Response type must be either arf or rmf')
 
     #reads in the pha2 file and checks how many spectra (orders) it includes.
     pha2_dataset = read_pha(pha2_file_par)
@@ -2151,14 +2142,12 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
         if len(match_resp) == 1:
             matched_resp_list_par[i] = resp_list_par[match_resp[0]] #this is the element in the response array that match the i_th element of the PHA2 file.
         elif len(match_resp) > 1:
-            print(f'ERROR, more than one {resp_type_par.upper()} match found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}. ')
-            return()
+            raise ValueError(f'ERROR, more than one {resp_type_par.upper()} match found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}. ')
         elif len(match_resp) == 0:
             matched_resp_list_par[i] = 'no match'
             print(f'Warning, no {resp_type_par.upper()} found for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}.')
         else:
-            print(f'ERROR - Something with wrong identifying {resp_type_par.upper()}s for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
-            return()
+            raise ValueError(f'ERROR - Something with wrong identifying {resp_type_par.upper()}s for TG_M={tg_m_arr[i]}, TG_PART={tg_part_arr[i]} and obsID={tg_obsid}')
 
     #report the files matched to the screen in a nice format so it is clear it worked or didn't work
     print('\nThe following response files were found\n')
@@ -2207,8 +2196,8 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
         elif order_int < 0:
             return(f'-{-1*order_int}')
         else:
-            print('ERROR, 0th order is included and that is not compatible with clean_spec')
-
+            raise ValueError('0th order is included and that is not compatible with clean_spec')
+        
     def convert_arm(tg_part_val):
         """
         Converts the HETG tg_part value to a string (e.g., 'heg' or 'meg'; for compatibility with CrissCross cleaning table)
@@ -2218,7 +2207,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
         elif tg_part_val == 2:
             return('meg')
         else:
-            print(f'ERROR, arm cannot be identified')
+            raise ValueError(f'Arm cannot be identified')
 
 
     def clean_data(cc_table, pha_crate, arf_data_var, pha_arm_var, pha_order_var, pha_element, conf_flag_var = 'confused'):
@@ -2275,8 +2264,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
             bin_high_arr = pha_data_var.BIN_HI.values[pha_element]	
 
         else:
-            print('ERROR -- PHA datatype must be 1 or 2')
-            return()		
+            raise ValueError('PHA datatype must be 1 or 2')		
 
 
         #copies the counts and stat_err column of the PHA file for modification
@@ -2322,8 +2310,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
         #if parameters dont match between ARF and PHA then throw error
         if tg_obs != tg_obs_arf or tg_m != tg_m_arf or tg_part != tg_part_arf:
-            print('ERROR -- One of the following is not consistent between the PHA file and ARF: HEG/MEG arm, order, obsID')
-            return()
+            raise ValueError('One of the following is not consistent between the PHA file and ARF: HEG/MEG arm, order, obsID')
 
         #use clean_data() to create copies of the appropriate PHA and ARF arrays where wavelenghts with confusion are set to 0
         cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data(cc_table = cc_table, pha_crate = pha_crate_dataset, arf_data_var = arf_data, pha_arm_var = pha_arm, pha_order_var = pha_order, pha_element=0, conf_flag_var = 'confused')
@@ -2367,8 +2354,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
             resp_list = find_resp_files(pha2_file_par=pha_file, resp_type_par='arf', resp_dir_par=resp_dir)
 
             if len(resp_list) == 0:
-                print('ERROR -- no response files found. Try including a directory with resp_dir_par or include a list of response paths with arf_file parameter.')
-                return()
+                raise ValueError('No response files found. Try including a directory with resp_dir_par or include a list of response paths with arf_file parameter.')
             
             #matched_resp_list will create an array that matches the PHA2 format.
             matched_resp_list = match_resp_order(pha2_file=pha_file, resp_list_par = resp_list, resp_type_par='arf')
@@ -2423,7 +2409,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
 
     else:
-        print('ERROR -- input PHA file was not a PHA1 or PHA2 type file')
+        raise ValueError('Input PHA file was not a PHA1 or PHA2 type file')
 
     return()	
 
@@ -2450,27 +2436,23 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
 
     #sanitize the evt2_file input so it is a list
     if evt2_file == None:
-        print('ERROR-- Please provide an evt2 file')
-        return()
+        raise ValueError('Please provide an evt2 file')
     #convert a single file into a list so it can work with loop
     elif type(evt2_file) == str:
         evt2_file = [evt2_file]
     elif type(evt2_file) != list:
-        print('Unknown type of input for evt2_files. Please include a single file or a list of files')
-        return()
+        raise ValueError('Unknown type of input for evt2_files. Please include a single file or a list of files')
 
     if wavdetect_file != None:
         if type(wavdetect_file) == str:
             wavdetect_file = [wavdetect_file]
         elif type(wavdetect_file) != list:
-            print('Unknown type of input for wavdetect_file. Please include a single file or a list of files')
-            return()
+            raise ValueError('Unknown type of input for wavdetect_file. Please include a single file or a list of files')
     
 
     #check to make sure the number of evt2 files match the number of wavdetect source lists
     if wavdetect_file != None and len(wavdetect_file) != len(evt2_file):
-        print('ERROR -- the number of input evt2_files and wavdetect source fits table files do not match. Please include a wavdetect table for each evt2 file.')
-        return()
+        raise ValueError('The number of input evt2_files and wavdetect source fits table files do not match. Please include a wavdetect table for each evt2 file.')
     
     #run wavedetect_match_obsid before the loop starts to ensure input files are in correct order. Make wavdetect_file a list of [None]s so it can work per obsID in CrissCross loop below.
     if wavdetect_file != None:
