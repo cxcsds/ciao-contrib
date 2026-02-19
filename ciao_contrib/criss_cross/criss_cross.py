@@ -10,20 +10,16 @@
 
     #spec_flag_set takes a lot of time to run and should be made more efficient.
 
-    #finalize documentation for all functions
-
     #format code to fix character limit to < 120 characters
 
 ##########################################################################################
 ##########################################################################################
 ##########################################################################################
 
-
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 import math
-import subprocess
 import glob
 import shutil
 from ciao_contrib.runtool import *
@@ -34,8 +30,6 @@ from pycrates import read_file, write_file, TABLECrate, CrateData, add_col, add_
 from crates_contrib.utils import make_table_crate
 import csv
 from pathlib import Path
-
-
 
 ############################################################
 
@@ -61,7 +55,6 @@ min_HETG_counts = 50 #The minimum number of 0th order counts a CONFUSER source c
 counts_intercept_thresh_i = 3  #threshold in counts which a confused source is considered bright enough for point source confusion estimation.
 
 
-
 #HETG INSTRUMENT WAVELENGTH BOUNDS
 
 #Added meg/heg bounds as a parameter choice here. Since ACIS instrument contamination (not HETG confusion) is time dependent, users may wish it 'not care' if potential confusion can occur at e.g., 30A because some of their targets would not expect to have counts there anyway. 
@@ -74,7 +67,6 @@ heg_cutoff_high = 16.0
 #***********************************************************************************************************************
 
 
-
 ################CONTSTANTS ###############
 
 X_R = 8632.48 #rowland diameter in mm constant 
@@ -83,7 +75,6 @@ P_heg = 2000.81
 mm_per_pix = 0.023987  #pixel size in mm for acis same for I and S;  pix size in arcsec is 0.492'' 
 
 ###############################
-
 
 
 #############FUNCTION DEFINITIONS###############
@@ -2546,7 +2537,7 @@ def time_logger(mode, time_started=[], time_counter=[], message=[]):
     return()
 
 
-def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par):
+def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par=None):
     """
     Identifies ARFs and RMFs that are associated with an HETG PHA2 file.  This currently utilizes the 'response' and 
     'tg' directories created by the data systems and chandra_repro pipelines and thus might not work for all PHA2 HETG 
@@ -2937,7 +2928,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
                 raise ValueError('No response files found. Try including a directory with resp_dir_par or include a list of response paths with arf_file parameter.')
             
             #matched_resp_list will create an array that matches the PHA2 format.
-            matched_resp_list = match_resp_order(pha2_file=pha_file, resp_list_par = resp_list, resp_type_par='arf')
+            matched_resp_list = match_resp_order(pha2_file_par=pha_file, resp_list_par = resp_list, resp_type_par='arf')
 
         #read the PHA data and obtain the tg_m, tg_part and obsID values
         pha_data_full = pha_crate_dataset.get_crate(2)
@@ -3002,10 +2993,17 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
 def run_crisscross(cc_outdir = 'criss_cross_output', arf_ratios_dir = 'input_files', main_list = 'input_files/full_coup_src_list.tsv', subset_src_list = 'input_files/subset_onc.tsv', clean_single_RA=None, clean_single_DEC=None, evt2_file=None, wavdetect_file=None, clobber_par=False):
     """
-    Main function for running criss cross. It will take event files and 0th order locations of sources in 'main_list' to 
-    produce confusion tables for sources in the 'subset_src_list'. If users have PHA files extracted for the confusion 
-    obsID they can run clean_spec() using the CrissCross confusion tables as input to remove confused counts from their 
-    spectra.
+    Main function for running criss cross. CrissCross identifies portions of a sources spectrum where events from other
+    field sources may be errouneously assigned to the extracted source with standard CIAO processing. CrissCross
+    produces a fits table for each source which tabulates the wavelength location where confusion occurs for all HETG
+    arms (heg+meg) and orders -3 to +3. CrissCross requires the evt2 file that was used to extract a source's spectra 
+    and a list of RA+DEC (main_list) for every X-ray source in the field of view. A list of sources in the field of 
+    view can often be obtained by running wavdetect on the same field if there are non-HETG archival Chandra 
+    observations. CrissCross can create spectral confusion tables for all sources present in a secondary 
+    (subset_src_list) list or can be run for a single source using the 'clean_single_RA/DEC' parameters.
+
+    If users have PHA files extracted using the relevant evt2 file they can run clean_spec() using the CrissCross 
+    confusion tables as input to remove confused counts from their spectra before performing their spectral analysis.
 
     Parameters
     ----------
