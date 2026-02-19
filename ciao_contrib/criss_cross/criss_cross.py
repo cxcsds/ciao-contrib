@@ -46,7 +46,7 @@ from pathlib import Path
 
 #PNTSRC CONFUSION
 contam_offset_thresh = 8 #threshold in pixels for how far a point source can be perpendicular from the dispersed spectrum it may contaminate (confuse). 
-counts_contam_pntsrc_thresh = 5 #threshold to be flagged as a point source that is bright enough to contaminate the extracted sources spectrum
+counts_contam_pntsrc_thresh = 5 #threshold in counts which a 0th order source is bright enough to be considered as a confuser source of another source's spectrum.
 
 #SPECTRAL CONFUSION
 counts_intercept_thresh_j= 50  #threshold to be flagged as a source bright enough to disperse enough counts to confuse a different sources extracted spectrum.
@@ -58,7 +58,7 @@ dist_to_super_bright_perp = 8 #This is used to flag when TWO sources are both br
 min_HETG_counts = 50 #The minimum number of 0th order counts a CONFUSER source can have before being considered a candidate for ARM confusion. If the 0th order has 50 counts or less than the dispersed number of counts throughout the entire spectrum will be much smaller and thus less likely to cause confusion. 
 
 #Multiple confusion types
-counts_intercept_thresh_i = 3  #threshold to be flagged as a source bright enough to care about if another source's dispersed spectra or another 0th order intersects with it 
+counts_intercept_thresh_i = 3  #threshold in counts which a confused source is considered bright enough for point source confusion estimation.
 
 
 
@@ -89,12 +89,22 @@ mm_per_pix = 0.023987  #pixel size in mm for acis same for I and S;  pix size in
 #############FUNCTION DEFINITIONS###############
 
 
-def make_output_dir(working_dir, obsid_par, clobber_par=False):
+def make_output_dir(cc_outdir, obsid_par, clobber_par=False):
     """
-    Creates the working and output directory if they dont already exists. Also reports back to main function if output dir exists so it can exit without removing if clobber=False.
+    Creates a CrissCross directory to hold all output. Each obsID will get its own subdir. Reports back to main 
+    function if output dir exists so it can exit without removing if clobber=False.
+
+    Parameters
+    ----------
+    cc_outdir : str
+        directory name or path to hold all CrissCross output.
+    obsid_par : str
+        obsID value of the observation used for naming subdirectory.
+    clobber_par : bool
+        boolean which is set by main function to determine whether cc subdirs should be clobbered when run. 
     """
-    
-    output_dir = f'{working_dir}/output_dir_obsid_{obsid_par}'
+    #create a subdir for each obsID run
+    output_dir = f'{cc_outdir}/output_dir_obsid_{obsid_par}'
     
     if os.path.isdir(output_dir):
         already_exists = True
@@ -105,7 +115,7 @@ def make_output_dir(working_dir, obsid_par, clobber_par=False):
     if clobber_par == True and already_exists == True:
         shutil.rmtree(output_dir)
     
-    os.makedirs(working_dir, exist_ok = True)
+    os.makedirs(cc_outdir, exist_ok = True)
     os.makedirs(output_dir, exist_ok = True)
 
     return(output_dir, already_exists)
@@ -114,7 +124,14 @@ def make_output_dir(working_dir, obsid_par, clobber_par=False):
 
 def get_header_par(fits_file, keyword_par):
     """
-    Use CIAO tool dmkeypar to retrieve a keyword
+    Retrieves header keyword value
+
+    Parameters
+    ----------
+    fits_file : str
+        fits file which holds the relevant header keyword
+    keyword_par : str
+        header keyword value to retrieve
     """
 
     dmkeypar.punlearn()
@@ -129,7 +146,30 @@ def get_header_par(fits_file, keyword_par):
 #&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 def run_wavdetect(evt2_file=None, outdir=None, outroot='sdetect', binsize=2.0, bands='broad', psfecf=0.9, verbose=0, clobber='yes'):
     """
-    Run fluximage and wavdetect if user does not provide wavdetect source file and return the wavdetect table name.
+    Performs source detection on an obsID with the goal of determining the number of 0th order counts for each 
+    source in field. The only file used in CrissCross by this function is the wavdetect.outfile source detection table.
+    This function is run if user does not provide source table. Function runs fluximage and wavdetect on an evt2 file
+    and requires a evt2 directory setup such that the ancillary ACIS files can be automatically found by CIAO.
+
+    Parameters
+    ----------
+    evt2_file : str
+        event file for running the source detection.
+    outdir : str
+        directory for holding the wavdetect output.
+    outroot : str
+        root for naming wavdetect output.
+    binsize : float
+        CIAO tool fluximage parameter binning factor. binsize=4 corresponds to 1.968 arcseconds pixels for ACIS.
+    bands : str 
+        CIAO tool fluximage par denoting the energy bands used for exposure-corrected images. See band definitions in 
+        the CSC documentation. Example options are 'broad': 0.5-7.0 keV with eff E of 2.3 keV, 'soft','medium','hard'.
+    psfecf : float
+        fluximage par for creating a PSF map with the provided encircled energy fraction.
+    verbose : int
+        CIAO verbose level for printing log to screen.
+    clobber : bool
+        CIAO clobber value to overwrite files.
     """
 
     print(f'\nNo input wavdetect source fits table provided so running wavdetect on {evt2_file} with binsize={binsize}, bands={bands} and psfecf={psfecf}.') 
@@ -162,9 +202,18 @@ def run_wavdetect(evt2_file=None, outdir=None, outroot='sdetect', binsize=2.0, b
     return(f'{outdir}/{outroot}_src.fits')
 
 
-def wavedetect_match_obsid(fits_list_par, wavedetect_list_par):
+def wavedetect_match_obsid(fits_list_par, wavdetect_list_par):
     """
-    Uses the obsID header from the evt files (fits_list) and wavedetect source tables (wavedetect_list) to reorder the wavdetect_list to match the evt2_list (e.g., wavdetect obsID = evt2 obsID).
+    Uses the obsID header value from the evt file (fits_list) and wavedetect source tables (wavedetect_list)
+    to reorder the wavdetect_list to match the evt2_list. If users provide a list of evt2 and wavdetect source tables
+    then this function ensures they are not mis-matched when running in CrissCross.
+
+    Parameters
+    ----------
+    fits_list_par : str
+        a single evt2 filename or a list of evt2 file names.
+    wavdetect_list_par : str
+        a single wavdetect output source table or a list of them.
     """
 
     fits_obsid = []
@@ -173,13 +222,13 @@ def wavedetect_match_obsid(fits_list_par, wavedetect_list_par):
     wavedetect_sorted = []
 
     for i in range(0,len(fits_list_par)):
-        wave_obsid.append(get_header_par(fits_file = wavedetect_list_par[i], keyword_par = 'obs_id'))
+        wave_obsid.append(get_header_par(fits_file = wavdetect_list_par[i], keyword_par = 'obs_id'))
         fits_obsid.append(get_header_par(fits_file = fits_list_par[i], keyword_par = 'obs_id'))
 
     for i in range(0,len(fits_list_par)):
         for j in range(0,len(wave_obsid)):
             if fits_obsid[i] == wave_obsid[j]:
-                wavedetect_sorted.append(wavedetect_list_par[j]) 
+                wavedetect_sorted.append(wavdetect_list_par[j]) 
 
     return(wavedetect_sorted)
     
@@ -187,10 +236,18 @@ def wavedetect_match_obsid(fits_list_par, wavedetect_list_par):
 
 def load_sourcelist(filename=None, subset_list=False):
     """
-    Uses pycrates to load an ascii, tsv or fits file with RA, DEC and ID columns. If an ID column is not found then one is generated. The file is expected to have a header column of #RA DEC ID. If it does not then the first two columns read in will be treated as RA and DEC and a warning message is printed to screen. If subset_list = True then only RA and DEC will be loaded and it will NOT create an ID column. This functionality is for loading the subset of sources to produce cleaning tables. The subset sources are matched to the main_list sources using match_subset_to_main().
+    Load an ascii, tsv or fits file with RA, DEC and ID columns using pycrates. If an ID column is not found for the 
+    full list of field sources then and ID column is generated. The file is expected to have a header column 
+    of #RA DEC ID. If it does not then the first two columns read in will be treated as RA and DEC and a warning 
+    message is printed to screen. This function is used for both the main source list and the subset list. The subset
+    list must be matched to the main_list source ID (or element number) using match_subset_to_main().
 
-    filename
-    subset_list
+    Parameter
+    ---------
+    filename = str
+        ascii, tsv or fits table with RA, DEC and ID columns.
+    subset_list = bool
+        Boolean denoting whether this function is to be run on the main list of sources or the subset list of sources.
     """
 
     if filename != None:
@@ -214,6 +271,7 @@ def load_sourcelist(filename=None, subset_list=False):
             print(f'No ID column found so IDs will be generated from 0 to length of file')
             gen_id = True
 
+        #if len=3 the prob RA, DEC, ID so check ID column to make sure they can be converted to integers necessary for naming purposes
         elif crate_len == 3:
             
             idcol_test = cratedata.get_column(colnames[2]).values
@@ -231,6 +289,7 @@ def load_sourcelist(filename=None, subset_list=False):
         else:
             print(f'File "{filename}" contains more than three columns and the rest will be ignored.')
 
+        #check if the first two columns have typical names of RA and DEC otherwise warn.
         if colnames[0] != 'RA' and colnames[0] != 'ra':
             print(f'Warning -- Column 1 of "{filename}" is not RA or ra. Assuming it is RA from now on.')
         if colnames[1] != 'DEC' and colnames[1] != 'dec':
@@ -255,17 +314,28 @@ def load_sourcelist(filename=None, subset_list=False):
 
 def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, round_sig = 6):
     """
-    The list of sources for which CrissCross will generate confusion tables (subset_list) needs to be matched to the element number of main_list. This function identifies the match by ensuring the subset_list sources have matching RA and DECs with the main_list sources up to round_sig (6) decimal places. If none or multiple matches are found it will raise an error.
+    Matches sources from the subset_list to the main_list by RA and DEC. All sources in the subset list MUST be also in
+    the main list and matched via the element number of the input main_list array. For example, if source number 10 in
+    the subset_list (row 10) is the same source as row 200 in the main_list, then source 10 will be matched with 
+    element 200 and CrissCross will use e.g. src_pos_x[200], src_pos_y[200] when handling subset_list source 10. If 
+    no or multiple matches are found for a single source then error is thrown. Every source must be unique.
 
-    RA_main
-    DEC_main
-    RA_sub
-    DEC_sub
-    round_sig
-    
+    Parameters
+    ----------
+    RA_main : float, deg
+        Right Ascension of main_list source in J2000 degrees
+    DEC_main : float, deg
+        Declination of main_list source in J2000 degrees
+    RA_sub : float, deg
+        Right Ascension of subset_list source in J2000 degrees
+    DEC_sub : float, deg
+        Declination of main_list source in J2000 degrees
+    round_sig : int
+        Number of digits to round RA/DEC to for matching purposes. 
     """
 
     element = [None] * len(RA_sub)
+    # for each source in the subset_list match it using RA and DEC to a source in the main_list. Check for mult matches
     for i in range(0,len(RA_sub)):
         element[i] = np.where((np.round(RA_sub[i],round_sig) == np.round(RA_main,round_sig)) & (np.round(DEC_sub[i],round_sig) == np.round(DEC_main,round_sig)))[0]
         if len(element[i]) == 0:
@@ -276,14 +346,23 @@ def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, round_sig = 6):
         #strip array to provide only integer value
         else:
             element[i] = element[i][0]
-        
 
     return(element)
 
 
 def calc_physical_coords(fits_par, RA_par, DEC_par):
     """
-    Converts from RA and DEC in WCS degrees to Chandra physical coordinates. This also determines the off-axis angle in arcseconds.
+    Converts from RA and DEC in WCS degrees to Chandra physical coordinates. This also determines the off-axis angle
+    and converts it to arcseconds.
+
+    Parameters
+    ----------
+    fits_par : str
+        evt2 fits file.
+    RA_par : str
+        Right ascension in degrees.
+    DEC_par : str
+        Declination in degrees.
     """
     
     cel_convert = Cel2Chandra(fits_par)
@@ -301,12 +380,28 @@ def calc_physical_coords(fits_par, RA_par, DEC_par):
     return(pos_x_par, pos_y_par, off_axis_ang)
 
 
-def find_closest_source(src_x_arr, src_y_arr, wave_file, max_offset = 3.0):
+def find_closest_source(src_x, src_y, wave_file, max_offset = 3.0):
     """
-    Identifies the closest matching source in a group to a single source based on Chandra SKY physical coordinates only. If multiple matches are found for a single source within max_offset, only the closest of the matches is assigned to the source. This avoids 'double counting'. This function utilizes the positions of sources in the user-provided 'main_list' and matches them to the standard output table of a CIAO wavedetect file. This is necessary because wavedetect is not meant to be run on HETG observations and thus will include many 'false' detections from the dispersed spectra. This function will match the 'true' sources from the user-provided source list to the closest matches in the wavedetect table and return the number of NET_COUNTS associated with 0th order (non-dispersed) detections. NET_COUNTS are used throughout CrissCross to determine the severity of confusion.
+    Matches sources from the main_list to the wavdetect source table with the goal of removing erroneous 
+    disperssed-grating-line sources. Wavdetect is not meant to be run on HETG observations and thus will include many 
+    'false' detections from the dispersed spectra. This identifies the closest matching source in a group to a single 
+    source based on Chandra SKY physical coordinates only. If multiple matches are found for a single source within 
+    max_offset, only the closest of the matches is assigned to the source. This avoids 'double counting'. This returns
+    the number of NET_COUNTS associated with 0th order (non-dispersed) detections. NET_COUNTS are used throughout 
+    CrissCross to determine the severity of confusion.
     
-    max_offset = The max distance in arcsec two sources can be before they are no longer considered matchable between the source list and the wavedetect source table. All sources are treated the same regardless of off-axis angle.
-    
+    Parameters
+    ----------
+    src_x : float, array
+        src x position in Chandra physical units.
+    src_y : float, array
+        src y position in Chandra physical units.
+    wave_file : str
+        path to wavdetect output source fits table.
+    max_offset : float
+        The max distance in arcsec two sources can be before they are no longer considered matchable between the source
+        list and the wavdetect table. All sources are treated the same regardless of off-axis angle which is generally
+        ok because centroids should be relatively good as determined by wavdetect.
     """
 
 
@@ -316,46 +411,40 @@ def find_closest_source(src_x_arr, src_y_arr, wave_file, max_offset = 3.0):
     acis_arcsec_per_pix = acis_pix_size / acis_platescale
 
     #read in and assign relevant wavdetect columns
-
     wave_data = read_file(wave_file)
 
     src_wave_x_arr = wave_data.POS.X.values
     src_wave_y_arr = wave_data.POS.Y.values
     counts_wave = wave_data.NET_COUNTS.values
 
-
-    closest_dist_arr = np.empty(len(src_x_arr), dtype='float') #holds the distance in arcsec to the closest matching source from the wavedetect table
-    closest_match_arr = np.empty(len(src_x_arr), dtype='int') #holds the index value from the wavedetect table that is the closest match to a source in the source list.
+    closest_dist_arr = np.empty(len(src_x), dtype='float') #holds the distance in arcsec to the closest matching source from the wavedetect table
+    closest_match_arr = np.empty(len(src_x), dtype='int') #holds the index value from the wavedetect table that is the closest match to a source in the source list.
     
     #these will hold the values above for the matched source AFTER you remove double matches and sources > max_offset.
-    final_match_arr = np.empty(len(src_x_arr), dtype=object)
-    final_dist_arr = np.empty(len(src_x_arr), dtype=object)
+    final_match_arr = np.empty(len(src_x), dtype=object)
+    final_dist_arr = np.empty(len(src_x), dtype=object)
 
-    matched_0th_counts_arr = np.empty(len(src_x_arr), dtype='float') #the final 0th_order counts array (NET_COUNTS) from the wavedetect table MATCHED to the user-provided source list.
+    matched_0th_counts_arr = np.empty(len(src_x), dtype='float') #the final 0th_order counts array (NET_COUNTS) from the wavedetect table MATCHED to the user-provided source list.
 
-    #this loop determines the distance from the user provided source to ALL the sources in the wavedetect table and only saves a non-bogus value if there is a source with separation < max_offset.
-    for i in range(0,len(src_x_arr)):
+    #this loop determines the distance from the user-provided source to ALL the sources in the wavedetect table and only saves a non-bogus value if there is a source with separation < max_offset.
+    for i in range(0,len(src_x)):
         
         dist_arr = []
-        dist_arr = np.sqrt( (src_x_arr[i] - src_wave_x_arr)**2 + ( src_y_arr[i] - src_wave_y_arr)**2  ) #This calculates the physical distance from source [i] in the user-provided table to ALL sources in the wavedetect table. This is just the hypotenuse in the xy plane. Note, calculating the ENTIRE array here for each [i] source and NOT each [i] and each [j] individually. 
+        dist_arr = np.sqrt( (src_x[i] - src_wave_x_arr)**2 + ( src_y[i] - src_wave_y_arr)**2  ) #This calculates the physical distance from source [i] in the user-provided table to ALL sources in the wavedetect table. This is just the hypotenuse in the xy plane. Note, calculating the ENTIRE array here for each [i] source and NOT each [i] and each [j] individually. 
         
         closest_dist = []
         closest_dist = np.min(dist_arr) * acis_arcsec_per_pix #converted from sky coords to arsec
 
         #if distance is > max offset then assign values of 99999 (bogus) and filter out in next loop. Otherwise, assign matched values.
         if closest_dist <= max_offset:
-                
             closest_dist_arr[i] =  closest_dist
             closest_match_arr[i] = np.where(dist_arr == np.min(dist_arr))[0][0] #
-
         else:
-
             closest_dist_arr[i] =  99999
             closest_match_arr[i] = 99999             
 
-
     #this loop will remove 'double counting' where a single user-provided source might match to multiple wavedetect sources. This will only match to the closest one and remove that from the pool of potential matches for other sources.
-    for i in range(0,len(src_x_arr)):
+    for i in range(0,len(src_x)):
         
         common_matches = np.where(closest_match_arr == closest_match_arr[i])[0] #this will give an array of index values which all have the same closest matched source.
         common_matches_dist = closest_dist_arr[common_matches] #this will provide an array of all of the distances for the closest matched sources. The idea is that only the closest distance can be assigned to a single source (no double counting).
@@ -364,47 +453,65 @@ def find_closest_source(src_x_arr, src_y_arr, wave_file, max_offset = 3.0):
             final_match_arr[i] = closest_match_arr[i]
             final_dist_arr[i] = closest_dist_arr[i]
             matched_0th_counts_arr[i] = counts_wave[closest_match_arr[i]]
-
         else:
             final_match_arr[i] = 'no match'
             final_dist_arr[i] = 'no match'            
             matched_0th_counts_arr[i] = 0     
-
-
     
     return(final_match_arr, final_dist_arr, matched_0th_counts_arr)
 
 
 
-def write_matched_file(srcid_arr, ra_arr, dec_arr, counts_arr, fileroot = 'matched_source_list', output_type = 'txt'):
+def write_matched_file(srcid_par, ra_par, dec_par, counts_par, fileroot = 'matched_source_list', output_type = 'txt'):
     """
     Creates a csv or txt file to save SrcID, RA, Dec and wave_detect_matched 0th order counts.
+
+    Parameter
+    ---------
+    srcid_par : int, array
+        source ID values from the input main_list.
+    ra_par, dec_par : float
+        J2000 Right ascension and declination taken from the input main_list
+    counts_par : float
+        The number of 0th order counts matched to each main_list source using the wavdetect source detection table.
+    fileroot : str
+        root for naming purposes
+    output_type : str
+        text file output type to save. Can be 'txt' or 'csv'.
     """
 
-    filestack = np.column_stack((srcid_arr, ra_arr, dec_arr, counts_arr))
+    filestack = np.column_stack((srcid_par, ra_par, dec_par, counts_par))
 
     if output_type == 'csv':
         np.savetxt(fileroot+'.csv', filestack, delimiter=',', fmt=['%d', '%.6f', '%.6f', '%.1f'], header = 'ID,RA,DEC,0th_counts', comments='') #need comments to get rid of extra # sign
-    if output_type == 'txt':
+    elif output_type == 'txt':
         np.savetxt(fileroot+'.txt', filestack, delimiter='\t', fmt=['%d', '%.6f', '%.6f', '%.1f'], header = 'ID,RA,DEC,0th_counts', comments='')
+    else:
+        raise ValueError('The only output types accepted are csv and txt.')
 
     return()
 
 
 def determine_line_intersect_values(src_pos_x_par, src_pos_y_par, heg_ang_par, meg_ang_par):
     """
-    This function solves the equation where two lines (e.g., dispersed spectra) intersect and saves relevant information for use in later functions. Since this info is relevant to both spectral confusion and point source confusion it is its own function.
+    Solves the equation where two lines (e.g., dispersed spectra) intersect on ACIS and saves relevant values for 
+    use in later functions. This calculation is relevant to both spectral confusion and point source confusion.
+
+    Parameter
+    ---------
+    src_pos_x_par, src_pos_y_par : float
+        0th order source physical coordinates on ACIS.
+    heg_ang_par, meg_ang_par : float
+        The slope of the HEG and MEG arms on the detector converted to radians. Set by HETG instrument and roll angle.
     """
 
     #makes sure the grid values make it so nothing is negative when subtracting.
     xoff= int(np.min(src_pos_x_par) - 100)
     yoff=int(np.min(src_pos_y_par) - 100)
 
-
     #change coords to other grid to account for offset 
     src_pos_x_par_grid = (src_pos_x_par - xoff)
     src_pos_y_par_grid = (src_pos_y_par - yoff)
-
 
     #slope of a line m = (y2-y1)/(x2-x1) is same thing as tan(theta)  where theta = delta(y)/delta(x) so just knowing the angle ahead of time from Chandra's geometry via aciss and hetg gives us slope for each star --- 
     m_heg=np.tan(np.deg2rad(heg_ang_par))
@@ -414,19 +521,16 @@ def determine_line_intersect_values(src_pos_x_par, src_pos_y_par, heg_ang_par, m
     b_heg = (src_pos_y_par_grid - (m_heg*src_pos_x_par_grid))
     b_meg = (src_pos_y_par_grid - (m_meg*src_pos_x_par_grid))
 
-
     #This xintercept and yintercept gives the X and Y location where there is an intersection of gratings.  If two lines intersect each other, that means there is one point (the intersection point) where the X and Y values of BOTH lines will be the same.  Since we know the y=mx + b equation for each target now (see above), we can calculate the location two lines intersect by first equating their y values i.e., y1 = y2 --> m1x1+b1 = m2x2+b2.  Since X will also be the same value at this intersection, we can solve for X where m1X+b1 = m2X+b2 -->  X(m1-m2) = b2 - b1 or X = (b2-b1)/(m1-m2). e.g., xintercept_heg[0,1] is location where source 0's heg spectrum is intersected by source 1's meg spectrum.  Keep in mind the slopes m1 and m2 will be different. If they are the same they will not intersect cause parallel.
 
     xintercept_heg=np.zeros((len(src_pos_x_par),len(src_pos_x_par)))
     xintercept_meg=np.zeros((len(src_pos_x_par),len(src_pos_x_par)))
-
 
     for i in range (len(src_pos_x_par)):
         for j in range (len(src_pos_x_par)):
             xintercept_heg[i,j] = xoff + ((b_meg[j]-b_heg[i])/(m_heg-m_meg)) #note, this does where meg intersects heg; 
             xintercept_meg[i,j] = xoff + ((b_heg[j]-b_meg[i])/(m_meg-m_heg)) #note, this does where heg intersects meg
         
-
     #Once you solve for the X values (above), you can then plug those back in to solve for the Y values with y = mx+b
     #yintercept=yoff+((m1*(xintercept-xoff))+b1)
 
@@ -441,30 +545,45 @@ def determine_line_intersect_values(src_pos_x_par, src_pos_y_par, heg_ang_par, m
     return(m_heg, m_meg, b_heg, b_meg, xintercept_heg, xintercept_meg, yintercept_heg, yintercept_meg, xoff, yoff)
 
 
-
-
-
-def conf_dict(num_sources, highest_order):
+def conf_dict(num_sources, highest_order=3):
     """
-    This dictionary holds all of the relevant data for confusion between two sources. The format of this dictionary is spec_confuse['arm+order'][parameter][i,j] where 'i' is the potentially CONFUSED source and 'j' is the potential CONFUSER source. For example, spec_confuse['meg-1']['wave'][5,10] shows that the meg arm of srcID=5 has potential confusion in the -1 order from the dispersed spectrum of SrcID=10. The value of the 'wave' parameter in this dictionary entry is the wavelength in angstrom where the spectral confusion occurs. Both spectral confusion and point source confusion share this dictionary format but in separate variables.
-
-    arm values are 'heg' or 'meg'
-    valid arm orders are [-3,-2,-1,+1,+2,+3]
-
-    confusion_dict['intersect_dist'] = The distance in pixels between the 0th order src i and the location where confusion may occur from source j
-    confusion_dict['xintercept'] = The X location (physical coords) where there is an intersection of gratings between i and j.
-    confusion_dict['yintercept'] = The Y location (physical coords) where there is an intersection of gratings between i and j.
-    confusion_dict['flag'] = primary flag which represents potential sources of confusion for ALL orders between source i and j.
-    confusion_dict['flag_comment'] = primary flag description which represents potential sources of confusion for ALL orders between source i and j.
-
-    confusion_dict['arm+order']['wave'] = the wavelength where confusion may occur
-    confusion_dict['arm+order']['wave_low'] = the lower bounds of where confusion may occur
-    confusion_dict['arm+order']['wave_high'] = the upper bounds of where confusion may occur
-    confusion_dict['arm+order']['osip_low'] = the lower bounds of the OSIP window at the location and wavelength where confusion may occur
-    confusion_dict['arm+order']['osip_high'] = the upper bounds of the OSIP window at the location and wavelength where confusion may occur
-    confusion_dict['arm+order']['flag'] = the flag which represents potential sources of confusion for a paritcular order between source i and j.
-    confusion_dict['arm+order']['flag_comment'] = the flag description which represents potential sources of confusion for a paritcular order between source i and j.
+    A nested dictionary that holds all of the relevant data for confusion between two sources for all sources in the
+    main_list. Each MEG/HEG arm has 6 orders and, in a general sense, all orders from one arm can interact with all 
+    orders from another arm. This nested dictionary was created to intelligently hold all of this information while 
+    still being relatively readible. The format of this dictionary is: spec_confuse['arm+order'][parameter][i,j]
+    where 'i' is the potentially CONFUSED source and 'j' is the potential CONFUSER source. For example, 
+    spec_confuse['meg-1']['wave'][5,10] denotes the meg arm of srcID=5 (row 5 of main_list) has potential confusion
+    in the '-1' order from the dispersed spectrum of SrcID=10 (row 10 of main_list). The 'wave' value in this example
+    denotes the wavelength in angstrom where the spectral confusion occurs in the spectrum of SrcID 5. Both spectral
+    confusion and point source confusion share this dictionary format but in separate variables.
     
+    Parameters
+    ----------
+    num_source : int
+        number of sources in the main_list
+    highest_order : int
+        the number of orders to calculate. WARNING, values other than 3 have not been fully tested.
+
+
+    Dictionary key description
+    --------------------------    
+    ['intersec_dist'] : The distance in pixels along the grating arm between the 0th order src i and the 
+        location where confusion may occur from source j.
+    ['xintercept'] : The X location (physical coords) where there is an intersection of gratings between src i and j.
+    ['yintercept'] : The Y location (physical coords) where there is an intersection of gratings between src i and j.
+    ['flag'] : primary flag which represents potential sources of confusion for ALL orders between source i and j.
+    ['flag comment'] : description denoting the origin of confusion for ALL orders between src i and j
+    
+    arm values : HETG arm values 'heg' or 'meg'        
+    arm orders : HETG order values -3, -2, -1, +1, +2, +3  
+
+    ['arm+order']['wave'] : the wavelength where confusion may occur in the spectrum of src i.
+    ['arm+order']['wave_low'] : the lwoer bounds where confusion may occur
+    ['arm+order']['wave_high'] : the upper bounds where confusion may occur
+    ['arm+order']['osip_low'] : lower bounds of the OSIP window at the location where confusion may occur
+    ['arm+order']['osip_high'] : upper bounds of the OSIP window at the location where confusion may occur
+    ['arm+order']['flag'] : arm/order specific confusion flag 
+    ['arm+order']['flag_comment'] : arm/order specific origin of confusion between src i and j
     """
 
     arms = ['heg', 'meg'] #arms will always be heg or meg
@@ -512,95 +631,153 @@ def conf_dict(num_sources, highest_order):
 ####SPECTRAL CONFUSION FUNCTIONS####
 
 
-def spec_confuse_wave(spec_conf_arr, src_pos_x, src_pos_y, armtype, xintercept, yintercept, counts, counts_intercept_thresh_i, counts_intercept_thresh_j, period_arm, highest_order, roll_nom_par):
+def spec_confuse_wave(spec_dict, src_pos_x, src_pos_y, armtype, xintercept, yintercept, counts, counts_intercept_thresh_i, counts_intercept_thresh_j, period_arm, highest_order, roll_nom_par):
     """
-    Calculates the distance from the 0th order of src i to the location where confusion may occur ['intersect_dist'] and converts that into wavelength in angstroms ['wave'] using the gratings equation.
+    Calculates the distance from the 0th order of src i to the location where confusion may occur ['intersect_dist'] 
+    and converts that into wavelength in angstroms ['wave'] using the gratings equation.
+
+    Parameters
+    ----------
+    spec_dict : dictionary
+        spectral confusion dictionary which holds all possible spectral confusion entries for every source in main_list
+    src_pos_x, src_pos_y : float
+        Source position in physical coordinates.
+    armtype : str
+        HETG arm type of 'heg' or 'meg'.
+    xintercept, yintercept : float
+        x and y location on ACIS where spectral intersection occur between source i and j.
+    counts : int
+        number of 0th order counts.
+    counts_intercept_thresh_i, counts_intercept_thresh_j : int
+        CrissCross input parameter denoting the 0th order counts threshold to consider a source for spectral confusion.
+    period_arm : float
+        The period associated with the HEG or MEG gratings (instrumental constants)
+    highest_order : int
+        The highest HETG order to perform confusion check for. Warning, orders other than three are not sufficiently 
+        tested.
+    roll_nom_par : float
+        The Chandra roll angle in degrees associated with the observation.
     """
 
-    # #assign the x,y intercepts to the spec_conf_array. Note, this is done in sort of a weird way cause it was an after thought but for now it should stay. code below uses x/y intercept parameter instead of spec_conf_arr[xyintercept]].
+    # #assign the x,y intercepts to the spec_dict. Note, this is done in sort of a weird way cause it was an after thought but for now it should stay. code below uses x/y intercept parameter instead of spec_dict[xyintercept]].
     if armtype == 'heg':
-
-        spec_conf_arr['xintercept']['heg'] = xintercept
-        spec_conf_arr['yintercept']['heg'] = yintercept
+        spec_dict['xintercept']['heg'] = xintercept
+        spec_dict['yintercept']['heg'] = yintercept
 
     if armtype == 'meg':
-
-        spec_conf_arr['xintercept']['meg'] = xintercept
-        spec_conf_arr['yintercept']['meg'] = yintercept			
-
+        spec_dict['xintercept']['meg'] = xintercept
+        spec_dict['yintercept']['meg'] = yintercept			
 
     order_arr = np.arange(1, highest_order+1)
 
     if (roll_nom_par > 271 and roll_nom_par < 360) or (roll_nom_par >0 and roll_nom_par < 90):
         for i in range (len(src_pos_x)):
             for j in range (len(src_pos_x)):		
-                spec_conf_arr['intersect_dist'][armtype][i,j] = np.sqrt( (src_pos_x[i]-xintercept[i,j])**2 + (src_pos_y[i]-yintercept[i,j])**2)
+                spec_dict['intersect_dist'][armtype][i,j] = np.sqrt( (src_pos_x[i]-xintercept[i,j])**2 + (src_pos_y[i]-yintercept[i,j])**2)
                 if src_pos_x[i] != xintercept[i,j] and xintercept[i,j] > src_pos_x[i] and counts[i] > counts_intercept_thresh_i and counts[j] > counts_intercept_thresh_j: 
                     for k in order_arr:
-                        spec_conf_arr[armtype+'+'+str(k)]['wave'][i,j] = np.around(( period_arm * ( (spec_conf_arr['intersect_dist'][armtype][i,j]*mm_per_pix )/X_R) ) / float(k), decimals=3) #divide by order number
+                        spec_dict[armtype+'+'+str(k)]['wave'][i,j] = np.around(( period_arm * ( (spec_dict['intersect_dist'][armtype][i,j]*mm_per_pix )/X_R) ) / float(k), decimals=3) #divide by order number
                 elif src_pos_x[i] != xintercept[i,j] and xintercept[i,j] < src_pos_x[i] and counts[i] > counts_intercept_thresh_i and counts[j] > counts_intercept_thresh_j:
                     for k in order_arr:
-                        spec_conf_arr[armtype+'-'+str(k)]['wave'][i,j] = np.around(( period_arm * ( (spec_conf_arr['intersect_dist'][armtype][i,j]*mm_per_pix )/X_R) ) / float(k), decimals=3) #divide by order number
+                        spec_dict[armtype+'-'+str(k)]['wave'][i,j] = np.around(( period_arm * ( (spec_dict['intersect_dist'][armtype][i,j]*mm_per_pix )/X_R) ) / float(k), decimals=3) #divide by order number
 
     elif (roll_nom_par > 90 and roll_nom_par < 270):
         for i in range (len(src_pos_x)):
             for j in range (len(src_pos_x)):
-                spec_conf_arr['intersect_dist'][armtype][i,j] = np.sqrt( (src_pos_x[i]-xintercept[i,j])**2 + (src_pos_y[i]-yintercept[i,j])**2)
+                spec_dict['intersect_dist'][armtype][i,j] = np.sqrt( (src_pos_x[i]-xintercept[i,j])**2 + (src_pos_y[i]-yintercept[i,j])**2)
                 if src_pos_x[i] != xintercept[i,j] and xintercept[i,j] < src_pos_x[i] and counts[i] > counts_intercept_thresh_i and counts[j] > counts_intercept_thresh_j: 
                     for k in order_arr:
-                        spec_conf_arr[armtype+'+'+str(k)]['wave'][i,j] = np.around(( period_arm * ( (spec_conf_arr['intersect_dist'][armtype][i,j]*mm_per_pix )/X_R) ) / float(k), decimals=3) #divide by order number
+                        spec_dict[armtype+'+'+str(k)]['wave'][i,j] = np.around(( period_arm * ( (spec_dict['intersect_dist'][armtype][i,j]*mm_per_pix )/X_R) ) / float(k), decimals=3) #divide by order number
                 elif src_pos_x[i] != xintercept[i,j] and xintercept[i,j] > src_pos_x[i] and counts[i] > counts_intercept_thresh_i and counts[j] > counts_intercept_thresh_j:
                     for k in order_arr:
-                        spec_conf_arr[armtype+'-'+str(k)]['wave'][i,j] = np.around(( period_arm * ( (spec_conf_arr['intersect_dist'][armtype][i,j]*mm_per_pix )/X_R) ) / float(k), decimals=3) #divide by order number
+                        spec_dict[armtype+'-'+str(k)]['wave'][i,j] = np.around(( period_arm * ( (spec_dict['intersect_dist'][armtype][i,j]*mm_per_pix )/X_R) ) / float(k), decimals=3) #divide by order number
     else:
         print('Check ROLL_NOM value and make sure it isnt close to 90 or 270, if so plus and minus orders may be confused')	
 
 
-    return(spec_conf_arr)
+    return(spec_dict)
 
 
 
 
-def spec_confuse_wave_bounds(spec_conf_arr, highest_order, src_pos_x_par, heg_bound = 0.68, meg_bound = 1.33):
+def spec_confuse_wave_bounds(spec_dict, highest_order, num_sources, heg_bound = 0.68, meg_bound = 1.33):
 
     """
-    The sets the wave_low and wave_high spectral confusion windows for every source ASSUMING there is spectral confusion. Fixed distances based on the intersection geometry (which should be 120 pixels: 1.33 A for MEG and 0.68 A for HEG) should be used instead of the OSIP bounds. This calculation is done for ALL sources but only those flagged with confusion will be treated as such. The OSIP range is still used later to quantify how many spectral confusion counts lie in the confusion region for flagging and then these smaller bounds are used when ignoring parts of the spectrum.
-    """
+    Sets the wave_low and wave_high spectral confusion windows for every source ASSUMING there is spectral confusion.
+    Fixed distances based on the intersection geometry (which should be 120 pixels: 1.33 A for MEG and 0.68 A for HEG)
+    are used instead of the OSIP bounds. This calculation is done for ALL sources but only those flagged with confusion 
+    will be treated as such. The OSIP range is still used later to quantify how many spectral confusion counts lie in 
+    the confusion region for flagging and then these smaller wave bounds are saved to the confusion tables.
 
+    Parameters
+    ----------
+    spec_dict : dictioanry
+        Spectral confusion dictionary which holds all possible spectral confusion entries for every source in main_list.
+    highest_order : int
+        Highest HETG order to perform confusion check for. Warning, orders other than three are not sufficiently tested.
+    num_sources : int
+        Number of sources in the main_list.
+    heg_bound, meg_bound : float
+        The size of the bandpass in Angstroms when converting from the number of pixels associated with HEG/MEG spectra
+        intersecting.
+    """
     #heg_bound and meg_bound are in units of Angstrom and represent the entire window (bounds). It is no recommended to go smaller than the default values as they are determined based on the intstrument.
 
     #need the keys AND the order numbers in string format
-    keys_list = list(spec_conf_arr.keys())
+    keys_list = list(spec_dict.keys())
     keys_list.remove('intersect_dist')
     keys_list.remove('xintercept')
     keys_list.remove('yintercept')
     keys_list.remove('flag')
     keys_list.remove('flag_comment')
 
-
-    for i in range(0,len(src_pos_x_par)):	#loop through each instance of spectral confusion for each source
-        for j in range(0, len(src_pos_x_par)):
+    for i in range(0,num_sources):	#loop through each instance of spectral confusion for each source
+        for j in range(0,num_sources):
             for m in keys_list: #one of the keys is 'intersect' so I can't loop through just keys. I need to make sure I'm just looking through the arms (which have subkeys wave and flag)
             
-                if spec_conf_arr[m]['wave'][i,j] != 0 and i != j:	#only calculate wave_low and wave_high for sources that have a confusion wavelength calculated 
+                if spec_dict[m]['wave'][i,j] != 0 and i != j:	#only calculate wave_low and wave_high for sources that have a confusion wavelength calculated 
                     if 'heg' in m:
-                        spec_conf_arr[m]['wave_low'][i,j] = spec_conf_arr[m]['wave'][i,j] - (heg_bound/2)
-                        spec_conf_arr[m]['wave_high'][i,j] = spec_conf_arr[m]['wave'][i,j] + (heg_bound/2)
+                        spec_dict[m]['wave_low'][i,j] = spec_dict[m]['wave'][i,j] - (heg_bound/2)
+                        spec_dict[m]['wave_high'][i,j] = spec_dict[m]['wave'][i,j] + (heg_bound/2)
                     if 'meg' in m:
-                        spec_conf_arr[m]['wave_low'][i,j] = spec_conf_arr[m]['wave'][i,j] - (meg_bound/2)
-                        spec_conf_arr[m]['wave_high'][i,j] = spec_conf_arr[m]['wave'][i,j] + (meg_bound/2)
+                        spec_dict[m]['wave_low'][i,j] = spec_dict[m]['wave'][i,j] - (meg_bound/2)
+                        spec_dict[m]['wave_high'][i,j] = spec_dict[m]['wave'][i,j] + (meg_bound/2)
 
-    return(spec_conf_arr)
+    return(spec_dict)
 
 
 
-def spec_calc_osip_bounds(spec_conf_arr, highest_order, subset_arr_par, src_pos_x_par, fits_list_par, obsid_par, outdir, osip_frac_par = osip_frac):
+def spec_calc_osip_bounds(spec_dict, subset_sources, num_sources, fits_list_par, obsid_par, outdir, osip_frac_par = osip_frac):
     """
-    Determines the OSIP (order sorting integrated probabilities) window (['osip_low'] and ['osip_high']) at the location on the detector where confusion may have occured. CIAO will use the OSIP tables to determine a valid range of energies (wavelength) to assign to each order based on the expected wavelength at the specific location on the detector (along the grating arm). If a confusing source happens to disperse light at this same location then all events within the OSIP range will be 'accepted' and thus confusion may have occured only within these bounds. In practice, the OSIP wavelength range can be quite large and is only used as a first filter to determine if confusion could occur. More strict confusion checking is done in spec_flag_set().  
+    Determines the OSIP (order sorting integrated probabilities) window (['osip_low'] and ['osip_high']) at the 
+    location on the detector where confusion may have occured. CIAO will use the OSIP tables to determine a valid 
+    range of energies (wavelength) to assign to each order based on the expected wavelength at the specific location 
+    on the detector (along the grating arm). If a confusing source happens to disperse light at this same location then 
+    all events within the OSIP range will be 'accepted' and thus confusion may have occured only within these bounds. 
+    In practice, the OSIP wavelength range can be quite large and is only used as a first filter to determine if 
+    confusion could occur. More strict confusion checking is done in spec_flag_set().
+
+    Parameters
+    ----------
+    spec_dict : dictionary
+        Spectral confusion dictionary which holds all possible spectral confusion entries for every source in main_list.
+    subset_sources : int
+        List of sources to create confusion tables for whose elements are matched to the main_list.
+    num_sources : int
+        Number of sources in the main_list.
+    fits_list_par : str
+        evt2 file associated with the observation for the confusion determination.
+    obsid_par : str
+        obsID value of the observation.
+    outdir : str
+        Output directory used to create the log file assocaited with running the osip function.
+    osip_frac_par : float
+        CrissCross parameter which controls the size of the OSIP window. A value of 1.0 keep 100% of the OSIP window.
+        This parameter can be tweaked lower to make the confusion estimate less conservative.
     """
 
     #remove non-order-specific keys for easy looping below.
-    keys_list = list(spec_conf_arr.keys())
+    keys_list = list(spec_dict.keys())
     keys_list.remove('intersect_dist')
     keys_list.remove('xintercept')
     keys_list.remove('yintercept')
@@ -613,8 +790,8 @@ def spec_calc_osip_bounds(spec_conf_arr, highest_order, subset_arr_par, src_pos_
     spec_confuse_log_file = open(f'{outdir}/spec_confuse_{obsid_par}_log.txt', 'w')
     planck_time_c = (4.1357E-15 * 2.998E18) #conversion for E = hc/lamda where h and c are units of plancks const and angstrom/s
     
-    for i in subset_arr_par:
-        for j in range (len(src_pos_x_par)):
+    for i in subset_sources:
+        for j in range (num_sources):
             for m in keys_list:
 
                 if 'heg' in m:
@@ -622,77 +799,108 @@ def spec_calc_osip_bounds(spec_conf_arr, highest_order, subset_arr_par, src_pos_
                 elif 'meg' in m:
                     arm = 'meg'
                 else:
-                    raise ValueError(f'Arm value not in spec_conf_arr dictionary')
+                    raise ValueError(f'Arm value not in spec_dict dictionary')
 
-                if spec_conf_arr[m]['wave'][i,j] != 0: #dont run for sources with no potential confusion
+                if spec_dict[m]['wave'][i,j] != 0: #dont run for sources with no potential confusion
                     energy_low = []
                     energy_high = []
                     frac_osip = []
                     results = []
 
                     #calc osip for each subset source
-                    results = osip(spec_conf_arr['xintercept'][arm][i,j], spec_conf_arr['yintercept'][arm][i,j], (planck_time_c/spec_conf_arr[m]['wave'][i,j]), spec_confuse_log_file)
+                    results = osip(spec_dict['xintercept'][arm][i,j], spec_dict['yintercept'][arm][i,j], (planck_time_c/spec_dict[m]['wave'][i,j]), spec_confuse_log_file)
 
                     energy_low, energy_high, frac_resp = results
                     
                     #convert osip from energy to angstrom and account for user parameter osip_frac (fractional size of osip window of choice --e.g., user could want smaller than large osip window)
-                    spec_conf_arr[m]['osip_low'][i,j] = planck_time_c/energy_high + (   (  (1-osip_frac_par) * (planck_time_c/energy_low) - (1-osip_frac_par) * (planck_time_c/energy_high)  ) / 2.0  )
-                    spec_conf_arr[m]['osip_high'][i,j] = planck_time_c/energy_low - (   (  (1-osip_frac_par) * (planck_time_c/energy_low) - (1-osip_frac_par) * (planck_time_c/energy_high)  ) / 2.0  )	
+                    spec_dict[m]['osip_low'][i,j] = planck_time_c/energy_high + (   (  (1-osip_frac_par) * (planck_time_c/energy_low) - (1-osip_frac_par) * (planck_time_c/energy_high)  ) / 2.0  )
+                    spec_dict[m]['osip_high'][i,j] = planck_time_c/energy_low - (   (  (1-osip_frac_par) * (planck_time_c/energy_low) - (1-osip_frac_par) * (planck_time_c/energy_high)  ) / 2.0  )	
 
-                        
     spec_confuse_log_file.close()
-    return(spec_conf_arr)
+    return(spec_dict)
 
 
 
-def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, fits_list_par, arf_ratios_dir_par, highest_order=3):
+def spec_flag_set(spec_dict, src_pos_x_par, src_pos_y_par, subset_sources, fits_list_par, arf_ratios_dir_par):
 
     """
-    This function sets the spec_conf[arm+order]['flag'][i,j] for spectral confusion (two arms intersecting). It runs spec_id_clean() to set the flags where confusion is impossible (i,j arms don't intersect) and spec_id_confuse() to set flags for the remaining source pairs. This function only sets the dictionary values for spec_conf[arm+order][i,j]['flag'] and ['flag_comment'] and returns the dictionary with these updated values.
+    This function sets the spec_conf[arm+order]['flag'][i,j] for spectral confusion (two arms intersecting). It runs
+    spec_id_clean() to set the flags where confusion is impossible (i,j arms don't intersect) and spec_id_confuse() 
+    to set flags for the remaining source pairs. This function only sets the dictionary values for spec_conf[arm+order]
+    [i,j]['flag'] and ['flag_comment'] and returns the dictionary with these values updated based on confusion.
+    Nomenclature: 'Confuser Source' is a source that contaminates another source's spectrum. 'Confused Source' is a 
+    source whose spectrum is contaminated by another source.
 
+    Parameters
+    ----------
+    spec_dict : dictionary
+        Spectral confusion dictionary which holds all possible spectral confusion entries for every source in main_list.
+    src_pos_x_par, src_pos_y_par : float
+        Positions in physical units associated with sources in the main_list.
+    subset_sources : int
+        List of sources to create confusion tables for whose elements are matched to the main_list.
+    fits_list_par : str
+        evt2 file associciated with the observation
+    arf_ratios_dir_par : str
+        Path to CrissCross arf ratios tables necessary to account for efficiencies between orders.
     
-    Spectral Confusion Flag Definitions:
 
-        'clean' -- This source [i] does not have any confusion from other source [j] in the arm/order listed.
-        'warn' -- This source should not have any confusion from other sources in the arm/order listed. However, certain confusion requirements were met but determined to not sufficiently cause confusion.
-        'confused' -- This source is confused by some other source and the listed wavelength range should not be used for spectral fitting without accounting for the confuser.
+    Spectral Confusion Flag Definitions
+    -----------------------------------
 
-        #Flag Numbers
+    'clean' -- Source 'i' does not have any confusion from source 'j' in the arm/order listed.
+    'warn' -- Source 'i' should not have any confusion from source 'j' in the arm/order listed. However, certain 
+        confusion requirements were met but determined to not sufficiently cause confusion.
+    'confused' -- Source 'i' is confused by source 'j' and the determined wavelength range should not be used for 
+        spectral fitting without accounting for the confuser src 'j'.
 
-        99 -- no confusion, i=j or spec_conf_arr[m]['wave'][i,j] == 0 which indicates no confusion cause at this point in code if that value = 0 then it didn't proceed through 'spec_confuse_wave()' indicating no confusion. [NO CONFUSION]
-        980 -- confused source has 0 dispersed counts and the confuser source has > 0 dispersed counts in confuser order [YES CONFUSION]
-        981 -- confuser source has 0 dispersed counts in the appropriate wavelength range of confused source. [NO CONFUSION]
-        985 -- both sources contribute dispersed counts in the region of interest but the ratio (counts_confuser / counts_confused) is less than user specified 'spec_confuse_limit' par. [NO CONFUSION]
-        985 -- both sources contribute dispersed counts in the region of interest and the ratio (counts_confuser / counts_confused) is greater than user specified 'spec_confuse_limit' par. [YES CONFUSION]
-        992 -- confuser source has appropriate geometry to contribute confusing counts but it's 0th order has 0 counts so no confusion [NO CONFUSION]
-        995 -- confusion from confuser source has occured OUTSIDE the approrpriate range for the potentially confused source (HEG/MEG cutoff OR OSIP_boundaries ) [NO CONFUSION]
-        996 -- confuser from confuser source has occured OUTSIDE the approrpriate range for the confuser source (HEG/MEG cutoff of confuser source) [NO CONFUSION]
-        
+    #Flag Numbers
 
-    #Funtion input:
-
-    spec_conf_arr = spectral confusion dictionary
-    src_pos_x_par = array of source X positions for all sources
-    subset_arr_par = array of srcIDs for the subset sources.
-
+    99 -- [CLEAN] i=j or spec_dict[m]['wave'][i,j] == 0 which indicates no confusion 
+    980 -- [CONFUSED] Confused source has 0 dispersed counts and the confuser source has > 0 dispersed counts in 
+        confuser order 
+    981 -- [WARN] Confuser source has 0 dispersed counts in the appropriate wavelength range of confused source. 
+    985 -- [WARN] both sources contribute dispersed counts in the region of interest but the ratio 
+        (counts_confuser / counts_confused) is less than user specified 'spec_confuse_limit' par. 
+    985 -- [CONFUSED] both sources contribute dispersed counts in the region of interest and the ratio 
+        (counts_confuser / counts_confused) is greater than user specified 'spec_confuse_limit' par.
+    992 -- [WARN] confuser source has appropriate geometry to contribute confusing counts but it's 0th order has 
+        0 counts so no confusion 
+    995 -- [WARN] confusion from confuser source has occured OUTSIDE the approrpriate range for the potentially 
+        confused source (HEG/MEG cutoff OR OSIP_boundaries )
+    996 -- [WARN] confuser from confuser source has occured OUTSIDE the approrpriate range for the confuser source 
+        (HEG/MEG cutoff of confuser source)
     """
 
     #Calculate number of counts when determining CONFUSER counts in one order compared to CONFUSED counts in another order.
     def calc_num_counts(ratio_pycrates, order, order_zero_counts, bin_start, bin_end):
 
         """
-        Estimates the number of Nth order counts in a spectral arm given a number of 0th order counts in a discrete wavelength range. This information comes from the data file of ARF ratios (Nth_order / 0th_order) calculated from a single HETG on-axis observation. This is to be used as an approximation and will not be exact. If the discrete wavelength range covers several ARF bins then a MEAN of the spectral response bandpass is calculated. Note--> some bandpasses cover big dips in ARF and thus mean may affect results.
+        Estimates the number of Nth order counts in a spectral arm given a number of 0th order counts and a discrete 
+        wavelength range. This information comes from the data table of ARF ratios (Nth_order / 0th_order) calculated 
+        from a single HETG on-axis observation. This is to be used as an approximation and will not be exact. If the 
+        discrete wavelength range covers several ARF bins then a mean of the spectral response bandpass is calculated. 
+        Note, some bandpasses cover big dips in ARF and thus mean may affect results.
 
-        ratio_pycrates = CrissCross fits input table which contains the ratios of responses based on a single on-axis HETG observation. Note, since this takes the ratio of different orders, the buildup of ACIS contamination should not affect this calculation.
-        order = the order of the confused source where spectral confusion is believed to occur
-        order_zero_counts = the number of 0th order counts of the confused source determined in the wavelength bandpass where spectral confusion occurs. This number will be calculated by counts_circle_band().
-        bin_start = the first wavelength in Angstrom where you wish to calculate the average response over
-        bin_end = the last wavelength in Angstrom where you wish to calculate the average reponse over
+        Parameters
+        ----------
+        ratio_pycrates : fits table
+            CrissCross fits input table which contains the ratios of responses based on a single on-axis HETG 
+            observation. Note, since this takes the ratio of different orders, the buildup of ACIS contamination over
+            time should not affect this calculation.
+        order : crates column
+            The crates column associated with HEG/MEG order.
+        order_zero_counts : int
+            The number of 0th order counts of the confused source determined in the wavelength bandpass where spectral 
+            confusion occurs. This number will be calculated by counts_circle_band().
+        bin_start, bin_end : float
+            The first and last wavelength in Angstrom where mean response is taken in the ARF tables.
 
-        returns:
-            num_counts = An estimation of the number of counts from the confusing source expected to be dispersed into the confused spectral order
-            avg_ratio_value = The average spectral response in the bin_start, bin_end bandpass used to estimate num_counts
-            
+        Returns
+        -------
+        num_counts = An estimation of the number of counts from the confusing source expected to be dispersed into 
+        the confused spectral order.
+        avg_ratio_value = The average spectral response in the bin_start, bin_end bandpass used to estimate num_counts.
         """
 
         #this is to prevent issue where osip window might lie a little outside the window of the ARFs. This is not frequently triggered and when it is, its at an irrelevant wavelength range (e.g., 1 A)
@@ -712,78 +920,108 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
 
         num_counts = avg_ratio_value * order_zero_counts
 
-
         return(num_counts, avg_ratio_value)
 
 
-    def spec_id_clean(spec_conf_arr, src_pos_x_par, flag_clean, flag_99):
+    def spec_id_clean(spec_dict, num_sources, flag_clean, flag_99):
         """
-        Identifies the obvious cases where spectra are 'clean' because their arms do not intersect with eachother. Modifies spec_conf_arr flag values appropriately and returns spec_conf_arr. This function should always be run before spec_if_confusion() because spec_if_confusion acts on cleaned flag in logic.
+        Identifies the obvious cases where spectra are 'clean' because their arms do not intersect with eachother. 
+        Modifies spec_dict flag values appropriately and returns spec_dict. This function should always be run before 
+        spec_id_confusion() because spec_id_confusion() acts on cleaned flag in logic.
 
-        spec_conf_arr = spectral confusion dictionary
-        src_pos_x_par = array of source X positions for all sources
-        flag_clean = string associated with clean status
-        flag_99 = flag assocaited with spectral arms that do not intersect.   
+        Parameters
+        ----------
+        spec_dict : dictionary
+            Spectral confusion dict which holds all possible spectral confusion entries for every source in main_list.
+        num_sources : int
+            Number of sources in the main_list.
+        flag_clean : str
+            The text associated with a clean status
+        flag_99 : str
+            The text associataed with the flag_99 flag (spectral arns do not intersect).
 
         returns:
-            spec_conf_arr = the input spectral confusion dictionary with 'flag' and 'flag_comment' values updated if their [i,j] arms do not intersect
-    
+            spec_dict = the input spectral confusion dictionary with 'flag' and 'flag_comment' values updated 
+            if their [i,j] arms do not intersect.
         """
-
         #need the keys AND the order numbers in string format
-        keys_list = list(spec_conf_arr.keys())
+        keys_list = list(spec_dict.keys())
         keys_list.remove('intersect_dist')
         keys_list.remove('xintercept')
         keys_list.remove('yintercept')
         keys_list.remove('flag')
         keys_list.remove('flag_comment')
 
-
         #This loop sets the flags for when confusion DOES NOT occur. Consider changing in future where default flag value is 'no confusion' and I set when it DOES occur
-        for i in range(0,len(src_pos_x_par)):	#loop through each instance of spectral confusion for each source
-            for j in range(0, len(src_pos_x_par)):
+        for i in range(0,num_sources):	#loop through each instance of spectral confusion for each source
+            for j in range(0, num_sources):
                 for m in keys_list: #one of the keys is 'intersect' so I can't loop through just keys. I need to make sure I'm just looking through the arms (which have subkeys wave and flag)
                 
-    #					if list(spec_conf_arr[m].keys()) == ['wave', 'flag']: #5/3/24 -- note, I removed because I THINK this was older an no longer necessary.
-                    if spec_conf_arr[m]['wave'][i,j] == 0 or i == j:	#if the spec_conf[arm]['wave'][i,j] value is 0 or if i=j (cant have that confusion) then flag is set to 99 (no intersect)
-                        #spec_conf_arr[m]['flag'][i,j] = 99
-                        spec_conf_arr[m]['flag'][i,j] = flag_clean
-                        spec_conf_arr[m]['flag_comment'][i,j] = flag_99 # dont add on to previous comment cause if there is no intersection then this can be used in loop to only run confusion for intersecting sources
+    #					if list(spec_dict[m].keys()) == ['wave', 'flag']: #5/3/24 -- note, I removed because I THINK this was older an no longer necessary.
+                    if spec_dict[m]['wave'][i,j] == 0 or i == j:	#if the spec_conf[arm]['wave'][i,j] value is 0 or if i=j (cant have that confusion) then flag is set to 99 (no intersect)
+                        #spec_dict[m]['flag'][i,j] = 99
+                        spec_dict[m]['flag'][i,j] = flag_clean
+                        spec_dict[m]['flag_comment'][i,j] = flag_99 # dont add on to previous comment cause if there is no intersection then this can be used in loop to only run confusion for intersecting sources
 
 
-        return(spec_conf_arr)
+        return(spec_dict)
 
 
-    def spec_id_confusion(spec_conf_arr, subset_arr_par, arm_par, src_pos_x_par):
+    def spec_id_confusion(spec_dict, subset_sources, arm_par, src_pos_x_par, src_pos_y_par):
         """
-        Identifies cases of spectral confusion after obvious cases of no confusion are flagged as clean with spec_id_clean(). This function runs for a single arm (heg/meg) at a time (primary) but the opposite arm (secondary) is still used in calculations. 
+        Identifies cases of spectral confusion after obvious cases of no confusion are flagged as clean with 
+        spec_id_clean(). This function runs for a single arm (heg/meg) at a time (primary) but the opposite 
+        arm (secondary) is still used in calculations. 
 
-        spec_conf_arr = spectral confusion dictionary
-        subset_arr_par = list of sources to calculate confusion for (e.g., sources bright enough for HETG spectral extraction)
-        arm_par = 'heg' or 'meg' arm to calculate confusion flags.
-        src_pos_x_par = array of source X positions for all sources        
+        Parameters
+        ----------
+        spec_dict : dictionary
+            Spectral confusion dict which holds all possible spectral confusion entries for every source in main_list.
+        subset_sources : int
+            List of sources to create confusion tables for whose elements are matched to the main_list.
+        arm_par : str
+            HETG arm parameter 'heg' or 'meg'.
+        src_pos_x_par, src_pos_y_par : float
+            Positions in physical units associated with sources in the main_list.    
 
-        returns:
-            spec_conf_arr = the input spectral confusion dictionary with 'flag' and 'flag_comment' values updated for confusion
+        Returns
+        -------
+        spec_dict = the input spectral confusion dictionary with 'flag' and 'flag_comment' values updated for confusion
 
-        NOTES:
+        Notes
+        -----
         
         The logic in this function is complicated so it is summarized here:
 
         (1) Run the following checks only for the cases where spectral arms intersect and then set flag appropriately:
 
-        (a) If the confuser source intersects the arm of the (potentially) confused source outside of the heg/meg cutoff energies (<1 A or >~ 16, 32 A) of the confused source then NO ORDERS of the confuser source could confuse so assign a warning flag (flag_995) 
+        (a) If the confuser source intersects the arm of the (potentially) confused source outside of the heg/meg 
+            cutoff energies (<1 A or >~ 16, 32 A) of the confused source then NO ORDERS of the confuser source could 
+            confuse so assign a warning flag (flag_995) 
 
-        (b) If the intersection occurs in the valid range of wavelengths for meg/heg then check the following for EACH order:
+        (b) If the intersection occurs in the valid range of wavelengths for meg/heg then check the following for 
+            EACH order:
             
-            (i) Is the confuser's m order wavelength range within the bounds of HEG/MEG? If not, set warning flag (flag_996) and check other orders
+            (i) Is the confuser's m order wavelength range within the bounds of HEG/MEG? If not, set warning flag 
+                (flag_996) and check other orders.
             
-            (ii) If (i) is TRUE, is the confuser's m order within the same wavelength range as the confused source is expecting at the location of the intersection (i.e., the OSIP window of the confused source at the intersection location)? If not, mark as 'clean' unless a previous order has been flagged as 'warn' or 'confused'
+            (ii) If (i) is TRUE, is the confuser's m order within the same wavelength range as the confused source is 
+                expecting at the location of the intersection (i.e., the OSIP window of the confused source at the 
+                intersection location)? If not, mark as 'clean' unless a previous order has been flagged as 'warn' 
+                or 'confused'.
             
-            (iii) If (ii) is TRUE then calculate the number of 0th order counts of the CONFUSER source within the OSIP range for the spectral intersection location. If confuser source 0th order has 0 counts then no need to check for confusion anymore and set 'warning' flag. If confuser 0th order has > 0 counts then determine the number of 0th order counts from the CONFUSED source in the OSIP range. Use the number of 0th order counts for both sources and the HEG/MEG-0th-order-to-nth-order ARF tables to estimate the number of dispersed counts from both sources landing in the intersection spot of the potentially confused source. Use ratio of estimated dispersed counts to determine if confusion occurs and flag appropriately. 
+            (iii) If (ii) is TRUE then calculate the number of 0th order counts of the CONFUSER source within the OSIP 
+            range for the spectral intersection location. If confuser source 0th order has 0 counts then no need to 
+            check for confusion anymore and set 'warning' flag. If confuser 0th order has > 0 counts then determine 
+            the number of 0th order counts from the CONFUSED source in the OSIP range. Use the number of 0th order 
+            counts for both sources and the HEG/MEG-0th-order-to-nth-order ARF tables to estimate the number of 
+            dispersed counts from both sources landing in the intersection spot of the potentially confused source. 
+            Use ratio of estimated dispersed counts to determine if confusion occurs and flag appropriately. 
             
-            NOTE--> This calculation should account for the heg/meg order efficiencies and ARFs BUT assumes an on-axis source at the pointing location. This WILL be slightly different for any other source but to first order it should be ok.   This calculation uses the AVERAGE response ratio in the calculated OSIP range. If OSIP range is large then you are washing out some details in the arfs but for estimation purposes it should be ok.
-
+        This calculation should account for the heg/meg order efficiencies and ARFs BUT assumes an on-axis source at 
+        the pointing location. This WILL be slightly different for any other source but to first order it should be ok.
+        This calculation uses the AVERAGE response ratio in the calculated OSIP range. If OSIP range is large then 
+        it is washing out some details in the arfs but for estimation purposes it should be ok.
         """
 
         #call these once per observation and used in counts_circle_band function
@@ -812,19 +1050,19 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
             raise ValueError('arm_par not "heg" or "meg" ') 
 
         #for each primary arm, determine if confusion can/has occured and set the appropriate flags and flag_comments.
-        for i in subset_arr_par:
+        for i in subset_sources:
             for j in range(0,len(src_pos_x_par)):
                 for n in ['-3','-2','-1','+1','+2','+3']:
 
-                    if (spec_conf_arr[primary_arm+n]['flag_comment'][i,j] != flag_99): #dont run counts_circle_band unless there is at least some evidence of confusion - note I am leaving of 999 here cause there could be a case of confusion near the edges where the osip range brings into the real band
+                    if (spec_dict[primary_arm+n]['flag_comment'][i,j] != flag_99): #dont run counts_circle_band unless there is at least some evidence of confusion - note I am leaving of 999 here cause there could be a case of confusion near the edges where the osip range brings into the real band
 
                         #if the region in the extracted spectrum where confusion occurs is outside the valid wavelength range then flag as warning and continue
 
                         ##KEEP THIS COMMENT--> First check if the intersection between two spectra occur in the possible range of wavelengths for the extracted spectra. If not, it doesn't matter what order or wavelength the other source is, it will NEVER contribute to confusion cause effective area will zero out any flux outside valid range of wave for each source.
-                        if spec_conf_arr[primary_arm+n]['wave'][i,j] < (arm_cutoff_low) or spec_conf_arr[primary_arm+n]['wave'][i,j] > (arm_cutoff_high):
-                        #if spec_conf_arr[primary_arm+n]['wave'][i,j] < (arm_cutoff_low/np.abs(int(n))) or spec_conf_arr[primary_arm+n]['wave'][i,j] > (arm_cutoff_high/np.abs(int(n))):
-                            spec_conf_arr[primary_arm+n]['flag'][i,j] = flag_warn
-                            spec_conf_arr[primary_arm+n]['flag_comment'][i,j] = spec_conf_arr[primary_arm+n]['flag_comment'][i,j] + flag_995
+                        if spec_dict[primary_arm+n]['wave'][i,j] < (arm_cutoff_low) or spec_dict[primary_arm+n]['wave'][i,j] > (arm_cutoff_high):
+                        #if spec_dict[primary_arm+n]['wave'][i,j] < (arm_cutoff_low/np.abs(int(n))) or spec_dict[primary_arm+n]['wave'][i,j] > (arm_cutoff_high/np.abs(int(n))):
+                            spec_dict[primary_arm+n]['flag'][i,j] = flag_warn
+                            spec_dict[primary_arm+n]['flag_comment'][i,j] = spec_dict[primary_arm+n]['flag_comment'][i,j] + flag_995
 
                         #if the intersection occurs within the valid bounds of the extracted source then check all the orders of the confusing source to see if those are within THEIR respective valid bounds. If they are outside their own bounds then confusion will not occur
                         else:
@@ -839,10 +1077,10 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
                             for m in ['-3','-2','-1','+1','+2','+3']:
                                 #CHECK IF INTERSECTION OCCURS OUTSIDE NORMAL WAVELENGTH BOUNDS FOR HEG --> only one of these can be triggered cause only one +/- arm will intersect. HEG/MEG cutoff should not depend on order cause I am checking within the reference frame of the confuser source. 
 
-                                if spec_conf_arr[secondary_arm+m]['wave'][j,i] != 0 and (spec_conf_arr[secondary_arm+m]['wave'][j,i] < (arm_cutoff_low) or spec_conf_arr[secondary_arm+m]['wave'][j,i] > (arm_cutoff_high)):
-                                    if spec_conf_arr[primary_arm+n]['flag'][i,j] != flag_confused:
-                                        spec_conf_arr[primary_arm+n]['flag'][i,j] = flag_warn
-                                    spec_conf_arr[primary_arm+n]['flag_comment'][i,j] = spec_conf_arr[primary_arm+n]['flag_comment'][i,j] +  flag_996
+                                if spec_dict[secondary_arm+m]['wave'][j,i] != 0 and (spec_dict[secondary_arm+m]['wave'][j,i] < (arm_cutoff_low) or spec_dict[secondary_arm+m]['wave'][j,i] > (arm_cutoff_high)):
+                                    if spec_dict[primary_arm+n]['flag'][i,j] != flag_confused:
+                                        spec_dict[primary_arm+n]['flag'][i,j] = flag_warn
+                                    spec_dict[primary_arm+n]['flag_comment'][i,j] = spec_dict[primary_arm+n]['flag_comment'][i,j] +  flag_996
                                 
                                 #if none of the flag_995s trigger that means spectral confusion has occured within the valid ranges of wavelengths and we need to check counts
                                 else:
@@ -853,25 +1091,25 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
                                     #I was worried if osip_low == 0 then the WRONG arm where no confusion occurs would have its wave[j,i] = 0 and trigger this incorrectly. However 0 is not greater than 0 so just dont change to '>=' and it should be ok.
                                     
                                     #if the photons that land in the confused region are within the OSIP bounds then check the number of counts compared to the source counts in that region
-                                    if (spec_conf_arr[secondary_arm+m]['wave'][j,i] > spec_conf_arr[primary_arm+n]['osip_low'][i,j] and spec_conf_arr[secondary_arm+m]['wave'][j,i] < spec_conf_arr[primary_arm+n]['osip_high'][i,j]):
+                                    if (spec_dict[secondary_arm+m]['wave'][j,i] > spec_dict[primary_arm+n]['osip_low'][i,j] and spec_dict[secondary_arm+m]['wave'][j,i] < spec_dict[primary_arm+n]['osip_high'][i,j]):
 
                                         #only run counts_circle_band ONCE per M order cause the 0th order counts dont change
                                         #run confuser counts first cause if no counts here then all the future calculations are pointless cause no confusion.
                                         if confuser_0th_counts == [None]:
-                                            confuser_0th_counts = counts_circle_band(evtcrates, src_pos_x_par[j], src_pos_y_par[j], [spec_conf_arr[primary_arm+n]['osip_low'][i,j],spec_conf_arr[primary_arm+n]['osip_high'][i,j]], skyconverter, psffrac=0.9) #num 0th order counts in contaminating spectrum at SAME osip window  of confusion
+                                            confuser_0th_counts = counts_circle_band(evtcrates, src_pos_x_par[j], src_pos_y_par[j], [spec_dict[primary_arm+n]['osip_low'][i,j],spec_dict[primary_arm+n]['osip_high'][i,j]], skyconverter, psffrac=0.9) #num 0th order counts in contaminating spectrum at SAME osip window  of confusion
 
                                         #if confuser_0th_counts = 0 then we can stop checking the other m orders of the confuser source cause its always the same osip window and if there are no counts in that osip window in the 0th order of the confuser then there wont be confusion in the confused order (ADVANCE n if confuser_0th_counts = 0). It's ok to keep specific m flags cause it will provide knowledge of which m orders had the appropriate osip range.
                                         if confuser_0th_counts == 0: #could make this number '< 3 or so' if I want to reduce the number of false positives and allow some more cases through to be OK. see code comment above
                                                 
-                                            spec_conf_arr[primary_arm+n]['flag'][i,j] = flag_warn #confuser has appropriate geometry to contribute confusing counts but it's 0th order has 0 counts	so no confusion				
-                                            spec_conf_arr[primary_arm+n]['flag_comment'][i,j] = spec_conf_arr[primary_arm+n]['flag_comment'][i,j] + flag_992 + m
+                                            spec_dict[primary_arm+n]['flag'][i,j] = flag_warn #confuser has appropriate geometry to contribute confusing counts but it's 0th order has 0 counts	so no confusion				
+                                            spec_dict[primary_arm+n]['flag_comment'][i,j] = spec_dict[primary_arm+n]['flag_comment'][i,j] + flag_992 + m
 
                                         #if confuser counts !=0 then I need to run the calculation to determine if dispersed events land in region
                                         else:
                                         
                                             #only run counts_circle_band ONCE per M order cause the 0th order counts dont change
                                             if confused_0th_counts == [None]:
-                                                confused_0th_counts = counts_circle_band(evtcrates, src_pos_x_par[i], src_pos_y_par[i], [spec_conf_arr[primary_arm+n]['osip_low'][i,j],spec_conf_arr[primary_arm+n]['osip_high'][i,j]], skyconverter, psffrac=0.9) #num 0th order counts in the spectrum of interest at osip window of confusion 											
+                                                confused_0th_counts = counts_circle_band(evtcrates, src_pos_x_par[i], src_pos_y_par[i], [spec_dict[primary_arm+n]['osip_low'][i,j],spec_dict[primary_arm+n]['osip_high'][i,j]], skyconverter, psffrac=0.9) #num 0th order counts in the spectrum of interest at osip window of confusion 											
 
                                         #if (confuser_counts > 0 and confused_counts > 0):
 
@@ -893,22 +1131,22 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
                                             
                                             #The estimated number of dispersed counts from the primary (confused) source at the location of the spectral intersection (confusion)
                                             confused_counts_primary = []
-                                            confused_counts_primary, avg_ratio_primary = calc_num_counts(ratio_pycrates = primary_arf, order = primary_order, order_zero_counts =confused_0th_counts, bin_start=spec_conf_arr[primary_arm+n]['osip_low'][i,j], bin_end = spec_conf_arr[primary_arm+n]['osip_high'][i,j])
+                                            confused_counts_primary, avg_ratio_primary = calc_num_counts(ratio_pycrates = primary_arf, order = primary_order, order_zero_counts =confused_0th_counts, bin_start=spec_dict[primary_arm+n]['osip_low'][i,j], bin_end = spec_dict[primary_arm+n]['osip_high'][i,j])
 
                                             #The estimated number of dispersed counts from the secondary (confuser) source at the location of the spectral intersection (confusion)
                                             confuser_counts_secondary = []
-                                            confuser_counts_secondary, avg_ratio_secondary = calc_num_counts(ratio_pycrates = secondary_arf, order = secondary_order, order_zero_counts =confuser_0th_counts, bin_start=spec_conf_arr[primary_arm+n]['osip_low'][i,j], bin_end = spec_conf_arr[primary_arm+n]['osip_high'][i,j])
+                                            confuser_counts_secondary, avg_ratio_secondary = calc_num_counts(ratio_pycrates = secondary_arf, order = secondary_order, order_zero_counts =confuser_0th_counts, bin_start=spec_dict[primary_arm+n]['osip_low'][i,j], bin_end = spec_dict[primary_arm+n]['osip_high'][i,j])
 
                                             if (confuser_counts_secondary > 0 and confused_counts_primary == 0):
-                                                spec_conf_arr[primary_arm+n]['flag'][i,j] = flag_confused #set flag to genuine source of confusion. 
-                                                spec_conf_arr[primary_arm+n]['flag_comment'][i,j] = spec_conf_arr[primary_arm+n]['flag_comment'][i,j] + flag_980 + m
+                                                spec_dict[primary_arm+n]['flag'][i,j] = flag_confused #set flag to genuine source of confusion. 
+                                                spec_dict[primary_arm+n]['flag_comment'][i,j] = spec_dict[primary_arm+n]['flag_comment'][i,j] + flag_980 + m
                                             
                                             elif (confuser_counts_secondary == 0):
                                                 #DONT OVERWRITE FLAG ONCE IT GETS SET TO CONFUSED
-                                                if spec_conf_arr[primary_arm+n]['flag'][i,j] != flag_confused:
-                                                    spec_conf_arr[primary_arm+n]['flag'][i,j] = flag_warn #set flag to genuine source of confusion. 
+                                                if spec_dict[primary_arm+n]['flag'][i,j] != flag_confused:
+                                                    spec_dict[primary_arm+n]['flag'][i,j] = flag_warn #set flag to genuine source of confusion. 
                                                 
-                                                spec_conf_arr[primary_arm+n]['flag_comment'][i,j] = spec_conf_arr[primary_arm+n]['flag_comment'][i,j] + flag_981 + m
+                                                spec_dict[primary_arm+n]['flag_comment'][i,j] = spec_dict[primary_arm+n]['flag_comment'][i,j] + flag_981 + m
 
 
                                             elif (confuser_counts_secondary > 0 and confused_counts_primary >0):
@@ -918,14 +1156,14 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
 
                                                 #if the ratio of confusing counts / confused sources counts is higher than some user param then flag as confused
                                                 if spec_confused_ratio > spec_confuse_limit:
-                                                    spec_conf_arr[primary_arm+n]['flag'][i,j] = flag_confused #set flag to genuine source of confusion. 
-                                                    spec_conf_arr[primary_arm+n]['flag_comment'][i,j] = spec_conf_arr[primary_arm+n]['flag_comment'][i,j] + flag_986 + m													
+                                                    spec_dict[primary_arm+n]['flag'][i,j] = flag_confused #set flag to genuine source of confusion. 
+                                                    spec_dict[primary_arm+n]['flag_comment'][i,j] = spec_dict[primary_arm+n]['flag_comment'][i,j] + flag_986 + m													
                                                 else:
-                                                    if spec_conf_arr[primary_arm+n]['flag'][i,j] != flag_confused:
-                                                        spec_conf_arr[primary_arm+n]['flag'][i,j] = flag_warn #set flag to genuine source of confusion. 
+                                                    if spec_dict[primary_arm+n]['flag'][i,j] != flag_confused:
+                                                        spec_dict[primary_arm+n]['flag'][i,j] = flag_warn #set flag to genuine source of confusion. 
 
                                                     #add warning showing that there is confusion but its lower than some threshold so its ok.
-                                                    spec_conf_arr[primary_arm+n]['flag_comment'][i,j] = spec_conf_arr[primary_arm+n]['flag_comment'][i,j] + flag_985 + m
+                                                    spec_dict[primary_arm+n]['flag_comment'][i,j] = spec_dict[primary_arm+n]['flag_comment'][i,j] + flag_985 + m
                                                     
                                             else:
                                                 print(f'ERROR --> Something went wrong when determining spectral confusion HEG. i={i},j={j},n={n},m={m}, confused_cnt_{primary_arm}={confused_counts_primary}, confuser_cnt_{secondary_arm}={confuser_counts_secondary}, 0th_ord={confused_0th_counts, confuser_0th_counts}')
@@ -933,11 +1171,11 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
 
                                     #dont overwrite 999 but if the source is otherwise outside the OSIP range then its flag is changed to 995. Sources with 999 that ARE within the osip range will have their 999 change in above loop conditions.
                                     #ASSUMING FLAG WAS PREVIOUSLY 'unset' then mark it as clean if it didn't land in the above loops
-                                    elif spec_conf_arr[primary_arm+n]['flag'][i,j] != flag_warn and spec_conf_arr[primary_arm+n]['flag'][i,j] != flag_confused:
-                                        spec_conf_arr[primary_arm+n]['flag'][i,j] = flag_clean #If it doesnt makes it through the top loop condition then confusion is outside OSIP bounds and should be clean. If it already has A warning or confusion flag then it remains confused and set.
+                                    elif spec_dict[primary_arm+n]['flag'][i,j] != flag_warn and spec_dict[primary_arm+n]['flag'][i,j] != flag_confused:
+                                        spec_dict[primary_arm+n]['flag'][i,j] = flag_clean #If it doesnt makes it through the top loop condition then confusion is outside OSIP bounds and should be clean. If it already has A warning or confusion flag then it remains confused and set.
                                     #else: no need for else statement to catch remainder of cases because if it is already marked as confused or warn it should STAY confused or warned
 
-        return(spec_conf_arr)
+        return(spec_dict)
 
 
 
@@ -946,7 +1184,7 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
     flag_warn = 'warn'
     flag_confused = 'confused'
 
-    #text to add to ['flag_comment'] if triggered
+    #text to add to ['flag_comment'] if triggered. Leading commas are intentional.
     flag_99 = 'no_intersect,'
     flag_995 = ',outside_primary_source_wave_coverage'
     flag_996 = ',outside_confuser_source_wave_coverage'
@@ -960,14 +1198,14 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
 
 
     #Flag the unconfused (clean) spectra as clean. This must be run before spec_id_confusion().
-    spec_conf_arr = spec_id_clean(spec_conf_arr=spec_conf_arr, src_pos_x_par=src_pos_x_par, flag_clean=flag_clean, flag_99=flag_99)
+    spec_dict = spec_id_clean(spec_dict=spec_dict, num_sources=len(src_pos_x_par), flag_clean=flag_clean, flag_99=flag_99)
                 
     #Identify where confusion can occur and flag appropriately. This must be run AFTER spec_id_clean()
-    spec_conf_arr = spec_id_confusion(spec_conf_arr=spec_conf_arr, subset_arr_par=subset_arr_par, arm_par='heg', src_pos_x_par = src_pos_x_par)
-    spec_conf_arr = spec_id_confusion(spec_conf_arr=spec_conf_arr, subset_arr_par=subset_arr_par, arm_par='meg', src_pos_x_par = src_pos_x_par)
+    spec_dict = spec_id_confusion(spec_dict=spec_dict, subset_sources=subset_sources, arm_par='heg', src_pos_x_par = src_pos_x_par, src_pos_y_par = src_pos_y_par)
+    spec_dict = spec_id_confusion(spec_dict=spec_dict, subset_sources=subset_sources, arm_par='meg', src_pos_x_par = src_pos_x_par, src_pos_y_par = src_pos_y_par)
 
 
-    return(spec_conf_arr)
+    return(spec_dict)
 
 
 
@@ -975,17 +1213,37 @@ def spec_flag_set(spec_conf_arr, src_pos_x_par, src_pos_y_par, subset_arr_par, f
 ####POINT SOURCE CONFUSION FUNCTIONS####
 
 
-def pntsrc_dist_to_spec(pntsrc_conf_par, src_pos_x_par, src_pos_y_par, xoff_par, yoff_par, m_arm_par, b_arm_par, arm_ang_par, arm_par):
+def pntsrc_dist_to_spec(pntsrc_dict, src_pos_x_par, src_pos_y_par, xoff_par, yoff_par, m_arm_par, b_arm_par, arm_ang_par, arm_par):
     """
-    This function calculates perp_dist_to_spec which is the distance in pixels between a confusing 0th order point source and the dipersed spectrum of another source (perpendicular to the spectrum). It also calculates the pntsrc_conf_par['intersect_dist'][arm_par][i,j] variable. NOTE: This calculation should be valid regardless of the roll angle. However, roll angle is used in other functions to determine which orders to fill based on whether 0th order source is 'above' or 'below' the potentially confused grating arm in pixel coords.
+    Calculates 'perp_dist_to_spec' which is the distance in pixels between a confusing 0th order point 
+    source and the dipersed spectrum of the confused source (measured perpendicular to the spectrum). It also calculates 
+    ['intersect_dist'][arm_par][i,j] variable which is the distance from the 0th order to the 0th order confuser along 
+    the grating arm. NOTE: This calculation should be valid regardless of the roll angle. However, roll angle is used 
+    in other functions to determine which orders to fill based on whether 0th order source is 'above' or 'below' the 
+    potentially confused grating arm in detector coordinates.
 
-    pntsrc_conf_par = point source confusion dictionary to store results
-    src_pos_x_par = 0th order x pixel location
-    src_pos_y_par = 0th order y pixel location
-    xoff_par = x_offset value
-    yoff_par = y_offset value
-    m_arm_par = heg/meg slope of the grating line on the detector (from y=mx+b and the grating instrumental slope)
-    b_arm_par = heg/meg line intercept (from y=mx+b)		
+    Parameters
+    ----------
+    pntsrc_dict : dictionary
+        Point source confusion dict which holds all possible pntsrc confusion entries for every source in main_list.    
+    src_pos_x_par, src_pos_y_par : float
+        Positions in physical units associated with sources in the main_list.
+    xoff_par, yoff_pa : int
+        X and Y offset values necessary to ensure equation of line intersection parameters all stay positive.
+    m_arm_par : float
+        Slope of the grating line on the detector (from y=mx+b and the grating instrumental slope).
+    b_arm_par : float
+        HEG/MEG line intercept value (from y=mx+b).
+    arm_ang_par : float
+        Instrumental grating arm HEG/MEG angle that vary relative to roll angle.
+    arm_par : str
+        HETG 'heg' or 'meg' arm.
+
+    Returns
+    -------
+    pntsrc_dict : updates the pntsrc_dict parameters and returns them.
+    perp_dist_to_spec_arm : perpendicular distance to spectral arm for every i,j pair.
+    r0_offset_dist_from_contam_arm : a necessary value when calculating the wavelength where pntsrc confusion occurs.
     """
 
     ###Identify point sources that fall on the lines of other sources dispersed spectra
@@ -1010,31 +1268,55 @@ def pntsrc_dist_to_spec(pntsrc_conf_par, src_pos_x_par, src_pos_y_par, xoff_par,
             
             #to be consistent with previous code, only calculate if this value != 0. Might be able to remove this condition later
             if perp_dist_to_spec_arm[i,j] != 0:
-                pntsrc_conf_par['intersect_dist'][arm_par][i,j] = abs((src_pos_x_par[j]-src_pos_x_par[i]) / math.sin(math.radians(90-arm_ang_par)) + r0_offset_dist_from_contam_arm[i,j])
+                pntsrc_dict['intersect_dist'][arm_par][i,j] = abs((src_pos_x_par[j]-src_pos_x_par[i]) / math.sin(math.radians(90-arm_ang_par)) + r0_offset_dist_from_contam_arm[i,j])
 
-    return(pntsrc_conf_par, perp_dist_to_spec_arm, r0_offset_dist_from_contam_arm)
-
-
+    return(pntsrc_dict, perp_dist_to_spec_arm, r0_offset_dist_from_contam_arm)
 
 
-def pntsrc_confuse_wave(pntsrc_conf_par, perp_dist_to_spec_arm_par, src_pos_x_par, P_arm_par, mm_per_pix, X_R, arm_par, roll_nom_par, src_off_axis_par, counts_par, contam_offset_thresh_par, counts_intercept_thresh_i_par, counts_contam_pntsrc_thresh_par):
+
+
+def pntsrc_confuse_wave(pntsrc_dict, perp_dist_to_spec_arm_par, src_pos_x_par, P_arm_par, mm_per_pix, X_R, arm_par, roll_nom_par, src_off_axis_par, counts_par, contam_offset_thresh_par, counts_intercept_thresh_i_par, counts_contam_pntsrc_thresh_par):
 
     """
-    This function identifies when point source confusion occurs within the thresholds provided by the user. If a 0th order source is sufficiently bright and close to the dispersed spectrum on another source then it will be identified as having point source confusion.  This function uses output from pntsrc_dist_to_spec() with the roll angle to determine where/if point source confusion occurs. NOTE: a single confusing point source can only confuse a single arm for each 'confused' source. So this loop will only flag a single arm for each confused source per confuser source.
+    Identifies when point source confusion occurs within the thresholds provided by the user. If a 0th order source is 
+    sufficiently bright and close to the dispersed spectrum of another source then it will be identified as having 
+    point source confusion.  This function uses output from pntsrc_dist_to_spec() with the roll angle to determine 
+    where/if point source confusion occurs. NOTE: a single confusing point source can only confuse a single arm for 
+    each 'confused' source. So this loop will only flag a single arm for each confused source per confuser source.
 
-    pntsrc_conf_par = point source confusion dictionary to store results
-    perp_dist_to_spec_arm_par = output from pntsrc_dist_to_spec() necessary for filtering logic. Needs to match heg/meg arm
-    src_pos_x_par = 0th order x pixel location		
-    P_arm_par = Period of the heg/meg arm
-    mm_per_pix = millimeters per pixel for ACIS (CONSTANT = 0.023987)
-    X_R = rowdland diameter in mm constatn (CONSTANT=8632.48)
-    arm_par = 'heg' or 'meg'
-    roll_nom_par = roll angle of the observation from the fits header
-    src_off_axis_par = how far from the pointing (off-axis) a source is
-    counts_par = the number of 0th order counts via wavedetect
-    contam_offset_thresh_par = [USER PAR] threshold in pixels for how far a point source can be perpendicular from the dispersed spectrum.
-    counts_intercept_thresh_i_par = [USER PAR]  threshold to be flagged as a source bright enough to care about if another sources dispersed spectra or another 0th order intersects with it
-    
+    Parameters
+    ----------
+    pntsrc_dict : dictionary
+        Point source confusion dict which holds all possible pntsrc confusion entries for every source in main_list.    
+    perp_dist_to_spec_arm_par : float
+        Perpendicular distance to spectral arm for every i,j pair. Each arm heg/meg will have its own perp_dist_to_spec
+        parameter which is why function require arm_par.
+    src_pos_x_par, src_pos_y_par : float
+        Positions in physical units associated with sources in the main_list.
+    P_arm_par : float
+        HEG or MEG gratings period which is an instrumental constant.
+    mm_per_pix : float
+        The constant number of millimeters per ACIS pixel. (CONSTANT = 0.023987)
+    X_R : float
+        Rowland  diameter in millimeters (CONSTANT=8632.48)
+    arm_par : str
+        HETG 'heg' or 'meg' arm.
+    roll_nom_Par : float
+        Roll angle of the observation taken from the fits header.
+    src_off_axis_par : float
+        Off-axis angle of the source in arcseconds
+    counts_par : int
+        The number of 0th order counts.
+    contam_offset_thresh_par : int
+        CrissCross parameter threshold in number of pixels for how far a point source can be perpendicular to a 
+        disperssed spectrum before it is no longer considered in the confusion calculation. This number can be increased
+        to reduce the number of potentially confusing point sources.
+    counts_intercept_thresh_i_par : int
+        CrissCross parameter threshold in counts above which a confused source is considered bright enough for point 
+        source confusion estimation.
+    counts_contam_pntsrc_thresh_par : int
+        CrissCross parameter threshold in counts above which a 0th order source is bright enough to be 
+        considered as a confuser source of another source's spectrum.
     """
 
     #note, the wavelength calculation here depends on the roll angle of the observation only because determination of the order (e.g., -1 versus +1) depends on roll angle in functions above (see intersect_dist and r0_offset_dist)
@@ -1054,37 +1336,65 @@ def pntsrc_confuse_wave(pntsrc_conf_par, perp_dist_to_spec_arm_par, src_pos_x_pa
                 for m in ['1','2','3']:
                     if (roll_nom_par > 271 and roll_nom_par < 360) or (roll_nom_par >0 and roll_nom_par < 90):
                         if src_pos_x_par[j] > src_pos_x_par[i]:
-                            pntsrc_conf_par[arm_par+'+'+m]['wave'][i,j] = np.around(( P_arm_par * ( (pntsrc_conf_par['intersect_dist'][arm_par][i,j]*mm_per_pix )/X_R) ) / int(m), decimals=3) #divide by order number
+                            pntsrc_dict[arm_par+'+'+m]['wave'][i,j] = np.around(( P_arm_par * ( (pntsrc_dict['intersect_dist'][arm_par][i,j]*mm_per_pix )/X_R) ) / int(m), decimals=3) #divide by order number
                         elif src_pos_x_par[j] < src_pos_x_par[i]:
-                            pntsrc_conf_par[arm_par+'-'+m]['wave'][i,j] = np.around(( P_arm_par * ( (pntsrc_conf_par['intersect_dist'][arm_par][i,j]*mm_per_pix )/X_R) ) / int(m), decimals=3) #divide by order number		
+                            pntsrc_dict[arm_par+'-'+m]['wave'][i,j] = np.around(( P_arm_par * ( (pntsrc_dict['intersect_dist'][arm_par][i,j]*mm_per_pix )/X_R) ) / int(m), decimals=3) #divide by order number		
                         else:
                             print(f'ERROR in point source confuse calculation for i,j,m = {i,j,m}')													
                     elif (roll_nom_par > 90 and roll_nom_par < 270):
                         if src_pos_x_par[j] < src_pos_x_par[i]:
-                            pntsrc_conf_par[arm_par+'+'+m]['wave'][i,j] = np.around(( P_arm_par * ( (pntsrc_conf_par['intersect_dist'][arm_par][i,j]*mm_per_pix )/X_R) ) / int(m), decimals=3) #divide by order number
+                            pntsrc_dict[arm_par+'+'+m]['wave'][i,j] = np.around(( P_arm_par * ( (pntsrc_dict['intersect_dist'][arm_par][i,j]*mm_per_pix )/X_R) ) / int(m), decimals=3) #divide by order number
                         elif src_pos_x_par[j] > src_pos_x_par[i]:
-                            pntsrc_conf_par[arm_par+'-'+m]['wave'][i,j] = np.around(( P_arm_par * ( (pntsrc_conf_par['intersect_dist'][arm_par][i,j]*mm_per_pix )/X_R) ) / int(m), decimals=3) #divide by order number							
+                            pntsrc_dict[arm_par+'-'+m]['wave'][i,j] = np.around(( P_arm_par * ( (pntsrc_dict['intersect_dist'][arm_par][i,j]*mm_per_pix )/X_R) ) / int(m), decimals=3) #divide by order number							
                         else:
                             print(f'ERROR in point source confuse calculation for i,j,m, roll_nom_par = {i,j,m, roll_nom_par}')
                     else:
                         print('ERROR -- Check roll_nom_par value and make sure it isnt close to 90 or 270, if so plus and minus orders may be confused')		
 
-    return(pntsrc_conf_par)
+    return(pntsrc_dict)
                         
 
 
 
-def pntsrc_confuse_wave_bounds(pntsrc_conf_par, perp_dist_to_spec_arm_par, fits_list_par, subset_arr_par, src_pos_x_par, src_pos_y_par, arm_par,logfile_par, moritz_factor_par=0.1):
+def pntsrc_confuse_wave_bounds(pntsrc_dict, perp_dist_to_spec_arm_par, fits_list_par, subset_sources, src_pos_x_par, src_pos_y_par, arm_par,logfile_par, evt_frac_thresh=0.1):
     """
-    This function will run pnt_src_masking_region to determine if the PSF from a potentially confusing point source is sufficient to actually cause confusion. It uses pnt_src_masking_region() which provides a wavelength RANGE to ignore for each spectrum based on the PSF size and energy of the confusing source. What pnt_src_masking_region does is it uses the total number of 0th order counts in the contaminating source and identifies a radius in that source's PSF (which is on the grating arm) where GREATER than that radius, the effect of the contaminating counts is so small we don't care. For example, the PSF has most counts near its center so eventually some of the counts will become much fainter than the spectrum and you can ignore.  This 'radius' is along the grating arm but corresponds to the size of the confusing 0th orders source's PSF. This is why the ignore regions for the point sources are so much smaller than the Spectral arm OSIP crosses. The PSF can be modeled and easily understood as a fraction of the stars counts. Arm crossings are not as easy. So in essence, this boundary is NOT the OSIP range. So the LOW is the lower bound and the high is the upper bound. If the value returned is 9999.0 then that is a flag which indicates the point source does not have any counts in the expected band (and thus isn't confusing the spectrum). I report it this way so users can still see where a point source has landed on their spectrum to double check.
+    This function will run pnt_src_masking_region() to determine if the PSF from a potentially confusing point source 
+    is sufficient to actually cause confusion. It uses pnt_src_masking_region() which provides a wavelength RANGE to 
+    ignore for each spectrum based on the PSF size and energy of the confusing source. pnt_src_masking_region uses the 
+    total number of 0th order counts in the contaminating source and identifies a radius in that source's PSF 
+    (which is on the grating arm) where GREATER than that radius, the effect of the contaminating counts is 
+    insignificant. For example, the PSF has most counts near its center so at some radius the counts fraction will 
+    become much smaller than near the center and can be ignored.  This 'radius' is along the grating arm but 
+    corresponds to the size of the confusing 0th orders source's PSF. This is why the ignore regions for the point 
+    sources are so much smaller than the spectral arm OSIP crosses. The PSF can be modeled and easily understood as 
+    a fraction of the stars counts. Arm crossings are not as easy. So in essence, this boundary is NOT the OSIP range. 
+    So the LOW is the lower bound and the high is the upper bound. If the value returned is 9999.0 then that is a flag 
+    which indicates the point source does not have any counts in the expected band (and thus isn't confusing the 
+    spectrum). 
 
-    pntsrc_conf_par = point source confusion dictionary
-    fits_list_par = evt2 fits file of the observation
-    src_pos_x_par, src_pos_y_par = source x and y positions
-    arm_par = 'heg' or 'meg'
-    moritz_factor_par = the fraction of events allowed by confuser before considering confusion occurs (0.1 = 10%)
-    logfile_par = logfile name 
+    Parameters
+    ----------
+    pntsrc_dict : dictionary
+        Point source confusion dict which holds all possible pntsrc confusion entries for every source in main_list.    
+    perp_dist_to_spec_arm_par : float
+        Perpendicular distance to spectral arm for every i,j pair. Each arm heg/meg will have its own perp_dist_to_spec
+        parameter which is why function require arm_par.
+    fits_list_par : str
+        evt2 file for confusion calculation
+    subset_sources : str
+        list of sources to generate confusion files for.
+    src_pos_x_par, src_pos_y_par : float
+        Positions in physical units associated with sources in the main_list.
+    arm_par : str
+        HETG 'heg' or 'meg' arm. 
+    logfile_par : str
+        Name of the logfile for capturing pnt_src_masking_region() log output.
+    evt_frac_thresh : float
+        Fraction of events allowed by confuser before considering confusion occurs (0.1 = 10%)
 
+    Returns
+    -------
+    pntsrc_dict : updates values in the pnsrc_confusion dictionary and returns the dictionary.
     """
 
     if arm_par == 'heg':
@@ -1100,36 +1410,53 @@ def pntsrc_confuse_wave_bounds(pntsrc_conf_par, perp_dist_to_spec_arm_par, fits_
 
     pntsrc_confuse_log_file = open(f'{logfile_par}', 'w')
 
-
-    for i in subset_arr_par:
+    for i in subset_sources:
         for j in range(0,len(src_pos_x_par)):
             for m in ['-3','-2','-1','+1','+2','+3']:
-                if pntsrc_conf_par[arm_par+m]['wave'][i,j] != 0: #only calculate for potential sources of confusion
-                    pntsrc_conf_par[arm_par+m]['wave_low'][i,j], pntsrc_conf_par[arm_par+m]['wave_high'][i,j] = pnt_src_masking_region( evtcrates, osip, skyconverter, src_pos_x_par[i], src_pos_y_par[i], src_pos_x_par[j], src_pos_y_par[j], np.abs(perp_dist_to_spec_arm_par[i,j]), pntsrc_conf_par[arm_par+m]['wave'][i,j], tg_part, moritz_factor_par, pntsrc_confuse_log_file)
+                if pntsrc_dict[arm_par+m]['wave'][i,j] != 0: #only calculate for potential sources of confusion
+                    pntsrc_dict[arm_par+m]['wave_low'][i,j], pntsrc_dict[arm_par+m]['wave_high'][i,j] = pnt_src_masking_region( evtcrates, osip, skyconverter, src_pos_x_par[i], src_pos_y_par[i], src_pos_x_par[j], src_pos_y_par[j], np.abs(perp_dist_to_spec_arm_par[i,j]), pntsrc_dict[arm_par+m]['wave'][i,j], tg_part, evt_frac_thresh, pntsrc_confuse_log_file)
 
     pntsrc_confuse_log_file.close()
 
-    return(pntsrc_conf_par)
+    return(pntsrc_dict)
 
 
 
 
 
-def pntsrc_flag_set(pntsrc_conf_par, src_pos_x_par, arm_par, subset_arr_par, heg_cutoff_low_par = heg_cutoff_low, heg_cutoff_high_par = heg_cutoff_high, meg_cutoff_low_par = meg_cutoff_low, meg_cutoff_high_par = meg_cutoff_high):
+def pntsrc_flag_set(pntsrc_dict, num_sources, arm_par, subset_sources, heg_cutoff_low_par = heg_cutoff_low, heg_cutoff_high_par = heg_cutoff_high, meg_cutoff_low_par = meg_cutoff_low, meg_cutoff_high_par = meg_cutoff_high):
 
     """
-    Sets the various flags for point source confusion. NOTE--> the flag values already stored in spec_conf['wave'] and ['wave_low']. These are passed to spec_conf when running pntsrc_confuse_wave_bounds() so that is where confusion is actually determined. This function just sets the flags.
+    Sets the various flags for point source confusion. Note, some flag values already stored in pntsrc_dict['wave'] 
+    and ['wave_low']. These are passed to pntsrc_dict when running pntsrc_confuse_wave_bounds() so that is where some 
+    confusion is actually determined. This function sets the  main arm/order flags.
+
+    Parameters
+    ----------
+    pntsrc_dict : dictionary
+        Point source confusion dict which holds all possible pntsrc confusion entries for every source in main_list.    
+    subset_sources : str
+        list of sources to generate confusion files for.
+    src_pos_x_par, src_pos_y_par : float
+        Positions in physical units associated with sources in the main_list.
+    arm_par : str
+        HETG 'heg' or 'meg' arm. 
+    heg/meg cutoff low/high : float
+        Wavelength in angstroms where the HEG and MEG effective areas go to zero or the user doesn't care outside those
+        wavelength bounds. Any confusion that occurs outside these bounds is not marked as confused.
     
+    Pntsrc Confusion Flag Def
+    -------------------------
+    flag_9999 -- [CLEAN] The 0th order confusing point source has 0 counts.
+    flag_9998 -- [WARN] The 0th order confusing point source has too few counts to warrant confusion 
+        (0th_order_counts_confuser / 0th_order_counts_confused) < 'factor' (~10% default).
+    flag_9997 -- [WARN] The 0th order confusing point source is relatively weak and too far from spectrum to cause 
+        confusion.
+    flag_9995 -- [WARN] The 0th order confusing point source falls outside the valid range of HEG/MEG response bounds.
+    flag_9996 -- [CONFUSED] The 0ther order confusing point source is valid and causes confusion.
 
-    Flag Definitions:
-
-    flag_9999 -- The 0th order confusing point source has 0 counts [NO CONFUSION]
-    flag_9998 -- The 0th order confusing point source has too few counts to warrant confusion (0th_order_counts_confuser / 0th_order_counts_confused) < 'factor' (~10% default) [NO CONFUSION]
-    flag_9997 -- The 0th order confusing point source is relatively weak and too far from spectrum to cause confusion [NO CONFUSION]
-    flag_9995 -- The 0th order confusing point source falls outside the valid range of HEG/MEG response bounds [NO CONFUSION]
-    flag_9996 -- The 0ther order confusing point source is valid and causes confusion. [YES CONFUSION]
-
-    Note: if the confused spectrum has 0 counts then the entire OSIP range is used for ignoring point source confusion. Otherwise, it is calculated based on fraction of PSF and brightness of confuser source.
+    Note: if the confused spectrum has 0 counts then the entire OSIP range is used for ignoring point source confusion. 
+    Otherwise, it is calculated based on fraction of PSF and brightness of confuser source.
     """
 
     flag_clean = 'clean'
@@ -1152,36 +1479,36 @@ def pntsrc_flag_set(pntsrc_conf_par, src_pos_x_par, arm_par, subset_arr_par, heg
     else:
         raise ValueError(' WRONG ARM PAR USED IN pntsrc_flag_set')
 
-    for i in subset_arr_par:
-        for j in range(0,len(src_pos_x_par)):
+    for i in subset_sources:
+        for j in range(0,num_sources):
             for m in ['-3','-2','-1','+1','+2','+3']:
 
-                if pntsrc_conf_par[arm_par+m]['wave'][i,j] == 0:
-                    pntsrc_conf_par[arm_par+m]['flag'][i,j] = flag_clean
+                if pntsrc_dict[arm_par+m]['wave'][i,j] == 0:
+                    pntsrc_dict[arm_par+m]['flag'][i,j] = flag_clean
 
-                elif pntsrc_conf_par[arm_par+m]['wave_low'][i,j] == 9999.0:
-                    pntsrc_conf_par[arm_par+m]['flag'][i,j] = flag_warn
-                    pntsrc_conf_par[arm_par+m]['flag_comment'][i,j] = flag_9999
+                elif pntsrc_dict[arm_par+m]['wave_low'][i,j] == 9999.0:
+                    pntsrc_dict[arm_par+m]['flag'][i,j] = flag_warn
+                    pntsrc_dict[arm_par+m]['flag_comment'][i,j] = flag_9999
 
-                elif (pntsrc_conf_par[arm_par+m]['wave'][i,j] < cutoff_low or pntsrc_conf_par[arm_par+m]['wave'][i,j] > cutoff_high):
-                    pntsrc_conf_par[arm_par+m]['flag'][i,j] = flag_warn
-                    pntsrc_conf_par[arm_par+m]['flag_comment'][i,j] = flag_9995
+                elif (pntsrc_dict[arm_par+m]['wave'][i,j] < cutoff_low or pntsrc_dict[arm_par+m]['wave'][i,j] > cutoff_high):
+                    pntsrc_dict[arm_par+m]['flag'][i,j] = flag_warn
+                    pntsrc_dict[arm_par+m]['flag_comment'][i,j] = flag_9995
 
-                elif pntsrc_conf_par[arm_par+m]['wave_low'][i,j] == 9998.0:
-                    pntsrc_conf_par[arm_par+m]['flag'][i,j] = flag_warn
-                    pntsrc_conf_par[arm_par+m]['flag_comment'][i,j] = flag_9998
+                elif pntsrc_dict[arm_par+m]['wave_low'][i,j] == 9998.0:
+                    pntsrc_dict[arm_par+m]['flag'][i,j] = flag_warn
+                    pntsrc_dict[arm_par+m]['flag_comment'][i,j] = flag_9998
 
-                elif pntsrc_conf_par[arm_par+m]['wave_low'][i,j] == 9997.0:
-                    pntsrc_conf_par[arm_par+m]['flag'][i,j] = flag_warn
-                    pntsrc_conf_par[arm_par+m]['flag_comment'][i,j] = flag_9997
+                elif pntsrc_dict[arm_par+m]['wave_low'][i,j] == 9997.0:
+                    pntsrc_dict[arm_par+m]['flag'][i,j] = flag_warn
+                    pntsrc_dict[arm_par+m]['flag_comment'][i,j] = flag_9997
 
                 else:
-                    pntsrc_conf_par[arm_par+m]['flag'][i,j] = flag_confused
-                    pntsrc_conf_par[arm_par+m]['flag_comment'][i,j] = flag_9996				
+                    pntsrc_dict[arm_par+m]['flag'][i,j] = flag_confused
+                    pntsrc_dict[arm_par+m]['flag_comment'][i,j] = flag_9996				
                 
 
 
-    return(pntsrc_conf_par)
+    return(pntsrc_dict)
 
 
 
@@ -1191,24 +1518,36 @@ def pntsrc_flag_set(pntsrc_conf_par, src_pos_x_par, arm_par, subset_arr_par, heg
 def arm_conf_dict(num_sources, highest_order):
 
     """
-
-    This dictionary holds all of the relevant data for arm confusion between two sources. Arm confusion occurs when a confuser source 'j' bright enough to disperse many counts lies on the arm of another source bright enough to disperse many counts. The format of this dictionary is arm_confuse['arm+order'][parameter][i,j] where 'i' is the potentially CONFUSED source and 'j' is the potential CONFUSER source. For example, spec_confuse['meg-1']['wave'][5,10] shows that the meg arm of srcID=5 has potential confusion in the -1 order from the dispersed spectrum of SrcID=10. The value of the 'wave' parameter in this dictionary entry is the wavelength in angstrom where the spectral confusion occurs. Note, this dictionary is similar but slightly different than the point source and spectral confusion.
+    A nested dictionary that holds all of the relevant data for confusion between two sources for all sources in the
+    main_list. Each MEG/HEG arm has 6 orders and, in a general sense, all orders from one arm can interact with all 
+    orders from another arm. This nested dictionary was created to intelligently hold all of this information while 
+    still being relatively readable. The format of this dictionary is: arm_dict['arm+order'][parameter][i,j]
+    where 'i' is the potentially CONFUSED source and 'j' is the potential CONFUSER source. This dictionary
+    is slightly different than conf_dict() used for spectral and point source confusion. 
     
-    arm values are 'heg' or 'meg'
-    valid arm orders are [-3,-2,-1,+1,+2,+3]
-
-    confusion_dict['intersect_dist'] = The distance in pixels between the 0th order src 'i' and the 0th order src 'j' position (along the arm).
-    confusion_dict['0th_cnts_frac'] = the ratio of 0th order counts of the CONFUSER 'i' divided by CONFUSED 'j'
-    confusion_dict['arm_confused_wave'] = This identifies which order (e.g., -1 versus +1) the arm confusing 0th order point source lies on. This is used when determinig the range of wavelengths confused in arm confusion.
+    Arm confusion occurs when a confuser source 'j' is bright enough to disperse many counts and lies on the arm of 
+    another source bright enough to disperse many counts. 
     
-    confusion_dict['flag'] = primary flag which represents potential sources of confusion for ALL orders between source i and j.
-    confusion_dict['flag_comment'] = primary flag description which represents potential sources of confusion for ALL orders between source i and j.
+    arm values : HETG arm values 'heg' or 'meg'        
+    arm orders : HETG order values -3, -2, -1, +1, +2, +3  
 
-    confusion_dict['arm+order']['wave'] = the wavelength where confusion may occur
-    confusion_dict['arm+order']['wave_low'] = the lower bounds of where confusion may occur
-    confusion_dict['arm+order']['wave_high'] = the upper bounds of where confusion may occur
-    confusion_dict['arm+order']['flag'] = the flag which represents potential sources of confusion for a paritcular order between source i and j.
-    confusion_dict['arm+order']['flag_comment'] = the flag description which represents potential sources of confusion for a paritcular order between source i and j.		
+    ['intersect_dist'] : The distance in pixels between the 0th order src 'i' and the 0th order src 'j' position along 
+        the arm.
+    ['0th_cnts_frac'] : the ratio of 0th order counts of the CONFUSER 'i' divided by CONFUSED 'j'
+    ['arm_confused_wave'] : This identifies which order (e.g., -1 versus +1) the arm confusing 0th order point source 
+        falls on. This is used when determinig the range of wavelengths confused in arm confusion.
+    
+    ['flag'] : primary flag which represents potential sources of confusion for ALL orders between source i and j.
+    ['flag_comment'] : primary flag description which represents potential sources of confusion for ALL orders between 
+        source i and j.
+
+    ['arm+order']['wave'] : the wavelength where confusion may occur
+    ['arm+order']['wave_low'] : the lower bounds of where confusion may occur
+    ['arm+order']['wave_high'] : the upper bounds of where confusion may occur
+    ['arm+order']['flag'] : the flag which represents potential sources of confusion for a paritcular order between 
+        source i and j.
+    ['arm+order']['flag_comment'] : the flag description which represents potential sources of confusion for a 
+        paritcular order between source i and j.		
 
     """
 
@@ -1253,30 +1592,65 @@ def arm_conf_dict(num_sources, highest_order):
 
 
 
-def arm_confuse_wave(arm_conf_par, perp_dist_to_spec_arm_par, src_pos_x_par, P_arm_par, arm_par, arm_ang_par, roll_nom_par, src_off_axis_par, r0_offset_dist_from_contam_arm_par, counts_par, subset_arr_par, mm_per_pix_par=mm_per_pix, X_R_par=X_R ):
+def arm_confuse_wave(arm_dict, perp_dist_to_spec_arm_par, src_pos_x_par, P_arm_par, arm_par, arm_ang_par, roll_nom_par, src_off_axis_par, r0_offset_dist_from_contam_arm_par, counts_par, subset_sources, mm_per_pix_par=mm_per_pix, X_R_par=X_R ):
     
     """
-    Calculates ratio of 0th order counts (net_counts_confuser / net_counts_confused) for sources with potential arm confusion. This parameter is used in loop logic to flag arm confusion but also printed to final table to allow users judgement in determining if they want to remove associated confusion or not. 
+    Calculates ratio of 0th order counts (net_counts_confuser / net_counts_confused) for sources with potential 
+    arm confusion. This parameter is used in loop logic to flag arm confusion but also printed to final table to 
+    allow user's judgement in determining if they want to remove associated confusion or not.  Also calculates the 
+    distance from the 0th order confused source (wavelength) where the 0th order of the confuser falls 
+    on the spectrum. This distance (dx) is then used in later calculations to determine the wavelenght bounds where 
+    arm confusion can occur.
 
-    Calculates the distance from the 0th order confused source (wavelength) where the 0th order of the confuser falls on the spectrum. This distance (dx) is then used in later calculations to determine the wavelenght bounds where arm confusion can occur.
+    Notes
+    -----
+    Arm confusion is calculated using an off_axis_modifier which is an ESTIMATE of how the off-axis angle of 
+    the confuser source may impact arm confusion due to its larger PSF size. This is separated into three spatial bins 
+    of [< 3' (arcmin)], [> 3' and < 6'] and [> 6'] using Fig 4.13 of the Chandra proposers observing guide which shows 
+    the HRMA encircled energy fraction for off-axis sources. Focusing on the 1.5 keV curve,  if a 1'' PSF is 2pix up and 
+    2pix down (4pix but confusing source also has 4pix so equals 8pix then + 2 just in case = 10 = 
+    dist_to_super_bright_perp) then I can *assume* the number of pixels = 4*the eef. So at 2'' its off axis angle of 
+    4' so then its 4pix*2+2 * 2 and so on and so on. Should be ok cause most sources at least [i] will be < 3' but 
+    there may be issues for far off-axis sources espcially if they also intersect with other far off-axis sources.     
 
-    Many of the arm conf pars are the same as point source confusion since arm confusion occurs when a (bright) 0th order point sources falls on the spectrum of a source of interest. 
+    Many of the arm conf pars are the same as point source confusion since arm confusion occurs when a (bright) 
+    0th order point sources falls on the spectrum of a source of interest. 
+    
+    Parameters
+    ----------
+    arm_dict : dictionary
+        Arm confusion dict which holds all possible arm confusion entries for every source in main_list.    
+    perp_dist_to_spec_arm_par : float
+        distance in pixels from the 0th order confusing source 'j' perpendicular to the dispersed arm of the 
+        confused source 'i'.
+    src_pos_x_par : float
+        Positions in physical units associated with sources in the main_list.
+    P_arm_par : float
+        HEG or MEG gratings period which is an instrumental constant.
+    arm_par : str
+        HETG 'heg' or 'meg' arm.
+    roll_nom_Par : float
+        Roll angle of the observation taken from the fits header.
+    src_off_axis_par : float
+        Off-axis angle of the source in arcseconds
+    r0_offset_dist_from_contam_arm_par: float
+        This is an offset value needed when calculating the distance between 0th order of the confused source and the 
+        0th order of the confuser source.
+    counts_par : int
+        The number of 0th order counts.
+    subset_sources : str
+        list of sources to generate confusion files for.
+    mm_per_pix : float
+        The constant number of millimeters per ACIS pixel. (CONSTANT = 0.023987)
+    X_R : float
+        Rowland  diameter in millimeters (CONSTANT=8632.48)        
 
-    arm_conf_par = arm_conf dictionary
-    perp_dist_to_spec_par = distance in pixels from the 0th order confusing source (j) perpendicular to the dispersed arm of the confused source (i)
-    src_post_x_par = array of source positions
-    arm_par = 'heg' or 'meg'
-    arm_ang_par = grating angle unique for meg and heg
-    roll_nom_par = roll angle of the observation
-    r0_offset_dist_from_contam_arm_par = (defined previously) This is an offset value needed when calculating the distance between 0th order of the confused source and the 0th order of the confuser source.
-    counts_par = array of 0th order counts for each source
-
-    Note --> arm confusion is calcualted using an off_axis_modifier which is an ESTIMATE of how the off-axis angle of the confuser source may impact arm confusion due to its larger PSF size. This is separated into three spatial bins of < 3' (arcmin), > 3' and < 6' and > 6' using Fig 4.13 of the Chandra proposers observing guide which shows the HRMA encircled energy fraction for off-axis sources. Focusing on the 1.5 keV curve,  if a 1'' PSF is 2pix up and 2pix down (4pix but confusing source also has 4pix so equals 8pix then + 2 just in case = 10 = dist_to_super_bright_perp) then I can *assume* the number of pixels = 4*the eef. So at 2'' its off axis angle of 4' so then its 4pix*2+2 * 2 and so on and so on. Should be ok cause most sources at least [i] will be < 3' but there may be issues for far off-axis sources espcially if they also intersect with other far off-axis sources. 
+    Returns
+    -------
+    Updates values in arm_dict and returns dictionary.
 
     """
-
-
-    for i in subset_arr_par:
+    for i in subset_sources:
 
         if src_off_axis_par[i] < 180:
             off_axis_modifier_i = 1
@@ -1300,64 +1674,85 @@ def arm_confuse_wave(arm_conf_par, perp_dist_to_spec_arm_par, src_pos_x_par, P_a
 
             #First calculate 0th_counts_frac for the relevant sources
             if i != j and counts_par[i] > 0 and counts_par[j] > min_HETG_counts and np.abs(perp_dist_to_spec_arm_par[i,j]) < (dist_to_super_bright_perp * off_axis_modifier_i * off_axis_modifier_j):
-                arm_conf_par['0th_cnts_frac'][arm_par][i,j] = counts_par[j] / counts_par[i]
+                arm_dict['0th_cnts_frac'][arm_par][i,j] = counts_par[j] / counts_par[i]
 
             #second, use '0th_cnts_frac' to calcualte arm_confusion location -- Basically identical to point source confusion calculation but with different loop condition.
-            if (perp_dist_to_spec_arm_par[i,j] != 0) and (arm_conf_par['0th_cnts_frac'][arm_par][i,j] > 0):
-                arm_conf_par['intersect_dist'][arm_par][i,j] = abs((src_pos_x_par[j]-src_pos_x_par[i]) / math.sin(math.radians(90-arm_ang_par)) + r0_offset_dist_from_contam_arm_par[i,j])
+            if (perp_dist_to_spec_arm_par[i,j] != 0) and (arm_dict['0th_cnts_frac'][arm_par][i,j] > 0):
+                arm_dict['intersect_dist'][arm_par][i,j] = abs((src_pos_x_par[j]-src_pos_x_par[i]) / math.sin(math.radians(90-arm_ang_par)) + r0_offset_dist_from_contam_arm_par[i,j])
 
                 for m in ['1','2','3']:
                     if (roll_nom_par > 271 and roll_nom_par < 360) or (roll_nom_par >0 and roll_nom_par < 90):
                         if src_pos_x_par[j] > src_pos_x_par[i]:
-                            arm_conf_par[arm_par+'+'+m]['wave'][i,j] = np.around(( P_arm_par * ( (arm_conf_par['intersect_dist'][arm_par][i,j]*mm_per_pix_par )/X_R_par) ) / int(m), decimals=3) #divide by order number
+                            arm_dict[arm_par+'+'+m]['wave'][i,j] = np.around(( P_arm_par * ( (arm_dict['intersect_dist'][arm_par][i,j]*mm_per_pix_par )/X_R_par) ) / int(m), decimals=3) #divide by order number
                         elif src_pos_x_par[j] < src_pos_x_par[i]:
-                            arm_conf_par[arm_par+'-'+m]['wave'][i,j] = np.around(( P_arm_par * ( (arm_conf_par['intersect_dist'][arm_par][i,j]*mm_per_pix_par )/X_R_par) ) / int(m), decimals=3) #divide by order number		
+                            arm_dict[arm_par+'-'+m]['wave'][i,j] = np.around(( P_arm_par * ( (arm_dict['intersect_dist'][arm_par][i,j]*mm_per_pix_par )/X_R_par) ) / int(m), decimals=3) #divide by order number		
                         else:
                             print(f'ERROR in point source confuse calculation for i,j,m = {i,j,m}')													
                     elif (roll_nom_par > 90 and roll_nom_par < 270):
                         if src_pos_x_par[j] < src_pos_x_par[i]:
-                            arm_conf_par[arm_par+'+'+m]['wave'][i,j] = np.around(( P_arm_par * ( (arm_conf_par['intersect_dist'][arm_par][i,j]*mm_per_pix_par )/X_R_par) ) / int(m), decimals=3) #divide by order number
+                            arm_dict[arm_par+'+'+m]['wave'][i,j] = np.around(( P_arm_par * ( (arm_dict['intersect_dist'][arm_par][i,j]*mm_per_pix_par )/X_R_par) ) / int(m), decimals=3) #divide by order number
                         elif src_pos_x_par[j] > src_pos_x_par[i]:
-                            arm_conf_par[arm_par+'-'+m]['wave'][i,j] = np.around(( P_arm_par * ( (arm_conf_par['intersect_dist'][arm_par][i,j]*mm_per_pix_par )/X_R_par) ) / int(m), decimals=3) #divide by order number							
+                            arm_dict[arm_par+'-'+m]['wave'][i,j] = np.around(( P_arm_par * ( (arm_dict['intersect_dist'][arm_par][i,j]*mm_per_pix_par )/X_R_par) ) / int(m), decimals=3) #divide by order number							
                         else:
                             print(f'ERROR in point source confuse calculation for i,j,m, roll_nom_par = {i,j,m, roll_nom_par}')
                     else:
                         print('ERROR -- Check roll_nom_par value and make sure it isnt close to 90 or 270, if so plus and minus orders may be confused')
 
 
-    return(arm_conf_par)
+    return(arm_dict)
 
 
 
-def determine_confused_order(arm_conf_par, src_pos_x_par, arm_par):
+def determine_confused_order(arm_dict, src_pos_x_par, arm_par):
 
     """
-    Identifies which of the arm orders that the 0th order lands on for later use in arm boundary calculation (dx). Note, for an i,j pair there can only be ONE arm+order the 0th order falls on. 
+    Identifies which of the arm orders that the 0th order lands on for later use in arm boundary calculation (dx). 
+    Note, for an i,j pair there can only be ONE arm+order the 0th order falls on. 
+    
+    Parameters
+    ----------
+    arm_dict : dictionary
+        Arm confusion dict which holds all possible arm confusion entries for every source in main_list.    
+    src_pos_x_par : float
+        Positions in physical units associated with sources in the main_list.
+    arm_par : str
+        HETG 'heg' or 'meg' arm.
 
-    arm_conf_par = arm confusion dictionary
-    src_pos_x_par = src X positions
-    arm_par = 'heg' or 'meg'
-
+    Returns
+    -------
+    Updates arm_dict and returns the dictionary
     """
 
     for i in range(len(src_pos_x_par)):
         for j in range(len(src_pos_x_par)):
-            if arm_conf_par['0th_cnts_frac'][arm_par][i,j] > 0:
-                if arm_conf_par[arm_par+'+1']['wave'][i,j] != 0:	#note, change to easily demonstrate that !=0 means the value is filled and that is then where the confusion occurs between this and negative order. heg+1 and -1 can't both be filled for same source.
-                    arm_conf_par['arm_confused_wave'][arm_par][i,j] = arm_conf_par[arm_par+'+1']['wave'][i,j]
-                elif arm_conf_par[arm_par+'-1']['wave'][i,j] != 0:
-                    arm_conf_par['arm_confused_wave'][arm_par][i,j] = -1 * arm_conf_par[arm_par+'-1']['wave'][i,j]  # make the negative order negative
+            if arm_dict['0th_cnts_frac'][arm_par][i,j] > 0:
+                if arm_dict[arm_par+'+1']['wave'][i,j] != 0:	#note, change to easily demonstrate that !=0 means the value is filled and that is then where the confusion occurs between this and negative order. heg+1 and -1 can't both be filled for same source.
+                    arm_dict['arm_confused_wave'][arm_par][i,j] = arm_dict[arm_par+'+1']['wave'][i,j]
+                elif arm_dict[arm_par+'-1']['wave'][i,j] != 0:
+                    arm_dict['arm_confused_wave'][arm_par][i,j] = -1 * arm_dict[arm_par+'-1']['wave'][i,j]  # make the negative order negative
                 
-    return(arm_conf_par)
-
+    return(arm_dict)
 
 
 def calc_ccd_energy_res(arm_par):
     
     """
-    Creates an array of resolving power as a function of wavelength for MEG and HEG. Matches a polynomial fit of the ACIS resolving power as a function of energy (fig 6.14 in the proposers obseravtory guide) to the HEG/MEG arms for use in arm_flag_set() when calculating the OSIP boundaries for two sources that suffer arm confusion.
-    """
+    Creates an array of ACIS resolving power as a function of wavelength for MEG and HEG. Matches a polynomial fit of the 
+    ACIS resolving power as a function of energy (fig 6.14 in the proposers obseravtory guide) to the HEG/MEG arms for 
+    use in arm_flag_set() when calculating the OSIP boundaries for two sources that suffer arm confusion.
 
+    Parameters
+    ----------
+    arm_par : str
+    HETG 'heg' or 'meg' arm.
+
+    Returns
+    -------
+    res_power_arm_maxed : ACIS resolving power as a function of wavelength for 'heg' or 'meg'
+    hetg_arr_arm : an array of wavelengths at the spectral resolution of 'heg' or 'meg'
+
+    """
+    #set the max wavelength and resolution elements for HEG an dMEG
     if arm_par == 'heg' or arm_par == 'HEG':
         max_wave = 16 #must be int
         res_element = 0.01
@@ -1367,7 +1762,6 @@ def calc_ccd_energy_res(arm_par):
     else:
         raise ValueError('Could not set max_wave or res_element because arm_par could not be identified as meg or heg')
 
-
     planck = 4.135667696E-15
     c_speed = 2.9979E8 #m/s
 
@@ -1376,7 +1770,6 @@ def calc_ccd_energy_res(arm_par):
     ccd_lam_arm = np.arange(0,max_wave, res_element)  #create a wavelength array 
     ccd_lam_arm[0] = 0.0001 # replace the first element of this array with a tiny number that is not zero so it won't affect future calculations (divide by zero issues)
     ccd_E_arm = (planck * c_speed) / (1E-10 * ccd_lam_arm) #convert wavelength array to energy 
-
 
     #loop to calculate resolving power (R = de/E) from the best fit poly. Have to calc it for both heg and meg cause step size (in lam) is different 0.01 vs 0.02
     FWHM_poly_arm = [None] * len(ccd_E_arm) 
@@ -1390,7 +1783,6 @@ def calc_ccd_energy_res(arm_par):
     res_power_arm[1600:3200] = res_power_arm_positive[0:1600]
     hetg_arr_arm = np.arange(-1*max_wave, max_wave, res_element)
 
-
     #Ok, there is an issue with this method for very small wavelengths < 1 A which don't have E responses in the figure and the function extrapolation blows them up. So they are modified to top them off at the max rate. 
     res_power_arm_maxed = np.zeros(len(res_power_arm))
     for i in range(0, len(res_power_arm)):
@@ -1403,15 +1795,46 @@ def calc_ccd_energy_res(arm_par):
 
 
 
-def arm_flag_set(arm_conf_par, arm_par, src_pos_x_par, res_power_arm_maxed_par, hetg_arr_arm_par, subset_arr_par, nsig_par=6, heg_cutoff_high_par = heg_cutoff_high, meg_cutoff_high_par = meg_cutoff_high):
+def arm_flag_set(arm_dict, arm_par, num_sources, res_power_arm_maxed_par, hetg_arr_arm_par, subset_sources, nsig_par=6, heg_cutoff_high_par = heg_cutoff_high, meg_cutoff_high_par = meg_cutoff_high):
 
     """
-    When arm confusion occurs, order sorting regions will overlap depending on the distance between the two 0th order point sources (dx). This will calculate the wavelength for each order where the dispersed counts of a confuser source will improperly be assigned to the extracted (confused) source. These calculated wavelenghts are saved to ['wave_low'] and ['wave_high'] for each source and the flags are set appropriately (as described below).
+    When arm confusion occurs, order sorting regions will overlap depending on the distance between the two 0th order 
+    point sources (dx). This calculates the wavelength for each order where the dispersed counts of a confuser source 
+    will improperly be assigned to the extracted (confused) source. These calculated wavelenghts are saved to 
+    ['wave_low'] and ['wave_high'] for each source and the flags are set appropriately (as described below).
 
-    Flags:
+    
+   Parameters
+    ----------
+    arm_dict : dictionary
+        Arm confusion dict which holds all possible arm confusion entries for every source in main_list. 
+    arm_par : str
+        HETG 'heg' or 'meg' arm.           
+    num_source : int
+        Then number of sources in main_list.
+    res_power_arm_maxed_par : float, array
+        ACIS resolving power as a function of wavelength for 'heg' or 'meg'
+    hetg_arr_arm_par : float, array
+       Array of wavelengths at the spectral resolution of 'heg' or 'meg'
+    subset_sources : str
+        list of sources for which to generate confusion files.
+    nsig_par : float
+        Approximation for how wide the OSIP range is for order sorting when determining which events are part of the 
+        Nth order spectrum.
+    heg/meg cutoff high : float
+        Wavelength in angstroms above which the HEG and MEG effective areas go to zero or the user doesn't care 
+        outside this max wavelength bounds.
+    
+    Returns
+    -------
+    Updates values in arm_dict and returns dictionary.
 
-    flag_99 = 'arm is confused from another bright source'
-    flag_98 = 'only one of the two +/- orders of an arm is confused because the confuser source distance (dx) is sufficiently large to allow order sorting to mitigate confusion on the other arm'
+
+    Arm Confusion Flags
+    -------------------
+    flag_99 : arm is confused from another bright source
+    flag_98 : only one of the two +/- orders of an arm is confused because the confuser source distance (dx) is 
+        sufficiently large to allow order sorting to mitigate confusion on the other arm
     """
 
     flag_clean = 'clean'
@@ -1428,21 +1851,18 @@ def arm_flag_set(arm_conf_par, arm_par, src_pos_x_par, res_power_arm_maxed_par, 
     else:
         raise ValueError('Could not set arm_cutoff_high because arm_par value was not heg or meg')
 
+    for i in subset_sources:
+        for j in range(0,num_sources):
 
-
-    for i in subset_arr_par:
-        for j in range(0,len(src_pos_x_par)):
-
-            if arm_conf_par['arm_confused_wave'][arm_par][i,j] != 0:
+            if arm_dict['arm_confused_wave'][arm_par][i,j] != 0:
 
                 arm_confuse_hetg = [None] * len(hetg_arr_arm_par)
                 x = hetg_arr_arm_par
-                dx = arm_conf_par['arm_confused_wave'][arm_par][i,j]
+                dx = arm_dict['arm_confused_wave'][arm_par][i,j]
                 if dx == 0:
                     print(f'Warning, dx=0 for {i,j}')
                 
                 k_fwhm_sig = np.sqrt(np.log(256))
-
 
                 arm_confuse_hetg = np.abs( (nsig_par / (res_power_arm_maxed_par * k_fwhm_sig) ) * ( ( 2*x / dx) -1 ) ) #note, this **should** work cause res_power_HEG is on same scale so it should just calculate per array value each one. NEed to check though
 
@@ -1475,69 +1895,77 @@ def arm_flag_set(arm_conf_par, arm_par, src_pos_x_par, res_power_arm_maxed_par, 
                     #these are set because I will ignore them using this logic next if statement. Probably is a better way to address this. If this gets executed that means there is NO arm confusion so 'confused' flag needs to be reset to 'not confused'
                     hetg_high = -1*arm_cutoff_high
 
-
                 for m in ['1','2','3']:
                     #note-- here I am populating wave_low and wave_high values REGARDLESS of whether there actually is arm confusion determined via OSIP boundaries. Consider putting this in if statement below so its only populated when real confusion occurs.
                     #positive orders
-                    arm_conf_par[arm_par+'+'+m]['wave_low'][i,j] = hetg_high / int(m)
-                    arm_conf_par[arm_par+'+'+m]['wave_high'][i,j] = arm_cutoff_high / int(m)
+                    arm_dict[arm_par+'+'+m]['wave_low'][i,j] = hetg_high / int(m)
+                    arm_dict[arm_par+'+'+m]['wave_high'][i,j] = arm_cutoff_high / int(m)
                     
                     #negative orders
-                    arm_conf_par[arm_par+'-'+m]['wave_low'][i,j] = np.abs(hetg_low) / int(m)
-                    arm_conf_par[arm_par+'-'+m]['wave_high'][i,j] = arm_cutoff_high / int(m)
+                    arm_dict[arm_par+'-'+m]['wave_low'][i,j] = np.abs(hetg_low) / int(m)
+                    arm_dict[arm_par+'-'+m]['wave_high'][i,j] = arm_cutoff_high / int(m)
 
                     #if both values are pegged at limits then no confusion, otherwise one or both orders are confused.
                     if (hetg_low == (-1*arm_cutoff_high) and hetg_high == (-1*arm_cutoff_high)):
-                        arm_conf_par[arm_par+'+'+m]['flag'][i,j] = flag_clean
-
-                        arm_conf_par[arm_par+'-'+m]['flag'][i,j] = flag_clean
+                        arm_dict[arm_par+'+'+m]['flag'][i,j] = flag_clean
+                        arm_dict[arm_par+'-'+m]['flag'][i,j] = flag_clean
 
                     elif (hetg_low == (-1*arm_cutoff_high)):
-
-                        arm_conf_par[arm_par+'-'+m]['flag'][i,j] = flag_warn
-                        arm_conf_par[arm_par+'-'+m]['flag_comment'][i,j] = flag_98
+                        arm_dict[arm_par+'-'+m]['flag'][i,j] = flag_warn
+                        arm_dict[arm_par+'-'+m]['flag_comment'][i,j] = flag_98
                         
-                        arm_conf_par[arm_par+'+'+m]['flag'][i,j] = flag_confused
-                        arm_conf_par[arm_par+'+'+m]['flag_comment'][i,j] = flag_99
+                        arm_dict[arm_par+'+'+m]['flag'][i,j] = flag_confused
+                        arm_dict[arm_par+'+'+m]['flag_comment'][i,j] = flag_99
 
                     elif (hetg_high == (-1*arm_cutoff_high)):
-
-                        arm_conf_par[arm_par+'-'+m]['flag'][i,j] = flag_confused
-                        arm_conf_par[arm_par+'-'+m]['flag_comment'][i,j] = flag_99
+                        arm_dict[arm_par+'-'+m]['flag'][i,j] = flag_confused
+                        arm_dict[arm_par+'-'+m]['flag_comment'][i,j] = flag_99
                         
-                        arm_conf_par[arm_par+'+'+m]['flag'][i,j] = flag_warn
-                        arm_conf_par[arm_par+'+'+m]['flag_comment'][i,j] = flag_98
-
+                        arm_dict[arm_par+'+'+m]['flag'][i,j] = flag_warn
+                        arm_dict[arm_par+'+'+m]['flag_comment'][i,j] = flag_98
                     else:
-                        arm_conf_par[arm_par+'+'+m]['flag'][i,j] = flag_confused
-                        arm_conf_par[arm_par+'+'+m]['flag_comment'][i,j] = flag_99
+                        arm_dict[arm_par+'+'+m]['flag'][i,j] = flag_confused
+                        arm_dict[arm_par+'+'+m]['flag_comment'][i,j] = flag_99
 
-                        arm_conf_par[arm_par+'-'+m]['flag'][i,j] = flag_confused
-                        arm_conf_par[arm_par+'-'+m]['flag_comment'][i,j] = flag_99										
+                        arm_dict[arm_par+'-'+m]['flag'][i,j] = flag_confused
+                        arm_dict[arm_par+'-'+m]['flag_comment'][i,j] = flag_99										
 
-
-    return(arm_conf_par)
+    return(arm_dict)
 
 
 ####MAIN FLAG SET####
 
 
-def main_flag_set(conf_dict_par, src_pos_x_par, subset_arr_par):
+def main_flag_set(conf_dict_par, num_sources, subset_sources):
     """
-    This will set the main flag parameters (spec, pntsrc, arm)_conf['flag'] and ['flag_comment'] values based on their respective ['arm+order']['flag'] values. If one source [i] has no confusion with another source [j] based on the individual flags, then the entire source will be determined 'clean' (no confusion). If ALL arm+order flags are either 'clean' or 'warn' then this will set flag to 'warn'. If ANY arm+order flag is 'confused' then this value will become 'confused'. This is primarily used in write_conf_table() to remove unnecessary output.
+    Sets the main flag parameters (spec, pntsrc, arm)_conf['flag'] and ['flag_comment'] values based on their 
+    respective ['arm+order']['flag'] values. If one source 'i' has no confusion with another source 'j' based on the 
+    individual arm/order flags, then the entire source will be determined 'clean' (no confusion). If ALL arm+order 
+    flags are a combination of 'clean' and 'warn' then this will set flag to 'warn'. If ANY arm+order flag is 
+    'confused' then the flag value is set to 'confused'. This is primarily used in write_conf_table() to remove 
+    unnecessary output.
 
-    #note, the order of the 'else-ifs' in this loop are important. Clean flag is only set if 'confused' or 'warn' doesn't trigger first.
-    #consider redoing this flag in a way that doesn't have to loop through so many things.
+    Note, the order of the 'else-ifs' in this loop are important. Clean flag is only set if 'confused' or 'warn' 
+    doesn't trigger first. Consider redoing this flag in a way that doesn't have to loop through so many things.
+
+    Parameters
+    ----------
+    conf_dict_par : dictionary
+        Confusion dictionary which can be spectral confusion, pointsource confusion or arm confusion.
+    num_sources : int
+        Number of sources in the main_list
+    subset_sources : int, list
+        List of sources for which to generate confusion files.
+
+    Returns
+    -------
+    Sets the main flags and returns the input (updated) conf_dict.
     """
-
-    #for i in range(0,len(src_pos_x)):
-    for i in subset_arr_par:
-        for j in range(0,len(src_pos_x_par)):
+    for i in subset_sources:
+        for j in range(0,num_sources):
             flag_checker = np.array([], dtype='object')
             flag_warn_comments = ''
             flag_confused_comments = ''				
-            # flag_warn_comments = np.array([], dtype='object')
-            # flag_confused_comments = np.array([], dtype='object')
 
             for n in ['heg','meg']:
                 for m in ['-3','-2','-1','+1','+2','+3']:
@@ -1571,30 +1999,69 @@ def main_flag_set(conf_dict_par, src_pos_x_par, subset_arr_par):
 
 
 
-def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_par, output_dir_par, srcID_par, counts_par, RA_par, DEC_par, remove_clean = 'yes', row_num=808, consolidate_table = False):
+def write_full_conf_table(spec_dict, pntsrc_dict, arm_dict, obsid_par, output_dir_par, srcID_par, counts_par, RA_par, DEC_par, remove_clean = 'yes', row_num=808, consolidate_table = False):
 
     """
-    Extracts a single source (row) from the three nested dictionaries (one for each confusion type) and creates a fits table summarizing the detected confusion parameters. The user has the option of saving every source and their associated parameter values but most of the time there is no confusion and its unneccesary to include everything. Users can filter to only produce tables where confusion occurs (flag='confused') or where confusion was close to occuring (flag='warn'). This is a relatively complex function to accomodate pycrates as a fits-writing tool throughout CrissCross. This function could be made significantly simpler using astropy or pandas tables.
-    
-    spec_conf_par = spec confusion dictionary
-    pntsrc_conf_par = point source confusion dictionary
-    arm_conf_par = arm confusion dictionary
-    obsid_par = observation ID
-    remove_clean = 'yes' -- will only save flag='confused' or flag='warn' instances of confusion to the output table. 'no' -- will save ALL instances (including flag = 'clean')
-    row_num = The element of the input source list for which you want to create a confusion table. 
-    srcID_par = the array of srcIDs to save into confusion tables
-    counts_par = counts array holding the 0th order counts for each source in source list.
-    consolidate_table = 'yes' -- Generate a consolidated table where every row shows a single instance of confusion. This table is most helpful for using with spectral fitting/plotting programs.
+    Extracts a single source (row) from the three nested dictionaries (one for each confusion type) and creates a fits 
+    table summarizing the detected confusion parameters. The user has the option of saving every source and their 
+    associated parameter values but most of the time there is no confusion and its unneccesary to include everything. 
+    Users can filter to only produce tables where confusion occurs (flag='confused') or where confusion was close to 
+    occuring (flag='warn'). This is a relatively complex function to accomodate pycrates as a fits-writing tool 
+    throughout CrissCross. This function could be made significantly simpler using astropy or pandas tables.
+
+    Parameters
+    ----------
+    spec_dict, pntsrc_dict, arm_dict : dictionaries
+        The final confusion dictionaries for all three types of confusion.
+    obsid_par : str
+        The obsID value associated with the observations.
+    output_dir_par : str
+        directory where the confusion output tables will be saved.
+    srcID_par : int, list
+        The list of element numbers associated with each source in the main_list. 
+    counts_par : int
+        The number of 0th order counts associated with each source in the main_list.
+    RA_par, Dec_par : float
+        Right ascension and declination in J2000 degrees associated with the source for which the confusion tables are generated. This value
+        is saved in the output table header.
+    remove_clean : bool
+        'yes' will save all confusion results to table (clean, warn and confused) and 'no' will save only 'warn' and 
+        'confused'.
+    row_num : int
+        The element (row) associated with a source from the main list. This source is the source for which the 
+        confusion table is generated.
+    consolidate table : bool
+        If set to 'True', this will create both a 'full' and a 'consolidated' table. The smaller table is much more 
+        readable.
     """
 
 
-    def set_mask_par(spec_conf_par, pntsrc_conf_par, arm_conf_par, remove_clean, row_num ):
+    def set_mask_par(spec_dict, pntsrc_dict, arm_dict, remove_clean, row_num ):
         """
-        Sets the mask parameter which identifies the table rows to include in the final output product. If 'remove_clean' = 'yes' then the output tables will only show sources that have at least one flag=confused or flag=warn in all of the arms/orders/confusion_type. If 'remove_clean' != 'yes' then all sources are included in the final table. Warning -- if the number of sources are large then this table can become large fast. 
+        Sets the mask parameter which identifies the table rows to include in the final output product. If 
+        'remove_clean' = 'yes' then the output tables will only show sources that have at least one flag=confused or 
+        flag=warn in all of the arms/orders/confusion_type. If 'remove_clean' != 'yes' then all sources are included 
+        in the final table. Warning -- if the number of sources are large then this table can become large fast. 
+
+        Parameters
+        ---------
+        spec_dict, pntsrc_dict, arm_dict : dictionaries
+            The final confusion dictionaries for all three types of confusion.
+        remove_clean : bool
+            'yes' will save all confusion results to table (clean, warn and confused) and 'no' will save only 'warn' and 
+            'confused'.
+        row_num : int
+            The element (row) associated with a source from the main list. This source is the source for which the 
+            confusion table is generated.    
+
+        Returns
+        -------
+        mask par : array
+            The elements in the input dictionary that were identified with the remove_clean bool logic.    
         """
         
         if remove_clean == 'yes':
-            mask_par = np.where( ((spec_conf_par['flag'][row_num] == 'confused') | (spec_conf_par['flag'][row_num] == 'warn')) | ((pntsrc_conf_par['flag'][row_num] == 'confused') | (pntsrc_conf_par['flag'][row_num] == 'warn')) | ((arm_conf_par['flag'][row_num] == 'confused') | (arm_conf_par['flag'][row_num] == 'warn'))    )[0].tolist()
+            mask_par = np.where( ((spec_dict['flag'][row_num] == 'confused') | (spec_dict['flag'][row_num] == 'warn')) | ((pntsrc_dict['flag'][row_num] == 'confused') | (pntsrc_dict['flag'][row_num] == 'warn')) | ((arm_dict['flag'][row_num] == 'confused') | (arm_dict['flag'][row_num] == 'warn'))    )[0].tolist()
 
         else:
             mask_par = None
@@ -1603,10 +2070,26 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
 
 
 
-    def extract_conf_row(confusion_dict, row_index, mask_par):
+    def extract_conf_row(confusion_dict, row_num, mask_par):
         """
-        Extracts a single row from every array inside the confusion_dict
-        and returns a new nested dictionary with the same structure. This utilizes that mask_parameter from set_mask_par() and will only return the indices included in the mask (if remove_clean = 'yes').
+        Extracts a single row from every array inside the confusion_dict and returns a new nested dictionary with 
+        the same structure. This utilizes that mask_parameter from set_mask_par() and will only return the indices 
+        included in the mask (if remove_clean = 'yes').
+
+        Parameters
+        ---------
+        confusion_dict : dictionary
+            Any confusion dictionary.
+        row_num : int
+            The element (row) associated with a source from the main list. This source is the source for which the 
+            confusion table is generated.            
+        mask par : array
+            The elements in the input dictionary that were identified with the remove_clean bool logic.
+
+        Returns
+        -------
+        filtered_dict : nested dictionary
+            Returns a nested dictionary containing a single source (row_num) from the main confusion dictionary. 
         """
 
         filtered_dict = {}
@@ -1618,30 +2101,30 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
                 filtered_dict[key] = {}
                 for subkey, arr in value.items():
                     if mask_par != None:
-                        filtered_dict[key][subkey] = arr[row_index, mask_par]
+                        filtered_dict[key][subkey] = arr[row_num, mask_par]
                     else:
-                        filtered_dict[key][subkey] = arr[row_index, :]
+                        filtered_dict[key][subkey] = arr[row_num, :]
 
 
             # Case 2: intersect_dist, xintercept, yintercept (dict of heg/meg arrays)
             elif isinstance(value, dict) and set(value.keys()) == {"heg", "meg"}:
                 if mask_par != None:
                     filtered_dict[key] = {
-                        "heg": value["heg"][row_index, mask_par],
-                        "meg": value["meg"][row_index, mask_par]
+                        "heg": value["heg"][row_num, mask_par],
+                        "meg": value["meg"][row_num, mask_par]
                     }
                 else:
                     filtered_dict[key] = {
-                        "heg": value["heg"][row_index, :],
-                        "meg": value["meg"][row_index, :]
+                        "heg": value["heg"][row_num, :],
+                        "meg": value["meg"][row_num, :]
                     }						
 
             # Case 3: global arrays (flag, flag_comment)
             elif isinstance(value, np.ndarray):
                 if mask_par != None:
-                    filtered_dict[key] = value[row_index, mask_par]
+                    filtered_dict[key] = value[row_num, mask_par]
                 else:
-                    filtered_dict[key] = value[row_index, :]
+                    filtered_dict[key] = value[row_num, :]
                     
             else:
                 raise ValueError(f"Unexpected structure in key '{key}'")
@@ -1653,7 +2136,12 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
     def flatten_confusion_dict(d, parent_key="", sep="_"):
         
         """
-        crates wont take a nested dictionary as an argument so this flattens the dictionary for easy input to crates.
+        Crates can't take a nested dictionary as an argument so this flattens the dictionary for easy input to crates.
+
+        Returns
+        ------
+        flat = dictionary
+            A flattened (non-nested) confusion dictionary.
         """
 
         flat = {}
@@ -1672,7 +2160,13 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
     def convert_obj_to_string(flat):
         
         """
-        Crates won't accept 'object' datatypes (the flags and flag_comments in the dictionary) so this converts them to strings.
+        Crates can't accept 'object' datatypes (the flags and flag_comments in the dictionary) so this converts 
+        them to strings.
+
+        Returns
+        -------
+        flat : dictionary
+            Returns input dictionary but converting the object datatypes to strings.
         """
 
         for i in flat:
@@ -1685,7 +2179,15 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
     def merge_conf_crates(conf_crate_par, merged_crate_par):
 
         """
-        Concatenates crate tables (conf_crate_par) to a new 'merged' table. This is used to concatenate the multiple types of confusion (spec, pntsrc and arm) since they are all (mostly) unique.
+        Concatenates crate tables (conf_crate_par) to a new 'merged' table. This is used to concatenate the multiple 
+        types of confusion (spec, pntsrc and arm) since they are all (mostly) unique.
+
+        Parameters
+        ----------
+        conf_crate_par : Crate
+            Confusion table that has been converted into crate format
+        merged_crate_par : Crate
+            An empty crate to merge other crates into.
         """
 
         for colname in conf_crate_par.get_colnames():
@@ -1699,7 +2201,25 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
     def make_flattened_conf_table(conf_par, root_par, mask_par):
 
         """
-        Runs several of the above functions to ultimately create a crates table from a nested dictionary while appending the name of the dictionary (spec, pnt, arm) to the columns. Returns crate for table generation and flattened dict for use in consolidated table.
+        Runs several of the above functions to ultimately create a crates table from a nested dictionary while 
+        appending the name of the dictionary (spec, pnt, arm) to the columns. Returns crate for table generation and 
+        flattened dict for use in consolidated table.
+
+        Parameters
+        ----------
+        conf_par : dictionary
+            Confusion dictionary
+        root_par : str
+            Root for naming the types of confusion in the merged crate.
+        mask_par : array
+            The elements in the input dictionary that were identified with the remove_clean bool logic.
+
+        Returns
+        -------
+        crate_conf : Crate
+            The crate created from a confusion_dict
+        flattened_dict : dict
+            The flattened (non-nested) dictionary
         """
     
         single_row = extract_conf_row(conf_par, row_num, mask_par)
@@ -1713,11 +2233,30 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
         return(crate_conf, flattened_dict)
 
 
-    def make_ancillary_crate(srcID_par, counts_par, mask_par, spec_conf_par, obsid_par):
+    def make_ancillary_crate(srcID_par, counts_par, mask_par, num_sources, obsid_par):
         """
-        Add supplementary info to the table such as obsID, srcID and number of 0th order counts before merging all three sources of confusion. 
-        """
+        Add supplementary info to the table such as obsID, srcID and number of 0th order counts before merging 
+        all three sources of confusion. 
 
+        Parameters
+        ----------
+        srcID_par : int
+            Adds the srcID (element/row) number associated with the confusing source to the crate table
+        counts_par : int
+            Adds the number of 0th order counts for each srcID to the crate table
+        mask_par : array
+            The elements in the input dictionary that were identified with the remove_clean bool logic.
+        num_sources : int
+            The number of sources in the main_list.
+        obsid_par : str
+            The obsID associated with the observation.
+
+        Returns
+        -------
+        anc_crate : crate object
+            A new crate with ancillary data added.
+
+        """
         obsid_arr = CrateData()
         srcid_arr = CrateData()
         pntsrc_counts_arr = CrateData()
@@ -1727,9 +2266,7 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
         pntsrc_counts_arr.name = '0th_order_confused_cnts'
 
 
-        if mask_par == None:
-            num_sources = len(spec_conf_par['flag'])
-            
+        if mask_par == None:            
             obsid_arr.values = np.full(num_sources, int(obsid_par))				
             srcid_arr.values = np.arange(0,num_sources,1)				
             pntsrc_counts_arr.values = counts_par				
@@ -1754,16 +2291,13 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
 
     ###BEGIN TABLE CREATION
 
-    mask_par = set_mask_par(spec_conf_par, pntsrc_conf_par, arm_conf_par, remove_clean, row_num)
-    # print(mask_par)
-    # print(type(mask_par))
-    # print(len(mask_par))
+    mask_par = set_mask_par(spec_dict, pntsrc_dict, arm_dict, remove_clean, row_num)
 
-    spec_conf_crate, spec_conf_flattened = make_flattened_conf_table(conf_par=spec_conf_par, root_par='spec_', mask_par = mask_par)
-    pntsrc_conf_crate, pntsrc_conf_flattened =  make_flattened_conf_table(conf_par=pntsrc_conf_par, root_par='pnt_', mask_par = mask_par)
-    arm_conf_crate, arm_conf_flattened =  make_flattened_conf_table(conf_par=arm_conf_par, root_par = 'arm_', mask_par = mask_par)
+    spec_conf_crate, spec_conf_flattened = make_flattened_conf_table(conf_par=spec_dict, root_par='spec_', mask_par = mask_par)
+    pntsrc_conf_crate, pntsrc_conf_flattened =  make_flattened_conf_table(conf_par=pntsrc_dict, root_par='pnt_', mask_par = mask_par)
+    arm_conf_crate, arm_conf_flattened =  make_flattened_conf_table(conf_par=arm_dict, root_par = 'arm_', mask_par = mask_par)
 
-    ancillary_crate = make_ancillary_crate(srcID_par=srcID_par, counts_par=counts_par, mask_par=mask_par, spec_conf_par=spec_conf_par, obsid_par=obsid_par)
+    ancillary_crate = make_ancillary_crate(srcID_par=srcID_par, counts_par=counts_par, mask_par=mask_par, num_sources=len(spec_dict['flag']), obsid_par=obsid_par)
 
     merged_crate = TABLECrate()
     
@@ -1891,11 +2425,19 @@ def write_full_conf_table(spec_conf_par, pntsrc_conf_par, arm_conf_par, obsid_pa
 
 def end_of_run_cleanup(output_dir_list_par, obsid_par, wavdetect_par=False):
     """
-    Cleans up directory at end of CrissCross run. Creates a wavdetect file output folder if CrissCross runs wavdetect and moves the appropraite files there. Also checks the confusion tables to make sure they are not empty (no confusion) and if so it deletes the empty ones.
+    Cleans up directory at end of CrissCross run. Creates a wavdetect file output folder if CrissCross runs wavdetect 
+    and moves the appropraite files there. Also checks the confusion tables to make sure they are not empty 
+    (no confusion) and if so it deletes the empty ones.
 
-    output_dir_list_par = outpur directory
-    obsid_par = obsID num
-    wavdetect_par = True if CrissCross ran wavdetect (run_wavdetect()) and false if not. This will create and move the wavdetect output files.
+    Parameters
+    ----------
+    output_dir_list_par : str
+        Output directory where CrissCross files are saved
+    obsid_par : str
+        ObsID associated with the observation.
+    wavdetect_par : bool
+        Boolean to identify whether CrissCross ran wavdetect or the user supplied the table on their own. This affects 
+        whether wavdetect ancillar files were created and need to be moved to a new dir for cleanup.
     """
     
     #create the directories to hold CrissCross files
@@ -1937,14 +2479,27 @@ def time_logger(mode, time_started=[], time_counter=[], message=[]):
     """
     Creates a time logger and prints relevant steps in the code to the screen. 
 
-    Example usage:
+    Parameters
+    ---------
+    mode : str
+        Controls much of the logic how function prints info to screen. Options are 'start', 'update', 'end'.
+    time_started : time object
+        The time at the moment of program execution
+    time_counter : int
+        A counter to count the number of times the function was run throughout the program.
+    message : str
+        A message to print to the screen when executed.
+
+    Example usage
+    -------------
 
     time_log_start, time_log_counter = time_logger(mode='start')
-    time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message='message 1')
-    time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message='message 2')
+    time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, 
+    message='message 1')
+    time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, 
+    message='message 2')
 
     """
-
     if mode == 'start':
         time_start = time.time()
         time_log_counter = 0
@@ -1959,7 +2514,6 @@ def time_logger(mode, time_started=[], time_counter=[], message=[]):
         print('\n')
 
         return(time_log_start, time_log_counter)
-
 
     elif mode == 'update':
 
@@ -1994,17 +2548,21 @@ def time_logger(mode, time_started=[], time_counter=[], message=[]):
 
 def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par):
     """
-    Identifies ARFs and RMFs that are associated with an HETG PHA2 file.  This currently utilizes the 'response' and 'tg' directories created by the data systems and chandra_repro pipelines and thus might not work for all PHA2 HETG files.
+    Identifies ARFs and RMFs that are associated with an HETG PHA2 file.  This currently utilizes the 'response' and 
+    'tg' directories created by the data systems and chandra_repro pipelines and thus might not work for all PHA2 HETG 
+    files.
 
     Parameters
     ----------
 
     pha2_file_par : PHA2 fits file 
-         PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after running chandra_repro on a chandra HETG obsID.
+         PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after 
+         running chandra_repro on a chandra HETG obsID.
     resp_type_par: 'arf' or 'rmf'
         The type of response files for matchign to PHA spectra
     resp_dir_par: directory
-        The directory where the HETG response files associated with the PHA2 file are located. If none provided, it will attempt to search for them.
+        The directory where the HETG response files associated with the PHA2 file are located. If none provided, it
+        will attempt to search for them.
 
     Returns
     ----------
@@ -2084,23 +2642,29 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par):
 
 def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
     """
-    This uses the PHA2 file structure and matches the input response file list/array (resp_list_par) to the appropriate PHA2 spectrum using the header keywords tg_m, tg_part and obsid. This function is designed to take the output of find_resp_files() and put them in order of the PHA2 spectra. 
+    This uses the PHA2 file structure and matches the input response file list/array (resp_list_par) to the appropriate
+    PHA2 spectrum using the header keywords tg_m, tg_part and obsid. This function is designed to take the output of 
+    find_resp_files() and put them in order of the PHA2 spectra. 
     
     Parameters
     ----------
 
     pha2_file_par : PHA2 fits file 
-         PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after running chandra_repro on a chandra HETG obsID.
+         PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after 
+         running chandra_repro on a chandra HETG obsID.
     resp_type_par: 'arf' or 'rmf'
         The type of response files for matchign to PHA spectra
     resp_dir_par: directory
-        The directory where the HETG response files associated with the PHA2 file are located. If none provided, it will attempt to search for them.
+        The directory where the HETG response files associated with the PHA2 file are located. If none provided, it 
+        will attempt to search for them.
 
     Returns
     ----------
-    
+
     matched_resp_list_par: array
-        Returns an array of ARF or RMF file paths matched to the order (arrangement) of the input PHA2 file. The string value 'no match' is returned for elements where there is a spectrum in the PHA2 file but no matching response file.
+        Returns an array of ARF or RMF file paths matched to the order (arrangement) of the input PHA2 file. The string
+        value 'no match' is returned for elements where there is a spectrum in the PHA2 file but no matching response 
+        file.
 
     """
 
@@ -2176,7 +2740,12 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
     """
-    Uses confusion tables produced by CrissCross to create 'cleaned' PHA1 or PHA2 spectra and ARF response files. The confusion tables identify portions of a source's spectrum that may have erroneous events that should not be included in any spectral analysis. After identifying the PHA type (1 vs 2), this function checks to make sure the ARF files provided match the PHA spectra (order and arm) and uses clean_data() to set the appropriate PHA (COUNTS, STAT_ERROR) and ARF (SPECRESP, FRACEXPO) columns to zero where confusion occurs. This function writes a 'cleaned' copy of the input PHA and ARF files.
+    Uses confusion tables produced by CrissCross to create 'cleaned' PHA1 or PHA2 spectra and ARF response files. The 
+    confusion tables identify portions of a source's spectrum that may have erroneous events that should not be 
+    included in any spectral analysis. After identifying the PHA type (1 vs 2), this function checks to make sure the 
+    ARF files provided match the PHA spectra (order and arm) and uses clean_data() to set the appropriate PHA 
+    (COUNTS, STAT_ERROR) and ARF (SPECRESP, FRACEXPO) columns to zero where confusion occurs. This function writes a 
+    'cleaned' copy of the input PHA and ARF files.
 
     Parameters
     ----------
@@ -2219,7 +2788,8 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
     def clean_data(cc_table, pha_crate, arf_data_var, pha_arm_var, pha_order_var, pha_element, conf_flag_var = 'confused'):
         """
-        Creates copies of the relevant PHA1/PHA2 and ARF columns and modifies them (sets to zero) using a CrissCross confusion table. 
+        Creates copies of the relevant PHA1/PHA2 and ARF columns and modifies them (sets to zero) using a CrissCross 
+        confusion table. 
         
         Parameters
         ----------
@@ -2235,16 +2805,19 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
         pha_order_var: int (-3, -2, -1, 1, 2, 3)
             The order associated with the spectrum (e.g., 1 for HEG+1 and -3 for MEG-3)
         pha_element: integer
-            The element of the PHA2 file assocaited with the spectrum 'pha_crate'. If standard HETG PHA2 file [order,element] = HEG: -3,0; -2,1; -1,2; +1,3; +2,4; +3,5 MEG: -3,6; -2,7; -1,8; +1,9; +2,10; +3,11) 
+            The element of the PHA2 file assocaited with the spectrum 'pha_crate'. If standard HETG PHA2 file 
+            [order,element] = HEG: -3,0; -2,1; -1,2; +1,3; +2,4; +3,5 MEG: -3,6; -2,7; -1,8; +1,9; +2,10; +3,11) 
         conf_flag_var: string 'confused' 
-            The string associated with spectral confusion. If 'confused', spectra will be cleaned by setting all 'confused' values to zero. A future update will allow 'confused' and/or 'warn' to be zeroed out.
+            The string associated with spectral confusion. If 'confused', spectra will be cleaned by setting all 
+            'confused' values to zero. A future update will allow 'confused' and/or 'warn' to be zeroed out.
         
 
         Returns
         ----------
         
         cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var: arrays
-            Returns a copy of the SPEC, STAT_ERR, SPECRESP, and FRACEXPO arrays with values associated with the identified wavelengths of confusion set to zero (or 1.86603 for STAT_ERR).			
+            Returns a copy of the SPEC, STAT_ERR, SPECRESP, and FRACEXPO arrays with values associated with the 
+            identified wavelengths of confusion set to zero (or 1.86603 for STAT_ERR).			
         """
         
         #reads in the confusion and PHA data
@@ -2427,19 +3000,38 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
 
 
-def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_files', main_list = 'input_files/full_coup_src_list.csv', subset_arr_list = 'input_files/subset_onc.csv', clean_single_RA=None, clean_single_DEC=None, evt2_file=None, wavdetect_file=None, clobber_par=False):
+def run_crisscross(cc_outdir = 'criss_cross_output', arf_ratios_dir = 'input_files', main_list = 'input_files/full_coup_src_list.tsv', subset_src_list = 'input_files/subset_onc.tsv', clean_single_RA=None, clean_single_DEC=None, evt2_file=None, wavdetect_file=None, clobber_par=False):
     """
-    Main function for running criss cross. It will take event files and 0th order locations to produce confusion tables. If users have appropriate PHA files they can run clean_spec() using the CrissCross confusion tables as input to remove confused counts from their spectra.
+    Main function for running criss cross. It will take event files and 0th order locations of sources in 'main_list' to 
+    produce confusion tables for sources in the 'subset_src_list'. If users have PHA files extracted for the confusion 
+    obsID they can run clean_spec() using the CrissCross confusion tables as input to remove confused counts from their 
+    spectra.
 
-    working_dir = a directory for holding the output of CrissCross. If it does not exist then it will be made.
-    arf_ratios_dir = the directory which holds the ARF response ratios fits tables necessary for Crisscross.
-    main_list = a csv file with columns RA, DEC, ID of source positions. This is used to distinguish real sources in a wavdetect source table from false sources (identified from the dispersed spectra). This can include sources outside of an individual chandra obsID FOV.
-    subset_arr_list = A list of sources to create confusion tables for. This should be a subset of main_list and include sources bright enough for HETG spectral extraction. The format is csv file with columns RA, DEC, ID.
-    evt2_file = A single evt2 file or a list of evt2 files which contain sources in main_list and subset_arr_list
-    wavdetect_file = A single wavdetect source fits table or a list of wavdetect source fits tables. This is the '*src.fits' file output from wavdetect. If no files are included (e.g., wavdetect_file=None) then wavdetect will be run during execution of CrissCross.
-    clobber_par = overwrites previous CrissCross run if output directory already exists and clobber_par = True.
+    Parameters
+    ----------
+    cc_outidr : str
+        A directory for holding the output of CrissCross. If it does not exist then it will be made.
+    arf_ratios_dir : str
+        The directory which holds the ARF response ratios fits tables necessary for Crisscross.
+    main_list : str
+        A tsv or ascii file with columns RA, DEC, ID of source positions. This is used to distinguish real sources in a
+        wavdetect source table from false sources (identified from the dispersed spectra). This can include sources 
+        outside of an individual chandra obsID FOV.
+    subset_src_list : str
+        A tsv or ascii file of sources to create confusion tables for. This should be a subset of main_list and include 
+        sources bright enough for HETG spectral extraction. The table format requires columns RA, and DEC.
+    clean_single_RA, clean_single_DEC : float
+        RA and DEC for a single source if the user wishes to create only one confusion table. Format must be 
+        J2000 degrees.
+    evt2_file : str
+        A single evt2 file or a list of evt2 files which contain sources in main_list and subset_src_list.
+    wavdetect_file : str, None
+        A single wavdetect source fits table or a list of wavdetect source fits tables. This is the '*src.fits' file 
+        output from wavdetect. If no files are included (e.g., wavdetect_file=None) then wavdetect will be run during 
+        execution of CrissCross.
+    clobber_par : bool
+        If clobber_par = True then CrissCross overwrites previous CrissCross run if output directory already exists.
     """
-
 
     #sanitize the evt2_file input so it is a list
     if evt2_file == None:
@@ -2456,24 +3048,20 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         elif type(wavdetect_file) != list:
             raise ValueError('Unknown type of input for wavdetect_file. Please include a single file or a list of files')
     
-
     #check to make sure the number of evt2 files match the number of wavdetect source lists
     if wavdetect_file != None and len(wavdetect_file) != len(evt2_file):
         raise ValueError('The number of input evt2_files and wavdetect source fits table files do not match. Please include a wavdetect table for each evt2 file.')
     
     #run wavedetect_match_obsid before the loop starts to ensure input files are in correct order. Make wavdetect_file a list of [None]s so it can work per obsID in CrissCross loop below.
     if wavdetect_file != None:
-        wavdetect_file = wavedetect_match_obsid(fits_list_par = evt2_file, wavedetect_list_par = wavdetect_file)
+        wavdetect_file = wavedetect_match_obsid(fits_list_par = evt2_file, wavdetect_list_par = wavdetect_file)
     else:
         wavdetect_file = [None]*len(evt2_file)
     
-
-    #for k in range(0,2):
+    #Start major CrissCross loop for all input evt2 files
     for k in range(len(evt2_file)):
-    #for k in range(1,3):
-    #for k in range(3, len(fits_list)): #if you want to start at a specific spot in the fits list
 
-        ardlib.punlearn()
+        #ardlib.punlearn()
 
         #start the time logger for printing steps to the screen
         time_log_start, time_log_counter = time_logger(mode='start')
@@ -2498,13 +3086,12 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         heg_ang = grating_rotang.ROTANG.values[1] #tg_part = 1
         meg_ang = grating_rotang.ROTANG.values[2] #tg_part = 2
 
-        
         print('The HEG/MEG angles for this observation are %s and %s degrees.' % (heg_ang, meg_ang))
 
         print('The roll angle of this observation is %s' % roll_nom)
 
         #create the output files directory but if clobber=False and it exists then stop CrissCross
-        output_dir, dir_exists = make_output_dir(working_dir, obsid, clobber_par = clobber_par)
+        output_dir, dir_exists = make_output_dir(cc_outdir, obsid, clobber_par = clobber_par)
         if dir_exists == True and clobber_par == False:
             print(f'\nClobber set to false and output directory {output_dir} exists. If you wish to overwrite files please set clobber=True\n')
             continue
@@ -2521,13 +3108,13 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
 
         #save the RA, DEC from the subset input list or the user input individual source
         if clean_single_RA == None and clean_single_DEC == None:
-            subset_RA, subset_DEC = load_sourcelist(filename=subset_arr_list, subset_list=True)
+            subset_RA, subset_DEC = load_sourcelist(filename=subset_src_list, subset_list=True)
         else:
             subset_RA = [float(clean_single_RA)]
             subset_DEC = [float(clean_single_DEC)]
 
         #match the element number of the subset list to the main list using RA and DEC to 6 digits accuracy.
-        subset_arr = match_subset_to_main(RA_main=RA_wcs, DEC_main=DEC_wcs, RA_sub=subset_RA, DEC_sub=subset_DEC)
+        subset_list = match_subset_to_main(RA_main=RA_wcs, DEC_main=DEC_wcs, RA_sub=subset_RA, DEC_sub=subset_DEC)
 
         #convert from RA/DEC in degrees to Chandra Sky physical coordinates and determine off-axis angle in arcsec
         src_pos_x, src_pos_y, src_off_axis = calc_physical_coords(fits_par=evt2_file[k], RA_par = RA_wcs, DEC_par = DEC_wcs)
@@ -2536,10 +3123,10 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
 
         #match input source list to wavedetect table to catalog 0th order counts for each source in each obsid
-        final_match_arr, final_dist_arr, counts = find_closest_source(src_x_arr = src_pos_x, src_y_arr = src_pos_y, wave_file = wavdetect_file[k], max_offset = 3.0)
+        final_match_arr, final_dist_arr, counts = find_closest_source(src_x = src_pos_x, src_y = src_pos_y, wave_file = wavdetect_file[k], max_offset = 3.0)
 
         #create an output file of the input source list with the wave-detect-matched 0th order counts
-        write_matched_file(srcid_arr = srcID, ra_arr = RA_wcs, dec_arr = DEC_wcs, counts_arr = counts, fileroot = f'{output_dir}/src_list_{obsid}')
+        write_matched_file(srcid_par = srcID, ra_par = RA_wcs, dec_par = DEC_wcs, counts_par = counts, fileroot = f'{output_dir}/src_list_{obsid}')
 
         #Print to the screen the number of sources that satisfy the above conditions as well as the total number of sources in input list.
         src_num = len(src_pos_x)
@@ -2551,7 +3138,6 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
 
         #calculate relevant parameters for when two lines intersect in the Chandra FOV
         m_heg, m_meg, b_heg, b_meg, xintercept_heg, xintercept_meg, yintercept_heg, yintercept_meg, xoff, yoff = determine_line_intersect_values(src_pos_x_par = src_pos_x, src_pos_y_par = src_pos_y, heg_ang_par = heg_ang, meg_ang_par = meg_ang)
-
 
         time_message = 'Finished calculating XY intercepts for all sources in the field of view.'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
@@ -2569,21 +3155,19 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
 
         #Calculate the wave_low and wave_high bounds for spectral confusion which is based on the HETG geometry
-        spec_conf = spec_confuse_wave_bounds(spec_conf, highest_order= 3, src_pos_x_par = src_pos_x)
+        spec_conf = spec_confuse_wave_bounds(spec_conf, highest_order= 3, num_sources = len(src_pos_x))
 
         #Determine OSIP wavelength range expected at the location and energy of spectral confusion for each source.
-        spec_conf = spec_calc_osip_bounds(spec_conf, highest_order = 3, osip_frac_par = osip_frac, subset_arr_par = subset_arr, src_pos_x_par = src_pos_x, fits_list_par=evt2_file[k], obsid_par = obsid, outdir=output_dir)
+        spec_conf = spec_calc_osip_bounds(spec_conf, osip_frac_par = osip_frac, subset_sources = subset_list, num_sources = len(src_pos_x), fits_list_par=evt2_file[k], obsid_par = obsid, outdir=output_dir)
 
         time_message = 'Finished calculating OSIP wavelengths for spectral confusion.'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
 
         #determine whether spectral confusion has occured and set the appropriate arm/order flags
-        spec_conf = spec_flag_set(spec_conf, src_pos_x_par = src_pos_x, src_pos_y_par = src_pos_y, subset_arr_par = subset_arr, fits_list_par = evt2_file[k], arf_ratios_dir_par = arf_ratios_dir)
+        spec_conf = spec_flag_set(spec_conf, src_pos_x_par = src_pos_x, src_pos_y_par = src_pos_y, subset_sources = subset_list, fits_list_par = evt2_file[k], arf_ratios_dir_par = arf_ratios_dir)
 
         time_message = 'Finished assigning spectral confusion.'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
-
-
 
         #########POINT SOURCE CONFUSION START ############
 
@@ -2591,36 +3175,32 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         pntsrc_conf = conf_dict(num_sources = len(src_pos_x), highest_order = 3)
 
         #calcluates perp_distance_to_spec and 'intersect distance' for all point sources
-        pntsrc_conf, perp_dist_to_spec_heg, r0_offset_dist_from_contam_heg = pntsrc_dist_to_spec(pntsrc_conf_par=pntsrc_conf, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, xoff_par=xoff, yoff_par=yoff, m_arm_par=m_heg, b_arm_par=b_heg, arm_ang_par=heg_ang, arm_par='heg')
+        pntsrc_conf, perp_dist_to_spec_heg, r0_offset_dist_from_contam_heg = pntsrc_dist_to_spec(pntsrc_dict=pntsrc_conf, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, xoff_par=xoff, yoff_par=yoff, m_arm_par=m_heg, b_arm_par=b_heg, arm_ang_par=heg_ang, arm_par='heg')
 
-        pntsrc_conf, perp_dist_to_spec_meg, r0_offset_dist_from_contam_meg = pntsrc_dist_to_spec(pntsrc_conf_par=pntsrc_conf, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, xoff_par=xoff, yoff_par=yoff, m_arm_par=m_meg, b_arm_par=b_meg, arm_ang_par=meg_ang, arm_par='meg')	
+        pntsrc_conf, perp_dist_to_spec_meg, r0_offset_dist_from_contam_meg = pntsrc_dist_to_spec(pntsrc_dict=pntsrc_conf, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, xoff_par=xoff, yoff_par=yoff, m_arm_par=m_meg, b_arm_par=b_meg, arm_ang_par=meg_ang, arm_par='meg')	
 
         #Determines the wavelegth where point source confusion may occur 
 
         #HEG
-        pntsrc_conf = pntsrc_confuse_wave(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_heg ,src_pos_x_par=src_pos_x, P_arm_par=P_heg, mm_per_pix=mm_per_pix, X_R=X_R, arm_par='heg', roll_nom_par=roll_nom, src_off_axis_par=src_off_axis, counts_par=counts, contam_offset_thresh_par=contam_offset_thresh, counts_intercept_thresh_i_par=counts_intercept_thresh_i, counts_contam_pntsrc_thresh_par=counts_contam_pntsrc_thresh)
+        pntsrc_conf = pntsrc_confuse_wave(pntsrc_dict=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_heg ,src_pos_x_par=src_pos_x, P_arm_par=P_heg, mm_per_pix=mm_per_pix, X_R=X_R, arm_par='heg', roll_nom_par=roll_nom, src_off_axis_par=src_off_axis, counts_par=counts, contam_offset_thresh_par=contam_offset_thresh, counts_intercept_thresh_i_par=counts_intercept_thresh_i, counts_contam_pntsrc_thresh_par=counts_contam_pntsrc_thresh)
 
         #MEG
-        pntsrc_conf = pntsrc_confuse_wave(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_meg, src_pos_x_par=src_pos_x, P_arm_par=P_meg, mm_per_pix=mm_per_pix, X_R=X_R, arm_par='meg', roll_nom_par=roll_nom, src_off_axis_par=src_off_axis, counts_par=counts, contam_offset_thresh_par=contam_offset_thresh, counts_intercept_thresh_i_par=counts_intercept_thresh_i, counts_contam_pntsrc_thresh_par=counts_contam_pntsrc_thresh)
-
+        pntsrc_conf = pntsrc_confuse_wave(pntsrc_dict=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_meg, src_pos_x_par=src_pos_x, P_arm_par=P_meg, mm_per_pix=mm_per_pix, X_R=X_R, arm_par='meg', roll_nom_par=roll_nom, src_off_axis_par=src_off_axis, counts_par=counts, contam_offset_thresh_par=contam_offset_thresh, counts_intercept_thresh_i_par=counts_intercept_thresh_i, counts_contam_pntsrc_thresh_par=counts_contam_pntsrc_thresh)
 
         time_message = 'Finished calculating point source confusion wavelengths.'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
 
         #determine whether confusion occurs for all point sources
-        pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_heg, fits_list_par = evt2_file[k], subset_arr_par=subset_arr, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='heg', moritz_factor_par=0.1, logfile_par=f'{output_dir}/pnt_src_confuse_{obsid}_log.txt')
+        pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_dict=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_heg, fits_list_par = evt2_file[k], subset_sources=subset_list, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='heg', evt_frac_thresh=0.1, logfile_par=f'{output_dir}/pnt_src_confuse_{obsid}_log.txt')
 
-        pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_conf_par=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_meg, fits_list_par = evt2_file[k], subset_arr_par=subset_arr, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='meg', moritz_factor_par=0.1, logfile_par=f'{output_dir}/pnt_src_confuse_{obsid}_log.txt')
+        pntsrc_conf = pntsrc_confuse_wave_bounds(pntsrc_dict=pntsrc_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_meg, fits_list_par = evt2_file[k], subset_sources=subset_list, src_pos_x_par=src_pos_x, src_pos_y_par=src_pos_y, arm_par='meg', evt_frac_thresh=0.1, logfile_par=f'{output_dir}/pnt_src_confuse_{obsid}_log.txt')
 
         #sets the flags for point source confusion
-        pntsrc_conf = pntsrc_flag_set(pntsrc_conf_par=pntsrc_conf, src_pos_x_par=src_pos_x, arm_par='heg', subset_arr_par = subset_arr)
-        pntsrc_conf = pntsrc_flag_set(pntsrc_conf_par=pntsrc_conf, src_pos_x_par=src_pos_x, arm_par='meg', subset_arr_par = subset_arr)
-
+        pntsrc_conf = pntsrc_flag_set(pntsrc_dict=pntsrc_conf, num_sources=len(src_pos_x), arm_par='heg', subset_sources = subset_list)
+        pntsrc_conf = pntsrc_flag_set(pntsrc_dict=pntsrc_conf, num_sources=len(src_pos_x), arm_par='meg', subset_sources = subset_list)
 
         time_message = 'Finished assigning point source confusion.'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)		
-
-
 
         ##########ARM CONFUSION START ############################
 
@@ -2628,13 +3208,13 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         arm_conf = arm_conf_dict(num_sources = len(src_pos_x), highest_order = 3)
 
         #Calculates the ratio of 0th order counts (net_counts_confuser / net_counts_confused) and determines the distance from the confused 0th order to the confuser 0th order.
-        arm_conf = arm_confuse_wave(arm_conf_par=arm_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_heg, src_pos_x_par=src_pos_x, P_arm_par=P_heg, arm_par='heg', arm_ang_par=heg_ang, roll_nom_par=roll_nom, src_off_axis_par=src_off_axis, r0_offset_dist_from_contam_arm_par=r0_offset_dist_from_contam_heg, counts_par = counts, subset_arr_par = subset_arr)
+        arm_conf = arm_confuse_wave(arm_dict=arm_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_heg, src_pos_x_par=src_pos_x, P_arm_par=P_heg, arm_par='heg', arm_ang_par=heg_ang, roll_nom_par=roll_nom, src_off_axis_par=src_off_axis, r0_offset_dist_from_contam_arm_par=r0_offset_dist_from_contam_heg, counts_par = counts, subset_sources = subset_list)
         
-        arm_conf = arm_confuse_wave(arm_conf_par=arm_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_meg, src_pos_x_par=src_pos_x, P_arm_par=P_meg, arm_par='meg', arm_ang_par=meg_ang, roll_nom_par=roll_nom, src_off_axis_par=src_off_axis, r0_offset_dist_from_contam_arm_par=r0_offset_dist_from_contam_meg, counts_par = counts, subset_arr_par = subset_arr)
+        arm_conf = arm_confuse_wave(arm_dict=arm_conf, perp_dist_to_spec_arm_par=perp_dist_to_spec_meg, src_pos_x_par=src_pos_x, P_arm_par=P_meg, arm_par='meg', arm_ang_par=meg_ang, roll_nom_par=roll_nom, src_off_axis_par=src_off_axis, r0_offset_dist_from_contam_arm_par=r0_offset_dist_from_contam_meg, counts_par = counts, subset_sources = subset_list)
 
         #determine which of the positive or negative order the confuser 0th order source falls on
-        arm_conf = determine_confused_order(arm_conf_par=arm_conf, src_pos_x_par = src_pos_x, arm_par = 'heg')
-        arm_conf = determine_confused_order(arm_conf_par=arm_conf, src_pos_x_par = src_pos_x, arm_par = 'meg')
+        arm_conf = determine_confused_order(arm_dict=arm_conf, src_pos_x_par = src_pos_x, arm_par = 'heg')
+        arm_conf = determine_confused_order(arm_dict=arm_conf, src_pos_x_par = src_pos_x, arm_par = 'meg')
 
         #calcluates the resolution as a function of energy for heg/meg
         #NOTE--> these values only need to be calculated once PER RUN. Doesn't depend on obsid or location or anything.
@@ -2642,8 +3222,8 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         res_power_meg_maxed, hetg_arr_meg = calc_ccd_energy_res(arm_par='meg')
 
         #Based on the distance between 0th orders for arm confusion, determine the wavelength range where arm confusion occurs FOR EACH ORDER and set flags appropriately
-        arm_conf = arm_flag_set(arm_conf_par=arm_conf, arm_par='heg', src_pos_x_par = src_pos_x, res_power_arm_maxed_par=res_power_heg_maxed, hetg_arr_arm_par=hetg_arr_heg, subset_arr_par = subset_arr, nsig_par=6)
-        arm_conf = arm_flag_set(arm_conf_par=arm_conf, arm_par='meg', src_pos_x_par = src_pos_x, res_power_arm_maxed_par=res_power_meg_maxed, hetg_arr_arm_par=hetg_arr_meg, subset_arr_par = subset_arr, nsig_par=6)
+        arm_conf = arm_flag_set(arm_dict=arm_conf, arm_par='heg', num_sources = len(src_pos_x), res_power_arm_maxed_par=res_power_heg_maxed, hetg_arr_arm_par=hetg_arr_heg, subset_sources = subset_list, nsig_par=6)
+        arm_conf = arm_flag_set(arm_dict=arm_conf, arm_par='meg', num_sources = len(src_pos_x), res_power_arm_maxed_par=res_power_meg_maxed, hetg_arr_arm_par=hetg_arr_meg, subset_sources = subset_list, nsig_par=6)
 
         time_message = 'Finished assigning arm confusion.'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
@@ -2651,17 +3231,16 @@ def run_crisscross(working_dir = 'criss_cross_output', arf_ratios_dir = 'input_f
         #Set MAIN flag for every source pair (if there is any confusion of any type in any order then flag as confused)
 
         #using the results of the individual confusion functions above, set the main confusion flag for every source. E.g., if any order is confused then main confusion flag is set to 'confused'.
-        spec_conf = main_flag_set(conf_dict_par = spec_conf, src_pos_x_par = src_pos_x, subset_arr_par = subset_arr)
-        pntsrc_conf = main_flag_set(conf_dict_par = pntsrc_conf, src_pos_x_par = src_pos_x, subset_arr_par = subset_arr)
-        arm_conf = main_flag_set(conf_dict_par = arm_conf, src_pos_x_par = src_pos_x, subset_arr_par = subset_arr)
+        spec_conf = main_flag_set(conf_dict_par = spec_conf, num_sources = len(src_pos_x), subset_sources = subset_list)
+        pntsrc_conf = main_flag_set(conf_dict_par = pntsrc_conf, num_sources = len(src_pos_x), subset_sources = subset_list)
+        arm_conf = main_flag_set(conf_dict_par = arm_conf, num_sources = len(src_pos_x), subset_sources = subset_list)
 
         #Call write_full_conf_table to produce the 'full' and 'consolidated' confusion tables for each source in the run obsID.
-        for i in subset_arr:
-            write_full_conf_table(spec_conf_par = spec_conf, pntsrc_conf_par = pntsrc_conf, arm_conf_par = arm_conf, row_num = i, srcID_par = srcID, counts_par = counts, output_dir_par = output_dir, remove_clean = 'yes', obsid_par = obsid, RA_par=RA_wcs[i], DEC_par=DEC_wcs[i], consolidate_table = True)
+        for i in subset_list:
+            write_full_conf_table(spec_dict = spec_conf, pntsrc_dict = pntsrc_conf, arm_dict = arm_conf, row_num = i, srcID_par = srcID, counts_par = counts, output_dir_par = output_dir, remove_clean = 'yes', obsid_par = obsid, RA_par=RA_wcs[i], DEC_par=DEC_wcs[i], consolidate_table = True)
 
         #move output files into final directories and cleanup
         end_of_run_cleanup(output_dir_list_par = output_dir, obsid_par = obsid, wavdetect_par=run_wave)
-
 
         time_message = 'Finished Running CrissCross!.'
         time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter, message=time_message)
