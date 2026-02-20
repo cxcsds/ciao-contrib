@@ -1990,7 +1990,7 @@ def main_flag_set(conf_dict_par, num_sources, subset_sources):
 
 
 
-def write_full_conf_table(spec_dict, pntsrc_dict, arm_dict, obsid_par, output_dir_par, srcID_par, counts_par, RA_par, DEC_par, remove_clean = 'yes', row_num=808, consolidate_table = False):
+def write_full_conf_table(spec_dict, pntsrc_dict, arm_dict, obsid_par, output_dir_par, srcID_par, counts_par, RA_par, DEC_par, remove_clean = 'yes', row_num=808, consolidate_table = False, cc_table_root=None):
 
     """
     Extracts a single source (row) from the three nested dictionaries (one for each confusion type) and creates a fits 
@@ -2301,7 +2301,12 @@ def write_full_conf_table(spec_dict, pntsrc_dict, arm_dict, obsid_par, output_di
     set_key(merged_crate, name='RA_conf', data=RA_par, unit='deg', desc='RA of src with potential HETG confusion')
     set_key(merged_crate, name='DEC_conf', data=DEC_par, unit='deg', desc='Dec of src with potential HETG confusion')
 
-    write_file(merged_crate, f'{output_dir_par}/confused_src_{row_num}_full_obsID_{obsid_par}.fits', clobber=True)
+    #allow users to name table if CrissCross is only run on a single source
+    if cc_table_root == None:
+        write_file(merged_crate, f'{output_dir_par}/confused_src_{row_num}_full_obsID_{obsid_par}.fits', clobber=True)
+    else:
+        write_file(merged_crate, f'{output_dir_par}/confused_{cc_table_root}_full_obsID_{obsid_par}.fits', clobber=True)
+        
 
     if consolidate_table == True:
 
@@ -2406,8 +2411,12 @@ def write_full_conf_table(spec_dict, pntsrc_dict, arm_dict, obsid_par, output_di
         set_key(consolidated_crate, name='RA_conf', data=RA_par, unit='deg', desc='RA of src with potential HETG confusion')
         set_key(consolidated_crate, name='DEC_conf', data=DEC_par, unit='deg', desc='Dec of src with potential HETG confusion')
 
-        write_file(consolidated_crate, f'{output_dir_par}/confused_src_{row_num}_consolidated_obsID_{obsid_par}.fits', clobber=True)
-
+        #allow users to name table if CrissCross is only run on a single source
+        if cc_table_root == None:
+            write_file(consolidated_crate, f'{output_dir_par}/confused_src_{row_num}_consolidated_obsID_{obsid_par}.fits', clobber=True)
+        else:
+            write_file(consolidated_crate, f'{output_dir_par}/confused_{cc_table_root}_consolidated_obsID_{obsid_par}.fits', clobber=True)
+            
 
     #return(merged_crate)
     return()
@@ -2445,8 +2454,8 @@ def end_of_run_cleanup(output_dir_list_par, obsid_par, wavdetect_par=False):
         
 
     #identify the confusion tables that were created and delete the tables that are 'empty' (no confusion) based on known empty file sizes (revisit this in future).
-    output_table_full=glob.glob(f'{output_dir_list_par}/confused_src_*full*.fits')
-    output_table_consolidated=glob.glob(f'{output_dir_list_par}/confused_src_*consolidated*.fits')
+    output_table_full=glob.glob(f'{output_dir_list_par}/confused_*full_obsID_{obsid_par}.fits')
+    output_table_consolidated=glob.glob(f'{output_dir_list_par}/confused_*consolidated_obsID_{obsid_par}.fits')
 
     for i in range(len(output_table_full)):
         file_size_table=os.stat(output_table_full[i])
@@ -2459,9 +2468,13 @@ def end_of_run_cleanup(output_dir_list_par, obsid_par, wavdetect_par=False):
             os.remove(output_table_consolidated[i])
 
     #move the remaining table files to the table directory
-    files_to_move = glob.glob(f'{output_dir_list_par}/confused_src*{obsid_par}.fits')
-    for i in files_to_move:
-        shutil.move(i, table_dir)
+    files_to_move = glob.glob(f'{output_dir_list_par}/confused_*_obsID_{obsid_par}.fits')
+    #check that some files exist after removing the tables that have no confusion.
+    if len(files_to_move) == 0:
+        print('WARNING -- No confusion tables exist after removing empty tables. No confusion identified with input source(s) or something went wrong in CrissCross.')
+    else:
+        for i in files_to_move:
+            shutil.move(i, table_dir)
 
     return()
 
@@ -2728,7 +2741,7 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
 
 
 
-def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
+def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
 
     """
     Uses confusion tables produced by CrissCross to create 'cleaned' PHA1 or PHA2 spectra and ARF response files. The 
@@ -2745,8 +2758,8 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
         CrissCross produced confusion table for a single source and single obsID.
     pha_file: fits file
         HETG PHA1 or PHA2 spectral file of the source that needs cleaning.
-    src_num: string
-        A source identifier for file naming purposes.
+     spec_root: string
+        A root for file naming purposes.
     arf_file: string or list
         A file path or list of file paths to ARFs matching the input pha file.
     resp_dir: directory
@@ -2904,8 +2917,8 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
         pha_order = convert_order(tg_m)
 
         #saves a new file while maintaining the original header.
-        write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}{pha_order}_cleaned.pha', clobber=True)
-        write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm}{pha_order}_cleaned.arf', clobber=True)
+        write_pha(pha_crate_dataset, f'{spec_root}_obsid_{tg_obs}_{pha_arm}{pha_order}_cleaned.pha', clobber=True)
+        write_file(arf_data, f'{spec_root}_obsid_{tg_obs}_{pha_arm}{pha_order}_cleaned.arf', clobber=True)
 
 
     #PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in header. Also the arfs may be out of order if user provides a list of arfs.
@@ -2967,7 +2980,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
             arf_data.add_record("HISTORY", f"This cleaned ARF was created using the ARF file: {matched_resp_list[i]} and the CrissCross cleaning table: {cc_table}. ")
             update_crate_checksum(arf_data)
 
-            write_file(arf_data, f'src_{src_num}_obsid_{tg_obs}_{pha_arm_arr[i]}{pha_order_arr[i]}_cleaned.arf', clobber=True)
+            write_file(arf_data, f'{spec_root}_obsid_{tg_obs}_{pha_arm_arr[i]}{pha_order_arr[i]}_cleaned.arf', clobber=True)
 
 
         #appends the original files to the history of the new file for record keeping
@@ -2976,7 +2989,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
         update_crate_checksum(pha_data_full)
 
         #saves a new PHA2 file while maintaining the original header.
-        write_pha(pha_crate_dataset, f'src_{src_num}_obsid_{tg_obs}_cleaned.pha2', clobber=True)
+        write_pha(pha_crate_dataset, f'{spec_root}_obsid_{tg_obs}_cleaned.pha2', clobber=True)
 
 
     else:
@@ -2991,7 +3004,7 @@ def clean_spec(cc_table, pha_file, src_num, arf_file=None, resp_dir=None):
 
 
 
-def run_crisscross(cc_outdir = 'criss_cross_output', arf_ratios_dir = 'input_files', main_list = 'input_files/full_coup_src_list.tsv', subset_src_list = 'input_files/subset_onc.tsv', clean_single_RA=None, clean_single_DEC=None, evt2_file=None, wavdetect_file=None, clobber_par=False):
+def run_crisscross(cc_outdir = 'criss_cross_output', arf_ratios_dir = 'input_files', main_list = 'input_files/full_coup_src_list.tsv', subset_src_list = 'input_files/subset_onc.tsv', clean_single_RA=None, clean_single_DEC=None, clean_single_root=None, evt2_file=None, wavdetect_file=None, clobber_par=False):
     """
     Main function for running criss cross. CrissCross identifies portions of a sources spectrum where events from other
     field sources may be errouneously assigned to the extracted source with standard CIAO processing. CrissCross
@@ -3233,9 +3246,14 @@ def run_crisscross(cc_outdir = 'criss_cross_output', arf_ratios_dir = 'input_fil
         pntsrc_conf = main_flag_set(conf_dict_par = pntsrc_conf, num_sources = len(src_pos_x), subset_sources = subset_list)
         arm_conf = main_flag_set(conf_dict_par = arm_conf, num_sources = len(src_pos_x), subset_sources = subset_list)
 
-        #Call write_full_conf_table to produce the 'full' and 'consolidated' confusion tables for each source in the run obsID.
+        #Call write_full_conf_table to produce the 'full' and 'consolidated' confusion tables for each source in the run obsID. 
         for i in subset_list:
-            write_full_conf_table(spec_dict = spec_conf, pntsrc_dict = pntsrc_conf, arm_dict = arm_conf, row_num = i, srcID_par = srcID, counts_par = counts, output_dir_par = output_dir, remove_clean = 'yes', obsid_par = obsid, RA_par=RA_wcs[i], DEC_par=DEC_wcs[i], consolidate_table = True)
+            #If users run cc with just a single source, allow them to name the confusion file. Otherwise a single root will get clobbered when looped over multiple sources.
+            if clean_single_RA != None and clean_single_DEC != None and clean_single_root != None:
+                write_full_conf_table(spec_dict = spec_conf, pntsrc_dict = pntsrc_conf, arm_dict = arm_conf, row_num = i, srcID_par = srcID, counts_par = counts, output_dir_par = output_dir, remove_clean = 'yes', obsid_par = obsid, RA_par=RA_wcs[i], DEC_par=DEC_wcs[i], cc_table_root=clean_single_root, consolidate_table = True)
+            else:
+                write_full_conf_table(spec_dict = spec_conf, pntsrc_dict = pntsrc_conf, arm_dict = arm_conf, row_num = i, srcID_par = srcID, counts_par = counts, output_dir_par = output_dir, remove_clean = 'yes', obsid_par = obsid, RA_par=RA_wcs[i], DEC_par=DEC_wcs[i], consolidate_table = True)
+
 
         #move output files into final directories and cleanup
         end_of_run_cleanup(output_dir_list_par = output_dir, obsid_par = obsid, wavdetect_par=run_wave)
