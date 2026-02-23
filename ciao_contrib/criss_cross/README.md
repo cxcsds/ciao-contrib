@@ -2,7 +2,7 @@
 
 Criss Cross is designed to allow users to plot, model and fit Chandra High Energy Transmission Grating (HETG) spectra that are extracted from a Chandra field of view with a large number of other astrophysical X-ray sources. The HETG instrument will disperse events from **all** sources in a field of view and if there are several bright X-ray sources then there is a potential for confusion to occur. Confusion is a term used here for special scenarios where standard HETG spectral extraction of a source may erroneously assign events from a different source in the field of view to the extracted source. This would result in events from a different source confusing the spectrum of your extracted source. 
 
-CrissCross identifies when spectral confusion occurs for a list of input sources and generates confusion tables which identify the wavelength/energy in each source's spectrum that are likely to include X-ray events from other astrophysical sources. The user can then choose to ignore, remove, model or angrily shake their fist at these events during their spectral fitting analysis.
+CrissCross identifies when spectral confusion occurs for a list of input sources and generates confusion tables which identify the wavelength/energy in each source's spectrum that are likely to include X-ray events from other astrophysical sources. The user can then choose to ignore, remove, model or angrily shake their fist at these events during their spectral fitting analysis. **Users are encouraged to try CrissCross using the included jupyter notebook tutorial 'criss_cross_tutorial.ipynb'. It provides an end-to-end example of running CrissCross on an HETG observation of a crowded stellar cluster and extracting a cleaned spectrum.**
 
 
 ### How does CrissCross work?
@@ -21,28 +21,23 @@ Chandra/CIAO already has a mechanism to handle some level of confusion. Energy/w
 
 #### Description of CrissCross INPUT and OUTPUT
 
-**INPUT**
+**REQUIRED NPUT**
 
 
-1) **main_list**:  A CSV file with columns 'RA, DEC, ID' for each known X-ray source in the field of view. CrissCross must know what sources exist in the field of view in order to calculate where potential confusion can occur. This CSV file can include sources that may not fall on the CCD in every observation since roll angles can change. The ID column should be an integer and the RA and DEC should be in degrees.
+1) **main_list**:  An ascii or TSV file with columns 'RA, DEC, ID' for each known X-ray source in the field of view. CrissCross must know what sources exist in the field of view in order to calculate where potential confusion can occur. This file can include sources that may not fall on the CCD in every observation since roll angles can change. The ID column must be an integer and the RA and DEC must be in degrees.
 
-2) **subset_arr_list**:  A CSV file with columns 'RA, DEC, ID' for each source that you wish to calculate confusion for. These will be a subset of sources in the 'main_list' that are bright enough for HETG spectral extraction. The ID values of these sources MUST match the same values as those in the main_list. If you wish to calculate confusion for every source in the field of view then you could set this variable to the same file as 'main_list' although this is not recommended.
+2) **subset_src_list**:  A ascii or TSV file with columns 'RA, DEC' for each source that you wish to calculate confusion for. These will be a subset of sources in the 'main_list' that are bright enough for HETG spectral extraction. These sources must match sources in the main_list. The parameters 'clean_single_RA' and 'clean_single_DEC' can be used instead of subset_src_list to calculate confusion for only a single source. The RA and DEC must match a source in the main_list file.
 
-3) **working_dir**: A directory that will be created where all CrissCross output will be saved. It will be created if it doesn't already exist.
-
-4)  **input_dir**: An input directory that currently holds two fits tables necessary for spectral confusion calculations (MEG_Nth_0th_order_ratios_mkarf.fits, HEG_Nth_0th_order_ratios_mkarf.fits).
+4)  **input_dir**: A directory that holds two fits tables necessary for spectral confusion calculations (MEG_Nth_0th_order_ratios_mkarf.fits, HEG_Nth_0th_order_ratios_mkarf.fits).
  
-5)  **fits_list**:  A python list of evt2.fits file paths for each observation the user wishes to run. HETG projects typically consist of multiple observations and CrissCross needs to be run on each one to determine confusion.
+5)  **evt2_file**:  An individual evt2 file or a list of evt2 files for each observation the user wishes to run. 
 
-6)  **wavedetect_list**:  a python list of wavedetect output files (source detection fits tables) to match the number of 0th order counts detected for each of the 'main_list' and 'subset_arr_list' sources.
-
-7)  **CrissCross tweakable parameters** (see below).
 
 **OUTPUT**
 
 output is saved to working_dir/output_dir_obsid_{obsid_num}
 
-1)  **confusion_output_files/table_fits_data**:  This directory holds all of the confusion fits tables for sources in the 'subset_arr_list':
+1)  **confusion_output_files/table_fits_data**:  This directory holds all of the confusion fits tables for sources in the 'subset_src_list':
 
     a)  **confused_src_{srcID}_full_obsID_{obsid_num}.fits**  table that includes ALL confusion information about the confused source for every order for every arm and for every confusion type. 
 
@@ -55,7 +50,6 @@ output is saved to working_dir/output_dir_obsid_{obsid_num}
 4)  **pnt_src_confuse_{obsid_num}_log.txt**:  a log file for the point source confusion. Most of this is not necessary for end user.
 
 5)  **spec_confuse_{obsid_num}_log.txt**:  a log file for the spectral source confusion. Most of this is not necessary for end user.
-
 
 
 
