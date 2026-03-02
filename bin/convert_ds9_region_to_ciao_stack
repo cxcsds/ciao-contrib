@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 #
 #
-# Copyright (C) 2019 Smithsonian Astrophysical Observatory
+# Copyright (C) 2019, 2026 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -22,7 +22,7 @@ import sys
 import os
 
 toolname = "convert_ds9_region_to_ciao_stack"
-__revision__ = "14 March 2019"
+__revision__ = "28 January 2026"
 
 import ciao_contrib.logger_wrapper as lw
 lw.initialize_logger(toolname)
@@ -110,9 +110,9 @@ def ds9_panda( xx, yy, start_angle, stop_angle, num_angle, inner, outer, num_rad
 
     da = (stop_angle-start_angle)/float(num_angle)
     dr = (outer-inner)/float(num_rad)
-    
+
     retval = []
-    for aa in range( int(num_angle) ):        
+    for aa in range( int(num_angle) ):
         ss = sector( xx, yy, start_angle+(aa*da), start_angle+((aa+1)*da) )
         for rr in range( int(num_rad) ):
             anl = annulus( xx, yy, inner+(rr*dr), inner+((rr+1)*dr) )
@@ -137,15 +137,15 @@ def ds9_foo_panda( myshape, xx, yy, start_angle, stop_angle, num_angle, mjr_inne
     da = (stop_angle-start_angle)/float(num_angle)
     dm = (mjr_outer-mjr_inner)/float(num_rad)
     dj = (mnr_outer-mnr_inner)/float(num_rad)
-    
+
     retval = []
-    for aa in range( int(num_angle) ):        
+    for aa in range( int(num_angle) ):
         ss = sector( xx, yy, start_angle+(aa*da), start_angle+((aa+1)*da) )
         for rr in range( int(num_rad) ):
             inner = myshape( xx, yy, mjr_inner+(rr*dm), mnr_inner+(rr*dj), ang )
             outer = myshape( xx, yy, mjr_inner+((rr+1)*dm), mnr_inner+((rr+1)*dj), ang )
             retval.append((outer*ss)-inner)
-    
+
     return retval
 
 
@@ -154,26 +154,26 @@ def ds9_epanda( xx, yy, start_angle, stop_angle, num_angle, mjr_inner, mnr_inner
     epanda(4222.4993,3518.4984,3.4160865e-09,359.9995,3,0,0,120,196,6,3.4160865e-09)
        : epanda( x, y, angle_min, angle_max, #angle, rmin_major, rmin_minr, rmax_maj, rmax_min, #rad, angle)
     """
-    retval = ds9_foo_panda(ellipse, xx, yy, start_angle, stop_angle, 
-                    num_angle, mjr_inner, mnr_inner, mjr_outer, 
-                    mnr_outer, num_rad, ang) 
+    retval = ds9_foo_panda(ellipse, xx, yy, start_angle, stop_angle,
+                    num_angle, mjr_inner, mnr_inner, mjr_outer,
+                    mnr_outer, num_rad, ang)
     return retval
-    
+
 
 def ds9_bpanda( xx, yy, start_angle, stop_angle, num_angle, mjr_inner, mnr_inner, mjr_outer, mnr_outer, num_rad, ang):
     """
     epanda(4222.4993,3518.4984,3.4160865e-09,359.9995,3,0,0,120,196,6,3.4160865e-09)
        : epanda( x, y, angle_min, angle_max, #angle, rmin_major, rmin_minr, rmax_maj, rmax_min, #rad, angle)
     """
-    retval = ds9_foo_panda(box, xx, yy, start_angle, stop_angle, 
-                    num_angle, mjr_inner, mnr_inner, mjr_outer, 
-                    mnr_outer, num_rad, ang) 
+    retval = ds9_foo_panda(box, xx, yy, start_angle, stop_angle,
+                    num_angle, mjr_inner, mnr_inner, mjr_outer,
+                    mnr_outer, num_rad, ang)
     return retval
 
 
 def _stack_shape( line, expander):
     """
-    
+
     """
     ss = line.split("#")[0].strip()
     try:
@@ -188,22 +188,24 @@ def _stack_shape( line, expander):
 
 
 def open_ds9_region(infile):
-    region_file = open(infile,"r").readlines()
-    
+
+    with open(infile,"r") as fp:
+        region_file = fp.readlines()
+
     global_line = [i for i,r in enumerate(region_file) if r.startswith("global")]
     assert len(global_line) != 0, "Input file is missing 'global' line.  Be sure it is in ds9 format"
     assert len(global_line) == 1, "Input file has multiple 'global' lines, I don't know what to do"
-    
+
     physical_line = region_file[global_line[0]+1].strip()
     assert "physical" == physical_line, "Input file must be saved in physical coordinates not:"+physical_line
-    
+
     start_line = global_line[0]+2
     return( region_file[start_line:] )
 
 
 def parse_line( line ):
     """
-    
+
     """
     if line.startswith("circle") or line.startswith("polygon") or line.startswith("point"):
         ss = line.split("#")[0].strip()
@@ -228,7 +230,7 @@ def parse_line( line ):
 
 
 def parse_ds9_region( infile ):
-    """    
+    """
     This will only work with region files saved in physical coordintes
     """
 
@@ -242,14 +244,14 @@ def parse_ds9_region( infile ):
             excluded_region = parse_line(line[1:])
             assert len(excluded_region) == 1, "Excluded region must be simple, single shapes"
             ss = excluded_region[0]
-            outstk = [o-ss for o in outstk] 
+            outstk = [o-ss for o in outstk]
         else:
             rr = parse_line(line)
             if rr is not None:
                 outstk.extend(rr)
                 rline = "\n    ".join([str(r) for r in rr])
                 verb4("Expanding '{}' :\n    {}".format(line.strip(),rline))
-        
+
     return outstk
 
 
@@ -260,30 +262,30 @@ def write_stack_region( outstk, outfile ):
     verb2("Writting output")
 
     oo = "\n".join( [str(r) for r in outstk])
-    
+
     with open(outfile,"w") as fp:
         fp.write(oo+"\n")
-    
+
 
 @lw.handle_ciao_errors( toolname, __revision__)
 def main():
 
     from ciao_contrib.param_soaker import get_params
     # Load the parameters
-    pars = get_params(toolname, "rw", sys.argv, 
+    pars = get_params(toolname, "rw", sys.argv,
         verbose={"set":lw.set_verbosity, "cmd":verb1} )
-    
+
     import ciao_contrib._tools.fileio as fileio
     fileio.outfile_clobber_checks(pars["clobber"], pars["outfile"] )
     if os.path.exists(pars["outfile"]): os.remove( pars["outfile"] )
-    
+
     regstk = parse_ds9_region( pars["infile"])
     write_stack_region( regstk, pars["outfile"])
-    
 
 
 
-    
+
+
 def _test():
 
     r1 = """# Region file format: DS9 version 4.1
@@ -338,7 +340,7 @@ annulus(5286.4149,5638.755,0,64.737646,129.47529)
 
     from ciao_contrib.runtool import dmcopy
 
-    fin = "/export/img.fits[sky={}][opt full]" 
+    fin = "/export/img.fits[sky={}][opt full]"
     fout = "out_{:04d}.fits"
     for i,z in enumerate(c):
         dmcopy(fin.format(z),fout.format(i), clobber=True)
