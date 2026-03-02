@@ -12,37 +12,37 @@
       <PARA>
         This script automates the event filtering steps shown in the
         <HREF link="https://cxc.cfa.harvard.edu/ciao/threads/acis-fptemp-resp/index.html">
-        Extracting Spectra and Responses for ACIS Observations that Undergo Large 
+        Extracting Spectra and Responses for ACIS Observations that Undergo Large
         Focal-plane Temperature Swings
         </HREF> thread. The script will use the input event file to identify
-        the set of 
+        the set of
         <HREF link="https://cxc.cfa.harvard.edu/ciao/why/mkacisrmf.html">mkacisrmf</HREF>,
         i.e. the "P2_RESP" CALDB files.
         If there are multiple CALDB files, then the script will use the information in
-        the headers of the "P2_RESP" calibration files to identify the 
+        the headers of the "P2_RESP" calibration files to identify the
         calibrated focal-plane temperature ranges. The script constructs good
-        time intervals based on the temperature ranges and FP_TEMP values 
+        time intervals based on the temperature ranges and FP_TEMP values
         stored in the mission time line file. For temperature ranges with
         non-zero good time, it will then filter the event file using those
         good time intervals.
-        The output is a set of event files and a stack "list" file than can 
+        The output is a set of event files and a stack "list" file than can
         then be used with specextract to extract combined spectra.
      </PARA>
 
      <PARA title="Caveat">
        This script and the thread are not needed for most observations.
-       Even if there is a significant temperature variation during an observation, 
+       Even if there is a significant temperature variation during an observation,
        most targets will not have enough counts to be able to differentiate between
        statistical uncertainty and temperature dependent calibration differences.
        Users should read the thread and associated documents carefully before
-       using this script.            
+       using this script.
      </PARA>
      <PARA>
         As of CIAO 4.18/CALDB 4.12.2, the only CCDs with temperature dependent
         RMF calibrations are ACIS 0, 1, 2,3, and 6.  There is no temperature
         dependent calibrations available for the other CCDs. Therefore if your
-        source is located on ACIS 4, 5, 7, 8 or 9, there is no reason to 
-        use this script.     
+        source is located on ACIS 4, 5, 7, 8 or 9, there is no reason to
+        use this script.
      </PARA>
 
 
@@ -85,7 +85,7 @@ Use '@acisf30601N002_evt.lis' to extract spectra and responses.
 </VERBATIM>
 
             <PARA>
-            This example shows running the script with the event file 
+            This example shows running the script with the event file
             for OBS_ID 30601 as input. The script used the event file to locate
             the set of P2_RESP CALDB files, extracted the FP_TEMP ranges, created
             good time intervals, and then filtered the event file into 6
@@ -112,7 +112,7 @@ specextract "@acisf30601N002_evt.lis[sky=region(source.reg)]" \
       <QEXAMPLE>
         <SYNTAX>
           <LINE>
-acis_split_evt_by_fptemp acisf00214N004_evt2.fits.gz out=obsid214 
+acis_split_evt_by_fptemp acisf00214N004_evt2.fits.gz out=obsid214
           </LINE>
         </SYNTAX>
         <DESC>
@@ -129,7 +129,7 @@ acis_split_evt_by_fptemp (13 April 2025)
 </VERBATIM>
 <PARA>
 For OBS_ID 214 there are not P2_RESP calibration files. This observation
-was taken early in the mission and requires using the 'mkrmf' tool 
+was taken early in the mission and requires using the 'mkrmf' tool
 rather than the 'mkacisrmf' tool to create response matrix files (RMFs). There are no
 temperature dependent calibrations during this early mission time period.
 </PARA>
@@ -140,7 +140,7 @@ temperature dependent calibrations during this early mission time period.
       <QEXAMPLE>
         <SYNTAX>
           <LINE>
-acis_split_evt_by_fptemp acisf00408N005_evt2.fits.gz out=obsid408 
+acis_split_evt_by_fptemp acisf00408N005_evt2.fits.gz out=obsid408
           </LINE>
         </SYNTAX>
         <DESC>
@@ -165,7 +165,7 @@ FP_TEMP [K]: 152.96 - 153.96 :    1465.20 [sec]
 </VERBATIM>
 <PARA>
 For OBSID 408, the focal plane temperature was steady and falls within a single
-calibration focal plane temperature range. In this case, there is no reason to 
+calibration focal plane temperature range. In this case, there is no reason to
 split the event file into multiple segments as the error message indicates.
 </PARA>
   </DESC>
@@ -195,7 +195,7 @@ ${outroot}_${lo}-${hi}.evt
         ${hi} is the upper limit on the temperature range.
         </PARA>
         <PARA>
-        The script will also create an list file        
+        The script will also create an list file
         </PARA>
 <VERBATIM>
 ${outroot}_evt.lis
@@ -246,7 +246,7 @@ ${outroot}_evt.lis
         For most of the Chandra mission the ACIS focal plane temperature
         has remained steady at/around -120C. However as the mission has
         progressed it has become difficult to maintain a steady temperature
-        and at the same time preserve observing efficiency. As a result, the ACIS 
+        and at the same time preserve observing efficiency. As a result, the ACIS
         focal plane temperature is now allowed to vary during an some observations.
         Changes in focal plane temperature affect the spectral re-distribution;
         that is warmer temperatures produce wider observed spectral lines.
@@ -255,6 +255,14 @@ ${outroot}_evt.lis
      </PARA>
     </ADESC>
 
+    <ADESC title="Changes in scripts 4.18.1 (March 2026) release">
+        <PARA>
+            Added check on total ONTIME after the event files have been split.
+            Issue a warning if the total ONTIME in the output files is different by
+            more than 5%. This can be the result of temperatures in the
+            mission time line file that are not included in the calibrated range.
+        </PARA>
+    </ADESC>
 
     <ADESC title="About Contributed Software">
       <PARA>
@@ -277,7 +285,7 @@ ${outroot}_evt.lis
         listing of known bugs.
       </PARA>
     </BUGS>
-        <LASTMODIFIED>April 2025</LASTMODIFIED>
+        <LASTMODIFIED>March 2026</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
 
