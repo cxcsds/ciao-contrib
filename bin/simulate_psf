@@ -2,7 +2,7 @@
 #
 #
 #
-# Copyright (C) 2012, 2014, 2016, 2018, 2020-2025
+# Copyright (C) 2012, 2014, 2016, 2018, 2020-2026
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -26,7 +26,7 @@ import sys
 import subprocess
 
 toolname = "simulate_psf"
-__revision__ = "28 November 2025"
+__revision__ = "28 January 2026"
 
 
 from cxcdm import *
@@ -791,16 +791,16 @@ def run_marx2fits( pars, obi_info, output_dir ):
     # Optionally run pileup module
     #
 
-    dev_null = open("/dev/null", "wb")
 
     if "yes" == pars["pileup"]:
         cmd = "marxpileup MarxOutputDir={0} FrameTime={1} > /dev/null".format(output_dir, obi_info["exptime"])
         verb3(">>> "+cmd)
 
         try:
-            subprocess.check_call( ['marxpileup', 'MarxOutputDir='+output_dir,
-                                    'FrameTime={}'.format(obi_info["exptime"])],
-                                    stdout=dev_null)
+            with open("/dev/null", "wb") as dev_null:
+                subprocess.check_call(['marxpileup', 'MarxOutputDir='+output_dir,
+                                       'FrameTime={}'.format(obi_info["exptime"])],
+                                      stdout=dev_null)
         except:
             raise Exception("Problem running {0}".format(cmd))
 
@@ -827,7 +827,8 @@ def run_marx2fits( pars, obi_info, output_dir ):
 
     sub_cmd = cmd.strip().split(" ")
     try:
-        subprocess.check_call( sub_cmd, stdout=dev_null )
+        with open("/dev/null", "wb") as dev_null:
+            subprocess.check_call( sub_cmd, stdout=dev_null )
     except:
         raise Exception("Problem running {0}".format(cmd))
 
