@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2020 Smithsonian Astrophysical Observatory
+# Copyright (C) 2020, 2026 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@ import sys
 import ciao_contrib.logger_wrapper as lw
 
 toolname = "regphystocel"
-__revision__ = "19 Aug 2020"
+__revision__ = "28 January 2026"
 
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
@@ -252,7 +252,7 @@ class PhysicalRegion(object):
 
     def write(self, outfile, clobber=True):
         """Write output"""
-        
+
         if outfile == "-":
             fp = sys.stdout
         else:
@@ -265,6 +265,11 @@ class PhysicalRegion(object):
         fp.write('fk5\n')
         fp.write(self.cel_region_str)
         fp.write("\n")
+
+        if outfile != '-':
+            fp.close()
+        else:
+            fp.flush()
 
 
 @lw.handle_ciao_errors(toolname, __revision__)
