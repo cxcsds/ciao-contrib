@@ -32,7 +32,7 @@ import paramio as pio
 
 
 __toolname__ = "mkrprm"
-__revision__ = "28 August 2024"
+__revision__ = "17 December 2025"
 
 lw.initialize_logger(__toolname__)
 VERB0 = lw.get_logger(__toolname__).verbose0
@@ -255,14 +255,19 @@ class MarxConvolution(Convolution):
         pio.pset(self.marxpar, "S-ImageFile", padded_image.get_filename())
         pio.pset(self.marxpar, "SourceFlux", "1.0e-2")
 
+        if len(self.pars["marx_root"]) == 0 or self.pars["marx_root"].lower() in ['none', '']:
+            marx = "marx"
+            m2f = "marx2fits"
+        else:
+            marx = os.path.join(self.pars["marx_root"], "bin", "marx")
+            m2f = os.path.join(self.pars["marx_root"], "bin", "marx2fits")
+
         with TemporaryDirectory(suffix="_marx", dir=self.pars["tmpdir"]) as marxdir:
             pio.pset(self.marxpar, "OutputDir", marxdir)
 
-            marx = os.path.join(self.pars["marx_root"], "bin", "marx")
             cmd = [marx, f"@@{self.marxpar}"]
             sp.check_output(cmd)
 
-            m2f = os.path.join(self.pars["marx_root"], "bin", "marx2fits")
             cmd = [m2f, marxdir, tmpevt.name]
             sp.check_output(cmd)
 
