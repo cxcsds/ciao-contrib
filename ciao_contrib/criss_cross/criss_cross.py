@@ -45,6 +45,9 @@ from .iocaldb import OSIP, Sky2Chandra, Cel2Chandra
 from .widthofexclusion import *
 
 
+############## CONSTANTS ##############
+tg_part_name = {1: "heg", 2: "meg", 3: "leg"}
+
 ############################################################
 
 
@@ -3723,30 +3726,6 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
 
     """
 
-    def convert_order(order_int):
-        """
-        Converts an integer to a string with a + or - sign in front of it (e.g., '+1' or '-1'; for compatibility with CrissCross cleaning table)
-        """
-        if order_int > 0:
-            return f"+{order_int}"
-        elif order_int < 0:
-            return f"-{-1*order_int}"
-        else:
-            raise ValueError(
-                "0th order is included and that is not compatible with clean_spec"
-            )
-
-    def convert_arm(tg_part_val):
-        """
-        Converts the HETG tg_part value to a string (e.g., 'heg' or 'meg'; for compatibility with CrissCross cleaning table)
-        """
-        if tg_part_val == 1:
-            return "heg"
-        elif tg_part_val == 2:
-            return "meg"
-        else:
-            raise ValueError(f"Arm cannot be identified")
-
     def clean_data(
         cc_table,
         pha_crate,
@@ -3793,10 +3772,9 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         cc_data = read_file(cc_table)
         pha_data_var = pha_crate.get_crate(2)
 
-        # PHA1 and PHA2 files have to be treated slightly differently because of how crates stores values. This is to 
+        # PHA1 and PHA2 files have to be treated slightly differently because of how crates stores values. This is to
         # avoid having to slice off each crate spectrum from the PHA2 file.
         if is_pha_type1(pha_crate):
-
             counts_arr = pha_data_var.COUNTS.values
             stat_err_arr = pha_data_var.STAT_ERR.values
             specresp_arr = arf_data_var.SPECRESP.values
@@ -3805,7 +3783,6 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
             bin_high_arr = pha_data_var.BIN_HI.values
 
         elif is_pha_type2(pha_crate):
-
             counts_arr = pha_data_var.COUNTS.values[pha_element]
             stat_err_arr = pha_data_var.STAT_ERR.values[pha_element]
             specresp_arr = (
@@ -3828,8 +3805,8 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         cleaned_specresp_var = specresp_arr.copy()
         cleaned_fracexpo_var = fracexpo_arr.copy()
 
-        # for every row of the confusion table that match the input PHA spectrum order and tg_part, identify the 
-        # elements (rows) associated with wavelengths (bin_low and bin_hi) that need to be cleaned. Note, this assumes 
+        # for every row of the confusion table that match the input PHA spectrum order and tg_part, identify the
+        # elements (rows) associated with wavelengths (bin_low and bin_hi) that need to be cleaned. Note, this assumes
         # the PHA bin_lo and bin_hi values are identical to the ARF file (which should be the case).
         for i in range(0, len(cc_data.wave_low.values)):
             if (
@@ -3848,7 +3825,7 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
                 )
                 cleaned_staterr_var[elements_to_clean] = (
                     1.86603  # double check that this makes sense and the stat_err is always this value for zero counts.
-                             # I suspect instead I should take min of this column and set it to that.
+                    # I suspect instead I should take min of this column and set it to that.
                 )
 
                 # clean ARF (response)
@@ -3867,7 +3844,6 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
     pha_crate_dataset = read_pha(pha_file)
 
     if is_pha_type1(pha_crate_dataset):
-
         pha_data = pha_crate_dataset.get_crate(2)  # Crate 2 contains the PHA data
         arf_data = read_file(arf_file)
 
@@ -3887,7 +3863,7 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
                 "One of the following is not consistent between the PHA file and ARF: HEG/MEG arm, order, obsID"
             )
 
-        # use clean_data() to create copies of the appropriate PHA and ARF arrays where wavelenghts with confusion are 
+        # use clean_data() to create copies of the appropriate PHA and ARF arrays where wavelenghts with confusion are
         # set to 0
         cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data(
             cc_table=cc_table,
@@ -3919,8 +3895,8 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         update_crate_checksum(arf_data)
 
         # setup tgpart and order to be consistent with values in confusion tables for file naming.
-        pha_arm = convert_arm(tg_part)
-        pha_order = convert_order(tg_m)
+        pha_arm = tg_part_name[tg_part]
+        pha_order = f"{tg_m:+n}"
 
         # saves a new file while maintaining the original header.
         write_pha(
@@ -3934,11 +3910,10 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
             clobber=True,
         )
 
-    # PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in 
+    # PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in
     # header. Also the arfs may be out of order if user provides a list of arfs.
     elif is_pha_type2(pha_crate_dataset):
-
-        # if user enters their own arf or list of arfs then make sure they match the PHA2 file format (e.g., pha2 meg+1 
+        # if user enters their own arf or list of arfs then make sure they match the PHA2 file format (e.g., pha2 meg+1
         # has to be same array element as arf meg+1)
         if arf_file != None:
             if type(arf_file) == str:
@@ -3946,13 +3921,13 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
                     [arf_file]
                 )  # make sure arf_file variable is a list just in case user enters a single file as 'file1' instead of ['file1'].
 
-            # check and arrange that the user input arf file(s) are in the correct order of the PHA2 spectra. 
+            # check and arrange that the user input arf file(s) are in the correct order of the PHA2 spectra.
             # matched_resp_list will create an array that matches the PHA2 format.
             matched_resp_list = match_resp_order(
                 pha2_file_par=pha_file, resp_list_par=arf_file, resp_type_par="arf"
             )
 
-        # if user doesn't enter arfs then try to find them either using the user included response dir or the standard 
+        # if user doesn't enter arfs then try to find them either using the user included response dir or the standard
         # CIAO-produced file structure
         else:
             print(
@@ -3979,14 +3954,12 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         tg_part_arr = pha_data_full.TG_PART.values
         tg_obs = get_keyval(pha_data_full, "OBS_ID")
 
-        # convert order and arm parameters into format consistent with confusion tables for file-naming purposes only
-        pha_order_arr = []
-        for i in tg_m_arr:
-            pha_order_arr.append(convert_order(order_int=i))
-
-        pha_arm_arr = []
-        for i in tg_part_arr:
-            pha_arm_arr.append(convert_arm(tg_part_val=i))
+        pha_order_arr = [
+            f"{i:+n}" for i in tg_m_arr
+        ]  # this is to make sure the order has a + or - sign in front of it for file naming purposes
+        pha_arm_arr = [
+            tg_part_name[i] for i in tg_part_arr
+        ]  # this is to make sure the arm is named 'heg' or 'meg' for file naming purposes
 
         # only run clean_data() for the spectra that have a matched response file so identify which elements of the 
         # matched_resp_list have both a spectrum and associated ARF.
