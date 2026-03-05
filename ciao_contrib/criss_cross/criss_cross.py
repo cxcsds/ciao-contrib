@@ -15,6 +15,7 @@
 ##########################################################################################
 ##########################################################################################
 ##########################################################################################
+import itertools
 from pathlib import Path
 import os
 import math
@@ -619,7 +620,7 @@ def determine_line_intersect_values(
     )
 
 
-def conf_dict(num_sources, highest_order=3):
+def conf_dict(num_sources, highest_order=3, arms=["heg", "meg"]):
     """
     A nested dictionary that holds all of the relevant data for confusion between two sources for all sources in the
     main_list. Each MEG/HEG arm has 6 orders and, in a general sense, all orders from one arm can interact with all
@@ -637,6 +638,8 @@ def conf_dict(num_sources, highest_order=3):
         number of sources in the main_list
     highest_order : int
         the number of orders to calculate. WARNING, values other than 3 have not been fully tested.
+    arms : list of str
+        The arms of the instrument. Default is for HETG.
 
 
     Dictionary key description
@@ -659,37 +662,12 @@ def conf_dict(num_sources, highest_order=3):
     ['arm+order']['flag'] : arm/order specific confusion flag
     ['arm+order']['flag_comment'] : arm/order specific origin of confusion between src i and j
     """
+    order_arr = np.arange(-highest_order, highest_order + 1)
+    order_arr = order_arr[order_arr != 0]
 
-    arms = ["heg", "meg"]  # arms will always be heg or meg
-    arm_order = list()  # create an empty list that gets appended with the arm+order
-
-    order_arr = np.arange(
-        (-1 * highest_order), (highest_order + 1)
-    )  # take the input highest order and make an array from (-highest_order to highest_order). Note, arange stops 
-       # one early so must have +1
-    order_list = list(order_arr)  # convert the array to a list
-    order_list.remove(0)  # remove '0' from the list
-
-    orders = list()
-
-    for i in order_list:
-        if i < 0:
-            orders.append(str(i))
-        if i > 0:
-            orders.append("+" + str(i))
-
-    for i in arms:
-        for j in orders:
-            arm_order.append(
-                i + j
-            )  # combines the arm name and the order number to generate each dictionary key
-
-    confusion_dict = {}  # create an empty dictionary
-
-    # for each arm+order, create empty arrays for wavelength and for flag
-    for k in arm_order:
-
-        confusion_dict[k] = {
+    confusion_dict = {}
+    for a, m in itertools.product(arms, order_arr):
+        confusion_dict[f"{a}{m:+d}"] = {
             "wave": np.zeros((num_sources, num_sources)),
             "wave_low": np.zeros((num_sources, num_sources)),
             "wave_high": np.zeros((num_sources, num_sources)),
@@ -701,18 +679,11 @@ def conf_dict(num_sources, highest_order=3):
 
     # add intersection_distance for each arm **NOTE-- this does NOT depend on order therefore it gets its own dict 
     # reference here and its not embedded in the arm loop.
-    confusion_dict["intersect_dist"] = {
-        "heg": np.zeros((num_sources, num_sources)),
-        "meg": np.zeros((num_sources, num_sources)),
-    }
-    confusion_dict["xintercept"] = {
-        "heg": np.zeros((num_sources, num_sources)),
-        "meg": np.zeros((num_sources, num_sources)),
-    }
-    confusion_dict["yintercept"] = {
-        "heg": np.zeros((num_sources, num_sources)),
-        "meg": np.zeros((num_sources, num_sources)),
-    }
+    for n in ["intersect_dist", "xintercept", "yintercept"]:
+        confusion_dict[n] = {
+            "heg": np.zeros((num_sources, num_sources)),
+            "meg": np.zeros((num_sources, num_sources)),
+        }
 
     # add main flag par - one that summarizes all arms to quickly identify if the extract source [i] has any confusion 
     # at all with another source [j]
@@ -770,15 +741,11 @@ def spec_confuse_wave(
         The Chandra roll angle in degrees associated with the observation.
     """
 
-    # #assign the x,y intercepts to the spec_dict. Note, this is done in sort of a weird way cause it was an after 
+    # #assign the x,y intercepts to the spec_dict. Note, this is done in sort of a weird way cause it was an after
     # thought but for now it should stay. code below uses x/y intercept parameter instead of spec_dict[xyintercept]].
-    if armtype == "heg":
-        spec_dict["xintercept"]["heg"] = xintercept
-        spec_dict["yintercept"]["heg"] = yintercept
 
-    if armtype == "meg":
-        spec_dict["xintercept"]["meg"] = xintercept
-        spec_dict["yintercept"]["meg"] = yintercept
+    spec_dict["xintercept"][armtype] = xintercept
+    spec_dict["yintercept"][armtype] = yintercept
 
     order_arr = np.arange(1, highest_order + 1)
 
@@ -4142,8 +4109,8 @@ def run_crisscross(
 
     ################CONTSTANTS ###############
     X_R = 8632.48  # rowland diameter in mm constant
-    P_meg = 4001.95  # period in angstroms constant. Note, this is value from telD1999-07-23geomN0006.fits in CALDB 
-                     # however in marxsim it uses 4001.41 A
+    P_meg = 4001.95  # period in angstroms constant. Note, this is value from telD1999-07-23geomN0006.fits in CALDB
+    # however in marxsim it uses 4001.41 A
     P_heg = 2000.81
     mm_per_pix = 0.023987  # pixel size in mm for acis same for I and S;  pix size in arcsec is 0.492''
     ###############################
