@@ -764,8 +764,7 @@ def spec_confuse_wave(
                     + (src_pos_y[i] - yintercept[i, j]) ** 2
                 )
                 if (
-                    src_pos_x[i] != xintercept[i, j]
-                    and xintercept[i, j] > src_pos_x[i]
+                    xintercept[i, j] > src_pos_x[i]
                     and counts[i] > min_spec_counts
                     and counts[j] > min_spec_confuser_counts
                 ):
@@ -785,8 +784,7 @@ def spec_confuse_wave(
                             decimals=3,
                         )  # divide by order number
                 elif (
-                    src_pos_x[i] != xintercept[i, j]
-                    and xintercept[i, j] < src_pos_x[i]
+                    xintercept[i, j] < src_pos_x[i]
                     and counts[i] > min_spec_counts
                     and counts[j] > min_spec_confuser_counts
                 ):
@@ -814,8 +812,7 @@ def spec_confuse_wave(
                     + (src_pos_y[i] - yintercept[i, j]) ** 2
                 )
                 if (
-                    src_pos_x[i] != xintercept[i, j]
-                    and xintercept[i, j] < src_pos_x[i]
+                    xintercept[i, j] < src_pos_x[i]
                     and counts[i] > min_spec_counts
                     and counts[j] > min_spec_confuser_counts
                 ):
@@ -835,8 +832,7 @@ def spec_confuse_wave(
                             decimals=3,
                         )  # divide by order number
                 elif (
-                    src_pos_x[i] != xintercept[i, j]
-                    and xintercept[i, j] > src_pos_x[i]
+                    xintercept[i, j] > src_pos_x[i]
                     and counts[i] > min_spec_counts
                     and counts[j] > min_spec_confuser_counts
                 ):
