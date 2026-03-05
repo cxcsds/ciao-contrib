@@ -15,24 +15,21 @@
 ##########################################################################################
 ##########################################################################################
 ##########################################################################################
-
-import numpy as np
-import matplotlib.pyplot as plt
+from pathlib import Path
 import os
 import math
 import glob
 import shutil
-from ciao_contrib.runtool import *
 import time
-from iocaldb import OSIP, Sky2Chandra, Cel2Chandra
-from widthofexclusion import *
+
+import numpy as np
+
 from pycrates import (
     read_file,
     write_file,
     TABLECrate,
     CrateData,
     add_col,
-    add_record,
     get_keyval,
     read_pha,
     write_pha,
@@ -43,8 +40,10 @@ from pycrates import (
     set_key,
 )
 from crates_contrib.utils import make_table_crate
-import csv
-from pathlib import Path
+from ciao_contrib.runtool import *
+from .iocaldb import OSIP, Sky2Chandra, Cel2Chandra
+from .widthofexclusion import *
+
 
 ############################################################
 
