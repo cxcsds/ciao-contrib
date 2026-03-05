@@ -545,12 +545,26 @@ def determine_line_intersect_values(
     Solves the equation where two lines (e.g., dispersed spectra) intersect on ACIS and saves relevant values for
     use in later functions. This calculation is relevant to both spectral confusion and point source confusion.
 
-    Parameter
-    ---------
-    src_pos_x_par, src_pos_y_par : float
+    Parameters
+    ----------
+    src_pos_x_par, src_pos_y_par : array
         0th order source physical coordinates on ACIS.
     heg_ang_par, meg_ang_par : float
-        The slope of the HEG and MEG arms on the detector converted to radians. Set by HETG instrument and roll angle.
+        The slope of the HEG and MEG arms on the detector in degrees.
+        Given by HETG instrument and roll angle.
+
+    Returns
+    -------
+    m_heg, m_meg : float
+        The slope of the HEG and MEG arms on the detector.
+    b_heg, b_meg : array of shape (num_sources,)
+        The y-intercept of the HEG and MEG arms on the detector.
+    xintercept_heg, xintercept_meg : array of shape (num_sources, num_sources)
+        The x-intercept of the HEG and MEG arms on the detector where they intersect with each other.
+    yintercept_heg, yintercept_meg : array of shape (num_sources, num_sources)
+        The y-intercept of the HEG and MEG arms on the detector where they intersect with each other.
+    xoff, yoff : float
+        The offset applied to the physical coordinates to ensure no negative values when calculating line intersections.
     """
 
     # makes sure the grid values make it so nothing is negative when subtracting.
@@ -579,33 +593,14 @@ def determine_line_intersect_values(
     # where m1X+b1 = m2X+b2 -->  X(m1-m2) = b2 - b1 or X = (b2-b1)/(m1-m2). e.g., xintercept_heg[0,1] is location where
     #  source 0's heg spectrum is intersected by source 1's meg spectrum.  Keep in mind the slopes m1 and m2 will be 
     # different. If they are the same they will not intersect cause parallel.
-
-    xintercept_heg = np.zeros((len(src_pos_x_par), len(src_pos_x_par)))
-    xintercept_meg = np.zeros((len(src_pos_x_par), len(src_pos_x_par)))
-
-    for i in range(len(src_pos_x_par)):
-        for j in range(len(src_pos_x_par)):
-            xintercept_heg[i, j] = xoff + (
-                (b_meg[j] - b_heg[i]) / (m_heg - m_meg)
-            )  # note, this does where meg intersects heg;
-            xintercept_meg[i, j] = xoff + (
-                (b_heg[j] - b_meg[i]) / (m_meg - m_heg)
-            )  # note, this does where heg intersects meg
+    # meg intersects heg
+    xintercept_heg = xoff + (b_meg - b_heg[:, np.newaxis]) / (m_heg - m_meg)
+    xintercept_meg = xoff + (b_heg - b_meg[:, np.newaxis]) / (m_meg - m_heg)
 
     # Once you solve for the X values (above), you can then plug those back in to solve for the Y values with y = mx+b
     # yintercept=yoff+((m1*(xintercept-xoff))+b1)
-
-    yintercept_heg = np.zeros((len(src_pos_x_par), len(src_pos_x_par)))
-    yintercept_meg = np.zeros((len(src_pos_x_par), len(src_pos_x_par)))
-
-    for i in range(len(src_pos_x_par)):
-        for j in range(len(src_pos_x_par)):
-            yintercept_heg[i, j] = yoff + (
-                (m_heg * (xintercept_heg[i, j] - xoff)) + b_heg[i]
-            )
-            yintercept_meg[i, j] = yoff + (
-                (m_meg * (xintercept_meg[i, j] - xoff)) + b_meg[i]
-            )
+    yintercept_heg = yoff + m_heg * (xintercept_heg - xoff) + b_heg[:, np.newaxis]
+    yintercept_meg = yoff + m_meg * (xintercept_meg - xoff) + b_meg[:, np.newaxis]
 
     return (
         m_heg,
