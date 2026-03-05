@@ -42,7 +42,7 @@
       <PARA title="Technical References:">
         <HREF link="https://cxc.harvard.edu/proposer/POG/html/chap7.html#tth_sEc7.12">
         Chandra Proposers and Observatory Guide secion on HRC SSC
-        </HREF>          
+        </HREF>
       </PARA>
       <PARA><HREF link="https://cxc.harvard.edu/contrib/juda/memos/anomaly/sec_sci/index.html">
       HRC Secondary Science Anomaly on Day 2005:349</HREF></PARA>
@@ -96,11 +96,11 @@ Updating DTCOR in event file and recomputing EXPOSURE time
                 the script. The output files are a new
                 dead time factors file (dtf1.fits), a new
                 level 1 event file (evt1.fits), and a new
-                good time intervals, aka filter file, (flt1.fits). 
-           </PARA>         
+                good time intervals, aka filter file, (flt1.fits).
+           </PARA>
            <PARA>
                 The script must be run with the level 1 event file since
-                the level 2 event file already has data outside the bad intervals removed.                
+                the level 2 event file already has data outside the bad intervals removed.
            </PARA>
 
          </DESC>
@@ -136,7 +136,7 @@ SSC not detected, no action required.
             In this example with OBS_ID 1297, there is no secondary science
             corruption detected. In this case there are no output files
             create and the exit status of the tool is 0 (ie good).
-           </PARA>         
+           </PARA>
          </DESC>
        </QEXAMPLE>
 
@@ -155,15 +155,15 @@ SSC not detected, no action required.
      </PARAM>
      <PARAM name="evt_infile" type="file" filetype="input" reqd="yes">
        <SYNOPSIS>
-         The input Level 1 event file, evt1.fits. 
+         The input Level 1 event file, evt1.fits.
        </SYNOPSIS>
        <DESC>
          <PARA>
             Users should use the Level 1 event file because you cannot
             recover the updated Good Time Intervals from the already filtered
-            Level 2 event file.  
+            Level 2 event file.
          </PARA>
-       </DESC>     
+       </DESC>
      </PARAM>
      <PARAM name="evt_outfile" type="file" filetype="output" reqd="yes">
        <SYNOPSIS>
@@ -171,14 +171,14 @@ SSC not detected, no action required.
        </SYNOPSIS>
        <DESC>
          <PARA>
-            The output level 1 event file is a copy of the input 
+            The output level 1 event file is a copy of the input
             level 1 event file with the following keywords modified:
          </PARA>
           <LIST>
             <ITEM>DTCOR : This value is updated based on the patched dead time
             factor values.</ITEM>
             <ITEM>DTFFILE : This keyword is updated to be the dtf_outfile file name.</ITEM>
-            <ITEM>FLTFILE : This keyword is updated to be the gti_outfile file name.</ITEM>          
+            <ITEM>FLTFILE : This keyword is updated to be the gti_outfile file name.</ITEM>
             <ITEM>SSC = True : This keyword indicates that the secondary science
             corruption was detected.</ITEM>
             <ITEM>SSCFIX = True: This keyword indicates that the secondary science
@@ -188,7 +188,7 @@ SSC not detected, no action required.
           <PARA>This file should be used in place of the standard archived
           Level 1 event file in processing.</PARA>
 
-       </DESC>     
+       </DESC>
      </PARAM>
      <PARAM name="gti_outfile" type="file" filetype="output" reqd="yes">
        <SYNOPSIS>
@@ -197,10 +197,10 @@ SSC not detected, no action required.
        <DESC>
          <PARA>
              The good time intervals are recomputed from the mission time
-             line file based on the patched DTF values and removing the 
-             limit on the IMHVLV and IMHBLV values. 
+             line file based on the patched DTF values and removing the
+             limit on the IMHVLV and IMHBLV values.
          </PARA>
-       </DESC>     
+       </DESC>
      </PARAM>
      <PARAM name="dtf_outfile" type="file" filetype="output" reqd="yes">
        <SYNOPSIS>
@@ -208,10 +208,10 @@ SSC not detected, no action required.
        </SYNOPSIS>
        <DESC>
          <PARA>
-            The median DTF and DTF_ERR values outside the secondary science 
-            correction time are used to replace the values in the dtf_infile.            
+            The median DTF and DTF_ERR values outside the secondary science
+            correction time are used to replace the values in the dtf_infile.
          </PARA>
-       </DESC>     
+       </DESC>
      </PARAM>
      <PARAM name="threshold" type="integer" def="4000" reqd="yes">
        <SYNOPSIS>
@@ -220,14 +220,14 @@ SSC not detected, no action required.
      </PARAM>
      <PARAM name="smooth_count" type="integer" def="3" >
        <SYNOPSIS>
-          Smoothing applied to the TOTAL_EVT_COUNT column 
+          Smoothing applied to the TOTAL_EVT_COUNT column
        </SYNOPSIS>
        <DESC>
          <PARA>
             The TOTAL_EVT_COUNT column is smoothed over this many rows
             when looking for values above the threshold parameter.
          </PARA>
-       </DESC>     
+       </DESC>
      </PARAM>
      <PARAM name="tmpdir" filetype="output" type="file" reqd="no" def="${ASCDS_WORK_PATH}">
         <SYNOPSIS>Temporary working directory</SYNOPSIS>
@@ -248,11 +248,17 @@ SSC not detected, no action required.
             Overwrite output files if they already exist?
         </SYNOPSIS>
       </PARAM>
-
-   
    </PARAMLIST>
 
- 
+    <ADESC title="Changes in the scripts 4.18.1 (March 2026) release">
+        <PARA>
+            An update is made that retains the initial time filtering (GTI)
+            due to the HRC high voltage level being out-of-range that can occur
+            at the beginning of observations. The previous version could have
+            allowed such bad time to be included; typically no more than a
+            few hundred seconds.
+        </PARA>
+    </ADESC>
     <ADESC title="About Contributed Software">
       <PARA>
         This script is not an official part of the CIAO release but is
@@ -261,7 +267,7 @@ SSC not detected, no action required.
         Please see this page for installation instructions.
       </PARA>
     </ADESC>
-    
+
 
     <BUGS>
       <PARA>
@@ -271,8 +277,8 @@ SSC not detected, no action required.
         on the CIAO website for an up-to-date listing of known bugs.
       </PARA>
     </BUGS>
-    
-    <LASTMODIFIED>December 2024</LASTMODIFIED>
 
-  </ENTRY>    
+    <LASTMODIFIED>January 2026</LASTMODIFIED>
+
+  </ENTRY>
 </cxchelptopics>
