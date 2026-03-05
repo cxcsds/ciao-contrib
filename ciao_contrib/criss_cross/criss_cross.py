@@ -49,6 +49,16 @@ from .widthofexclusion import *
 ############## CONSTANTS ##############
 tg_part_name = {1: "heg", 2: "meg", 3: "leg"}
 
+X_R = 8632.48  # rowland diameter in mm constant
+
+# period in angstroms constant. Note, this is value from telD1999-07-23geomN0006.fits in CALDB
+Period = {
+    "heg": 4001.95,  # however in marxsim it uses 4001.41 A
+    "meg": 2000.81,
+}
+mm_per_pix = 0.023987  # pixel size in mm for acis same for I and S;  pix size in arcsec is 0.492''
+
+
 ############################################################
 
 
@@ -708,11 +718,8 @@ def spec_confuse_wave(
     counts,
     min_spec_counts,
     min_spec_confuser_counts,
-    period_arm,
     highest_order,
     roll_nom_par,
-    mm_per_pix,
-    X_R,
 ):
     """
     Calculates the distance from the 0th order of src i to the location where confusion may occur ['intersect_dist']
@@ -732,15 +739,13 @@ def spec_confuse_wave(
         number of 0th order counts.
     min_spec_counts, min_spec_confuser_counts : int
         CrissCross input parameter denoting the 0th order counts threshold to consider a source for spectral confusion.
-    period_arm : float
-        The period associated with the HEG or MEG gratings (instrumental constants)
     highest_order : int
         The highest HETG order to perform confusion check for. Warning, orders other than three are not sufficiently
         tested.
     roll_nom_par : float
         The Chandra roll angle in degrees associated with the observation.
     """
-
+    period_arm = Period[armtype]
     # #assign the x,y intercepts to the spec_dict. Note, this is done in sort of a weird way cause it was an after
     # thought but for now it should stay. code below uses x/y intercept parameter instead of spec_dict[xyintercept]].
 
@@ -4107,14 +4112,6 @@ def run_crisscross(
 
     """
 
-    ################CONTSTANTS ###############
-    X_R = 8632.48  # rowland diameter in mm constant
-    P_meg = 4001.95  # period in angstroms constant. Note, this is value from telD1999-07-23geomN0006.fits in CALDB
-    # however in marxsim it uses 4001.41 A
-    P_heg = 2000.81
-    mm_per_pix = 0.023987  # pixel size in mm for acis same for I and S;  pix size in arcsec is 0.492''
-    ###############################
-
     # sanitize clobber
     if clobber_par == "True":
         clobber_par = True
@@ -4337,11 +4334,8 @@ def run_crisscross(
             counts,
             min_spec_counts,
             min_spec_confuser_counts,
-            P_heg,
             3,
             roll_nom_par=roll_nom,
-            mm_per_pix=mm_per_pix,
-            X_R=X_R,
         )
         spec_conf = spec_confuse_wave(
             spec_conf,
@@ -4353,11 +4347,8 @@ def run_crisscross(
             counts,
             min_spec_counts,
             min_spec_confuser_counts,
-            P_meg,
             3,
             roll_nom_par=roll_nom,
-            mm_per_pix=mm_per_pix,
-            X_R=X_R,
         )
 
         time_message = (
