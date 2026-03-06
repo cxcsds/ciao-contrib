@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2010-2025  Smithsonian Astrophysical Observatory
+# Copyright (C) 2010-2026  Smithsonian Astrophysical Observatory
 #
 #
 #
@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "11 August 2025"
+version = "06 March 2026"
 
 # import standard python modules as required
 #
@@ -657,6 +657,7 @@ def process_command_line(argv):
     pix_adj_value   = pio.pgetstr(fp, "pix_adj")
     pix_adj_str     = pio.pgetstr(fp, "pix_adj")
     tg_zo_position    = pio.pgetstr( fp, "tg_zo_position")
+    tg_orders       = pio.pgetstr(fp, "tg_orders")
     boresight       = pio.pgetstr(fp, "asol_update") == "yes"
     pi_filter       = pio.pgetb(fp, "pi_filter")
     patch_hrc_ssc   = pio.pgetb(fp, "patch_hrc_ssc")
@@ -695,6 +696,7 @@ def process_command_line(argv):
         pp["pix_adj_value"] =   pix_adj_value
         pp["pix_adj_str"] =     pix_adj_str
         pp["tg_zo_position"] =  tg_zo_position
+        pp["tg_order"] =        tg_orders
         pp["asol_update"] =     boresight
         pp["pi_filter"] =       pi_filter
         pp["patch_hrc_ssc"] =   patch_hrc_ssc
@@ -2648,6 +2650,9 @@ def mktg_arfrmf(params):
     from ciao_contrib.runtool import mktgresp
     v1("Creating grating response files")
 
+    if params["tg_order"].lower() in ["", "none"]:
+        return params
+
     outdir = os.path.join(params["outdir"], "tg" )
     make_dir( outdir )
 
@@ -2656,11 +2661,13 @@ def mktg_arfrmf(params):
     mktgresp.outroot=os.path.join(outdir, params["root"]+"_repro")
     mktgresp.clobber= params["clobber"]
 
-
-    if "LETG" == params["grating"] and "HRC-S" == params["detnam"]:
-        mktgresp.orders="-8,-7,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,7,8"
+    if params["tg_order"].lower() in ['default', 'indef']:
+        if "LETG" == params["grating"] and "HRC-S" == params["detnam"]:
+            mktgresp.orders="-8,-7,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,7,8"
+        else:
+            mktgresp.orders="-1,1"
     else:
-        mktgresp.orders="-1,1"
+        mktgresp.orders = params["tg_order"]
 
     out = mktgresp()
 
