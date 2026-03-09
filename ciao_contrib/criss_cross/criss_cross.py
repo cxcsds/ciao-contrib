@@ -1637,124 +1637,63 @@ def spec_flag_set(
 
 
 ####POINT SOURCE CONFUSION FUNCTIONS####
+def pntsrc_dist_to_spec(src_pos, norm_arm):
+    r"""Get distance of each point from line, and line position closest to each point.
 
+    Calculate the distance from each point in src_pos to the line defined
+    by norm_arm and passing through each point in src_pos.
 
-def pntsrc_dist_to_spec(
-    pntsrc_dict,
-    src_pos_x_par,
-    src_pos_y_par,
-    xoff_par,
-    yoff_par,
-    m_arm_par,
-    b_arm_par,
-    arm_ang_par,
-    arm_par,
-):
-    """
-    Calculates 'perp_dist_to_spec' which is the distance in pixels between a confusing 0th order point
-    source and the dipersed spectrum of the confused source (measured perpendicular to the spectrum). It also calculates
-    ['intersect_dist'][arm_par][i,j] variable which is the distance from the 0th order to the 0th order confuser along
-    the grating arm. NOTE: This calculation should be valid regardless of the roll angle. However, roll angle is used
-    in other functions to determine which orders to fill based on whether 0th order source is 'above' or 'below' the
-    potentially confused grating arm in detector coordinates.
+    The line is defined by the equation:
+    :math:`\vec{X} = \vec{S} + k \cdot \vec{N}_{arm}`
+
+    where :math:`\vec{X}` describes any point on the line
+    :math:`\vec{S}` is the source position
+    :math:`\vec{N}_{arm}` is the normalized direction vector for the arm
+    and :math:`k` is a scalar parameter that describes how far along the line you are from the source.
 
     Parameters
     ----------
-    pntsrc_dict : dictionary
-        Point source confusion dict which holds all possible pntsrc confusion entries for every source in main_list.
-    src_pos_x_par, src_pos_y_par : float
-        Positions in physical units associated with sources in the main_list.
-    xoff_par, yoff_pa : int
-        X and Y offset values necessary to ensure equation of line intersection parameters all stay positive.
-    m_arm_par : float
-        Slope of the grating line on the detector (from y=mx+b and the grating instrumental slope).
-    b_arm_par : float
-        HEG/MEG line intercept value (from y=mx+b).
-    arm_ang_par : float
-        Instrumental grating arm HEG/MEG angle that vary relative to roll angle.
-    arm_par : str
-        HETG 'heg' or 'meg' arm.
+    src_pos : np.ndarray
+        An (n, 2) array of source positions.
+    norm_arm : np.ndarray
+        A (2,) array representing the normalized direction vector of the line.
 
     Returns
     -------
-    pntsrc_dict : updates the pntsrc_dict parameters and returns them.
-    perp_dist_to_spec_arm : perpendicular distance to spectral arm for every i,j pair.
-    r0_offset_dist_from_contam_arm : a necessary value when calculating the wavelength where pntsrc confusion occurs.
+    k : np.ndarray
+        An (n, n) array of scalar parameters k for each pair of source positions.
+        :math:`\vec{S} + k \cdot \vec{N_{arm}}` is the point on the line closest
+        to the source position.
+        k[i, :] gives the k values for the line defined by source position i to the
+        point of closed approach for each source position
+        (so, ``k[i,i] == 0`` because it's the distance of a source to itself).
+    distance_to_line : np.ndarray
+        An (n, n) array of distances from each source position to the
+        line defined by norm_arm.
+
+    Note
+    ----
+    See https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line#Vector_formulation
+    for more details on the mathematical formulation used in this function.
     """
+    s_minus_s = src_pos[None, :, :] - src_pos[:, None, :]
+    k = np.vecdot(s_minus_s, norm_arm)
+    vec_along_line = k[:, :, None] * norm_arm
+    vec_perpendicular_to_line = s_minus_s - vec_along_line
+    distance_to_line = np.linalg.norm(vec_perpendicular_to_line, axis=-1)
 
-    ###Identify point sources that fall on the lines of other sources dispersed spectra
-    # plug in the X coord of all sources into the equation of a line and if the y coord of that source is 
-    # +/- contam_offset_par(see below) from the y after plugging in x then it is on or near the line.
-
-    # initialize values
-    yintercept_pointsrc_arm = np.zeros(
-        (len(src_pos_x_par), len(src_pos_x_par))
-    )  # y intercept value
-
-    ydistance_to_spectrum_arm = np.zeros(
-        (len(src_pos_x_par), len(src_pos_x_par))
-    )  # this is what the value of Y (j) should be if X (j) is on the line (i). In other words, the y value of j 
-       # where it intersects the dispersed spectrum if drawn directly down.   yintercept_pointsrc is what the Y value 
-       # of the contaminating source SHOULD BE if it fell EXACTLY on the line of a different source.  Note that Y does 
-       # not equal distance to disperssed spectrum. The y distance above the dispersed spectrum is just src_pos_y[j] - 
-       # yintercept_pointsrc[i,j]
-
-    perp_dist_to_spec_arm = np.zeros(
-        (len(src_pos_x_par), len(src_pos_x_par))
-    )  # this is the perpendicular distance (or the shortest distance from contaminating source to the dispersed spectrum).
-
-    r0_offset_dist_from_contam_arm = np.zeros(
-        (len(src_pos_x_par), len(src_pos_x_par))
-    )  # This par is hard to explain.  If you draw a line in the y direction from the contaminating point source to the
-       # dispersed spectrum you get endpoint #1. If you draw a line from the contaminating point source DIRECTLY 
-       # (shortest distance, perpendicular) to the dispersed spectrum, you get endpoint #2.  This parameter is the 
-       # distance difference between these two endpoints.  This is to calculate the distance from endpoint#1 to the 
-       # zeroth order and then ADD to that this offset distance to get the final distance (location in the dispersed 
-       # specturm) where the contaminating source would influence its spectrum.
-
-    # first calculate perp_dist_to_spec_arm
-    for i in range(len(src_pos_x_par)):
-        for j in range(len(src_pos_x_par)):
-            yintercept_pointsrc_arm[i, j] = yoff_par + (
-                (m_arm_par * (src_pos_x_par[j] - xoff_par)) + b_arm_par[i]
-            )  # NOTE-- Would this be easier to calculate as tan(arm_ang_par) * (abs(src_pos_x[j] - src_pos_x[i]))? 
-               # Seems way less complicated and shouldn't depend on roll
-            ydistance_to_spectrum_arm[i, j] = (
-                src_pos_y_par[j] - yintercept_pointsrc_arm[i, j]
-            )
-            perp_dist_to_spec_arm[i, j] = ydistance_to_spectrum_arm[i, j] * math.sin(
-                math.radians(90 - arm_ang_par)
-            )
-            r0_offset_dist_from_contam_arm[i, j] = ydistance_to_spectrum_arm[
-                i, j
-            ] * math.cos(math.radians(90 - arm_ang_par))
-
-            # to be consistent with previous code, only calculate if this value != 0. Might be able to remove this 
-            # condition later
-            if perp_dist_to_spec_arm[i, j] != 0:
-                pntsrc_dict["intersect_dist"][arm_par][i, j] = abs(
-                    (src_pos_x_par[j] - src_pos_x_par[i])
-                    / math.sin(math.radians(90 - arm_ang_par))
-                    + r0_offset_dist_from_contam_arm[i, j]
-                )
-
-    return (pntsrc_dict, perp_dist_to_spec_arm, r0_offset_dist_from_contam_arm)
+    return k, distance_to_line
 
 
 def pntsrc_confuse_wave(
     pntsrc_dict,
-    perp_dist_to_spec_arm_par,
-    src_pos_x_par,
-    P_arm_par,
-    mm_per_pix,
-    X_R,
     arm_par,
-    roll_nom_par,
     src_off_axis_par,
     counts_par,
     max_pntsrc_dist_par,
     min_spec_counts_par,
     min_pntsrc_counts_par,
+    highest_order=3,
 ):
     """
     Identifies when point source confusion occurs within the thresholds provided by the user. If a 0th order source is
@@ -1767,21 +1706,9 @@ def pntsrc_confuse_wave(
     ----------
     pntsrc_dict : dictionary
         Point source confusion dict which holds all possible pntsrc confusion entries for every source in main_list.
-    perp_dist_to_spec_arm_par : float
-        Perpendicular distance to spectral arm for every i,j pair. Each arm heg/meg will have its own perp_dist_to_spec
-        parameter which is why function require arm_par.
-    src_pos_x_par, src_pos_y_par : float
-        Positions in physical units associated with sources in the main_list.
-    P_arm_par : float
-        HEG or MEG gratings period which is an instrumental constant.
-    mm_per_pix : float
-        The constant number of millimeters per ACIS pixel. (CONSTANT = 0.023987)
-    X_R : float
-        Rowland  diameter in millimeters (CONSTANT=8632.48)
+        This dictionary is modified in place by this function.
     arm_par : str
         HETG 'heg' or 'meg' arm.
-    roll_nom_Par : float
-        Roll angle of the observation taken from the fits header.
     src_off_axis_par : float
         Off-axis angle of the source in arcseconds
     counts_par : int
@@ -1796,111 +1723,40 @@ def pntsrc_confuse_wave(
     min_pntsrc_counts_par : int
         CrissCross parameter threshold in counts above which a 0th order source is bright enough to be
         considered as a confuser source of another source's spectrum.
+    highest_order : int
+        The highest order to check for confusion. Default is 3 which means
+        +/- 1, +/- 2, and +/- 3 will be checked.
     """
+    P = Period[arm_par]
+    orders = np.arange(-highest_order, highest_order + 1)
+    orders = orders[orders != 0]  # exclude 0 order
 
-    # note, the wavelength calculation here depends on the roll angle of the observation only because determination of 
-    # the order (e.g., -1 versus +1) depends on roll angle in functions above (see intersect_dist and r0_offset_dist)
-    for i in range(len(src_pos_x_par)):
-        for j in range(len(src_pos_x_par)):
+    distance_to_line = pntsrc_dict["intersect_dist"][arm_par]
+    mwave = distance_to_line * mm_per_pix / X_R * P
+    # divide by order number to get wavelength for each order
+    wave = mwave[..., np.newaxis] / orders
 
-            if src_off_axis_par[j] <= 180:
-                off_axis_modifier = 1
-            elif src_off_axis_par[j] > 180 and src_off_axis_par[j] < 360:
-                off_axis_modifier = 2
-            elif src_off_axis_par[j] >= 360:
-                off_axis_modifier = 3
-            else:
-                print("ERROR off axis check")
+    off_axis_modifier = np.ones_like(distance_to_line)
+    off_axis_modifier[src_off_axis_par > 180] = 2
+    off_axis_modifier[src_off_axis_par >= 360] = 3
+    off_axis_limit = max_pntsrc_dist_par * off_axis_modifier
 
-            if (
-                i != j
-                and perp_dist_to_spec_arm_par[i, j] != 0
-                and (
-                    abs(perp_dist_to_spec_arm_par[i, j])
-                    < (max_pntsrc_dist_par * off_axis_modifier)
-                )
-                and counts_par[i] > min_spec_counts_par
-                and counts_par[j] > min_pntsrc_counts_par
-            ):
-                for m in ["1", "2", "3"]:
-                    if (roll_nom_par > 271 and roll_nom_par < 360) or (
-                        roll_nom_par > 0 and roll_nom_par < 90
-                    ):
-                        if src_pos_x_par[j] > src_pos_x_par[i]:
-                            pntsrc_dict[arm_par + "+" + m]["wave"][i, j] = np.around(
-                                (
-                                    P_arm_par
-                                    * (
-                                        (
-                                            pntsrc_dict["intersect_dist"][arm_par][i, j]
-                                            * mm_per_pix
-                                        )
-                                        / X_R
-                                    )
-                                )
-                                / int(m),
-                                decimals=3,
-                            )  # divide by order number
-                        elif src_pos_x_par[j] < src_pos_x_par[i]:
-                            pntsrc_dict[arm_par + "-" + m]["wave"][i, j] = np.around(
-                                (
-                                    P_arm_par
-                                    * (
-                                        (
-                                            pntsrc_dict["intersect_dist"][arm_par][i, j]
-                                            * mm_per_pix
-                                        )
-                                        / X_R
-                                    )
-                                )
-                                / int(m),
-                                decimals=3,
-                            )  # divide by order number
-                        else:
-                            print(
-                                f"ERROR in point source confuse calculation for i,j,m = {i,j,m}"
-                            )
-                    elif roll_nom_par > 90 and roll_nom_par < 270:
-                        if src_pos_x_par[j] < src_pos_x_par[i]:
-                            pntsrc_dict[arm_par + "+" + m]["wave"][i, j] = np.around(
-                                (
-                                    P_arm_par
-                                    * (
-                                        (
-                                            pntsrc_dict["intersect_dist"][arm_par][i, j]
-                                            * mm_per_pix
-                                        )
-                                        / X_R
-                                    )
-                                )
-                                / int(m),
-                                decimals=3,
-                            )  # divide by order number
-                        elif src_pos_x_par[j] > src_pos_x_par[i]:
-                            pntsrc_dict[arm_par + "-" + m]["wave"][i, j] = np.around(
-                                (
-                                    P_arm_par
-                                    * (
-                                        (
-                                            pntsrc_dict["intersect_dist"][arm_par][i, j]
-                                            * mm_per_pix
-                                        )
-                                        / X_R
-                                    )
-                                )
-                                / int(m),
-                                decimals=3,
-                            )  # divide by order number
-                        else:
-                            print(
-                                f"ERROR in point source confuse calculation for i,j,m, roll_nom_par = {i,j,m, roll_nom_par}"
-                            )
-                    else:
-                        print(
-                            "ERROR -- Check roll_nom_par value and make sure it isnt close to 90 or 270, if so plus and minus orders may be confused"
-                        )
+    ## check the indexing and array broadcasting
+    waves_to_set = (
+        (distance_to_line < off_axis_limit)
+        & (counts_par > min_spec_counts_par)[:, np.newaxis]
+        & (counts_par > min_pntsrc_counts_par)[np.newaxis, :]
+    )
 
-    return pntsrc_dict
+    # to be consistent with previous usage, we set to 0 when there
+    # is no potential confusion, but np.nan or np.inf might be better markers.
+    wave[~waves_to_set] = 0
+    # For a conflict to happen, order and intersect distance
+    # must be on the same arm.
+    wave[wave < 0] = 0
+
+    for i, o in enumerate(orders):
+        pntsrc_dict[f"{arm_par}{o:+n}"]["wave"] = wave[:, :, i]
 
 
 def pntsrc_confuse_wave_bounds(
@@ -4197,6 +4053,8 @@ def run_crisscross(
         )  # always reads the region block because the block number is variable
         heg_ang = grating_rotang.ROTANG.values[1]  # tg_part = 1
         meg_ang = grating_rotang.ROTANG.values[2]  # tg_part = 2
+        norm_vec_heg = [np.sin(np.radians(heg_ang)), np.cos(np.radians(heg_ang))]
+        norm_vec_meg = [np.sin(np.radians(meg_ang)), np.cos(np.radians(meg_ang))]
 
         print(
             "The HEG/MEG angles for this observation are %s and %s degrees."
@@ -4245,6 +4103,7 @@ def run_crisscross(
         src_pos_x, src_pos_y, src_off_axis = calc_physical_coords(
             fits_par=evt2_file[k], RA_par=RA_wcs, DEC_par=DEC_wcs
         )
+        src_pos = np.array([src_pos_x, src_pos_y]).T
 
         time_message = "Finished converting RA/DEC into chandra coords"
         time_log_counter = time_logger(
@@ -4408,48 +4267,15 @@ def run_crisscross(
 
         # CREATE the point source confusion dictionary to hold all relevant parameters
         pntsrc_conf = conf_dict(num_sources=len(src_pos_x), highest_order=3)
-
-        # calcluates perp_distance_to_spec and 'intersect distance' for all point sources
-        pntsrc_conf, perp_dist_to_spec_heg, r0_offset_dist_from_contam_heg = (
-            pntsrc_dist_to_spec(
-                pntsrc_dict=pntsrc_conf,
-                src_pos_x_par=src_pos_x,
-                src_pos_y_par=src_pos_y,
-                xoff_par=xoff,
-                yoff_par=yoff,
-                m_arm_par=m_heg,
-                b_arm_par=b_heg,
-                arm_ang_par=heg_ang,
-                arm_par="heg",
-            )
-        )
-
-        pntsrc_conf, perp_dist_to_spec_meg, r0_offset_dist_from_contam_meg = (
-            pntsrc_dist_to_spec(
-                pntsrc_dict=pntsrc_conf,
-                src_pos_x_par=src_pos_x,
-                src_pos_y_par=src_pos_y,
-                xoff_par=xoff,
-                yoff_par=yoff,
-                m_arm_par=m_meg,
-                b_arm_par=b_meg,
-                arm_ang_par=meg_ang,
-                arm_par="meg",
-            )
-        )
+        dist_along_heg, point_to_heg = pntsrc_dist_to_spec(src_pos, norm_vec_heg)
+        dist_along_meg, point_to_meg = pntsrc_dist_to_spec(src_pos, norm_vec_meg)
 
         # Determines the wavelegth where point source confusion may occur
 
         # HEG
-        pntsrc_conf = pntsrc_confuse_wave(
+        pntsrc_confuse_wave(
             pntsrc_dict=pntsrc_conf,
-            perp_dist_to_spec_arm_par=perp_dist_to_spec_heg,
-            src_pos_x_par=src_pos_x,
-            P_arm_par=P_heg,
-            mm_per_pix=mm_per_pix,
-            X_R=X_R,
             arm_par="heg",
-            roll_nom_par=roll_nom,
             src_off_axis_par=src_off_axis,
             counts_par=counts,
             max_pntsrc_dist_par=max_pntsrc_dist,
@@ -4458,15 +4284,9 @@ def run_crisscross(
         )
 
         # MEG
-        pntsrc_conf = pntsrc_confuse_wave(
+        pntsrc_confuse_wave(
             pntsrc_dict=pntsrc_conf,
-            perp_dist_to_spec_arm_par=perp_dist_to_spec_meg,
-            src_pos_x_par=src_pos_x,
-            P_arm_par=P_meg,
-            mm_per_pix=mm_per_pix,
-            X_R=X_R,
             arm_par="meg",
-            roll_nom_par=roll_nom,
             src_off_axis_par=src_off_axis,
             counts_par=counts,
             max_pntsrc_dist_par=max_pntsrc_dist,
