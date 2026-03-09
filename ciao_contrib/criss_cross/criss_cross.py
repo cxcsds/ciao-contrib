@@ -42,12 +42,12 @@ from pycrates import (
 )
 from crates_contrib.utils import make_table_crate
 from ciao_contrib.runtool import *
-from .iocaldb import OSIP, Sky2Chandra, Cel2Chandra
-from .widthofexclusion import *
+from iocaldb import OSIP, Sky2Chandra, Cel2Chandra
+from widthofexclusion import *
 
 
 ############## CONSTANTS ##############
-tg_part_name = {1: "heg", 2: "meg", 3: "leg"}
+tg_part_name = ["zeroth order", "heg", "meg", "leg"]
 
 X_R = 8632.48  # rowland diameter in mm constant
 
@@ -63,7 +63,26 @@ mm_per_pix = 0.023987  # pixel size in mm for acis same for I and S;  pix size i
 
 
 #############FUNCTION DEFINITIONS###############
+def calc_off_axis_modifier(theta_arcsec):
+    """
 
+    At larger off-axis angles, the PSF get larger and thus point sources and grating arms
+    look wider.
+
+    Parameters
+    ----------
+    theta_arcsec : float
+        off-axis angle in arcseconds
+
+    Returns
+    -------
+    modifier : float
+        multiplier to apply to distances
+    """
+    out = np.ones_like(theta_arcsec)
+    out[theta_arcsec > 180] = 2
+    out[theta_arcsec > 360] = 3
+    return out
 
 def make_output_dir(cc_outdir, obsid_par, clobber_par=False):
     """
@@ -1736,9 +1755,7 @@ def pntsrc_confuse_wave(
     # divide by order number to get wavelength for each order
     wave = mwave[..., np.newaxis] / orders
 
-    off_axis_modifier = np.ones_like(distance_to_line)
-    off_axis_modifier[src_off_axis_par > 180] = 2
-    off_axis_modifier[src_off_axis_par >= 360] = 3
+    off_axis_modifier = calc_off_axis_modifier(src_off_axis_par)
     off_axis_limit = max_pntsrc_dist_par * off_axis_modifier
 
     ## check the indexing and array broadcasting
@@ -1809,14 +1826,6 @@ def pntsrc_confuse_wave_bounds(
     -------
     pntsrc_dict : updates values in the pnsrc_confusion dictionary and returns the dictionary.
     """
-
-    if arm_par == "heg":
-        tg_part = 1
-    elif arm_par == "meg":
-        tg_part = 2
-    else:
-        raise ValueError("Cannot identify tg_part value from arm_par")
-
     osip = OSIP(fits_list_par)
     skyconverter = Sky2Chandra(fits_list_par)
     evtcrates = read_file(fits_list_par)
@@ -1842,7 +1851,7 @@ def pntsrc_confuse_wave_bounds(
                         src_pos_y_par[j],
                         np.abs(perp_dist_to_spec_arm_par[i, j]),
                         pntsrc_dict[arm_par + m]["wave"][i, j],
-                        tg_part,
+                        tg_part_name.index(arm_par),
                         evt_frac_thresh,
                         pntsrc_confuse_log_file,
                     )
@@ -2125,26 +2134,10 @@ def arm_confuse_wave(
 
     """
     for i in subset_sources:
-
-        if src_off_axis_par[i] < 180:
-            off_axis_modifier_i = 1
-        elif src_off_axis_par[i] >= 180 and src_off_axis_par[i] < 360:
-            off_axis_modifier_i = 2
-        elif src_off_axis_par[i] >= 360:
-            off_axis_modifier_i = 3
-        else:
-            print("ERROR off axis check")
+        off_axis_modifier_i = calc_off_axis_modifier(src_off_axis_par[i])
 
         for j in range(0, len(src_pos_x_par)):
-
-            if src_off_axis_par[j] < 180:
-                off_axis_modifier_j = 1
-            elif src_off_axis_par[j] >= 180 and src_off_axis_par[j] < 360:
-                off_axis_modifier_j = 2
-            elif src_off_axis_par[j] >= 360:
-                off_axis_modifier_j = 3
-            else:
-                print("ERROR off axis check")
+            off_axis_modifier_j = calc_off_axis_modifier(src_off_axis_par[j])
 
             # First calculate 0th_counts_frac for the relevant sources
             if (
@@ -4305,7 +4298,7 @@ def run_crisscross(
         # determine whether confusion occurs for all point sources
         pntsrc_conf = pntsrc_confuse_wave_bounds(
             pntsrc_dict=pntsrc_conf,
-            perp_dist_to_spec_arm_par=perp_dist_to_spec_heg,
+            perp_dist_to_spec_arm_par=point_to_heg,
             fits_list_par=evt2_file[k],
             subset_sources=subset_list,
             src_pos_x_par=src_pos_x,
@@ -4317,7 +4310,7 @@ def run_crisscross(
 
         pntsrc_conf = pntsrc_confuse_wave_bounds(
             pntsrc_dict=pntsrc_conf,
-            perp_dist_to_spec_arm_par=perp_dist_to_spec_meg,
+            perp_dist_to_spec_arm_par=point_to_meg,
             fits_list_par=evt2_file[k],
             subset_sources=subset_list,
             src_pos_x_par=src_pos_x,
@@ -4366,9 +4359,9 @@ def run_crisscross(
         # distance from the confused 0th order to the confuser 0th order.
         arm_conf = arm_confuse_wave(
             arm_dict=arm_conf,
-            perp_dist_to_spec_arm_par=perp_dist_to_spec_heg,
+            perp_dist_to_spec_arm_par=point_to_heg,
             src_pos_x_par=src_pos_x,
-            P_arm_par=P_heg,
+            P_arm_par=Period["heg"],
             arm_par="heg",
             arm_ang_par=heg_ang,
             roll_nom_par=roll_nom,
@@ -4384,9 +4377,9 @@ def run_crisscross(
 
         arm_conf = arm_confuse_wave(
             arm_dict=arm_conf,
-            perp_dist_to_spec_arm_par=perp_dist_to_spec_meg,
+            perp_dist_to_spec_arm_par=point_to_meg,
             src_pos_x_par=src_pos_x,
-            P_arm_par=P_meg,
+            P_arm_par=Period["meg"],
             arm_par="meg",
             arm_ang_par=meg_ang,
             roll_nom_par=roll_nom,
