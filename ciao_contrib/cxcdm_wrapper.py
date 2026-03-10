@@ -615,6 +615,10 @@ def clear_acis_status_bits(fname, toolname=None):
 
     timeVal = time.strftime("%Y-%m-%dT%H:%M:%S")
     bl = tableOpen(fname, update=True)
+    ds = blockGetDataset(bl)
+    if not dm.dmDatasetWriteable(ds):
+        raise IOError(f"File '{fname}' exists but is not writeable.")
+
     try:
         col = open_column(bl, 'STATUS', filename=fname)
     except IOError:
