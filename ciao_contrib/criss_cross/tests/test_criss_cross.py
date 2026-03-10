@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from ..criss_cross import line_point, line_line
+from ..criss_cross import pntsrc_dist_to_spec, determine_line_intersect_values
 
 # Define some positions and vectors that are used in several fo the tests below.
 x = np.array([1, 2, 3])
@@ -38,20 +38,26 @@ def test_line_line_exception():
     with pytest.raises(
         ValueError, match="norm_arm1 needs to be normalized to length 1."
     ):
-        line_line(src_pos=xy, norm_arm1=np.array([2, 0]), norm_arm2=N)
+        determine_line_intersect_values(
+            src_pos=xy, norm_arm1=np.array([2, 0]), norm_arm2=N
+        )
     with pytest.raises(
         ValueError, match="norm_arm1 needs to be normalized to length 1."
     ):
-        line_line(src_pos=xy, norm_arm1=np.array([0.1, 0.2]), norm_arm2=N)
+        determine_line_intersect_values(
+            src_pos=xy, norm_arm1=np.array([0.1, 0.2]), norm_arm2=N
+        )
     with pytest.raises(
         ValueError, match="norm_arm2 needs to be normalized to length 1."
     ):
-        line_line(src_pos=xy, norm_arm1=N, norm_arm2=np.array([-1.1, 0.5]))
+        determine_line_intersect_values(
+            src_pos=xy, norm_arm1=N, norm_arm2=np.array([-1.1, 0.5])
+        )
     with pytest.raises(
         ValueError,
         match="norm_arm1 and norm_arm2 are parallel, so there are no intersection point.",
     ):
-        line_line(src_pos=xy, norm_arm1=N, norm_arm2=N)
+        determine_line_intersect_values(src_pos=xy, norm_arm1=N, norm_arm2=N)
 
 
 def test_line_point_generic():
@@ -64,7 +70,7 @@ def test_line_point_generic():
     src_pos = rng.uniform(size=(10, 2))
     angle = np.random.uniform(0, 2 * np.pi)
     norm_vec = np.array([np.sin(angle), np.cos(angle)])
-    k, d = line_point(src_pos, norm_vec)
+    k, d = pntsrc_dist_to_spec(src_pos, norm_vec)
     # We get back a 10*10 array
     assert k.shape == (10, 10)
     assert d.shape == (10, 10)
@@ -85,7 +91,7 @@ def test_line_point_generic():
 
 def test_line_point_example():
     """Test line_point with a simple example where we know the answer."""
-    k, d = line_point(xy, N)
+    k, d = pntsrc_dist_to_spec(xy, N)
     # Point 1 and 2 are on the same line.
     assert d[1, 2] == pytest.approx(0)
     assert d[0, 1] == pytest.approx(3.53553391e-01)
@@ -111,7 +117,7 @@ def test_line_line_generic():
     angle2 = np.random.uniform(0, 2 * np.pi)
     norm_vec1 = np.array([np.sin(angle1), np.cos(angle1)])
     norm_vec2 = np.array([np.sin(angle2), np.cos(angle2)])
-    k1, k2 = line_line(src_pos, norm_vec1, norm_vec2)
+    k1, k2 = determine_line_intersect_values(src_pos, norm_vec1, norm_vec2)
     # We get back a 10*10 array
     assert k1.shape == (10, 10)
     assert k2.shape == (10, 10)
@@ -121,9 +127,14 @@ def test_line_line_generic():
     # We can get the point of intersection either by starting
     # from line 1 and going k1 along norm_vec1, or by starting
     # from line 2 and going k2 along norm_vec2.
-    intersect1 = src_pos + k1[:, :, None] * norm_vec1
-    intersect2 = src_pos + k2[:, :, None] * norm_vec2
-    assert intersect1 == pytest.approx(intersect2)
+    intersect1 = src_pos[:, np.newaxis, :] + k1[:, :, None] * norm_vec1
+    intersect2 = src_pos[:, np.newaxis, :] + k2[:, :, None] * norm_vec2
+    # intersect2[i, j, :] is the location of
+    # going from point i along line 2 to the intersection with the line from point j along line 1.
+    # That means intersect2[i, j, :] should be the same as intersect1[j, i, :].
+    # To test that on an entire matrix, we need to transpose intersect2, but only the first two dimensions,
+    # not the last one. In numpy, that's done with "moveaxes".
+    assert intersect1 == pytest.approx(np.moveaxis(intersect2, 1, 0))
     # All HEG and all MEG lines are parallel, so the following forms a
     # parallelogram, and the distance from point i along the HEG to the intersection
     # of HEG and MEG should be the same as the negative distance from point j
@@ -136,7 +147,7 @@ def test_line_line_example():
     """We use somewhat special values for the angles here to make sure the
     lines intersect at a point that's easy to verify.
     """
-    k1, k2 = line_line(xy, N, N2)
+    k1, k2 = determine_line_intersect_values(xy, N, N2)
     assert k1[0, :] == pytest.approx([0, 1.5 * np.sqrt(2), 2.5 * np.sqrt(2)])
     assert k2[0, :] == pytest.approx([0, -0.5, -0.5])
     assert k1[1, 2] == pytest.approx(np.sqrt(2))

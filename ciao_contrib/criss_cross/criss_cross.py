@@ -18,7 +18,6 @@
 import itertools
 from pathlib import Path
 import os
-import math
 import glob
 import shutil
 import time
@@ -53,8 +52,8 @@ X_R = 8632.48  # rowland diameter in mm constant
 
 # period in angstroms constant. Note, this is value from telD1999-07-23geomN0006.fits in CALDB
 Period = {
-    "heg": 4001.95,  # however in marxsim it uses 4001.41 A
-    "meg": 2000.81,
+    "meg": 4001.95,  # however in marxsim it uses 4001.41 A
+    "heg": 2000.81,
 }
 mm_per_pix = 0.023987  # pixel size in mm for acis same for I and S;  pix size in arcsec is 0.492''
 
@@ -596,14 +595,44 @@ def determine_line_intersect_values(src_pos, norm_arm1, norm_arm2):
     Returns
     -------
     k1 : np.ndarray
-        An (n, n) array of scalar parameters k for the first line.
+        An (n, n) array of scalar parameters k for the first line. See the example below for the
+        ordering of the elements and the meaning of the indices.
     k2 : np.ndarray
-        An (n, n) array of scalar parameters k for the second line.
+        An (n, n) array of scalar parameters k for the second line. See the example below for the
+        ordering of the elements and the meaning of the indices.
 
     Note
     ----
     See https://en.wikipedia.org/wiki/Line–line_intersection#Given_two_points_on_each_line_segment
     for more details on the mathematical formulation used in this function.
+
+    Example
+    -------
+    While the geometric :math:`\vec{X} = \vec{S} + k \cdot \vec{N_{arm}}` is simply enough for
+    a single point, we are calculating the intersection for multiple sources at once and it is easy
+    to get confused about the ordering of the indices in the output arrays and in which dimension
+    the array of sources needs to be broadcast. Thus, below is a fill example.
+
+    `src_pos` is an (n, 2) array of source positions, thus
+
+        >>> x_i, y_i = src_pos[i, :]
+
+    The output arrays `k1` and `k2` are (n, n) arrays where the element `k1[i, j]`
+    the distance from source i along the first line to the intersection point with the second line
+    defined by source j and `norm_arm2`.
+
+    This this definition, you cna obtain the x,y coordinates of all intersection points with:
+
+        >>> intersect = xy[:, np.newaxis, :] + k1[:, :, np.newaxis] * norm_arm1
+
+    or, equivalently,
+
+        >>> intersect = xy[:, np.newaxis, :] + k2[:, :, np.newaxis] * norm_arm2
+
+    In either case, `intersect` is an (n, n, 2) array where `intersect[i, j, :]` gives
+    the x,y coordinates of the intersection point between the line defined by source i and
+    `norm_arm1` and the line defined by source j and `norm_arm2`.
+
     """
     if not np.isclose(np.linalg.norm(norm_arm1), 1):
         raise ValueError("norm_arm1 needs to be normalized to length 1.")
@@ -613,19 +642,19 @@ def determine_line_intersect_values(src_pos, norm_arm1, norm_arm2):
         raise ValueError(
             "norm_arm1 and norm_arm2 are parallel, so there are no intersection point."
         )
-    s_minus_s = src_pos[None, :, :] - src_pos[:, None, :]
+    s_minus_s = src_pos[np.newaxis, :, :] - src_pos[:, np.newaxis, :]
     # broadcast (x y) norm vectors to shape (n, n, 2)
     bvec_norm1 = np.broadcast_to(norm_arm1, s_minus_s.shape)
     bvec_norm2 = np.broadcast_to(norm_arm2, s_minus_s.shape)
 
-    k1_nominator = np.linalg.det(np.stack([s_minus_s, bvec_norm2], axis=-1))
-    k2_nominator = np.linalg.det(np.stack([bvec_norm1, -s_minus_s], axis=-1))
+    k1_nominator = np.linalg.det(np.stack([s_minus_s, -bvec_norm2], axis=-1))
+    k2_nominator = np.linalg.det(np.stack([-bvec_norm1, s_minus_s], axis=-1))
     denominator = np.linalg.det(np.stack([bvec_norm1, bvec_norm2], axis=-1))
 
     k1 = k1_nominator / denominator
     k2 = k2_nominator / denominator
 
-    return k1, k2
+    return k1.T, k2.T
 
 
 def conf_dict(num_sources, highest_order=3, arms=["heg", "meg"]):
@@ -1548,7 +1577,7 @@ def pntsrc_confuse_wave(
     min_pntsrc_counts_par,
     highest_order=3,
 ):
-    """
+    r"""
     Identifies when point source confusion occurs within the thresholds provided by the user. If a 0th order source is
     sufficiently bright and close to the dispersed spectrum of another source then it will be identified as having
     point source confusion.  This function uses output from pntsrc_dist_to_spec() with the roll angle to determine
@@ -1973,7 +2002,12 @@ def arm_confuse_wave(
 
     off_axis_modifier = calc_off_axis_modifier(src_off_axis_par)
 
-    zeroth_cnts_frac = counts_par[:, np.newaxis] / counts_par[np.newaxis, :]
+    # Nan's can happen where counts are 0. Don't display that warning, because we
+    # deal with it in the line below.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        zeroth_cnts_frac = counts_par[:, np.newaxis] / counts_par[np.newaxis, :]
+    zeroth_cnts_frac = np.nan_to_num(zeroth_cnts_frac, nan=0, posinf=0)
+
     arm_dict["0th_cnts_frac"][arm_par] = zeroth_cnts_frac
 
     ## check the indexing and array broadcasting
@@ -3749,10 +3783,12 @@ def run_crisscross(
         grating_rotang = read_file(
             f"{evt2_file[k]}[REGION]"
         )  # always reads the region block because the block number is variable
-        heg_ang = grating_rotang.ROTANG.values[1]  # tg_part = 1
-        meg_ang = grating_rotang.ROTANG.values[2]  # tg_part = 2
-        norm_vec_heg = [np.sin(np.radians(heg_ang)), np.cos(np.radians(heg_ang))]
-        norm_vec_meg = [np.sin(np.radians(meg_ang)), np.cos(np.radians(meg_ang))]
+        heg_ang = np.radians(grating_rotang.ROTANG.values[1])  # tg_part = 1
+        meg_ang = np.radians(grating_rotang.ROTANG.values[2])  # tg_part = 2
+        # It is physically arbitrary which direction are positive and negative. The minus
+        # signs are here to match the Chandra convention.
+        norm_vec_heg = -np.array([np.cos(heg_ang), np.sin(heg_ang)])
+        norm_vec_meg = -np.array([np.cos(meg_ang), np.sin(meg_ang)])
 
         print(
             "The HEG/MEG angles for this observation are %s and %s degrees."
@@ -3846,7 +3882,9 @@ def run_crisscross(
         k_heg, k_meg = determine_line_intersect_values(
             src_pos, norm_vec_heg, norm_vec_meg
         )
-        heg_meg_intersects = src_pos + k_heg[:, :, None] * norm_vec_heg
+        heg_meg_intersects = (
+            src_pos[:, np.newaxis, :] + k_heg[:, :, np.newaxis] * norm_vec_heg
+        )
 
         time_message = (
             "Finished calculating XY intercepts for all sources in the field of view."
@@ -3864,10 +3902,10 @@ def run_crisscross(
         spec_conf = conf_dict(num_sources=len(src_pos_x), highest_order=3)
 
         # Calculate wavelengths and boundaries for spectral arm intersection.
-        for arm, k in (["heg", k_heg], ["meg", k_meg]):
+        for arm, vec in (["heg", k_heg], ["meg", k_meg]):
             spec_confuse_wave(
                 spec_conf,
-                k,
+                vec,
                 arm,
                 counts,
                 min_spec_counts,
