@@ -10,8 +10,6 @@
 
 # spec_flag_set takes a lot of time to run and should be made more efficient.
 
-# format code to fix character limit to < 120 characters
-
 ##########################################################################################
 ##########################################################################################
 ##########################################################################################
@@ -24,6 +22,7 @@ import shutil
 import time
 
 import numpy as np
+from numpy.lib import recfunctions as rfn
 
 from pycrates import (
     read_file,
@@ -65,6 +64,8 @@ hc = 4.1357e-15 * 2.998e18
 
 ##### FLAG DEFINITIONS #####
 flags_status = ["clean", "warn", "confused"]
+flags_arm = ["clean", "arm_confusion"]
+
 
 #############FUNCTION DEFINITIONS###############
 def calc_off_axis_modifier(theta_arcsec):
@@ -87,6 +88,7 @@ def calc_off_axis_modifier(theta_arcsec):
     out[theta_arcsec > 180] = 2
     out[theta_arcsec > 360] = 3
     return out
+
 
 def make_output_dir(cc_outdir, obsid_par, clobber_par=False):
     """
@@ -284,7 +286,7 @@ def load_sourcelist(filename=None, subset_list=False):
                 f'\nERROR reading "{filename}". Please ensure file type is ascii or tsv and there are at least two columns (RA DEC) in degrees\n'
             )
 
-        # if len=2 then probably only RA and DEC present. For the subset_list, do NOT create new ID values because they 
+        # if len=2 then probably only RA and DEC present. For the subset_list, do NOT create new ID values because they
         # must match the main_list IDs.
         elif crate_len == 2 and subset_list == False:
             print(
@@ -295,7 +297,6 @@ def load_sourcelist(filename=None, subset_list=False):
         # if len=3 the prob RA, DEC, ID so check ID column to make sure they can be converted to integers necessary for
         #  naming purposes
         elif crate_len == 3:
-
             idcol_test = cratedata.get_column(colnames[2]).values
             try:
                 idcol_test.astype(int)
@@ -472,23 +473,22 @@ def find_closest_source(src_x, src_y, wave_file, max_offset=3.0):
         len(src_x), dtype="float"
     )  # the final 0th_order counts array (NET_COUNTS) from the wavedetect table MATCHED to the user-provided source list.
 
-    # this loop determines the distance from the user-provided source to ALL the sources in the wavedetect table and 
+    # this loop determines the distance from the user-provided source to ALL the sources in the wavedetect table and
     # only saves a non-bogus value if there is a source with separation < max_offset.
     for i in range(0, len(src_x)):
-
         dist_arr = []
         dist_arr = np.sqrt(
             (src_x[i] - src_wave_x_arr) ** 2 + (src_y[i] - src_wave_y_arr) ** 2
-        )  # This calculates the physical distance from source [i] in the user-provided table to ALL sources in the 
-           #wavedetect table. This is just the hypotenuse in the xy plane. Note, calculating the ENTIRE array here for
-           #  each [i] source and NOT each [i] and each [j] individually.
+        )  # This calculates the physical distance from source [i] in the user-provided table to ALL sources in the
+        # wavedetect table. This is just the hypotenuse in the xy plane. Note, calculating the ENTIRE array here for
+        #  each [i] source and NOT each [i] and each [j] individually.
 
         closest_dist = []
         closest_dist = (
             np.min(dist_arr) * acis_arcsec_per_pix
         )  # converted from sky coords to arsec
 
-        # if distance is > max offset then assign values of 99999 (bogus) and filter out in next loop. Otherwise, 
+        # if distance is > max offset then assign values of 99999 (bogus) and filter out in next loop. Otherwise,
         # assign matched values.
         if closest_dist <= max_offset:
             closest_dist_arr[i] = closest_dist
@@ -500,18 +500,20 @@ def find_closest_source(src_x, src_y, wave_file, max_offset=3.0):
     # this loop will remove 'double counting' where a single user-provided source might match to multiple wavedetect
     #  sources. This will only match to the closest one and remove that from the pool of potential matches for other sources.
     for i in range(0, len(src_x)):
-
-        common_matches = np.where(closest_match_arr == closest_match_arr[i])[
+        common_matches = np.where(
+            closest_match_arr == closest_match_arr[i]
+        )[
             0
         ]  # this will give an array of index values which all have the same closest matched source.
         common_matches_dist = closest_dist_arr[
             common_matches
-        ]  # this will provide an array of all of the distances for the closest matched sources. The idea is that 
-           # only the closest distance can be assigned to a single source (no double counting).
+        ]  # this will provide an array of all of the distances for the closest matched sources. The idea is that
+        # only the closest distance can be assigned to a single source (no double counting).
 
-        if (closest_dist_arr[i] <= max_offset) and (
-            closest_dist_arr[i] == np.min(common_matches_dist)
-        ):  # if the current source's closest distance is the closest of all the common matches then it is 'correct' 
+        if (
+            (closest_dist_arr[i] <= max_offset)
+            and (closest_dist_arr[i] == np.min(common_matches_dist))
+        ):  # if the current source's closest distance is the closest of all the common matches then it is 'correct'
             # and assigned the wavedetect number of counts. Otherwise, counts are set to 0 (not detected)
             final_match_arr[i] = closest_match_arr[i]
             final_dist_arr[i] = closest_dist_arr[i]
@@ -719,7 +721,7 @@ def conf_dict(num_sources, highest_order=3, arms=["heg", "meg"]):
             "flag_comment": np.full((num_sources, num_sources), "", dtype=object),
         }
 
-    # add intersection_distance for each arm **NOTE-- this does NOT depend on order therefore it gets its own dict 
+    # add intersection_distance for each arm **NOTE-- this does NOT depend on order therefore it gets its own dict
     # reference here and its not embedded in the arm loop.
     for n in ["intersect_dist", "xintercept", "yintercept"]:
         confusion_dict[n] = {
@@ -727,7 +729,7 @@ def conf_dict(num_sources, highest_order=3, arms=["heg", "meg"]):
             "meg": np.zeros((num_sources, num_sources)),
         }
 
-    # add main flag par - one that summarizes all arms to quickly identify if the extract source [i] has any confusion 
+    # add main flag par - one that summarizes all arms to quickly identify if the extract source [i] has any confusion
     # at all with another source [j]
     confusion_dict["flag"] = np.full((num_sources, num_sources), "unset", dtype=object)
     confusion_dict["flag_comment"] = np.full(
@@ -872,7 +874,7 @@ def spec_calc_osip_bounds(
 
                     energy_low, energy_high, frac_resp = results
 
-                    # convert osip from energy to angstrom and account for user parameter osip_frac (fractional size 
+                    # convert osip from energy to angstrom and account for user parameter osip_frac (fractional size
                     # of osip window of choice --e.g., user could want smaller than large osip window)
                     mask_width = (1 - osip_frac_par) * (
                         hc / energy_low - hc / energy_high
@@ -976,11 +978,11 @@ def spec_flag_set(
         avg_ratio_value = The average spectral response in the bin_start, bin_end bandpass used to estimate num_counts.
         """
 
-        # this is to prevent issue where osip window might lie a little outside the window of the ARFs. This is not 
+        # this is to prevent issue where osip window might lie a little outside the window of the ARFs. This is not
         # frequently triggered and when it is, its at an irrelevant wavelength range (e.g., 1 A)
         if bin_start < 1.0:
-            # print(f'WARNING -- A response between {bin_start}:{bin_end} was requested for a source. The bin_start 
-            # response was pegged to 1.0 A in calc_num_counts because it is less than minumum BIN.LO value in HEG/MEG 
+            # print(f'WARNING -- A response between {bin_start}:{bin_end} was requested for a source. The bin_start
+            # response was pegged to 1.0 A in calc_num_counts because it is less than minumum BIN.LO value in HEG/MEG
             # arf ratio table.')
             bin_start = 1.0
 
@@ -1027,7 +1029,7 @@ def spec_flag_set(
             spec_dict = the input spectral confusion dictionary with 'flag' and 'flag_comment' values updated
             if their [i,j] arms do not intersect.
         """
-        # This loop sets the flags for when confusion DOES NOT occur. Consider changing in future where default flag 
+        # This loop sets the flags for when confusion DOES NOT occur. Consider changing in future where default flag
         # value is 'no confusion' and I set when it DOES occur
         for i in range(
             0, num_sources
@@ -1041,13 +1043,13 @@ def spec_flag_set(
 
                     if (
                         spec_dict[m]["wave"][i, j] == 0 or i == j
-                    ):  # if the spec_conf[arm]['wave'][i,j] value is 0 or if i=j (cant have that confusion) then flag 
+                    ):  # if the spec_conf[arm]['wave'][i,j] value is 0 or if i=j (cant have that confusion) then flag
                         # is set to 99 (no intersect)
                         # spec_dict[m]['flag'][i,j] = 99
                         spec_dict[m]["flag"][i, j] = flag_clean
-                        spec_dict[m]["flag_comment"][
-                            i, j
-                        ] = flag_99  # dont add on to previous comment cause if there is no intersection then this can 
+                        spec_dict[m]["flag_comment"][i, j] = (
+                            flag_99  # dont add on to previous comment cause if there is no intersection then this can
+                        )
                         # be used in loop to only run confusion for intersecting sources
 
         return spec_dict
@@ -1148,11 +1150,9 @@ def spec_flag_set(
         for i in subset_sources:
             for j in range(0, len(src_pos_x_par)):
                 for n in ["-3", "-2", "-1", "+1", "+2", "+3"]:
-
                     if (
                         spec_dict[primary_arm + n]["flag_comment"][i, j] != flag_99
                     ):  # dont run counts_circle_band unless there is at least some evidence of confusion - note I am leaving of 999 here cause there could be a case of confusion near the edges where the osip range brings into the real band
-
                         # if the region in the extracted spectrum where confusion occurs is outside the valid wavelength range then flag as warning and continue
 
                         ##KEEP THIS COMMENT--> First check if the intersection between two spectra occur in the possible range of wavelengths for the extracted spectra. If not, it doesn't matter what order or wavelength the other source is, it will NEVER contribute to confusion cause effective area will zero out any flux outside valid range of wave for each source.
@@ -1170,7 +1170,6 @@ def spec_flag_set(
 
                         # if the intersection occurs within the valid bounds of the extracted source then check all the orders of the confusing source to see if those are within THEIR respective valid bounds. If they are outside their own bounds then confusion will not occur
                         else:
-
                             # set these to NONE HERE so they aren't recalculated needlessly for each confuser order
                             confused_0th_counts = [None]
                             confuser_0th_counts = [None]
@@ -1191,9 +1190,9 @@ def spec_flag_set(
                                         spec_dict[primary_arm + n]["flag"][i, j]
                                         != flag_confused
                                     ):
-                                        spec_dict[primary_arm + n]["flag"][
-                                            i, j
-                                        ] = flag_warn
+                                        spec_dict[primary_arm + n]["flag"][i, j] = (
+                                            flag_warn
+                                        )
                                     spec_dict[primary_arm + n]["flag_comment"][i, j] = (
                                         spec_dict[primary_arm + n]["flag_comment"][i, j]
                                         + flag_996
@@ -1201,7 +1200,6 @@ def spec_flag_set(
 
                                 # if none of the flag_995s trigger that means spectral confusion has occured within the valid ranges of wavelengths and we need to check counts
                                 else:
-
                                     # START OSIP DETERMINATION FOR EVERY SOURCE with some intersection
 
                                     # if CONFUSER source has photons with wavelengths within the OSIP region of the CONFUSED source then run counts_circle_band to determine if confusion can occur. If so, flag. Otherwise, that means there was a potential source of confusion but it was outside OSIP range so it can get a flag of clean if no other orders cause issues.
@@ -1214,7 +1212,6 @@ def spec_flag_set(
                                         and spec_dict[secondary_arm + m]["wave"][j, i]
                                         < spec_dict[primary_arm + n]["osip_high"][i, j]
                                     ):
-
                                         # only run counts_circle_band ONCE per M order cause the 0th order counts dont change
                                         # run confuser counts first cause if no counts here then all the future calculations are pointless cause no confusion.
                                         if confuser_0th_counts == [None]:
@@ -1238,10 +1235,9 @@ def spec_flag_set(
                                         if (
                                             confuser_0th_counts == 0
                                         ):  # could make this number '< 3 or so' if I want to reduce the number of false positives and allow some more cases through to be OK. see code comment above
-
-                                            spec_dict[primary_arm + n]["flag"][
-                                                i, j
-                                            ] = flag_warn  # confuser has appropriate geometry to contribute confusing counts but it's 0th order has 0 counts	so no confusion
+                                            spec_dict[primary_arm + n]["flag"][i, j] = (
+                                                flag_warn  # confuser has appropriate geometry to contribute confusing counts but it's 0th order has 0 counts	so no confusion
+                                            )
                                             spec_dict[primary_arm + n]["flag_comment"][
                                                 i, j
                                             ] = (
@@ -1254,7 +1250,6 @@ def spec_flag_set(
 
                                         # if confuser counts !=0 then I need to run the calculation to determine if dispersed events land in region
                                         else:
-
                                             # only run counts_circle_band ONCE per M order cause the 0th order counts dont change
                                             if confused_0th_counts == [None]:
                                                 confused_0th_counts = counts_circle_band(
@@ -1279,7 +1274,7 @@ def spec_flag_set(
                                             if int(n) > 0:
                                                 primary_order = f"p{int(n)}_to_0"
                                             elif int(n) < 0:
-                                                primary_order = f"m{-1*int(n)}_to_0"
+                                                primary_order = f"m{-1 * int(n)}_to_0"
                                             else:
                                                 raise ValueError(
                                                     "Cannot set primary_order variable for ARF ratios"
@@ -1288,7 +1283,7 @@ def spec_flag_set(
                                             if int(m) > 0:
                                                 secondary_order = f"p{int(m)}_to_0"
                                             elif int(m) < 0:
-                                                secondary_order = f"m{-1*int(m)}_to_0"
+                                                secondary_order = f"m{-1 * int(m)}_to_0"
                                             else:
                                                 raise ValueError(
                                                     "Cannot set secondary_order variable for ARF ratios"
@@ -1371,7 +1366,6 @@ def spec_flag_set(
                                                 confuser_counts_secondary > 0
                                                 and confused_counts_primary > 0
                                             ):
-
                                                 spec_confused_ratio = []
                                                 spec_confused_ratio = (
                                                     confuser_counts_secondary
@@ -1433,9 +1427,9 @@ def spec_flag_set(
                                         and spec_dict[primary_arm + n]["flag"][i, j]
                                         != flag_confused
                                     ):
-                                        spec_dict[primary_arm + n]["flag"][
-                                            i, j
-                                        ] = flag_clean  # If it doesnt makes it through the top loop condition then confusion is outside OSIP bounds and should be clean. If it already has A warning or confusion flag then it remains confused and set.
+                                        spec_dict[primary_arm + n]["flag"][i, j] = (
+                                            flag_clean  # If it doesnt makes it through the top loop condition then confusion is outside OSIP bounds and should be clean. If it already has A warning or confusion flag then it remains confused and set.
+                                        )
                                     # else: no need for else statement to catch remainder of cases because if it is already marked as confused or warn it should STAY confused or warned
 
         return spec_dict
@@ -1767,7 +1761,6 @@ def pntsrc_flag_set(
     for i in subset_sources:
         for j in range(0, num_sources):
             for m in ["-3", "-2", "-1", "+1", "+2", "+3"]:
-
                 if pntsrc_dict[arm_par + m]["wave"][i, j] == 0:
                     pntsrc_dict[arm_par + m]["flag"][i, j] = flag_clean
 
@@ -1798,27 +1791,6 @@ def pntsrc_flag_set(
 
 
 ####ARM CONFUSION FUNCTIONS####
-
-"""
-    ['intersect_dist'] : The distance in pixels between the 0th order src 'i' and the 0th order src 'j' position along
-        the arm.
-    ['0th_cnts_frac'] : the ratio of 0th order counts of the CONFUSER 'i' divided by CONFUSED 'j'
-    ['arm_confused_wave'] : This identifies which order (e.g., -1 versus +1) the arm confusing 0th order point source
-        falls on. This is used when determinig the range of wavelengths confused in arm confusion.
-
-    ['flag'] : primary flag which represents potential sources of confusion for ALL orders between source i and j.
-    ['flag_comment'] : primary flag description which represents potential sources of confusion for ALL orders between
-        source i and j.
-
-    ['arm+order']['wave'] : the wavelength where confusion may occur
-    ['arm+order']['wave_low'] : the lower bounds of where confusion may occur
-    ['arm+order']['wave_high'] : the upper bounds of where confusion may occur
-    ['arm+order']['flag'] : the flag which represents potential sources of confusion for a paritcular order between
-        source i and j.
-    ['arm+order']['flag_comment'] : the flag description which represents potential sources of confusion for a
-        paritcular order between source i and j.
-
-"""
 
 
 def calc_ccd_energy_res(arm_par):
@@ -1906,7 +1878,6 @@ def calc_ccd_energy_res(arm_par):
 
 
 def arm_confuse_wave(
-    arm_dict,
     subset_sources,
     distance_along_line,
     distance_to_line,
@@ -1915,7 +1886,6 @@ def arm_confuse_wave(
     counts_par,
     min_arm_counts,
     max_arm_dist,
-    arm_cutoff_high,
     nsig_par=6.0,
     highest_order=3,
 ):
@@ -1943,9 +1913,6 @@ def arm_confuse_wave(
 
     Parameters
     ----------
-    arm_dict : dictionary
-        Arm confusion dict which holds all possible arm confusion entries for every source in main_list.
-        This dictionary is updated in place.
     subset_sources : list of int
         List of sources to create confusion tables for whose elements are matched to the main_list.
     distance_along_line : np.ndarray
@@ -1953,7 +1920,7 @@ def arm_confuse_wave(
         :math:`\vec{S} + k \cdot \vec{N_{arm}}` is the point on the line closest
         to the source position.
         k[i, :] gives the k values for the line defined by source position i to the
-        point of closed approach for each source position
+        point of closest approach for each source position
         (so, ``k[i,i] == 0`` because it's the distance of a source to itself).
     distance_to_line : np.ndarray
         An (n, n) array of distances from each source position to the
@@ -1964,72 +1931,69 @@ def arm_confuse_wave(
         Off-axis angle of the source in arcseconds
     counts_par : int
         The number of 0th order counts.
-     nsig_par : float
+    nsig_par : float
          Approximation for how wide the OSIP range is for order sorting when determining which events are part of the
          Nth order spectrum.
-     arm_cutoff_high : float
-         Wavelength in angstroms above which the effective area goes to zero or the user doesn't care
-         outside this max wavelength bounds.
     highest_order : int
         The highest order to check for confusion. Default is 3 which means
         +/- 1, +/- 2, and +/- 3 will be checked.
 
+    Returns
+    -------
+    arm_conf : numpy.rec.array
+        Information about each occurance of confusion.
+        Only valid confusion is listed, all sources and arm combinations
+        processed that are not listed are to be considered unconfused.
     """
-    # Nan's can happen where counts are 0. Don't display that warning, because we
-    # deal with it in the line below.
-    with np.errstate(divide="ignore", invalid="ignore"):
-        zeroth_cnts_frac = counts_par[:, np.newaxis] / counts_par[np.newaxis, :]
-    zeroth_cnts_frac = np.nan_to_num(zeroth_cnts_frac, nan=0, posinf=0)
+    # First order confused by 2nd order is much less dramatic than third order confused by first order.
+    # In the spectral confusion there are already routine to deal with that.
+    # Let's use those here, too.
+    # Moritz: For next version
 
-    arm_dict["0th_cnts_frac"] = {}
-    arm_dict["0th_cnts_frac"][arm_par] = zeroth_cnts_frac
+    n_sources = distance_to_line.shape[0]
 
     # The next lines here are identical to pntsrc_confuse_wave(),
     # so they should be pulled out into a separate function.
     P = Period[arm_par]
     orders = np.arange(-highest_order, highest_order + 1)
     orders = orders[orders != 0]  # exclude 0 order
-    # The next line is not in pntsrc_confuse_wave() but should be?
-    arm_dict["orders"] = orders
 
     off_axis_modifier = calc_off_axis_modifier(src_off_axis_par)
 
-    ## check the indexing and array broadcasting
-    waves_to_set = (
+    confuser_close_enough = (
         distance_to_line
         < max_arm_dist
         * off_axis_modifier[np.newaxis, :]
         * off_axis_modifier[:, np.newaxis]
     ) & (counts_par > min_arm_counts)[np.newaxis, :]
+    # A source has distance=o from itself, but that's not confusion.
+    np.fill_diagonal(confuser_close_enough, False)
 
     # Many sources are too faint to confuse anything.
     # To keep arrays from getting too big in memory, we don't consider those faint
     # source any further for arm confusion.
     # Because we will need the index array of potentially confusing sources often
     # we give it a shorthand name "iconf" for "index_of_confusers"
-    iconf = np.any(waves_to_set, axis=0)
-
-    arm_dict["potential_confusers"] = iconf
+    iconf = np.any(confuser_close_enough, axis=0)
 
     # reset  to 0 when there is no potential confusion
     mwave = distance_along_line[:, iconf] * mm_per_pix / X_R * P
-    mwave[~waves_to_set[:, iconf]] = 0
-
-    # divide by order number to get wavelength for each order
-    ## Moritz: Move the following comment into the docs once programming is done.
-    # Then, add dimensions to make the following shape
-    # (n_sources, n_confusers, n_orders_of_source, n_orders_of_confuser)
-    # where n_scources = n_confusers
-    #       n_orders_of_source = n_orders_of_confuser = len(orders)
-    # This is one more dimension than for spectral confusion, because in spectral
-    # confusion, each source order is confused only once (at the intersection point)
-    # but here each source order can be confused by several confuser orders.
-    wave = mwave[:, :, np.newaxis] / orders
-    wave = np.tile(wave[..., None], (1, 1, 1, len(orders)))
-    wav_low = np.zeros_like(wave)
-    wav_high = np.zeros_like(wave)
+    # mwave[~confuser_close_enough[:, iconf]] = 0
 
     res_power, wave_arr = calc_ccd_energy_res(arm_par)
+
+    # Moritz:
+    # Currently, wave_arr is mirrored around 0 for positive and negative wavelengths.
+    # While I plan to change that in the future, for now just cut back to positive
+    # values only here.
+    # We get negative values by using negative order numbers.
+    res_power = res_power[wave_arr >= 0]
+    wave_arr = wave_arr[wave_arr >= 0]
+
+    fwhm2sig = np.sqrt(np.log(256))
+    # This is the right-hand-side in the equation within the loop
+    rhs = nsig_par * wave_arr / (res_power * fwhm2sig)
+
     # "orders" is defined above but for readability of formulas below match notation
     # one would use in a paper.
     # m1 : order number of the confused arm
@@ -2037,11 +2001,11 @@ def arm_confuse_wave(
     m1 = orders
     m2 = m1
 
-    # For each source, we check for all consufers in all order m1 and all conufing orders m2
+    # For each source, we check for all confusers in all order m1 and all confusing orders m2
     # in a matrix operation.
-    # We thus creatw a 4D view of the wavelength array with the following dimensions:
+    # We thus create a 4D view of the wavelength array with the following dimensions:
     # (n_sources, n_confusers, n_orders_of_source, n_orders_of_confuser)
-    # Note tha np.broadcast to doesn't create a new array in memory, it just allows seeing
+    # Note that np.broadcast to doesn't create a new array in memory, it just allows allows
     # the same numbers with indices in more dimensions.
     wave_arr4d = np.broadcast_to(
         wave_arr[:, np.newaxis, np.newaxis, np.newaxis],
@@ -2049,83 +2013,67 @@ def arm_confuse_wave(
     )
 
     # I would love to do all sources at once in array notation, but I estimated
-    # the size of the intermediate array "good" and it would be too big to fit in
-    # memory for users who don't have high-end machines if it had a fifth dimension.
+    # the size of the intermediate array "confused" and it would be too big to fit in
+    # memory for typical users.
+
+    arm_conf = None
+
     for i in subset_sources:
-        this_wave = wave[i, :, :, :]
-        if np.sum(this_wave) == 0:
+        if np.sum(confuser_close_enough[i, :]) == 0:
             continue  # skip this source if there are no potential confusers
-        # the dimension of "good" (not confused) will be
+        # the dimension of "confused" will be
         # (n_wavelengths, n_confusers, n_orders_m1, n_orders_m2)
         # Note that `None` has the same meaning as `np.newaxis` but is shorter to type
         term1 = wave_arr[:, None, None] * (
             1 - m1[:, None] / m2[None, :]
         )  # shape (n_wavelengths, n_orders_m1, n_orders_m2)
-        term2 = this_wave / m2  # shape (n_confusers, n_orders_m1, n_orders_m2)
-        rhs = nsig_par * res_power  # shape (n_wavelengths,)
+        term2 = mwave[i, :, None] / m2  # shape (n_confusers, n_orders_m2)
 
-        good = (
-            np.abs(term1[:, None, :, :] + term2[None, :, :, :])
-            > rhs[:, None, None, None]
+        # Source is confused if
+        # - the confuser is close enough to the spectrum (confuser_close_enough)
+        # - the wavelength difference between the confused and confuser arm is smaller than sigma * resolution (rhs)
+        confused = confuser_close_enough[i, iconf][None, :, None, None] & (
+            np.abs(term1[:, None, :, :] - term2[None, :, None, :])
+            < rhs[:, None, None, None]
         )
-        wav_low[i, :, :, :] = np.min(wave_arr4d, axis=0, where=~good, initial=0)
-        high = np.max(wave_arr4d, axis=0, where=~good, initial=np.inf)
-        # Replace max values with arm_cutoff_high / m1.
-        # We don't need to do the equivalent with the min values because they are 0 for all orders.
-        index_inf = np.isinf(high)
-        high[index_inf] = np.tile(
-            arm_cutoff_high / m1[None, :, None], (iconf.sum(), 1, len(m2))
-        )[index_inf]
-        wav_high[i, :, :, :] = high
+        wav_low = np.min(wave_arr4d, axis=0, where=confused, initial=np.inf)
+        wav_high = np.max(wave_arr4d, axis=0, where=confused, initial=0)
 
-    for i in m1:
-        for j in m2:
-            arm_dict[f"{arm_par}{i:+n}{j:+n}"] = {}
-            arm_dict[f"{arm_par}{i:+n}{j:+n}"]["wave"] = wave[:, :, i, j]
-            arm_dict[f"{arm_par}{i:+n}{j:+n}"]["wave_low"] = wav_low[:, :, i, j]
-            arm_dict[f"{arm_par}{i:+n}{j:+n}"]["wave_high"] = wav_high[:, :, i, j]
-
-        arm_dict[f"{arm_par}{i:+n}"] = {}
-        arm_dict[f"{arm_par}{i:+n}"]["flag"] = {}
-        # 0 is "clean". We start with everything clean and then add flags step by step.
-        arm_dict[f"{arm_par}{i:+n}"]["flag"] = np.zeros_like(
-            wave[:, :, i, :], dtype=int
-        )
-        # Moritz: Do we need the "warn" for "other arm is confused" that the old code had?
-        arm_has_confusion_somehere = np.any(wave[:, :, i, :] > 0)
-        arm_dict[f"{arm_par}{i:+n}"]["flag"][arm_has_confusion_somehere] = (
-            flags_status.index("confused")
-        )
-        arm_dict[f"{arm_par}{i:+n}"]["flag_comment"] = np.full(
-            wave.shape[:2], "", dtype=object
-        )
-        arm_dict[f"{arm_par}{i:+n}"]["flag_comment"][arm_has_confusion_somehere] = (
-            "arm_confusion"
+        confusion = confused.sum(axis=0) > 0
+        confuser_srcid_numbers = np.arange(n_sources)[iconf]
+        confuser_srcid = np.extract(
+            confusion,
+            np.broadcast_to(confuser_srcid_numbers[:, None, None], confusion.shape),
         )
 
-    # This used to be done in "main_flag_set", but since the layout of the flag here is a bit different,
-    # it needs do be done separately for the arm confusion.
-    arm_dict["flag"] = np.full(distance_along_line.shape, "clean", dtype="<U8")
-    flags_to_set = arm_dict["flag"][:, iconf]
-    flags_to_set[np.any(wave > 0, axis=(2, 3))] = "confused"
-    arm_dict["flag"][:, iconf] = flags_to_set
+        intersect_wav = mwave[i, :, None, None] / (
+            m1[None, :, None] - m2[None, None, :]
+        )
 
-    arm_dict["flag_comment"] = np.full(distance_along_line.shape, "clean", dtype="<U8")
-    arm_dict["flag_comment"][arm_dict["flag"] == "confused"] = "arm_confusion"
-    # Add
-    # - warning for confusion by opposite arm
-    # flag_clean = "clean"
-    # flag_warn = "warn"
-    # flag_confused = "confused"
-    #
-    # flag_99 = "arm_confusion"
-    # flag_98 = "opposite order has arm confusion"
-    # - say shich of the confuser arms is confusing? Or not useful informantion?
-    # .  -> It is, because it allows an estimate of how strong the confuser is.
-    # First order confused by 2nd order is much less dramatic than third order confused by first order.
-    # In the spectral confusion there are already routine to deal with that.
-    # Let's use those here, too.
-    # Moritz: For next version
+        result = {
+            "src_id": np.full(confusion.sum(), i),
+            "confuser_srcid": confuser_srcid,
+            "0_order_confused_counts": counts_par[confuser_srcid],
+            "grating_type": np.full(confusion.sum(), arm_par),
+            "order": np.extract(
+                confusion, np.broadcast_to(m1[None, :, None], confusion.shape)
+            ),
+            "confusing_order": np.extract(
+                confusion, np.broadcast_to(m2[None, None, :], confusion.shape)
+            ),
+            "confusion_type": np.full(confusion.sum(), "arm"),
+            "confusion_wave": np.abs(np.extract(confusion, intersect_wav)),
+            "wave_low": np.abs(np.extract(confusion, wav_low)),
+            "wave_high": np.abs(np.extract(confusion, wav_high)),
+            "flag": np.full(confusion.sum(), flags_arm.index("arm_confusion")),
+        }
+        recs = np.rec.fromarrays(result.values(), names=list(result.keys()))
+        if arm_conf is None:
+            arm_conf = recs
+        else:
+            arm_conf = rfn.stack_arrays([arm_conf, recs])
+
+    return arm_conf
 
 
 ####MAIN FLAG SET####
@@ -2505,6 +2453,16 @@ def write_full_conf_table(
 
     ###BEGIN TABLE CREATION
 
+    # Moritz
+    # Before I integrate everything, write out arm separately to check the
+    # values make sense.
+    arm_crate = make_table_crate(arm_dict)
+    write_file(
+        arm_crate,
+        f"{output_dir_par}/confused_arm.fits",
+        clobber=True,
+    )
+
     mask_par = set_mask_par(spec_dict, pntsrc_dict, arm_dict, remove_clean, row_num)
 
     spec_conf_crate, spec_conf_flattened = make_flattened_conf_table(
@@ -2513,9 +2471,9 @@ def write_full_conf_table(
     pntsrc_conf_crate, pntsrc_conf_flattened = make_flattened_conf_table(
         conf_par=pntsrc_dict, root_par="pnt_", mask_par=mask_par
     )
-    arm_conf_crate, arm_conf_flattened = make_flattened_conf_table(
-        conf_par=arm_dict, root_par="arm_", mask_par=mask_par
-    )
+    # arm_conf_crate, arm_conf_flattened = make_flattened_conf_table(
+    #    conf_par=arm_dict, root_par="arm_", mask_par=mask_par
+    # )
 
     ancillary_crate = make_ancillary_crate(
         srcID_par=srcID_par,
@@ -2536,9 +2494,9 @@ def write_full_conf_table(
     merged_crate = merge_conf_crates(
         conf_crate_par=pntsrc_conf_crate, merged_crate_par=merged_crate
     )
-    merged_crate = merge_conf_crates(
-        conf_crate_par=arm_conf_crate, merged_crate_par=merged_crate
-    )
+    # merged_crate = merge_conf_crates(
+    #    conf_crate_par=arm_conf_crate, merged_crate_par=merged_crate
+    # )
 
     # Add RA and DEC of the confused source to the header of the crates table.
     set_key(
@@ -2595,7 +2553,8 @@ def write_full_conf_table(
         # check to make sure there is at least some values in each conf type
         for conf_class_flat, conf_type in zip(
             [spec_conf_flattened, pntsrc_conf_flattened, arm_conf_flattened],
-            ["spec", "pnt", "arm"],
+            # ["spec", "pnt", "arm"],
+            ["spec", "pnt"],
         ):
             for j in range(0, len(mask_par)):
                 for n in ["heg", "meg"]:
@@ -3875,27 +3834,27 @@ def run_crisscross(
 
         ##########ARM CONFUSION START ############################
 
-        # creates the arm confusion nested dictionary based on the total number of source in the input list
-        # arm_conf = arm_conf_dict(num_sources=len(src_pos_x), highest_order=3)
-        arm_conf = {}
-
         # Calculates the ratio of 0th order counts (net_counts_confuser / net_counts_confused) and determines the
         # distance from the confused 0th order to the confuser 0th order.
+        arm_conf = []
         for arm in ["heg", "meg"]:
-            arm_confuse_wave(
-                arm_dict=arm_conf,
-                subset_sources=subset_list,
-                distance_along_line=dist_along_heg if arm == "heg" else dist_along_meg,
-                distance_to_line=point_to_heg if arm == "heg" else point_to_meg,
-                arm_par=arm,
-                src_off_axis_par=src_off_axis,
-                counts_par=counts,
-                min_arm_counts=min_arm_counts,
-                max_arm_dist=max_arm_dist,
-                arm_cutoff_high=heg_cutoff_high if arm == "heg" else meg_cutoff_high,
-                nsig_par=arm_nsig,
-                highest_order=3,
+            arm_conf.append(
+                arm_confuse_wave(
+                    subset_sources=subset_list,
+                    distance_along_line=dist_along_heg
+                    if arm == "heg"
+                    else dist_along_meg,
+                    distance_to_line=point_to_heg if arm == "heg" else point_to_meg,
+                    arm_par=arm,
+                    src_off_axis_par=src_off_axis,
+                    counts_par=counts,
+                    min_arm_counts=min_arm_counts,
+                    max_arm_dist=max_arm_dist,
+                    nsig_par=arm_nsig,
+                    highest_order=3,
+                )
             )
+        arm_conf = rfn.stack_arrays(arm_conf)
 
         time_message = "Finished assigning arm confusion."
         time_log_counter = time_logger(
@@ -3911,7 +3870,7 @@ def run_crisscross(
         # E.g., if any order is confused then main confusion flag is set to 'confused'.
 
         # Moritz: For debug
-        return spec_conf, pntsrc_conf, arm_conf
+        # return spec_conf, pntsrc_conf, arm_conf
 
         spec_conf = main_flag_set(
             conf_dict_par=spec_conf,
@@ -3923,11 +3882,6 @@ def run_crisscross(
             num_sources=len(src_pos_x),
             subset_sources=subset_list,
         )
-        arm_conf = main_flag_set(
-            conf_dict_par=arm_conf,
-            num_sources=len(src_pos_x),
-            subset_sources=subset_list,
-        )
 
         # Call write_full_conf_table to produce the 'full' and 'consolidated' confusion tables for each source in the 
         # run obsID.
@@ -3935,40 +3889,28 @@ def run_crisscross(
             # If users run cc with just a single source, allow them to name the confusion file. Otherwise a single root
             #  will get clobbered when looped over multiple sources.
             if (
-                clean_single_RA != None
-                and clean_single_DEC != None
-                and clean_single_root != None
+                clean_single_RA is not None
+                and clean_single_DEC is not None
+                and clean_single_root is not None
             ):
-                write_full_conf_table(
-                    spec_dict=spec_conf,
-                    pntsrc_dict=pntsrc_conf,
-                    arm_dict=arm_conf,
-                    row_num=i,
-                    srcID_par=srcID,
-                    counts_par=counts,
-                    output_dir_par=output_dir,
-                    remove_clean="yes",
-                    obsid_par=obsid,
-                    RA_par=RA_wcs[i],
-                    DEC_par=DEC_wcs[i],
-                    cc_table_root=clean_single_root,
-                    consolidate_table=True,
-                )
+                cc_table_root = clean_single_root
             else:
-                write_full_conf_table(
-                    spec_dict=spec_conf,
-                    pntsrc_dict=pntsrc_conf,
-                    arm_dict=arm_conf,
-                    row_num=i,
-                    srcID_par=srcID,
-                    counts_par=counts,
-                    output_dir_par=output_dir,
-                    remove_clean="yes",
-                    obsid_par=obsid,
-                    RA_par=RA_wcs[i],
-                    DEC_par=DEC_wcs[i],
-                    consolidate_table=True,
-                )
+                cc_table_root = None
+            write_full_conf_table(
+                spec_dict=spec_conf,
+                pntsrc_dict=pntsrc_conf,
+                arm_dict=arm_conf,
+                row_num=i,
+                srcID_par=srcID,
+                counts_par=counts,
+                output_dir_par=output_dir,
+                remove_clean="yes",
+                obsid_par=obsid,
+                RA_par=RA_wcs[i],
+                DEC_par=DEC_wcs[i],
+                cc_table_root=cc_table_root,
+                consolidate_table=True,
+            )
 
         # move output files into final directories and cleanup
         end_of_run_cleanup(
