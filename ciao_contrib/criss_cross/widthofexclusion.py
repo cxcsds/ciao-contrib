@@ -3,7 +3,7 @@ from functools import partial
 import numpy as np
 from sherpa.optmethods.optfcts import lmdif
 
-from ciao_contrib.psf_contrib import PSF, psfSize
+from ciao_contrib.psf_contrib import PSF
 
 psf = PSF()
 
@@ -25,8 +25,12 @@ def counts_circle_band(evt, x, y, waveband, skyconverter, psffrac=0.9):
     # Get position in MSC coordinates
     coo = skyconverter(x, y)
     # Note that this function expects input in keV, thus an extra "/1000" here
-    radius = psfSize(np.mean([en_low / 1000, en_high / 1000]),
-                     coo['theta'][0], coo['phi'][0], psffrac)
+    radius = psf.psfSize(
+        np.mean([en_low / 1000, en_high / 1000]),
+        coo["theta"][0],
+        coo["phi"][0],
+        psffrac,
+    )
 
     ind = np.sqrt((evt.sky.x.values - x)**2 + (evt.sky.y.values - y)**2) < radius
     ind = ind & (evt.energy.values > en_low) & (evt.energy.values < en_high)

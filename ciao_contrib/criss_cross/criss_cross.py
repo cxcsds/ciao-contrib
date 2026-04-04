@@ -1950,7 +1950,6 @@ def arm_confuse_wave(
     # I would love to do all sources at once in array notation, but I estimated
     # the size of the intermediate array "confused" and it would be too big to fit in
     # memory for typical users.
-
     arm_conf = None
 
     for i in subset_sources:
@@ -3681,19 +3680,19 @@ def run_crisscross(
         )
 
         # determine whether spectral confusion has occured and set the appropriate arm/order flags
-        # spec_conf = spec_flag_set(
-        #     spec_conf,
-        #    src_pos_x_par=src_pos_x,
-        #    src_pos_y_par=src_pos_y,
-        #    subset_sources=subset_list,
-        #    fits_list_par=evt2_file[k],
-        #    arf_ratios_dir_par=arf_ratios_dir,
-        #    spec_confuse_limit_par=spec_confuse_limit,
-        #    heg_cutoff_low=heg_cutoff_low,
-        #    heg_cutoff_high=heg_cutoff_high,
-        #    meg_cutoff_low=meg_cutoff_low,
-        #    meg_cutoff_high=meg_cutoff_high,
-        # )
+        spec_conf = spec_flag_set(
+            spec_conf,
+            src_pos_x_par=src_pos_x,
+            src_pos_y_par=src_pos_y,
+            subset_sources=subset_list,
+            fits_list_par=evt2_file[k],
+            arf_ratios_dir_par=arf_ratios_dir,
+            spec_confuse_limit_par=spec_confuse_limit,
+            heg_cutoff_low=heg_cutoff_low,
+            heg_cutoff_high=heg_cutoff_high,
+            meg_cutoff_low=meg_cutoff_low,
+            meg_cutoff_high=meg_cutoff_high,
+        )
 
         time_message = "Finished assigning spectral confusion."
         time_log_counter = time_logger(

@@ -3,7 +3,7 @@ import numpy as np
 
 from ..criss_cross import pntsrc_dist_to_spec, determine_line_intersect_values
 
-# Define some positions and vectors that are used in several fo the tests below.
+# Define some positions and vectors that are used in several of the tests below.
 x = np.array([1, 2, 3])
 y = np.array([4, 5.5, 6.5])
 xy = np.array([x, y]).T
