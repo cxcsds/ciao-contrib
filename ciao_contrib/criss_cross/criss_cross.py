@@ -1793,16 +1793,11 @@ def pntsrc_flag_set(
 ####ARM CONFUSION FUNCTIONS####
 
 
-def calc_ccd_energy_res(arm_par):
+def calc_ccd_energy_res():
     """
     Creates an array of ACIS resolving power as a function of wavelength for MEG and HEG. Matches a polynomial fit of the
     ACIS resolving power as a function of energy (fig 6.14 in the proposers obseravtory guide) to the HEG/MEG arms to
     calculate the OSIP boundaries for two sources that suffer arm confusion.
-
-    Parameters
-    ----------
-    arm_par : str
-    HETG 'heg' or 'meg' arm.
 
     Returns
     -------
@@ -1810,71 +1805,22 @@ def calc_ccd_energy_res(arm_par):
     hetg_arr_arm : an array of wavelengths at the spectral resolution of 'heg' or 'meg'
 
     """
-    # set the max wavelength and resolution elements for HEG an dMEG
-    if arm_par == "heg" or arm_par == "HEG":
-        max_wave = 16  # must be int
-        res_element = 0.01
-    elif arm_par == "meg" or arm_par == "MEG":
-        max_wave = 32  # must be int
-        res_element = 0.02
-    else:
-        raise ValueError(
-            "Could not set max_wave or res_element because arm_par could not be identified as meg or heg"
-        )
-
-    planck = 4.135667696e-15
-    c_speed = 2.9979e8  # m/s
-
-    poly_result = [
-        1.12276612e-10,
-        -2.62121212e-06,
-        2.94110334e-02,
-        3.13566434e01,
-    ]  # note, this is from the best fit 3rd degree polynomial to 10 samples at 1, 2, 3 kev.  poly0 * x^3 + poly1 *
-    # x^2 * poly2 * x + ploy3
-
-    ccd_lam_arm = np.arange(0, max_wave, res_element)  # create a wavelength array
-    ccd_lam_arm[0] = (
-        0.0001  # replace the first element of this array with a tiny number that is not zero so it won't affect future
-        # calculations (divide by zero issues)
+    p = np.polynomial.Polynomial(
+        [
+            3.13566434e01,
+            2.94110334e-02,
+            -2.62121212e-06,
+            1.12276612e-10,
+        ]
     )
-    ccd_E_arm = (planck * c_speed) / (
-        1e-10 * ccd_lam_arm
-    )  # convert wavelength array to energy
-
-    # loop to calculate resolving power (R = de/E) from the best fit poly. Have to calc it for both heg and meg cause
-    # step size (in lam) is different 0.01 vs 0.02
-    FWHM_poly_arm = [None] * len(ccd_E_arm)
-    for i in range(0, len(FWHM_poly_arm)):
-        FWHM_poly_arm[i] = (
-            poly_result[0] * ccd_E_arm[i] ** 3
-            + poly_result[1] * ccd_E_arm[i] ** 2
-            + poly_result[2] * ccd_E_arm[i] ** 1
-            + poly_result[3]
-        )
-
-    res_power_arm_positive = (
-        ccd_E_arm / FWHM_poly_arm
-    )  # calc resolving power from 0 to max_wave in A
-    res_power_arm_positive[0] = 6e-4  # manually set so no divide by 0 issues
-    res_power_arm = np.zeros(3200)
-    res_power_arm[0:1600] = np.flip(
-        res_power_arm_positive[0:1600]
-    )  # note something weird going on here with element arrays seems to be off by one but thats ok cause one element
-    # is tiny in wavelength space...Not sure why it doesn't perfectly match the hetg_arr_arm
-    res_power_arm[1600:3200] = res_power_arm_positive[0:1600]
-    hetg_arr_arm = np.arange(-1 * max_wave, max_wave, res_element)
-
-    # Ok, there is an issue with this method for very small wavelengths < 1 A which don't have E responses in the
-    # figure and the function extrapolation blows them up. So they are modified to top them off at the max rate.
-    res_power_arm_maxed = np.zeros(len(res_power_arm))
-    for i in range(0, len(res_power_arm)):
-        if hetg_arr_arm[i] > -1 and hetg_arr_arm[i] < 1:
-            res_power_arm_maxed[i] = max(res_power_arm)
-        else:
-            res_power_arm_maxed[i] = res_power_arm[i]
-
-    return (res_power_arm_maxed, hetg_arr_arm)
+    ccd_lam_arm = np.arange(0.01, 32, 0.01)
+    ccd_E_arm = hc / ccd_lam_arm
+    res_power = ccd_E_arm / p(ccd_E_arm)
+    # Grating spectra are never extracted below 1 Ang, because they overlap the zeroth order there.
+    # So, it doesn't really matter that the polynomial fit blow up in that region,
+    # but to make plots look nice, we fix is to the max of the resolving power.
+    res_power[ccd_lam_arm < 1] = np.max(res_power)
+    return res_power, ccd_lam_arm
 
 
 def arm_confuse_wave(
@@ -1966,7 +1912,7 @@ def arm_confuse_wave(
         * off_axis_modifier[np.newaxis, :]
         * off_axis_modifier[:, np.newaxis]
     ) & (counts_par > min_arm_counts)[np.newaxis, :]
-    # A source has distance=o from itself, but that's not confusion.
+    # A source has distance=0 from itself, but that's not confusion.
     np.fill_diagonal(confuser_close_enough, False)
 
     # Many sources are too faint to confuse anything.
@@ -1975,20 +1921,9 @@ def arm_confuse_wave(
     # Because we will need the index array of potentially confusing sources often
     # we give it a shorthand name "iconf" for "index_of_confusers"
     iconf = np.any(confuser_close_enough, axis=0)
-
-    # reset  to 0 when there is no potential confusion
     mwave = distance_along_line[:, iconf] * mm_per_pix / X_R * P
-    # mwave[~confuser_close_enough[:, iconf]] = 0
 
-    res_power, wave_arr = calc_ccd_energy_res(arm_par)
-
-    # Moritz:
-    # Currently, wave_arr is mirrored around 0 for positive and negative wavelengths.
-    # While I plan to change that in the future, for now just cut back to positive
-    # values only here.
-    # We get negative values by using negative order numbers.
-    res_power = res_power[wave_arr >= 0]
-    wave_arr = wave_arr[wave_arr >= 0]
+    res_power, wave_arr = calc_ccd_energy_res()
 
     fwhm2sig = np.sqrt(np.log(256))
     # This is the right-hand-side in the equation within the loop
