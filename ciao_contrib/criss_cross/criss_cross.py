@@ -2168,10 +2168,10 @@ def write_full_conf_table(
                     (pntsrc_dict["flag"][row_num] == "confused")
                     | (pntsrc_dict["flag"][row_num] == "warn")
                 )
-                | (
-                    (arm_dict["flag"][row_num] == "confused")
-                    | (arm_dict["flag"][row_num] == "warn")
-                )
+                # | (
+                #    (arm_dict["flag"][row_num] == "confused")
+                #    | (arm_dict["flag"][row_num] == "warn")
+                # )
             )[0].tolist()
 
         else:
@@ -2486,7 +2486,7 @@ def write_full_conf_table(
         # this will loop through the three sources of confusion via the flattened dictionarys. Consider putting in
         # check to make sure there is at least some values in each conf type
         for conf_class_flat, conf_type in zip(
-            [spec_conf_flattened, pntsrc_conf_flattened, arm_conf_flattened],
+            [spec_conf_flattened, pntsrc_conf_flattened],  # , arm_conf_flattened],
             # ["spec", "pnt", "arm"],
             ["spec", "pnt"],
         ):
