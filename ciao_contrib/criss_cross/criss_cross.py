@@ -6,7 +6,9 @@
 # - Standardize names, e.g. "heh/meg" can be armtype, arm_par, arm, etc.  I should pick one and use it everywhere.
 # - sort input parameters, e.g. always start with subest source (or put that in dict?), where osip, skyconverter, evtcrates go?
 # - width_of_exclusion_region has hardcoded parameters for the extraction. Should be read from file.
-
+# - Write parameters values used to run into header (either as history or as keywords)
+# - rename "level" in output to "flag" and remove numeric flag for text output.
+# - output "0th_order_confused_counts" is really CONFUSER counts in the original version. What do we want? Also doesn't take OSIP into account. Do we want that?
 ##########################################################################################
 ##########################################################################################
 ##########################################################################################
@@ -23,9 +25,6 @@ from numpy.lib import recfunctions as rfn
 from pycrates import (
     read_file,
     write_file,
-    TABLECrate,
-    CrateData,
-    add_col,
     get_keyval,
     read_pha,
     write_pha,
@@ -70,7 +69,7 @@ flags_spec = {
     "confused_has_0_disp_counts_and_confuser_gtr_0": 64,  # 980
     "confusion_above_conf_ratio": 128,  # 986
 }
-flags_spec_levels = {"clean": 0, "warn": 63}
+flags_spec_levels = {"clean": -1, "warn": 0, "confused": 64}
 
 flags_pnt = {
     "confusing_pntsrc_but_no_counts": 1,  # 9999
@@ -79,10 +78,17 @@ flags_pnt = {
     "pntsrc_conf_outside_resp_region": 8,  # 9995
     "pntsrc_confusion": 16,  # 9996
 }
-flags_pnt_levels = {"clean": 1, "warn": 15}
+flags_pnt_levels = {"clean": 0, "warn": 2, "confused": 16}
 
 flags_arm = {"arm_confusion": 1}
-flags_arm_levels = {"clean": 0, "warn": 0}
+flags_arm_levels = {"clean": 0, "warn": 0, "confused": 1}
+
+flags = {
+    "spec": (flags_spec, flags_spec_levels),
+    "pnt": (flags_pnt, flags_pnt_levels),
+    "arm": (flags_arm, flags_arm_levels),
+}
+
 
 ###### OUTPUT DEFINITIONS ######
 rec_type = np.dtype(
@@ -747,13 +753,13 @@ def spec_confuse_wave(
     width_mask_pixel,
     obsid_par,
     outdir,
-    osip_frac_par,
+    osip_frac,
     arf_ratios_dir,
     cutoff,
     osip,
     skyconverter,
     evtcrates,
-    spec_confuse_limit_par,
+    spec_confuse_limit,
 ):
     """
     Calculates the distance from the 0th order of src i to the location where confusion may occur ['intersect_dist']
@@ -780,7 +786,7 @@ def spec_confuse_wave(
         obsID value of the observation.
     outdir : str
         Output directory used to create the log file assocaited with running the osip function.
-    osip_frac_par : float
+    osip_frac: float
         CrissCross parameter which controls the size of the OSIP window. A value of 1.0 keep 100% of the OSIP window.
         This parameter can be tweaked lower to make the confusion estimate less conservative.
     arf_ratios_dir : str
@@ -829,8 +835,7 @@ def spec_confuse_wave(
     if arm == "meg":
         intersect = np.moveaxis(intersect, 1, 0)
     secondary_arm = "meg" if arm == "heg" else "heg"
-    period_arm = Period[arm]
-    mask_interval = width_mask_pixel * mm_per_pix / X_R * period_arm
+    mask_interval = width_mask_pixel * mm_per_pix / X_R * Period[arm]
     primary_arf = read_file(
         f"{arf_ratios_dir}/{arm.upper()}_Nth_0th_order_ratios_mkarf.fits"
     )
@@ -842,7 +847,7 @@ def spec_confuse_wave(
     srcpos_subset = srcpos[subset_sources, :]
 
     mwave = intersect_info["mwave"][arm][subset_sources, :]
-    mwave2 = intersect_info["mwave"][secondary_arm][subset_sources, :]
+    mwave2 = intersect_info["mwave"][secondary_arm][:, subset_sources].T
     # divide by order number to get wavelength for each order
     wave = mwave[..., np.newaxis] / intersect_info["orders"]
     wave2 = mwave2[..., np.newaxis] / intersect_info["orders"]
@@ -915,7 +920,7 @@ def spec_confuse_wave(
     spec_confuse_log_file.close()
     # convert osip from energy to angstrom and account for user parameter osip_frac (fractional size
     # of osip window of choice --e.g., user could want smaller than large osip window)
-    mask_width = (1 - osip_frac_par) * (hc / energy_low - hc / energy_high)
+    mask_width = (1 - osip_frac) * (hc / energy_low - hc / energy_high)
     osip_low = hc / energy_high + mask_width / 2
     osip_high = hc / energy_low - mask_width / 2
 
@@ -925,10 +930,10 @@ def spec_confuse_wave(
     flag[confusion & outside_osip] += flags_spec["outside_osip_range"]
     confusion = confusion & ~outside_osip
 
-    # Step 4: Do we execpt any signal from the confuser within the OSIP range?
-    confuser_0th_counts = np.zeros_like(wave2)
+    # Step 4: Do we expect any signal from the confuser within the OSIP range?
+    confuser_0th_counts = np.full_like(wave2, -1)
     for i, j, o in itertools.product(
-        range(wave.shape[0]), range(wave.shape[1]), range(wave.shape[2])
+        range(wave.shape[0]), range(wave.shape[1]), range(len(orders))
     ):
         if confusion[i, j, o, :].any():
             confuser_0th_counts[i, j, o] = counts_circle_band(
@@ -949,26 +954,29 @@ def spec_confuse_wave(
     confusion = confusion & (confuser_0th_counts > 0)[:, :, :, np.newaxis]
 
     # Step 5: See if confuser contributes any counts.
-    confuser_counts_secondary = np.zeros_like(wave2)
+    confuser_counts_secondary = np.full_like(confusion, -1, dtype=float)
 
-    for i, j, o in itertools.product(
-        range(wave.shape[0]), range(wave.shape[1]), range(wave.shape[2])
+    for i, j, m1, m2 in itertools.product(
+        range(wave.shape[0]),
+        range(wave.shape[1]),
+        range(len(orders)),
+        range(len(orders)),
     ):
-        if confusion[i, j, o, :].any():
-            order = orders[o]
-            confuser_counts_secondary[i, j, o], temp = calc_num_counts(
+        if confusion[i, j, m1, m2]:
+            order = orders[m2]
+            confuser_counts_secondary[i, j, m1, m2], temp = calc_num_counts(
                 ratio_pycrates=secondary_arf,
                 order=f"{'p' if order > 0 else 'm'}{abs(order)}_to_0",
-                order_zero_counts=confuser_0th_counts[i, j, o],
-                bin_start=osip_low[i, j, o],
-                bin_end=osip_high[i, j, o],
+                order_zero_counts=confuser_0th_counts[i, j, m1],
+                bin_start=osip_low[i, j, m1],
+                bin_end=osip_high[i, j, m1],
             )
 
-    flag[confusion & (confuser_counts_secondary == 0)[:, :, np.newaxis, :]] += (
-        flags_spec["confuser_has_0_disp_counts_in_order"]
-    )
+    flag[confusion & (confuser_counts_secondary == 0)] += flags_spec[
+        "confuser_has_0_disp_counts_in_order"
+    ]
 
-    confusion = confusion & (confuser_counts_secondary[:, :, np.newaxis, :] > 0)
+    confusion = confusion & (confuser_counts_secondary > 0)
 
     # Step 6: Get counts for confused source and calculate confusion ratio.
     confused_0th_counts = np.zeros_like(wave)
@@ -1003,15 +1011,11 @@ def spec_confuse_wave(
     ]
     confusion = confusion & (confused_counts_primary[:, :, :, np.newaxis] > 0)
 
-    spec_confused_ratio = (
-        confuser_counts_secondary[:, :, np.newaxis, :]
-        / confused_counts_primary[:, :, :, np.newaxis]
-    )
-
-    flag[confusion & (spec_confused_ratio < spec_confuse_limit_par)] += flags_spec[
+    ratio = confuser_counts_secondary / confused_counts_primary[:, :, :, np.newaxis]
+    flag[confusion & (ratio < spec_confuse_limit)] += flags_spec[
         "confusion_smaller_than_conf_ratio"
     ]
-    confusion = confusion & (spec_confused_ratio >= spec_confuse_limit_par)
+    confusion = confusion & (ratio >= spec_confuse_limit)
 
     flag[confusion] += flags_spec["confusion_above_conf_ratio"]
 
@@ -1440,9 +1444,14 @@ def arm_confuse_wave(
             np.broadcast_to(confuser_srcid_numbers[:, None, None], confusion.shape),
         )
 
-        intersect_wav = mwave[i, :, None, None] / (
-            m1[None, :, None] - m2[None, None, :]
-        )
+        # For m1=m2, the arms meet asymptocially at infinity.
+        # Intersection of a source with itself, gives 0/0, but those cases are
+        # filtered out by setting the diagonal of confuser_close_enough to False above.
+        # So, we simply suppress warninges here.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            intersect_wav = mwave[i, :, None, None] / (
+                m1[None, :, None] - m2[None, None, :]
+            )
 
         result = {
             "src_id": np.full(confusion.sum(), subset_sources[i]),
@@ -1470,541 +1479,85 @@ def arm_confuse_wave(
 
 ####TABLE OUTPUT FUNCTIONS####
 
-
 def write_full_conf_table(
-    spec_dict,
-    pntsrc_dict,
-    arm_dict,
-    obsid_par,
-    output_dir_par,
-    srcID_par,
-    counts_par,
-    RA_par,
-    DEC_par,
-    remove_clean="yes",
-    row_num=808,
-    consolidate_table=False,
+    records,
+    output_dir,
+    obsid,
+    src_id=None,
+    RA=None,
+    DEC=None,
     cc_table_root=None,
+    level="confused",
+    add_description=False,
 ):
-    """
-    Extracts a single source (row) from the three nested dictionaries (one for each confusion type) and creates a fits
-    table summarizing the detected confusion parameters. The user has the option of saving every source and their
-    associated parameter values but most of the time there is no confusion and its unneccesary to include everything.
-    Users can filter to only produce tables where confusion occurs (flag='confused') or where confusion was close to
-    occuring (flag='warn'). This is a relatively complex function to accomodate pycrates as a fits-writing tool
-    throughout CrissCross. This function could be made significantly simpler using astropy or pandas tables.
+    if level not in ["confused", "warn", "clean"]:
+        raise ValueError("Invalid level. Must be 'confused', 'warn', or 'clean'.")
 
-    Parameters
-    ----------
-    spec_dict, pntsrc_dict, arm_dict : dictionaries
-        The final confusion dictionaries for all three types of confusion.
-    obsid_par : str
-        The obsID value associated with the observations.
-    output_dir_par : str
-        directory where the confusion output tables will be saved.
-    srcID_par : int, list
-        The list of element numbers associated with each source in the main_list.
-    counts_par : int
-        The number of 0th order counts associated with each source in the main_list.
-    RA_par, Dec_par : float
-        Right ascension and declination in J2000 degrees associated with the source for which the confusion tables are generated. This value
-        is saved in the output table header.
-    remove_clean : bool
-        'yes' will save all confusion results to table (clean, warn and confused) and 'no' will save only 'warn' and
-        'confused'.
-    row_num : int
-        The element (row) associated with a source from the main list. This source is the source for which the
-        confusion table is generated.
-    consolidate table : bool
-        If set to 'True', this will create both a 'full' and a 'consolidated' table. The smaller table is much more
-        readable.
-    """
+    to_write = np.zeros(len(records), dtype=bool)
+    for conftype, (flag, levels) in flags.items():
+        to_write = to_write | (records["confusion_type"] == conftype) & (
+            records["flag"] >= levels[level]
+        )
 
-    def set_mask_par(spec_dict, pntsrc_dict, arm_dict, remove_clean, row_num):
-        """
-        Sets the mask parameter which identifies the table rows to include in the final output product. If
-        'remove_clean' = 'yes' then the output tables will only show sources that have at least one flag=confused or
-        flag=warn in all of the arms/orders/confusion_type. If 'remove_clean' != 'yes' then all sources are included
-        in the final table. Warning -- if the number of sources are large then this table can become large fast.
+    if src_id is not None:
+        to_write = to_write & (records["src_id"] == src_id)
 
-        Parameters
-        ---------
-        spec_dict, pntsrc_dict, arm_dict : dictionaries
-            The final confusion dictionaries for all three types of confusion.
-        remove_clean : bool
-            'yes' will save all confusion results to table (clean, warn and confused) and 'no' will save only 'warn' and
-            'confused'.
-        row_num : int
-            The element (row) associated with a source from the main list. This source is the source for which the
-            confusion table is generated.
+    records = records[to_write]
 
-        Returns
-        -------
-        mask par : array
-            The elements in the input dictionary that were identified with the remove_clean bool logic.
-        """
+    # Add a column "ObsID" to the front of recrod array
+    rec_obsid = np.rec.fromarrays([np.full(len(records), obsid)], names=["obsID"])
+    names = records.dtype.names
+    records = rfn.rec_append_fields(rec_obsid, names, [records[n] for n in names])
 
-        if remove_clean == "yes":
-            mask_par = np.where(
-                (
-                    (spec_dict["flag"][row_num] == "confused")
-                    | (spec_dict["flag"][row_num] == "warn")
-                )
-                | (
-                    (pntsrc_dict["flag"][row_num] == "confused")
-                    | (pntsrc_dict["flag"][row_num] == "warn")
-                )
-                # | (
-                #    (arm_dict["flag"][row_num] == "confused")
-                #    | (arm_dict["flag"][row_num] == "warn")
-                # )
-            )[0].tolist()
+    if add_description:
+        severity = np.full(len(records), "clean", dtype="<U8")
+        for conftype, (flag, levels) in flags.items():
+            for lev in ["clean", "warn", "confused"]:
+                severity[
+                    (records["confusion_type"] == conftype)
+                    & (records["flag"] >= levels[lev])
+                ] = lev
 
-        else:
-            mask_par = None
+        # Get a reverse lookup from flag values to strings.
+        # This simple reversing of dicts works because we don't add flag values together
+        # e.g. no intersection is ever flag 2 and 4 = 6.
+        flags_lookup = {}
+        for conf_type, d in flags.items():
+            flags_lookup[conf_type] = {v: k for k, v in d[0].items()}
+        descr = [flags_lookup[row["confusion_type"]][row["flag"]] for row in records]
+        records = rfn.rec_append_fields(
+            records, ["level", "flag_comment"], [severity, descr]
+        )
 
-        return mask_par
-
-    def extract_conf_row(confusion_dict, row_num, mask_par):
-        """
-        Extracts a single row from every array inside the confusion_dict and returns a new nested dictionary with
-        the same structure. This utilizes that mask_parameter from set_mask_par() and will only return the indices
-        included in the mask (if remove_clean = 'yes').
-
-        Parameters
-        ---------
-        confusion_dict : dictionary
-            Any confusion dictionary.
-        row_num : int
-            The element (row) associated with a source from the main list. This source is the source for which the
-            confusion table is generated.
-        mask par : array
-            The elements in the input dictionary that were identified with the remove_clean bool logic.
-
-        Returns
-        -------
-        filtered_dict : nested dictionary
-            Returns a nested dictionary containing a single source (row_num) from the main confusion dictionary.
-        """
-
-        filtered_dict = {}
-
-        for key, value in confusion_dict.items():
-            # Case 1: arm+order keys (dict of arrays)
-            if isinstance(value, dict) and all(
-                isinstance(v, np.ndarray) for v in value.values()
-            ):
-                filtered_dict[key] = {}
-                for subkey, arr in value.items():
-                    if mask_par != None:
-                        filtered_dict[key][subkey] = arr[row_num, mask_par]
-                    else:
-                        filtered_dict[key][subkey] = arr[row_num, :]
-
-            # Case 2: intersect_dist, xintercept, yintercept (dict of heg/meg arrays)
-            elif isinstance(value, dict) and set(value.keys()) == {"heg", "meg"}:
-                if mask_par != None:
-                    filtered_dict[key] = {
-                        "heg": value["heg"][row_num, mask_par],
-                        "meg": value["meg"][row_num, mask_par],
-                    }
-                else:
-                    filtered_dict[key] = {
-                        "heg": value["heg"][row_num, :],
-                        "meg": value["meg"][row_num, :],
-                    }
-
-            # Case 3: global arrays (flag, flag_comment)
-            elif isinstance(value, np.ndarray):
-                if mask_par != None:
-                    filtered_dict[key] = value[row_num, mask_par]
-                else:
-                    filtered_dict[key] = value[row_num, :]
-
-            else:
-                raise ValueError(f"Unexpected structure in key '{key}'")
-
-        return filtered_dict
-
-    def flatten_confusion_dict(d, parent_key="", sep="_"):
-        """
-        Crates can't take a nested dictionary as an argument so this flattens the dictionary for easy input to crates.
-
-        Returns
-        ------
-        flat = dictionary
-            A flattened (non-nested) confusion dictionary.
-        """
-
-        flat = {}
-        for key, value in d.items():
-            new_key = f"{parent_key}{sep}{key}" if parent_key else key
-
-            if isinstance(value, dict):
-                # Recursively flatten nested dictionaries
-                flat.update(flatten_confusion_dict(value, new_key, sep=sep))
-            else:
-                # NumPy arrays or any other non-dict values go directly in
-                flat[new_key] = value
-        return flat
-
-    def convert_obj_to_string(flat):
-        """
-        Crates can't accept 'object' datatypes (the flags and flag_comments in the dictionary) so this converts
-        them to strings.
-
-        Returns
-        -------
-        flat : dictionary
-            Returns input dictionary but converting the object datatypes to strings.
-        """
-
-        for i in flat:
-            if flat[i].dtype == "O":
-                flat[i] = flat[i].astype(str)
-
-        return flat
-
-    def merge_conf_crates(conf_crate_par, merged_crate_par):
-        """
-        Concatenates crate tables (conf_crate_par) to a new 'merged' table. This is used to concatenate the multiple
-        types of confusion (spec, pntsrc and arm) since they are all (mostly) unique.
-
-        Parameters
-        ----------
-        conf_crate_par : Crate
-            Confusion table that has been converted into crate format
-        merged_crate_par : Crate
-            An empty crate to merge other crates into.
-        """
-
-        for colname in conf_crate_par.get_colnames():
-            col = conf_crate_par.get_column(colname)
-            merged_crate_par.add_column(col)
-
-        return merged_crate_par
-
-    def make_flattened_conf_table(conf_par, root_par, mask_par):
-        """
-        Runs several of the above functions to ultimately create a crates table from a nested dictionary while
-        appending the name of the dictionary (spec, pnt, arm) to the columns. Returns crate for table generation and
-        flattened dict for use in consolidated table.
-
-        Parameters
-        ----------
-        conf_par : dictionary
-            Confusion dictionary
-        root_par : str
-            Root for naming the types of confusion in the merged crate.
-        mask_par : array
-            The elements in the input dictionary that were identified with the remove_clean bool logic.
-
-        Returns
-        -------
-        crate_conf : Crate
-            The crate created from a confusion_dict
-        flattened_dict : dict
-            The flattened (non-nested) dictionary
-        """
-
-        single_row = extract_conf_row(conf_par, row_num, mask_par)
-        flattened_dict = flatten_confusion_dict(single_row)
-        flattened_dict = convert_obj_to_string(flattened_dict)
-        flattened_dict = {
-            root_par + key: value for key, value in flattened_dict.items()
-        }
-
-        crate_conf = make_table_crate(flattened_dict)
-
-        return (crate_conf, flattened_dict)
-
-    def make_ancillary_crate(srcID_par, counts_par, mask_par, num_sources, obsid_par):
-        """
-        Add supplementary info to the table such as obsID, srcID and number of 0th order counts before merging
-        all three sources of confusion.
-
-        Parameters
-        ----------
-        srcID_par : int
-            Adds the srcID (element/row) number associated with the confusing source to the crate table
-        counts_par : int
-            Adds the number of 0th order counts for each srcID to the crate table
-        mask_par : array
-            The elements in the input dictionary that were identified with the remove_clean bool logic.
-        num_sources : int
-            The number of sources in the main_list.
-        obsid_par : str
-            The obsID associated with the observation.
-
-        Returns
-        -------
-        anc_crate : crate object
-            A new crate with ancillary data added.
-
-        """
-        obsid_arr = CrateData()
-        srcid_arr = CrateData()
-        pntsrc_counts_arr = CrateData()
-
-        obsid_arr.name = "obsID"
-        srcid_arr.name = "confuser_srcID"
-        pntsrc_counts_arr.name = "0th_order_confused_cnts"
-
-        if mask_par == None:
-            obsid_arr.values = np.full(num_sources, int(obsid_par))
-            srcid_arr.values = np.arange(0, num_sources, 1)
-            pntsrc_counts_arr.values = counts_par
-
-        else:
-            num_sources = len(mask_par)
-
-            obsid_arr.values = np.full(num_sources, int(obsid_par))
-            srcid_arr.values = srcID_par[mask_par]
-            pntsrc_counts_arr.values = counts_par[mask_par]
-
-        anc_crate = TABLECrate()
-        add_col(anc_crate, obsid_arr)
-        add_col(anc_crate, srcid_arr)
-        add_col(anc_crate, pntsrc_counts_arr)
-
-        # break
-
-        return anc_crate
-
-    ###BEGIN TABLE CREATION
-
-    # Moritz
-    # Before I integrate everything, write out arm separately to check the
-    # values make sense.
-    arm_crate = make_table_crate(arm_dict)
-    write_file(
-        arm_crate,
-        f"{output_dir_par}/confused_arm.fits",
-        clobber=True,
-    )
-
-    mask_par = set_mask_par(spec_dict, pntsrc_dict, arm_dict, remove_clean, row_num)
-
-    spec_conf_crate, spec_conf_flattened = make_flattened_conf_table(
-        conf_par=spec_dict, root_par="spec_", mask_par=mask_par
-    )
-    pntsrc_conf_crate, pntsrc_conf_flattened = make_flattened_conf_table(
-        conf_par=pntsrc_dict, root_par="pnt_", mask_par=mask_par
-    )
-    # arm_conf_crate, arm_conf_flattened = make_flattened_conf_table(
-    #    conf_par=arm_dict, root_par="arm_", mask_par=mask_par
-    # )
-
-    ancillary_crate = make_ancillary_crate(
-        srcID_par=srcID_par,
-        counts_par=counts_par,
-        mask_par=mask_par,
-        num_sources=len(spec_dict["flag"]),
-        obsid_par=obsid_par,
-    )
-
-    merged_crate = TABLECrate()
-
-    merged_crate = merge_conf_crates(
-        conf_crate_par=ancillary_crate, merged_crate_par=merged_crate
-    )
-    merged_crate = merge_conf_crates(
-        conf_crate_par=spec_conf_crate, merged_crate_par=merged_crate
-    )
-    merged_crate = merge_conf_crates(
-        conf_crate_par=pntsrc_conf_crate, merged_crate_par=merged_crate
-    )
-    # merged_crate = merge_conf_crates(
-    #    conf_crate_par=arm_conf_crate, merged_crate_par=merged_crate
-    # )
-
-    # Add RA and DEC of the confused source to the header of the crates table.
-    set_key(
-        merged_crate,
-        name="RA_conf",
-        data=RA_par,
-        unit="deg",
-        desc="RA of src with potential HETG confusion",
-    )
-    set_key(
-        merged_crate,
-        name="DEC_conf",
-        data=DEC_par,
-        unit="deg",
-        desc="Dec of src with potential HETG confusion",
-    )
-
+    merged_crate = make_table_crate(records)
     # allow users to name table if CrissCross is only run on a single source
-    if cc_table_root == None:
-        write_file(
-            merged_crate,
-            f"{output_dir_par}/confused_src_{row_num}_full_obsID_{obsid_par}.fits",
-            clobber=True,
-        )
-    else:
-        write_file(
-            merged_crate,
-            f"{output_dir_par}/confused_{cc_table_root}_full_obsID_{obsid_par}.fits",
-            clobber=True,
-        )
-
-    if consolidate_table == True:
-        # create numpy arrays for each consolidated table column to append data to
-        # consider making the appending a function so I dont have to repeat.
-        confuser_srcid_col = []
-        zeroth_order_confused_counts_col = []
-        grating_type_col = []
-        order_col = []
-        confusion_type_col = []
-        confusion_wave_col = []
-        wave_low_col = []
-        wave_high_col = []
-        arm_confused_frac_col = []
-        flag_col = []
-        flag_comment_col = []
-
-        # def fill_cols(conf_type, arm, order):
-
-        # This works on the already filtered flattened_dict table which means only the rows that are part of mask_par
-        # are included. That means you can't simply save the [j] values of things in the loop the same way as in
-        # previous functions.
-
-        # this will loop through the three sources of confusion via the flattened dictionarys. Consider putting in
-        # check to make sure there is at least some values in each conf type
-        for conf_class_flat, conf_type in zip(
-            [spec_conf_flattened, pntsrc_conf_flattened],  # , arm_conf_flattened],
-            # ["spec", "pnt", "arm"],
-            ["spec", "pnt"],
-        ):
-            for j in range(0, len(mask_par)):
-                for n in ["heg", "meg"]:
-                    for m in ["-3", "-2", "-1", "+1", "+2", "+3"]:
-                        if (
-                            conf_class_flat[conf_type + "_" + n + m + "_flag"][j]
-                            == "warn"
-                            or conf_class_flat[conf_type + "_" + n + m + "_flag"][j]
-                            == "confused"
-                        ):
-                            confuser_srcid_col.append(mask_par[j])
-                            zeroth_order_confused_counts_col.append(
-                                counts_par[mask_par[j]]
-                            )
-                            grating_type_col.append(n)
-                            order_col.append(m)
-                            confusion_type_col.append(conf_type)
-                            confusion_wave_col.append(
-                                conf_class_flat[conf_type + "_" + n + m + "_wave"][j]
-                            )
-                            wave_low_col.append(
-                                conf_class_flat[conf_type + "_" + n + m + "_wave_low"][
-                                    j
-                                ]
-                            )
-                            wave_high_col.append(
-                                conf_class_flat[conf_type + "_" + n + m + "_wave_high"][
-                                    j
-                                ]
-                            )
-                            flag_col.append(
-                                conf_class_flat[conf_type + "_" + n + m + "_flag"][j]
-                            )
-                            flag_comment_col.append(
-                                conf_class_flat[
-                                    conf_type + "_" + n + m + "_flag_comment"
-                                ][j]
-                            )
-
-        consolidated_crate = TABLECrate()
-
-        col0 = CrateData()
-        col0.name = "obsID"
-        col0.values = np.full(
-            len(confuser_srcid_col), obsid_par
-        )  # gives each table an obsID col for later concatenation
-
-        col1 = CrateData()
-        col1.name = "confuser_srcid"
-        col1.values = confuser_srcid_col
-
-        col2 = CrateData()
-        col2.name = "0th_order_confused_counts"
-        col2.values = zeroth_order_confused_counts_col
-
-        col3 = CrateData()
-        col3.name = "grating_type"
-        col3.values = grating_type_col
-
-        col4 = CrateData()
-        col4.name = "order"
-        col4.values = order_col
-
-        col5 = CrateData()
-        col5.name = "confusion_type"
-        col5.values = confusion_type_col
-
-        col6 = CrateData()
-        col6.name = "confusion_wave"
-        col6.values = confusion_wave_col
-
-        col7 = CrateData()
-        col7.name = "wave_low"
-        col7.values = wave_low_col
-
-        col8 = CrateData()
-        col8.name = "wave_high"
-        col8.values = wave_high_col
-
-        col9 = CrateData()
-        col9.name = "flag"
-        col9.values = flag_col
-
-        col10 = CrateData()
-        col10.name = "flag_comment"
-        col10.values = flag_comment_col
-
-        add_col(consolidated_crate, col0)
-        add_col(consolidated_crate, col1)
-        add_col(consolidated_crate, col2)
-        add_col(consolidated_crate, col3)
-        add_col(consolidated_crate, col4)
-        add_col(consolidated_crate, col5)
-        add_col(consolidated_crate, col6)
-        add_col(consolidated_crate, col7)
-        add_col(consolidated_crate, col8)
-        add_col(consolidated_crate, col9)
-
-        # Add RA and DEC of the confused source to the header of the crates table.
+    if src_id is not None:
+        if RA is None or DEC is None:
+            raise ValueError("RA and DEC must be provided if src_id is specified.")
         set_key(
-            consolidated_crate,
+            merged_crate,
             name="RA_conf",
-            data=RA_par,
+            data=RA,
             unit="deg",
             desc="RA of src with potential HETG confusion",
         )
         set_key(
-            consolidated_crate,
+            merged_crate,
             name="DEC_conf",
-            data=DEC_par,
+            data=DEC,
             unit="deg",
             desc="Dec of src with potential HETG confusion",
         )
 
-        # allow users to name table if CrissCross is only run on a single source
-        if cc_table_root == None:
-            write_file(
-                consolidated_crate,
-                f"{output_dir_par}/confused_src_{row_num}_consolidated_obsID_{obsid_par}.fits",
-                clobber=True,
-            )
-        else:
-            write_file(
-                consolidated_crate,
-                f"{output_dir_par}/confused_{cc_table_root}_consolidated_obsID_{obsid_par}.fits",
-                clobber=True,
-            )
-
-    # return(merged_crate)
-    return ()
+    if cc_table_root is not None or len(set(records["src_id"])) == 1:
+        filename = (
+            f"{output_dir}/confused_{cc_table_root}_consolidated_obsID_{obsid}.fits"
+        )
+    else:
+        filename = (
+            f"{output_dir}/confused_src_{src_id}_consolidated_obsID_{obsid}.fits",
+        )
+    write_file(merged_crate, filename, clobber=True)
 
 
 def end_of_run_cleanup(output_dir_list_par, obsid_par, wavdetect_par=False):
@@ -2732,6 +2285,7 @@ def run_crisscross(
     heg_cutoff_low=1.0,
     heg_cutoff_high=16.0,
     highest_order=3,
+    writing_level="confused",
 ):
     """
     Main function for running criss cross. CrissCross identifies portions of a sources spectrum where events from other
@@ -3056,13 +2610,13 @@ def run_crisscross(
                     width_mask_pixel=120,
                     obsid_par=obsid,
                     outdir=output_dir,
-                    osip_frac_par=osip_frac,
+                    osip_frac=osip_frac,
                     arf_ratios_dir=arf_ratios_dir,
                     cutoff=cutoff,
                     osip=osip,
                     skyconverter=skyconverter,
                     evtcrates=evtcrates,
-                    spec_confuse_limit_par=spec_confuse_limit,
+                    spec_confuse_limit=spec_confuse_limit,
                 )
             )
 
@@ -3130,8 +2684,9 @@ def run_crisscross(
             message=time_message,
         )
 
-        # Call write_full_conf_table to produce the 'full' and 'consolidated' confusion tables for each source in the 
-        # run obsID.
+        ##### Table writing and cleanup ############
+        records = rfn.stack_arrays(records)
+
         for i in subset_list:
             # If users run cc with just a single source, allow them to name the confusion file. Otherwise a single root
             #  will get clobbered when looped over multiple sources.
@@ -3144,19 +2699,15 @@ def run_crisscross(
             else:
                 cc_table_root = None
             write_full_conf_table(
-                spec_dict=spec_conf,
-                pntsrc_dict=pntsrc_conf,
-                arm_dict=arm_conf,
-                row_num=i,
-                srcID_par=srcID,
-                counts_par=counts,
-                output_dir_par=output_dir,
-                remove_clean="yes",
-                obsid_par=obsid,
-                RA_par=RA_wcs[i],
-                DEC_par=DEC_wcs[i],
+                records=records,
+                output_dir=output_dir,
+                obsid=obsid,
+                src_id=i,
+                RA=RA_wcs[i],
+                DEC=DEC_wcs[i],
                 cc_table_root=cc_table_root,
-                consolidate_table=True,
+                level=writing_level,
+                add_description=True,
             )
 
         # move output files into final directories and cleanup
