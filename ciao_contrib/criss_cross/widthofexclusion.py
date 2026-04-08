@@ -19,11 +19,27 @@ wavelength_scale = {1: 0.0055595,  # HEG Ang / ACIS pixel
                    }
 
 
-def counts_circle_band(evt, x, y, waveband, skyconverter, psffrac=0.9):
+def counts_circle_band(evt, pos, waveband, skyconverter, psffrac=0.9):
+    """Counts in a circle around pos in a given energy band
+
+    Parameters
+    ----------
+    evt : crates object
+        Open crates object with the event file
+    pos : tuple
+        (x, y) position in sky coordinates (in degrees) around which to count
+    waveband : tuple
+        (wave_low, wave_high) in Angstroms
+    skyconverter : Chandra2Sky object
+        Object that encapsulates the Chandra coordinate conversions for a
+        particular event file
+    psffrac : float
+        Fraction of the PSF to include in the circle.
+    """
     en_low = 12398 / np.max(waveband)   # Ang to eV
     en_high = 12398 / np.min(waveband)  # Ang to eV
     # Get position in MSC coordinates
-    coo = skyconverter(x, y)
+    coo = skyconverter(pos[0], pos[1])
     # Note that this function expects input in keV, thus an extra "/1000" here
     radius = psf.psfSize(
         np.mean([en_low / 1000, en_high / 1000]),
@@ -32,7 +48,7 @@ def counts_circle_band(evt, x, y, waveband, skyconverter, psffrac=0.9):
         psffrac,
     )
 
-    ind = np.sqrt((evt.sky.x.values - x)**2 + (evt.sky.y.values - y)**2) < radius
+    ind = np.hypot(evt.sky.x.values - pos[0], evt.sky.y.values - pos[1]) < radius
     ind = ind & (evt.energy.values > en_low) & (evt.energy.values < en_high)
     return ind.sum() / psffrac
 
@@ -45,7 +61,7 @@ def counts_circle_band(evt, x, y, waveband, skyconverter, psffrac=0.9):
 
 
 def pntsrc_fluxlevel(r, maxlevel, energy, theta, phi, N, wavelength_scale):
-    '''Estimate radius where point source flux drops below maxlevel
+    """Estimate radius where point source flux drops below maxlevel
 
     For a given radius, this function estimates how much above or below a certain level
     the flux of a point source will be.
@@ -54,7 +70,7 @@ def pntsrc_fluxlevel(r, maxlevel, energy, theta, phi, N, wavelength_scale):
     The purpose of this function is to be used in a root finder: The roots of this function
     are the locations where the contribution of a point source to a grating spectrum is
     exactly maxlevel and the interface is written to match the requirements of
-    the functiions in `sherpa.optmethods.optfcts.lmdif`.
+    the functions in `sherpa.optmethods.optfcts.lmdif`.
 
     Parameters
     ----------
@@ -80,7 +96,7 @@ def pntsrc_fluxlevel(r, maxlevel, energy, theta, phi, N, wavelength_scale):
     radius : float
         (Same as previous, but the Sherpa optimizers to be used with this function
         expect this output format)
-    '''
+    """
     r = r[0]
     dPSFdr = (psf.psfFrac(energy, theta, phi, (r + 1)  * acis_pix_size) -
               psf.psfFrac(energy, theta, phi, r  * acis_pix_size))
@@ -89,9 +105,19 @@ def pntsrc_fluxlevel(r, maxlevel, energy, theta, phi, N, wavelength_scale):
     return out, out
 
 
-def pnt_src_masking_region(evt, osip, skyconverter, x_0order, y_0order,
-                           x_pnt, y_pnt, dg, wavelength, tg_part, factor=.1, logfile='terminal'):
-    '''Masking a grating spectrum due to point source contamination
+def pnt_src_masking_region(
+    evt,
+    osip,
+    skyconverter,
+    src,
+    contaminator,
+    dg,
+    wavelength,
+    tg_part,
+    factor=0.1,
+    logfile="terminal",
+):
+    """Masking a grating spectrum due to point source contamination
 
     Parameters
     ----------
@@ -103,10 +129,10 @@ def pnt_src_masking_region(evt, osip, skyconverter, x_0order, y_0order,
     skyconverter: Chandra2Sky Object
         Object that encapsulates the Chandra coordinate conversions for a
         particular event file
-    x_0order, y_0order : float
+    src : tuple
         coordinates (in pixels) of the 0 order position of the source that
         causes the grating spectrum
-    x_pnt, y_pnt : float
+    contaminator : tuple
         coordinates (in pixels) of the point source that contaminates the
         grating arm
     dg : float
@@ -130,23 +156,23 @@ def pnt_src_masking_region(evt, osip, skyconverter, x_0order, y_0order,
         masked out due to point source contamination.  If no masking is needed,
         the function returns (9999.0, 9999.0) or (9998.0, 9998.0) or (9997.0, 9997.0)
         depending on the reason why no masking is needed.
-    '''
-    energyband = osip(x_pnt, y_pnt, 12398 / wavelength, logfile)
+    """
+    energyband = osip(contaminator[0], contaminator[1], 12398 / wavelength, logfile)
     waveband = (12398 / energyband[1], 12398 / energyband[0])
-    pnt_src_counts = counts_circle_band(evt, x_pnt, y_pnt, waveband, skyconverter)
+    pnt_src_counts = counts_circle_band(evt, contaminator, waveband, skyconverter)
     if pnt_src_counts < 1:
         # No counts in point source in the band in question, so no need to mask
         # anything.  I just return an interval with size 0 for now, but I think
         # it would be better to have some other mechanism, e.g. return nan or
         # NONE
         return 9999.0, 9999.0
-    grt_counts_0 = counts_circle_band(evt, x_0order, y_0order,
-                                      waveband, skyconverter)
+    grt_counts_0 = counts_circle_band(evt, src, waveband, skyconverter)
     if grt_counts_0 == 0:
+        text = f"Estimating zero grating counts from 0th order for source at {contaminator[0]},{contaminator[1]}"
         if logfile == 'terminal':
-            print('Estimating zero grating counts from 0th order for source at {},{}'.format(x_pnt, y_pnt))
+            print(text)
         else:
-            logfile.write('Estimating zero grating counts from 0th order for source at {},{} \n'.format(x_pnt, y_pnt))
+            logfile.write(text + "\n")
         return 0.8 * waveband[0], 1.2 * waveband[1]
 
     # The following line does not do anything right now, but I have it here to
@@ -155,7 +181,7 @@ def pnt_src_masking_region(evt, osip, skyconverter, x_0order, y_0order,
     grt_counts = grt_counts_0
 
     pnt_src_maxlevel = grt_counts * factor
-    coo = skyconverter(x_pnt, y_pnt)
+    coo = skyconverter(contaminator[0], contaminator[1])
     if pntsrc_fluxlevel([0.], pnt_src_maxlevel, 12.4 / wavelength,
                         coo['theta'][0], coo['phi'][0],
                         pnt_src_counts, wavelength_scale[tg_part])[0] < 0:

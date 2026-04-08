@@ -35,9 +35,9 @@ from pycrates import (
     set_key,
 )
 from crates_contrib.utils import make_table_crate
-from ciao_contrib.runtool import *
+from ciao_contrib import runtool as rt
 from iocaldb import OSIP, Sky2Chandra, Cel2Chandra
-from widthofexclusion import *
+from widthofexclusion import counts_circle_band, pnt_src_masking_region
 
 
 ############## CONSTANTS ##############
@@ -153,7 +153,7 @@ def make_output_dir(cc_outdir, obsid_par, clobber_par=False):
         already_exists = False
 
     # if an output directory for this obsID already exists then delete it first
-    if clobber_par == True and already_exists == True:
+    if clobber_par and already_exists:
         shutil.rmtree(output_dir)
 
     os.makedirs(cc_outdir, exist_ok=True)
@@ -170,13 +170,13 @@ def get_header_par(fits_file, keyword_par):
     ----------
     fits_file : str
         fits file which holds the relevant header keyword
-    keyword_par : str
+    keyword_par : str`
         header keyword value to retrieve
     """
 
-    dmkeypar.punlearn()
-    a = dmkeypar(infile=fits_file, keyword=keyword_par)
-    return_val = dmkeypar.value
+    rt.dmkeypar.punlearn()
+    a = rt.dmkeypar(infile=fits_file, keyword=keyword_par)
+    return_val = rt.dmkeypar.value
 
     return return_val
 
@@ -228,29 +228,29 @@ def run_wavdetect(
         "If you wish to use other wavdetect parameters please run wavdetect and provide a wavdetect source fits table.\n"
     )
 
-    fluximage.punlearn()
-    fluximage.infile = evt2_file
-    fluximage.outroot = f"{outdir}/{outroot}"
-    fluximage.binsize = binsize
-    fluximage.bands = bands
-    fluximage.psfecf = psfecf
-    fluximage.verbose = verbose
-    fluximage.clobber = "yes"
+    rt.fluximage.punlearn()
+    rt.fluximage.infile = evt2_file
+    rt.fluximage.outroot = f"{outdir}/{outroot}"
+    rt.fluximage.binsize = binsize
+    rt.fluximage.bands = bands
+    rt.fluximage.psfecf = psfecf
+    rt.fluximage.verbose = verbose
+    rt.fluximage.clobber = "yes"
 
-    fluximage()
+    rt.fluximage()
 
-    wavdetect.punlearn()
-    wavdetect.infile = f"{outdir}/{outroot}_{bands}_thresh.img"
-    wavdetect.psffile = f"{outdir}/{outroot}_{bands}_thresh.psfmap"
-    wavdetect.outfile = f"{outdir}/{outroot}_src.fits"
-    wavdetect.scellfile = f"{outdir}/{outroot}_scell.fits"
-    wavdetect.imagefile = f"{outdir}/{outroot}_imgfile.fits"
-    wavdetect.defnbkgfile = f"{outdir}/{outroot}_nbgd.fits"
-    wavdetect.regfile = f"{outdir}/{outroot}_src.reg"
-    wavdetect.verbose = verbose
-    wavdetect.clobber = clobber
+    rt.wavdetect.punlearn()
+    rt.wavdetect.infile = f"{outdir}/{outroot}_{bands}_thresh.img"
+    rt.wavdetect.psffile = f"{outdir}/{outroot}_{bands}_thresh.psfmap"
+    rt.wavdetect.outfile = f"{outdir}/{outroot}_src.fits"
+    rt.wavdetect.scellfile = f"{outdir}/{outroot}_scell.fits"
+    rt.wavdetect.imagefile = f"{outdir}/{outroot}_imgfile.fits"
+    rt.wavdetect.defnbkgfile = f"{outdir}/{outroot}_nbgd.fits"
+    rt.wavdetect.regfile = f"{outdir}/{outroot}_src.reg"
+    rt.wavdetect.verbose = verbose
+    rt.wavdetect.clobber = clobber
 
-    wavdetect()
+    rt.wavdetect()
 
     return f"{outdir}/{outroot}_src.fits"
 
@@ -306,7 +306,7 @@ def load_sourcelist(filename=None, subset_list=False):
         Boolean denoting whether this function is to be run on the main list of sources or the subset list of sources.
     """
 
-    if filename != None:
+    if filename is not None:
         # default to setting a flag to no generate the ID column
         gen_id = False
 
@@ -328,9 +328,9 @@ def load_sourcelist(filename=None, subset_list=False):
 
         # if len=2 then probably only RA and DEC present. For the subset_list, do NOT create new ID values because they
         # must match the main_list IDs.
-        elif crate_len == 2 and subset_list == False:
+        elif crate_len == 2 and not subset_list:
             print(
-                f"No ID column found so IDs will be generated from 0 to length of file"
+                "No ID column found so IDs will be generated from 0 to length of file"
             )
             gen_id = True
 
@@ -370,14 +370,14 @@ def load_sourcelist(filename=None, subset_list=False):
 
         RA = cratedata.get_column(colnames[0]).values
         DEC = cratedata.get_column(colnames[1]).values
-        if gen_id == True:
+        if gen_id:
             ID = np.arange(0, len(RA))
-        elif subset_list == False:
+        elif not subset_list:
             ID = cratedata.get_column(colnames[2]).values.astype(int)
 
-        if subset_list == False:
+        if not subset_list:
             return (RA, DEC, ID)
-        elif subset_list == True:
+        elif subset_list:
             return (RA, DEC)
         else:
             raise ValueError("Something went wrong with subset_list truth value.")
@@ -938,8 +938,7 @@ def spec_confuse_wave(
         if confusion[i, j, o, :].any():
             confuser_0th_counts[i, j, o] = counts_circle_band(
                 evtcrates,
-                srcpos[j, 0],
-                srcpos[j, 1],
+                srcpos[j],
                 [
                     osip_low[i, j, o],
                     osip_high[i, j, o],
@@ -989,8 +988,7 @@ def spec_confuse_wave(
             order = orders[o]
             confused_0th_counts[i, j, o] = counts_circle_band(
                 evtcrates,
-                srcpos_subset[i, 0],
-                srcpos_subset[i, 1],
+                srcpos_subset[i],
                 [
                     osip_low[i, j, o],
                     osip_high[i, j, o],
@@ -1019,10 +1017,11 @@ def spec_confuse_wave(
 
     flag[confusion] += flags_spec["confusion_above_conf_ratio"]
 
-    wave_low = wave - (mask_interval / 2)
-    wave_high = wave + (mask_interval / 2)
     src_ids = np.arange(intersect_info["heg_meg_intersects"].shape[0])
     subset_ids = src_ids[subset_sources]
+    wave_extracted = np.extract(
+        flag > 0, np.broadcast_to(wave[:, :, :, None], flag.shape)
+    )
 
     result = {
         "src_id": np.extract(
@@ -1045,15 +1044,9 @@ def spec_confuse_wave(
             flag > 0, np.broadcast_to(orders[None, None, None, :], flag.shape)
         ),
         "confusion_type": np.full((flag > 0).sum(), "spec"),
-        "confusion_wave": np.extract(
-            flag > 0, np.broadcast_to(wave[:, :, :, None], flag.shape)
-        ),
-        "wave_low": np.extract(
-            flag > 0, np.broadcast_to(wave_low[:, :, :, None], flag.shape)
-        ),
-        "wave_high": np.extract(
-            flag > 0, np.broadcast_to(wave_high[:, :, :, None], flag.shape)
-        ),
+        "confusion_wave": wave_extracted,
+        "wave_low": wave_extracted - mask_interval / 2,
+        "wave_high": wave_extracted + mask_interval / 2,
         "flag": np.extract(flag > 0, flag),
     }
     return np.rec.fromarrays([result[n] for n in rec_type.names], dtype=rec_type)
@@ -1200,10 +1193,8 @@ def pntsrc_confuse_wave(
                 evtcrates,
                 osip,
                 skyconverter,
-                srcpos[i, 0],
-                srcpos[i, 1],
-                srcpos[j, 0],
-                srcpos[j, 1],
+                srcpos[i],
+                srcpos[j],
                 np.abs(intersect_info["point2arm"][arm][i, j]),
                 wave[i, j, o],
                 tg_part_name.index(arm),
@@ -1289,7 +1280,7 @@ def calc_ccd_energy_res():
     ccd_E_arm = hc / ccd_lam_arm
     res_power = ccd_E_arm / p(ccd_E_arm)
     # Grating spectra are never extracted below 1 Ang, because they overlap the zeroth order there.
-    # So, it doesn't really matter that the polynomial fit blow up in that region,
+    # So, it doesn't really matter that the polynomial fit blows up in that region,
     # but to make plots look nice, we fix is to the max of the resolving power.
     res_power[ccd_lam_arm < 1] = np.max(res_power)
     return res_power, ccd_lam_arm
@@ -1479,6 +1470,7 @@ def arm_confuse_wave(
 
 ####TABLE OUTPUT FUNCTIONS####
 
+
 def write_full_conf_table(
     records,
     output_dir,
@@ -1582,7 +1574,7 @@ def end_of_run_cleanup(output_dir_list_par, obsid_par, wavdetect_par=False):
     os.makedirs(table_dir, exist_ok=True)
 
     # if CrissCross ran wavdetec then create wavdetect dir and move files there
-    if wavdetect_par == True:
+    if wavdetect_par:
         wav_dir = f"{output_dir_list_par}/confusion_output_files/wavdetect_output"
         os.makedirs(wav_dir)
         wave_files = glob.glob(f"{output_dir_list_par}/wavdetect_obsid_{obsid_par}*")
@@ -1749,7 +1741,7 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par=None):
         pha_name = Path(pha2_file_par).name
         pha_root = pha_name.partition("_pha2.fits")[0]
 
-        if resp_dir_par != None:  # use provided resp_dir_par
+        if resp_dir_par is not None:  # use provided resp_dir_par
             resp_list_par = glob.glob(
                 f"{resp_dir_par}/{pha_root}*{resp_type_par}2.fits*"
             )
@@ -1787,7 +1779,7 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par=None):
             )
 
         # use glob and pha_root to find the responses
-        if resp_dir_par != None:  # use provided resp_dir_par
+        if resp_dir_par is not None:  # use provided resp_dir_par
             resp_list_par = glob.glob(f"{resp_dir_par}/{pha_root}*.{resp_type_par}")
         else:
             pha_dir = Path(
@@ -1918,14 +1910,10 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
     # report the files matched to the screen in a nice format so it is clear it worked or didn't work
     print("\nThe following response files were found\n")
 
-    # name the arm and order something more readable for output message
-    arm = lambda x: "HEG" if x == 1 else "MEG" if x == 2 else "ERROR"
-    order = lambda x: f"+{x}" if x > 0 else f"-{-1 * x}" if x < 0 else "ERROR"
-
     print()
     for i in range(0, num_spec_pha2):
         print(
-            f"{arm(tg_part_arr[i]) + order(tg_m_arr[i])} -- {resp_type_par.upper()}: {matched_resp_list_par[i]}"
+            f"{tg_part_name[tg_part_arr[i]]}{tg_m_arr[i]:+n} -- {resp_type_par.upper()}: {matched_resp_list_par[i]}"
         )
     print()
 
@@ -2147,8 +2135,8 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
     elif is_pha_type2(pha_crate_dataset):
         # if user enters their own arf or list of arfs then make sure they match the PHA2 file format (e.g., pha2 meg+1
         # has to be same array element as arf meg+1)
-        if arf_file != None:
-            if type(arf_file) == str:
+        if arf_file is not None:
+            if type(arf_file) is str:
                 arf_file = list(
                     [arf_file]
                 )  # make sure arf_file variable is a list just in case user enters a single file as 'file1' instead of ['file1'].
@@ -2385,33 +2373,33 @@ def run_crisscross(
         clobber_par = False
 
     # sanitize the evt2_file input so it is a list
-    if evt2_file == None:
+    if evt2_file is None:
         raise ValueError("Please provide an evt2 file")
     # convert a single file into a list so it can work with loop
-    elif type(evt2_file) == str:
+    elif type(evt2_file) is str:
         evt2_file = [evt2_file]
-    elif type(evt2_file) != list:
+    elif type(evt2_file) is not list:
         raise ValueError(
             "Unknown type of input for evt2_files. Please include a single file or a list of files"
         )
 
-    if wavdetect_file != None:
-        if type(wavdetect_file) == str:
+    if wavdetect_file is not None:
+        if type(wavdetect_file) is str:
             wavdetect_file = [wavdetect_file]
-        elif type(wavdetect_file) != list:
+        elif type(wavdetect_file) is not list:
             raise ValueError(
                 "Unknown type of input for wavdetect_file. Please include a single file or a list of files"
             )
 
     # check to make sure the number of evt2 files match the number of wavdetect source lists
-    if wavdetect_file != None and len(wavdetect_file) != len(evt2_file):
+    if wavdetect_file is not None and len(wavdetect_file) != len(evt2_file):
         raise ValueError(
             "The number of input evt2_files and wavdetect source fits table files do not match. Please include a wavdetect table for each evt2 file."
         )
 
     # run wavedetect_match_obsid before the loop starts to ensure input files are in correct order. Make wavdetect_file
     # a list of [None]s so it can work per obsID in CrissCross loop below.
-    if wavdetect_file != None:
+    if wavdetect_file is not None:
         wavdetect_file = wavedetect_match_obsid(
             fits_list_par=evt2_file, wavdetect_list_par=wavdetect_file
         )
@@ -2428,7 +2416,7 @@ def run_crisscross(
         # print the tweakable paramters to the screen and then record them near the end along with the time it took to run.
         print("\n")
         print("This run is for observation %s" % evt2_file[k])
-        if wavdetect_file[k] != None:
+        if wavdetect_file[k] is not None:
             print("This run is using the wavedetect file %s" % wavdetect_file[k])
         print(
             "The contamination offset threshold is set to %s pixels." % max_pntsrc_dist
@@ -2482,7 +2470,7 @@ def run_crisscross(
         output_dir, dir_exists = make_output_dir(
             cc_outdir, obsid, clobber_par=clobber_par
         )
-        if dir_exists == True and clobber_par == False:
+        if dir_exists and not clobber_par:
             print(
                 f"\nClobber set to false and output directory {output_dir} exists. If you wish to overwrite files please set clobber=True\n"
             )
@@ -2490,7 +2478,7 @@ def run_crisscross(
 
         # run wavdetect if the user did not input a wavdetect source table.
         run_wave = False
-        if wavdetect_file[k] == None:
+        if wavdetect_file[k] is None:
             run_wave = True  # set so end_of_run_cleanup knows to make output dir and move wavdetect files
             wavdetect_file[k] = run_wavdetect(
                 evt2_file[k], outdir=output_dir, outroot=f"wavdetect_obsid_{obsid}"
@@ -2501,7 +2489,7 @@ def run_crisscross(
         RA_wcs, DEC_wcs, srcID = load_sourcelist(filename=main_list)
 
         # save the RA, DEC from the subset input list or the user input individual source
-        if clean_single_RA == None and clean_single_DEC == None:
+        if clean_single_RA is None and clean_single_DEC is None:
             subset_RA, subset_DEC = load_sourcelist(
                 filename=subset_src_list, subset_list=True
             )
@@ -2724,63 +2712,22 @@ def run_crisscross(
         )
 
         log_file = open(f"{output_dir}/LOG_{obsid}.txt", "w")
-
-        log_file.write("This run is for observation %s. \n" % evt2_file[k])
-        log_file.write(
-            "The wavdetect source list used for this observation is %s. \n"
-            % wavdetect_file[k]
-        )
-        log_file.write(
-            "The roll angle of this observation is %s degrees. \n" % round(roll_nom, 2)
-        )
-        log_file.write(
-            "MEG angle = %s degrees and HEG angle = %s degrees. \n"
-            % (round(meg_ang, 2), round(heg_ang, 2))
-        )
-        log_file.write(
-            "\nThe contamination offset threshold is set to %s pixels. \n"
-            % max_pntsrc_dist
-        )
-        log_file.write(
-            "The counts threshold to be considered a spectrum of interest is set to %s counts. \n"
-            % min_spec_counts
-        )
-        log_file.write(
-            "The counts threshold to be considered a potential contaminating spectral source is %s counts. \n"
-            % min_spec_confuser_counts
-        )
-        log_file.write(
-            "The counts threshold to be considered a potential 0th order point source contaminating source is %s counts. \n"
-            % min_pntsrc_counts
-        )
-        log_file.write(
-            "The distance in pixels required for two very bright sources to be considered for ARM REMOVAL --tis but a scratch-- is %s pixels. \n"
-            % max_arm_dist
-        )
-        log_file.write(
-            "The fraction of the OSIP window to include when considering two arm overlaps is set at %s percent. \n"
-            % (osip_frac * 100)
-        )
-        log_file.write("\nThe total number of sources input is %s. \n" % (src_num))
-        log_file.write(
-            "The number of sources above the contamination intercept threshold of %s counts for ObsID %s is %s. \n"
-            % (min_spec_counts, obsid, counts_intercept_num)
-        )
-        log_file.write(
-            "The minimum counts in Src Bs 0th order to assess total arm confusion in source A is %s. \n "
-            % (min_arm_counts)
-        )
-
-        log_file.write(
-            "The HEG/MEG angles for this observation are %s and %s degrees. \n "
-            % (heg_ang, meg_ang)
-        )
-
         total_time = time_logger(mode="end", time_started=time_log_start)
-
         log_file.write(
-            "\nThe total elapsed time for obsID %s is %s minutes. \n"
-            % (obsid, total_time)
+            f"""This run is for observation {evt2_file[k]}.
+The wavdetect source list used for this observation is {wavdetect_file[k]}.
+The roll angle of this observation is {roll_nom:.2f} degrees.
+MEG angle = {meg_ang:.2f} degrees and HEG angle = {heg_ang:.2f} degrees.
+The contamination offset threshold is set to {max_pntsrc_dist} pixels.
+The counts threshold to be considered a spectrum of interest is set to {min_spec_counts} counts.
+The counts threshold to be considered a potential contaminating spectral source is {min_spec_confuser_counts} counts.
+The counts threshold to be considered a potential 0th order point source contaminating source is {min_pntsrc_counts} counts.
+The distance in pixels required for two very bright sources to be considered for ARM REMOVAL --tis but a scratch-- is {max_arm_dist} pixels.
+The fraction of the OSIP window to include when considering two arm overlaps is set at {osip_frac * 100} percent.
+The total number of sources input is {src_num}.
+The number of sources above the contamination intercept threshold of {min_spec_counts} counts for ObsID {obsid} is {counts_intercept_num}.
+The minimum counts in Src Bs 0th order to assess total arm confusion in source A is {min_arm_counts}.
+The HEG/MEG angles for this observation are {heg_ang:.2f} and {meg_ang:.2f} degrees.
+The total elapsed time for obsID {obsid} is {total_time} minutes."""
         )
-
         log_file.close()
