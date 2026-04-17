@@ -1157,12 +1157,13 @@ def pntsrc_confuse_wave(
     # Array shape is (n_confused_sources, n_confuser_sources, n_orders_confuser).
     confusion = np.ones_like(wave, dtype=bool)
     flag = np.zeros_like(wave, dtype=int)
-
     distance2line = intersect_info["point2arm"][arm][subset_sources, :]
 
     confusion = confusion & (distance2line < off_axis_limit)[:, :, np.newaxis]
     confusion = confusion & (zero_counts > min_spec_counts)[:, np.newaxis, np.newaxis]
-    confusion = confusion & (zero_counts > min_pntsrc_counts)[:, np.newaxis, np.newaxis]
+    confusion = (
+        confusion & (zero_order_counts > min_pntsrc_counts)[np.newaxis, :, np.newaxis]
+    )
     # A source does not confuse itself, i.e. distance to source is > 0:
     confusion = confusion & (distance2line > 0)[:, :, np.newaxis]
 
