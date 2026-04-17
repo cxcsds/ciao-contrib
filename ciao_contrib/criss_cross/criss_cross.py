@@ -111,7 +111,7 @@ rec_type = np.dtype(
 def calc_off_axis_modifier(theta_arcsec):
     """
 
-    At larger off-axis angles, the PSF get larger and thus point sources and grating arms
+    At larger off-axis angles, the PSF gets larger and thus point sources and grating arms
     look wider.
 
     Parameters
@@ -146,11 +146,7 @@ def make_output_dir(cc_outdir, obsid_par, clobber_par=False):
     """
     # create a subdir for each obsID run
     output_dir = f"{cc_outdir}/output_dir_obsid_{obsid_par}"
-
-    if os.path.isdir(output_dir):
-        already_exists = True
-    else:
-        already_exists = False
+    already_exists = os.path.isdir(output_dir)
 
     # if an output directory for this obsID already exists then delete it first
     if clobber_par and already_exists:
@@ -315,7 +311,7 @@ def load_sourcelist(filename=None, subset_list=False):
         colnames = cratedata.get_colnames()
         crate_len = len(colnames)
 
-        # check to see if user forgot to put hash in front of column header which woudl result in crate being type <U17
+        # check to see if user forgot to put hash in front of column header which would result in crate being type <U17
         if cratedata.get_column(colnames[0]).values.dtype == "<U17":
             raise TypeError(
                 "\nFirst row of file cannot be of string format. If header columns are present please ensure # is first character of line.\n"
@@ -592,29 +588,18 @@ def write_matched_file(
     """
 
     filestack = np.column_stack((srcid_par, ra_par, dec_par, counts_par))
-
-    if output_type == "csv":
-        np.savetxt(
-            fileroot + ".csv",
-            filestack,
-            delimiter=",",
-            fmt=["%d", "%.6f", "%.6f", "%.1f"],
-            header="ID,RA,DEC,0th_counts",
-            comments="",
-        )  # need comments to get rid of extra # sign
-    elif output_type == "txt":
-        np.savetxt(
-            fileroot + ".txt",
-            filestack,
-            delimiter="\t",
-            fmt=["%d", "%.6f", "%.6f", "%.1f"],
-            header="ID,RA,DEC,0th_counts",
-            comments="",
-        )
-    else:
+    if output_type not in ["txt", "csv"]:
         raise ValueError("The only output types accepted are csv and txt.")
 
-    return ()
+    delimiter = {"csv": ",", "txt": "\t"}
+    np.savetxt(
+        f"{fileroot}.{output_type}",
+        filestack,
+        delimiter=delimiter[output_type],
+        fmt=["%d", "%.6f", "%.6f", "%.1f"],
+        header="ID,RA,DEC,0th_counts",
+        comments="",
+    )
 
 
 def determine_line_intersect_values(src_pos, norm_arm1, norm_arm2):
@@ -1169,7 +1154,7 @@ def pntsrc_confuse_wave(
     off_axis_modifier = calc_off_axis_modifier(src_off_axis_par)
     off_axis_limit = max_pntsrc_dist * off_axis_modifier
 
-    # Array's are of shape (n_confused_sources, n_confuser_sources, n_orders_confuser).
+    # Array shape is (n_confused_sources, n_confuser_sources, n_orders_confuser).
     confusion = np.ones_like(wave, dtype=bool)
     flag = np.zeros_like(wave, dtype=int)
 
@@ -1178,7 +1163,7 @@ def pntsrc_confuse_wave(
     confusion = confusion & (distance2line < off_axis_limit)[:, :, np.newaxis]
     confusion = confusion & (zero_counts > min_spec_counts)[:, np.newaxis, np.newaxis]
     confusion = confusion & (zero_counts > min_pntsrc_counts)[:, np.newaxis, np.newaxis]
-    # A source does not confuse itself:
+    # A source does not confuse itself, i.e. distance to source is > 0:
     confusion = confusion & (distance2line > 0)[:, :, np.newaxis]
 
     pntsrc_confuse_log_file = open(f"{logfile_par}", "w")
