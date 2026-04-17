@@ -994,7 +994,11 @@ def spec_confuse_wave(
     ]
     confusion = confusion & (confused_counts_primary[:, :, :, np.newaxis] > 0)
 
-    ratio = confuser_counts_secondary / confused_counts_primary[:, :, :, np.newaxis]
+    # This will raise a "devide by 0" warning for sources where confused_counts_primary == 0
+    # Above, we already marked thos as not-confused and we will never need those values.
+    # So, we just hide the error message.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = confuser_counts_secondary / confused_counts_primary[:, :, :, np.newaxis]
     flag[confusion & (ratio < spec_confuse_limit)] += flags_spec[
         "confusion_smaller_than_conf_ratio"
     ]
