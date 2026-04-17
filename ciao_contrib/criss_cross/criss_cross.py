@@ -7,7 +7,6 @@
 # - sort input parameters, e.g. always start with subest source (or put that in dict?), where osip, skyconverter, evtcrates go?
 # - width_of_exclusion_region has hardcoded parameters for the extraction. Should be read from file.
 # - Write parameters values used to run into header (either as history or as keywords)
-# - rename "level" in output to "flag" and remove numeric flag for text output.
 # - output "0th_order_confused_counts" is really CONFUSER counts in the original version. What do we want? Also doesn't take OSIP into account. Do we want that?
 ##########################################################################################
 ##########################################################################################
@@ -103,7 +102,7 @@ rec_type = np.dtype(
         ("confusion_wave", "<f8"),
         ("wave_low", "<f8"),
         ("wave_high", "<f8"),
-        ("flag", "<i8"),
+        ("flag_id", "<i8"),
     ]
 )
 
@@ -1036,7 +1035,7 @@ def spec_confuse_wave(
         "confusion_wave": wave_extracted,
         "wave_low": wave_extracted - mask_interval / 2,
         "wave_high": wave_extracted + mask_interval / 2,
-        "flag": np.extract(flag > 0, flag),
+        "flag_id": np.extract(flag > 0, flag),
     }
     return np.rec.fromarrays([result[n] for n in rec_type.names], dtype=rec_type)
 
@@ -1238,7 +1237,7 @@ def pntsrc_confuse_wave(
         "confusion_wave": np.extract(flag > 0, wave),
         "wave_low": np.extract(flag > 0, wave_low),
         "wave_high": np.extract(flag > 0, wave_high),
-        "flag": np.extract(flag > 0, flag),
+        "flag_id": np.extract(flag > 0, flag),
     }
     return np.rec.fromarrays([result[n] for n in rec_type.names], dtype=rec_type)
 
@@ -1449,7 +1448,7 @@ def arm_confuse_wave(
             "confusion_wave": np.abs(np.extract(confusion, intersect_wav)),
             "wave_low": np.abs(np.extract(confusion, wav_low)),
             "wave_high": np.abs(np.extract(confusion, wav_high)),
-            "flag": np.full(confusion.sum(), flags_arm["arm_confusion"]),
+            "flag_id": np.full(confusion.sum(), flags_arm["arm_confusion"]),
         }
         arm_conf.append(
             np.rec.fromarrays([result[n] for n in rec_type.names], dtype=rec_type)
@@ -1478,7 +1477,7 @@ def write_full_conf_table(
     to_write = np.zeros(len(records), dtype=bool)
     for conftype, (flag, levels) in flags.items():
         to_write = to_write | (records["confusion_type"] == conftype) & (
-            records["flag"] >= levels[level]
+            records["flag_id"] >= levels[level]
         )
 
     if src_id is not None:
@@ -1497,7 +1496,7 @@ def write_full_conf_table(
             for lev in ["clean", "warn", "confused"]:
                 severity[
                     (records["confusion_type"] == conftype)
-                    & (records["flag"] >= levels[lev])
+                    & (records["flag_id"] >= levels[lev])
                 ] = lev
 
         # Get a reverse lookup from flag values to strings.
@@ -1506,9 +1505,9 @@ def write_full_conf_table(
         flags_lookup = {}
         for conf_type, d in flags.items():
             flags_lookup[conf_type] = {v: k for k, v in d[0].items()}
-        descr = [flags_lookup[row["confusion_type"]][row["flag"]] for row in records]
+        descr = [flags_lookup[row["confusion_type"]][row["flag_id"]] for row in records]
         records = rfn.rec_append_fields(
-            records, ["level", "flag_comment"], [severity, descr]
+            records, ["flag", "flag_comment"], [severity, descr]
         )
 
     merged_crate = make_table_crate(records)
