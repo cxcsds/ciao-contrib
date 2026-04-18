@@ -3,8 +3,6 @@
 # List of things I still need to do:
 # - add back in ds9 figure generation so users can see where confusion occurs on the evt2 fits image.
 # - add functionality for user to calculate confusion between two selected sources in a field of view and print results to screen.
-# - Standardize names, e.g. "heh/meg" can be armtype, arm_par, arm, etc.  I should pick one and use it everywhere.
-# - sort input parameters, e.g. always start with subest source (or put that in dict?), where osip, skyconverter, evtcrates go?
 # - width_of_exclusion_region has hardcoded parameters for the extraction. Should be read from file.
 # - Write parameters values used to run into header (either as history or as keywords)
 # - output "0th_order_confused_counts" is really CONFUSER counts in the original version. What do we want? Also doesn't take OSIP into account. Do we want that?
@@ -731,7 +729,7 @@ def spec_confuse_wave(
     subset_sources,
     intersect_info,
     arm,
-    counts,
+    zero_counts,
     min_spec_counts,
     min_spec_confuser_counts,
     width_mask_pixel,
@@ -753,19 +751,17 @@ def spec_confuse_wave(
     ----------
     subset_sources : list of int
         List of sources to create confusion tables for whose elements are matched to the main_list.
-    intersets : dict
+    interset_info : dict
         Holding information aboout the source locations, arm locations, and arm intersection points.
-    armtype : str
+    arm : str
         HETG arm type of 'heg' or 'meg'.
-    counts : np.array
+    zero_counts : np.array
         number of 0th order counts for all sources
     min_spec_counts, min_spec_confuser_counts : int
         CrissCross input parameter denoting the 0th order counts threshold to consider a source for spectral confusion.
     width_mask_pixel : float
         Full width in pixels of the region that is marked as bad when confusion occurs.
          It is no recommended to go smaller than the default values as they are determined based on the intstrument.
-    fits_list_par : str
-        evt2 file associated with the observation for the confusion determination.
     obsid_par : str
         obsID value of the observation.
     outdir : str
@@ -775,41 +771,62 @@ def spec_confuse_wave(
         This parameter can be tweaked lower to make the confusion estimate less conservative.
     arf_ratios_dir : str
         Path to CrissCross arf ratios tables necessary to account for efficiencies between orders.
+    osip : `ciao_contrib.criss_cross.iocaldb.OSIP`
+        Object that can retrieve OSIP information for the event file used.
+    skyconverter : `ciao_contrib.criss_cross.iocaldb.Sky2Chandra`
+        Object that can convert Chandra coordiantes for the event file used.
+    evtcrates : `pycrates.tablecrate.TABLECrate`
+        A crates object holding an event file.
+    spec_confuse_limit : float
+        Ratio of counts in the confusing/confused grating spectrum that triggers a
+        "confused" flag. This number shoudl be conservative, because the estimate of
+        the confusing and confused counts are just that - estimates - based on what is
+        seen in zeroth order with a simplified instrumental model (e.g. an interpolated
+        version of a typical ARF).
+
+    Returns
+    -------
+    spec_conf : numpy.rec.array
+        Information about each occurance of confusion.
+        Only valid confusion is listed, all sources and arm combinations
+        processed that are not listed are to be considered unconfused.
 
     Notes
     -----
+    In this function we first assume that all sources are confused in every order then
+    remove confusion candidates step by step.
 
-    The logic in this function is complicated so it is summarized here:
+    - If a source has fewer than "min_spec_counts" then we ignore it. It's specturm is not useful anyway.
+    - If a confuser has fewer than "min_spec_confuser" counts, then its dispersed spectrum will be so weak that we ignore it.
+    - If the confuser source intersects the arm of the (potentially) confused source outside of the heg/meg
+      cutoff energies (<1 A or >~ 16, 32 A) te spectrum is not confused.
+    - If the confuser's m order wavelength is outside the bounds of HEG/MEG it's not confused.
+    - If the confuser's m order is outside the wavelength range that the confused source is
+      expecting at the location of the intersection (i.e., the OSIP window of the confused source at the
+      intersection location), it's not confused.
+    - Using the OSIP and the confuser's zero's order, estimate the number of confusing counts.
+      If the expected ratio between confusing and confused spectra is below "spec_confuse_limit"
+      that it's not confused (but a warkign can be logged).
+      This calculation should account for the heg/meg order efficiencies and ARFs BUT assumes an on-axis source at
+      the pointing location. This WILL be slightly different for any other source but to first order it should be ok.
+      This calculation uses the AVERAGE response ratio in the calculated OSIP range. If OSIP range is large then
+      it is washing out some details in the arfs but for estimation purposes it should be ok.
 
-    (1) Run the following checks only for the cases where spectral arms intersect and then set flag appropriately:
+    A few notes on the implementation that help to read the code:
 
-    (a) If the confuser source intersects the arm of the (potentially) confused source outside of the heg/meg
-        cutoff energies (<1 A or >~ 16, 32 A) of the confused source then NO ORDERS of the confuser source could
-        confuse so assign a warning flag (flag_995)
-
-    (b) If the intersection occurs in the valid range of wavelengths for meg/heg then check the following for
-        EACH order:
-
-        (i) Is the confuser's m order wavelength range within the bounds of HEG/MEG? If not, set warning flag
-            (flag_996) and check other orders.
-
-        (ii) If (i) is TRUE, is the confuser's m order within the same wavelength range as the confused source is
-            expecting at the location of the intersection (i.e., the OSIP window of the confused source at the
-            intersection location)? If not, mark as 'clean' unless a previous order has been flagged as 'warn'
-            or 'confused'.
-
-        (iii) If (ii) is TRUE then calculate the number of 0th order counts of the CONFUSER source within the OSIP
-        range for the spectral intersection location. If confuser source 0th order has 0 counts then no need to
-        check for confusion anymore and set 'warning' flag. If confuser 0th order has > 0 counts then determine
-        the number of 0th order counts from the CONFUSED source in the OSIP range. Use the number of 0th order
-        counts for both sources and the HEG/MEG-0th-order-to-nth-order ARF tables to estimate the number of
-        dispersed counts from both sources landing in the intersection spot of the potentially confused source.
-        Use ratio of estimated dispersed counts to determine if confusion occurs and flag appropriately.
-
-    This calculation should account for the heg/meg order efficiencies and ARFs BUT assumes an on-axis source at
-    the pointing location. This WILL be slightly different for any other source but to first order it should be ok.
-    This calculation uses the AVERAGE response ratio in the calculated OSIP range. If OSIP range is large then
-    it is washing out some details in the arfs but for estimation purposes it should be ok.
+    We now build up the intersections and orders where confusion occurs
+    with a series of step of filtering, each one removing more and more
+    "confusion" candidates, setting more and more of the "confusion" array to False.
+    The first few steps can be done on simple matrix equations, the
+    laters ones are more computationally expensive and so we loop them only
+    over sources and orders where confusion is possible.
+    Arrays that deal with the confuser (e.g. the wavelength at each intersection are
+    of shape (n_confused_sources, n_confuser_sources, n_orders_confused)
+    and arrays that deal with the confuser are
+    of shape (n_confused_sources, n_confuser_sources, n_orders_confuser).
+    The shape of a flag array for all possible confusions cases is:
+    (n_confused_sources, n_confuser_sources, n_orders_confused, n_orders_confuser)
+    so 3D arrays need to be broadcast to the right shape.
     """
     # For the meg we need to transpose the first two axis
     intersect = intersect_info["heg_meg_intersects"]
@@ -836,23 +853,9 @@ def spec_confuse_wave(
     wave = mwave[..., np.newaxis] / intersect_info["orders"]
     wave2 = mwave2[..., np.newaxis] / intersect_info["orders"]
 
-    # We now build up the intersections and orders where confusion occurs
-    # with a series of step of filtering, each one removing more and more
-    # "confusion" candidates, setting more and more of the "confusion" array to False.
-    # The first few steps can be done on simple matrix equations, the
-    # laters ones are more computationally expensive and so we loop them only
-    # over sources and orders where confusion is possible.
-    # Arrays that deal with the confuser (e.g. the wavelength at each intersection are
-    # of shape (n_confused_sources, n_confuser_sources, n_orders_confused)
-    # and arrays that deal with the confuser are
-    # of shape (n_confused_sources, n_confuser_sources, n_orders_confuser).
-    # The shape of a flag array for all possible confusions cases is:
-    # (n_confused_sources, n_confuser_sources, n_orders_confused, n_orders_confuser)
-    # so 3D arrays need to be broadcast to the right shape.
-
     # Step 1: Select spectra and confusers with enough counts to be relevant.
-    confusion = (counts > min_spec_counts)[subset_sources, np.newaxis] & (
-        counts > min_spec_confuser_counts
+    confusion = (zero_counts > min_spec_counts)[subset_sources, np.newaxis] & (
+        zero_counts > min_spec_confuser_counts
     )[np.newaxis, :]
     # Now expand to 4d shape
     confusion = np.tile(
@@ -1094,7 +1097,7 @@ def pntsrc_confuse_wave(
     intersect_info,
     arm,
     src_off_axis_par,
-    zero_order_counts,
+    zero_counts,
     max_pntsrc_dist,
     min_spec_counts,
     min_pntsrc_counts,
@@ -1105,33 +1108,25 @@ def pntsrc_confuse_wave(
     logfile_par,
     evt_frac_thresh=0.1,
 ):
-    r"""
-    Identifies when point source confusion occurs within the thresholds provided by the user. If a 0th order source is
-    sufficiently bright and close to the dispersed spectrum of another source then it will be identified as having
-    point source confusion.  This function uses output from pntsrc_dist_to_spec() with the roll angle to determine
-    where/if point source confusion occurs. NOTE: a single confusing point source can only confuse a single arm for
-    each 'confused' source. So this loop will only flag a single arm for each confused source per confuser source.
+    r"""Identify point source confusion
 
-    Parameters
+    If a 0th order source is sufficiently bright and close to the dispersed
+    spectrum of another source then it will be identified as having point
+    source confusion. A single confusing point source can only confuse a single arm for
+    each 'confused' source.
     ----------
+    subset_sources : list of int
+        List of sources to create confusion tables for whose elements are matched to the main_list.
+    interset_info : dict
+        Holding information aboout the source locations, arm locations, and arm intersection points.
+    arm : str
+        HETG arm type of 'heg' or 'meg'.
     pntsrc_dict : dictionary
         Point source confusion dict which holds all possible pntsrc confusion entries for every source in main_list.
         This dictionary is modified in place by this function.
-    distance_along_line : np.ndarray
-        An (n, n) array of distances along the line for each pair of source positions.
-        :math:`\vec{S} + k \cdot \vec{N_{arm}}` is the point on the line closest
-        to the source position.
-        k[i, :] gives the k values for the line defined by source position i to the
-        point of closed approach for each source position
-        (so, ``k[i,i] == 0`` because it's the distance of a source to itself).
-    distance_to_line : np.ndarray
-        An (n, n) array of distances from each source position to the
-        line defined by norm_arm.
-    arm_par : str
-        HETG 'heg' or 'meg' arm.
     src_off_axis_par : float
         Off-axis angle of the source in arcseconds
-    counts_par : int
+    zero_counts : array
         The number of 0th order counts.
     max_pntsrc_dist_par : int
         CrissCross parameter threshold in number of pixels for how far a point source can be perpendicular to a
@@ -1143,16 +1138,31 @@ def pntsrc_confuse_wave(
     min_pntsrc_counts : int
         CrissCross parameter threshold in counts above which a 0th order source is bright enough to be
         considered as a confuser source of another source's spectrum.
+    cutoff : dict
+        Minimum and maximum wavelength that will be considered.
+    osip : `ciao_contrib.criss_cross.iocaldb.OSIP`
+        Object that can retrieve OSIP information for the event file used.
+    skyconverter : `ciao_contrib.criss_cross.iocaldb.Sky2Chandra`
+        Object that can convert Chandra coordiantes for the event file used.
+    evtcrates : `pycrates.tablecrate.TABLECrate`
+        A crates object holding an event file.
     logfile_par : str
         Name of the logfile for capturing pnt_src_masking_region() log output.
     evt_frac_thresh : float
         Fraction of events allowed by confuser before considering confusion occurs (0.1 = 10%)
+
+    Returns
+    -------
+    pnt_conf : numpy.rec.array
+        Information about each occurance of confusion.
+        Only valid confusion is listed, all sources and arm combinations
+        processed that are not listed are to be considered unconfused.
     """
     orders = intersect_info["orders"]
     mwave = intersect_info["mwave"][arm][subset_sources, :]
     wave = mwave[..., np.newaxis] / orders
     srcpos = np.diagonal(intersect_info["heg_meg_intersects"]).T
-    zero_counts = zero_order_counts[subset_sources]
+    zero_counts = zero_counts[subset_sources]
 
     off_axis_modifier = calc_off_axis_modifier(src_off_axis_par)
     off_axis_limit = max_pntsrc_dist * off_axis_modifier
@@ -1164,9 +1174,7 @@ def pntsrc_confuse_wave(
 
     confusion = confusion & (distance2line < off_axis_limit)[:, :, np.newaxis]
     confusion = confusion & (zero_counts > min_spec_counts)[:, np.newaxis, np.newaxis]
-    confusion = (
-        confusion & (zero_order_counts > min_pntsrc_counts)[np.newaxis, :, np.newaxis]
-    )
+    confusion = confusion & (zero_counts > min_pntsrc_counts)[np.newaxis, :, np.newaxis]
     # A source does not confuse itself, i.e. distance to source is > 0:
     confusion = confusion & (distance2line > 0)[:, :, np.newaxis]
 
@@ -1270,7 +1278,7 @@ def calc_ccd_energy_res():
     res_power = ccd_E_arm / p(ccd_E_arm)
     # Grating spectra are never extracted below 1 Ang, because they overlap the zeroth order there.
     # So, it doesn't really matter that the polynomial fit blows up in that region,
-    # but to make plots look nice, we fix is to the max of the resolving power.
+    # but to make plots look nice, we fix it to the max of the resolving power.
     res_power[ccd_lam_arm < 1] = np.max(res_power)
     return res_power, ccd_lam_arm
 
@@ -1311,22 +1319,20 @@ def arm_confuse_wave(
     ----------
     subset_sources : list of int
         List of sources to create confusion tables for whose elements are matched to the main_list.
-    distance_along_line : np.ndarray
-        An (n, n) array of distances along the line for each pair of source positions.
-        :math:`\vec{S} + k \cdot \vec{N_{arm}}` is the point on the line closest
-        to the source position.
-        k[i, :] gives the k values for the line defined by source position i to the
-        point of closest approach for each source position
-        (so, ``k[i,i] == 0`` because it's the distance of a source to itself).
-    distance_to_line : np.ndarray
-        An (n, n) array of distances from each source position to the
-        line defined by norm_arm.
-    arm_par : str
-        HETG 'heg' or 'meg' arm.
-    src_off_axis_par : float
-        Off-axis angle of the source in arcseconds
-    counts_par : int
-        The number of 0th order counts.
+    interset_info : dict
+        Holding information aboout the source locations, arm locations, and arm intersection points.
+    arm : str
+        HETG arm type of 'heg' or 'meg'.
+    src_off_axis_par : array
+        Off-axis angle for all sources in arcseconds
+    zero_counts : np.array
+        number of 0th order counts for all sources
+    min_arm_counts : float
+        Only consider sources with more zero order counts than `min_arm_counts`.
+    arm_dist : float
+        Maximal distance perpendicular to the dispersion direction that a source can
+        have to be considered for confusion. For sources at some distance from the
+        optical axis is number is scaled up.
     nsig_par : float
          Approximation for how wide the OSIP range is for order sorting when determining which events are part of the
          Nth order spectrum.
@@ -2581,7 +2587,7 @@ def run_crisscross(
                     subset_sources=subset_list,
                     intersect_info=intersect_info,
                     arm=arm,
-                    counts=counts,
+                    zero_counts=counts,
                     min_spec_counts=min_spec_counts,
                     min_spec_confuser_counts=min_spec_confuser_counts,
                     width_mask_pixel=120,
@@ -2617,7 +2623,7 @@ def run_crisscross(
                     intersect_info=intersect_info,
                     arm=arm,
                     src_off_axis_par=src_off_axis,
-                    zero_order_counts=counts,
+                    zero_counts=counts,
                     max_pntsrc_dist=max_pntsrc_dist,
                     min_spec_counts=min_spec_counts,
                     min_pntsrc_counts=min_pntsrc_counts,
