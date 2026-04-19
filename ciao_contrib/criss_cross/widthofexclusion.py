@@ -156,8 +156,11 @@ def pnt_src_masking_region(
         masked out due to point source contamination.  If no masking is needed,
         the function returns (9999.0, 9999.0) or (9998.0, 9998.0) or (9997.0, 9997.0)
         depending on the reason why no masking is needed.
+        If a location is not on a chip, (np.nan, np.nan) is returned.
     """
-    energyband = osip(contaminator[0], contaminator[1], 12398 / wavelength, logfile)
+    energyband = osip(contaminator[0], contaminator[1], 12398 / wavelength)
+    if np.isnan(energyband[0]):
+        return np.nan, np.nan
     waveband = (12398 / energyband[1], 12398 / energyband[0])
     pnt_src_counts = counts_circle_band(evt, contaminator, waveband, skyconverter)
     if pnt_src_counts < 1:

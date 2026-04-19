@@ -893,18 +893,19 @@ def spec_confuse_wave(
     energy_low = np.ones_like(wave, dtype=float)
     energy_high = np.ones_like(wave, dtype=float)
 
-    spec_confuse_log_file = open(f"{outdir}/spec_confuse_{obsid_par}_log.txt", "w")
     for i, j in itertools.product(range(wave.shape[0]), range(wave.shape[1])):
         if confusion[i, j].any():
             result = osip(
                 intersect[i, j, 0],
                 intersect[i, j, 1],
                 (hc / wave[i, j, :]),
-                spec_confuse_log_file,
             )
             energy_low[i, j, :] = result[0]
             energy_high[i, j, :] = result[1]
-    spec_confuse_log_file.close()
+
+    # Intersection points that do not fall on any chip are listed as nan
+    confusion = confusion & np.isfinite(energy_low[:, :, :, np.newaxis])
+
     # convert osip from energy to angstrom and account for user parameter osip_frac (fractional size
     # of osip window of choice --e.g., user could want smaller than large osip window)
     mask_width = (1 - osip_frac) * (hc / energy_low - hc / energy_high)
@@ -1178,6 +1179,9 @@ def pntsrc_confuse_wave(
     # A source does not confuse itself, i.e. distance to source is > 0:
     confusion = confusion & (distance2line > 0)[:, :, np.newaxis]
 
+    # Wavelength of real photons are always positive
+    confusion = confusion & (wave > 0)
+
     pntsrc_confuse_log_file = open(f"{logfile_par}", "w")
 
     wave_low = np.zeros_like(wave)
@@ -1198,8 +1202,10 @@ def pntsrc_confuse_wave(
                 evt_frac_thresh,
                 pntsrc_confuse_log_file,
             )
-
     pntsrc_confuse_log_file.close()
+
+    # Intersection points that do not fall on any chip are listed as nan
+    confusion = confusion & np.isfinite(wave_low)
 
     flag[confusion & (wave_low == 9999.0)] = flags_pnt["confusing_pntsrc_but_no_counts"]
     confusion = confusion & (wave_low != 9999.0)

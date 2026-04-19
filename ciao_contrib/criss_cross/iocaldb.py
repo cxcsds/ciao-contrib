@@ -93,8 +93,8 @@ class OSIP:
         self.osip = read_file(osipfiles[0][:-3] + '[AXAF_OSIP]')
         self.skyconverter = Sky2Chandra(evt)
 
-    def __call__(self, x, y, energy, logfile='terminal'):
-        '''
+    def __call__(self, x, y, energy):
+        """
         Parameters
         ----------
         x, y : float
@@ -107,27 +107,20 @@ class OSIP:
         ener_lo, ener_hi : float
             Lower and upper bound for OSIP region
         fracresp : float
-            Frational energy contained in the given region
-        '''
+            Fractional energy contained in the given region
+        """
         coords = self.skyconverter(x, y)
+        chipx = coords["chipx"][0]
+        chipy = coords["chipy"][0]
 
-        # In testing, we found that source can have e.g. chipx=0.4
-        # while the OSIP regions are only defined from 1 on.
-        # We conclude that that's just due to dither and numerics
-        # and should not stop the code.
-        # So, we simply reset min and max number here and put in a
-        # warning for now.
-        chipx_orig = coords['chipx'][0]
-        chipy_orig = coords['chipy'][0]
-        # Make sure x,y is in range 1..1023
-        chipx = max(min(chipx_orig, 1023), 1)
-        chipy = max(min(chipy_orig, 1023), 1)
-        # Print function for debugging. Can hopefully be removed later:
-        if (chipx != chipx_orig) or (chipy != chipy_orig):
-            if logfile == 'terminal':
-                print('Reset (chipx, chipy) = ({}, {}) such that x and y are in range 1..1023 for source at (x,y)=({},{}).'.format(chipx_orig, chipy_orig, x, y))
-            else:
-                logfile.write('Reset (chipx, chipy) = ({}, {}) such that x and y are in range 1..1023 for source at (x,y)=({},{}). \n'.format(chipx_orig, chipy_orig, x, y))
+        # If the point is not on a chip, the converter returns
+        # the coordinate system for the closest chip, but with pixel numbers outside
+        # the range 1..1023. We allow a little wider area to account for rounding
+        # errors and dither and return the OSIP at the chip edge in that case.
+        if not (-10 < chipx < 1034) or not (-10 < chipy < 1034):
+            return np.nan, np.nan, np.nan
+        chipx = np.clip(1, int(chipx), 1023)
+        chipy = np.clip(1, int(chipy), 1023)
 
         ind = self.osip.get_column('ccd_id').values == coords['chip_id'][0]
         if ind.sum() == 0:
