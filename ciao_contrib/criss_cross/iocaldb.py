@@ -72,10 +72,6 @@ class CALDBException(Exception):
     pass
 
 
-class SourceNotOnChipException(Exception):
-    pass
-
-
 class OSIP:
     def __init__(self, evt):
         cr = read_file(evt)
@@ -122,10 +118,7 @@ class OSIP:
         chipx = np.clip(1, int(chipx), 1023)
         chipy = np.clip(1, int(chipy), 1023)
 
-        ind = self.osip.get_column('ccd_id').values == coords['chip_id'][0]
-        if ind.sum() == 0:
-            raise SourceNotOnChipException('Source at ({}, {}) is not on any chip.'.format(x,y))
-
+        ind = self.osip.get_column("ccd_id").values == coords["chip_id"][0]
         ind = ind & (self.osip.get_column('chipx_min').values <= int(chipx))
         ind = ind & (self.osip.get_column('chipx_max').values >= int(chipx))
         ind = ind & (self.osip.get_column('chipy_min').values <= int(chipy))
