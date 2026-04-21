@@ -867,7 +867,7 @@ def spec_confuse_wave(
     # correspond to positive orders, so mwave / k is always positive for valid
     # intersections.
     # It's 0 for a source compared to itself.
-    confusion = confusion & (wave[:, :, :, np.newaxis] > 0)
+    confusion &= wave[:, :, :, np.newaxis] > 0
 
     # Step 2: Arms that intersect so close in or so far out that confusion would be
     # at undetectable wavelengths can be ignored.
@@ -877,14 +877,14 @@ def spec_confuse_wave(
     flag[confusion & far_out_confused[:, :, :, np.newaxis]] += flags_spec[
         "outside_primary_source_wave_coverage"
     ]
-    confusion = confusion & ~far_out_confused[:, :, :, np.newaxis]
+    confusion &= ~far_out_confused[:, :, :, np.newaxis]
     far_out_confuser = (wave2 < cutoff[secondary_arm][0]) | (
         wave2 > cutoff[secondary_arm][1]
     )
     flag[confusion & far_out_confuser[:, :, np.newaxis, :]] += flags_spec[
         "outside_confuser_source_wave_coverage"
     ]
-    confusion = confusion & ~far_out_confuser[:, :, np.newaxis, :]
+    confusion &= ~far_out_confuser[:, :, np.newaxis, :]
 
     # Step 3: Is the confusing arm within the OSIP?
 
@@ -904,7 +904,7 @@ def spec_confuse_wave(
             energy_high[i, j, :] = result[1]
 
     # Intersection points that do not fall on any chip are listed as nan
-    confusion = confusion & np.isfinite(energy_low[:, :, :, np.newaxis])
+    confusion &= np.isfinite(energy_low[:, :, :, np.newaxis])
 
     # convert osip from energy to angstrom and account for user parameter osip_frac (fractional size
     # of osip window of choice --e.g., user could want smaller than large osip window)
@@ -916,7 +916,7 @@ def spec_confuse_wave(
         wave2[:, :, np.newaxis, :] > osip_high[:, :, :, np.newaxis]
     )
     flag[confusion & outside_osip] += flags_spec["outside_osip_range"]
-    confusion = confusion & ~outside_osip
+    confusion &= ~outside_osip
 
     # Step 4: Do we expect any signal from the confuser within the OSIP range?
     confuser_0th_counts = np.full_like(wave2, -1)
@@ -938,7 +938,7 @@ def spec_confuse_wave(
     flag[confusion & (confuser_0th_counts == 0)[:, :, :, np.newaxis]] += flags_spec[
         "confuser_has_no_0th_order_counts"
     ]
-    confusion = confusion & (confuser_0th_counts > 0)[:, :, :, np.newaxis]
+    confusion &= (confuser_0th_counts > 0)[:, :, :, np.newaxis]
 
     # Step 5: See if confuser contributes any counts.
     confuser_counts_secondary = np.full_like(confusion, -1, dtype=float)
@@ -963,7 +963,7 @@ def spec_confuse_wave(
         "confuser_has_0_disp_counts_in_order"
     ]
 
-    confusion = confusion & (confuser_counts_secondary > 0)
+    confusion &= confuser_counts_secondary > 0
 
     # Step 6: Get counts for confused source and calculate confusion ratio.
     confused_0th_counts = np.zeros_like(wave)
@@ -995,7 +995,7 @@ def spec_confuse_wave(
     flag[confusion & (confused_counts_primary == 0)[:, :, :, np.newaxis]] += flags_spec[
         "confused_has_0_disp_counts_and_confuser_gtr_0"
     ]
-    confusion = confusion & (confused_counts_primary[:, :, :, np.newaxis] > 0)
+    confusion &= confused_counts_primary[:, :, :, np.newaxis] > 0
 
     # This will raise a "devide by 0" warning for sources where confused_counts_primary == 0
     # Above, we already marked thos as not-confused and we will never need those values.
@@ -1005,7 +1005,7 @@ def spec_confuse_wave(
     flag[confusion & (ratio < spec_confuse_limit)] += flags_spec[
         "confusion_smaller_than_conf_ratio"
     ]
-    confusion = confusion & (ratio >= spec_confuse_limit)
+    confusion &= ratio >= spec_confuse_limit
 
     flag[confusion] += flags_spec["confusion_above_conf_ratio"]
 
@@ -1163,7 +1163,6 @@ def pntsrc_confuse_wave(
     mwave = intersect_info["mwave"][arm][subset_sources, :]
     wave = mwave[..., np.newaxis] / orders
     srcpos = np.diagonal(intersect_info["heg_meg_intersects"]).T
-    zero_counts = zero_counts[subset_sources]
 
     off_axis_modifier = calc_off_axis_modifier(src_off_axis_par)
     off_axis_limit = max_pntsrc_dist * off_axis_modifier
@@ -1173,14 +1172,14 @@ def pntsrc_confuse_wave(
     flag = np.zeros_like(wave, dtype=int)
     distance2line = intersect_info["point2arm"][arm][subset_sources, :]
 
-    confusion = confusion & (distance2line < off_axis_limit)[:, :, np.newaxis]
-    confusion = confusion & (zero_counts > min_spec_counts)[:, np.newaxis, np.newaxis]
-    confusion = confusion & (zero_counts > min_pntsrc_counts)[np.newaxis, :, np.newaxis]
+    confusion &= (distance2line < off_axis_limit)[:, :, np.newaxis]
+    confusion &= (zero_counts[subset_sources] > min_spec_counts)[:, None, None]
+    confusion &= (zero_counts > min_pntsrc_counts)[np.newaxis, :, np.newaxis]
     # A source does not confuse itself, i.e. distance to source is > 0:
-    confusion = confusion & (distance2line > 0)[:, :, np.newaxis]
+    confusion &= (distance2line > 0)[:, :, np.newaxis]
 
     # Wavelength of real photons are always positive
-    confusion = confusion & (wave > 0)
+    confusion &= wave > 0
 
     pntsrc_confuse_log_file = open(f"{logfile_par}", "w")
 
@@ -1205,24 +1204,24 @@ def pntsrc_confuse_wave(
     pntsrc_confuse_log_file.close()
 
     # Intersection points that do not fall on any chip are listed as nan
-    confusion = confusion & np.isfinite(wave_low)
+    confusion &= np.isfinite(wave_low)
 
     flag[confusion & (wave_low == 9999.0)] = flags_pnt["confusing_pntsrc_but_no_counts"]
-    confusion = confusion & (wave_low != 9999.0)
+    confusion &= wave_low != 9999.0
 
     outside_range = (wave < cutoff[arm][0]) | (wave > cutoff[arm][1])
     flag[confusion & outside_range] = flags_pnt["pntsrc_conf_outside_resp_region"]
-    confusion = confusion & ~outside_range
+    confusion &= ~outside_range
 
     flag[confusion & (wave_low == 9998.0)] = flags_pnt[
         "confusing_pntsrc_but_relatively_few_counts"
     ]
-    confusion = confusion & (wave_low != 9998.0)
+    confusion &= wave_low != 9998.0
 
     flag[confusion & (wave_low == 9997.0)] = flags_pnt[
         "confusing_pntsrc_too_weak_and_too_far"
     ]
-    confusion = confusion & (wave_low != 9997.0)
+    confusion &= wave_low != 9997.0
 
     flag[confusion] = flags_pnt["pntsrc_confusion"]
 
@@ -1240,7 +1239,7 @@ def pntsrc_confuse_wave(
         ),
         "0_order_confused_counts": np.extract(
             flag > 0,
-            np.broadcast_to(zero_counts[:, None, None], flag.shape),
+            np.broadcast_to(zero_counts[subset_sources, None, None], flag.shape),
         ),
         "grating_type": np.full((flag > 0).sum(), arm),
         "order": np.extract(
