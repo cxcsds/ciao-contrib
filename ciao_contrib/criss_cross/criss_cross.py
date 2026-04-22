@@ -731,8 +731,6 @@ def spec_confuse_wave(
     min_spec_counts,
     min_spec_confuser_counts,
     width_mask_pixel,
-    obsid_par,
-    outdir,
     osip_frac,
     arf_ratios_dir,
     cutoff,
@@ -741,9 +739,14 @@ def spec_confuse_wave(
     evtcrates,
     spec_confuse_limit,
 ):
-    """
-    Calculates the distance from the 0th order of src i to the location where confusion may occur ['intersect_dist']
-    and converts that into wavelength in angstroms ['wave'] using the gratings equation.
+    """Determine spectral arm confusion.
+
+    This function analyses spectral confusion where the dispersed soectrum from one
+    source is intersected by the dispersed spectrum of another source (a HEG and an MEG
+    arm are corssing). Starting from the simple geometrical intersection, it checks if
+    order sorting would resolve the two arms separately and estimates the number of
+    counts expected in the confusing spectrum to decide if the spectral confusion is
+    relevant.
 
     Parameters
     ----------
@@ -755,8 +758,14 @@ def spec_confuse_wave(
         HETG arm type of 'heg' or 'meg'.
     zero_counts : np.array
         number of 0th order counts for all sources
-    min_spec_counts, min_spec_confuser_counts : int
-        CrissCross input parameter denoting the 0th order counts threshold to consider a source for spectral confusion.
+    min_spec_counts: int
+        Confusion is only calcualted for sources with more 0th order counts than "min_spec_count".
+        This parameters saves time to prevent long calculations for sources that are too faint
+        to be used scientifically anyway.
+    min_spec_confuser_counts : int
+        Only sources with more 0th order counts than this threshold are considered a potenital source
+        consider a source for spectral confusion. This speeds up the calculation because no
+        zero order spectra need to be extra cted for these sources.
     width_mask_pixel : float
         Full width in pixels of the region that is marked as bad when confusion occurs.
          It is no recommended to go smaller than the default values as they are determined based on the intstrument.
@@ -777,7 +786,7 @@ def spec_confuse_wave(
         A crates object holding an event file.
     spec_confuse_limit : float
         Ratio of counts in the confusing/confused grating spectrum that triggers a
-        "confused" flag. This number shoudl be conservative, because the estimate of
+        "confused" flag. This number should be conservative, because the estimate of
         the confusing and confused counts are just that - estimates - based on what is
         seen in zeroth order with a simplified instrumental model (e.g. an interpolated
         version of a typical ARF).
@@ -2595,8 +2604,6 @@ def run_crisscross(
                     min_spec_counts=min_spec_counts,
                     min_spec_confuser_counts=min_spec_confuser_counts,
                     width_mask_pixel=120,
-                    obsid_par=obsid,
-                    outdir=output_dir,
                     osip_frac=osip_frac,
                     arf_ratios_dir=arf_ratios_dir,
                     cutoff=cutoff,
