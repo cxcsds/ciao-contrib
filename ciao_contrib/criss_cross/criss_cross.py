@@ -9,7 +9,6 @@
 ##########################################################################################
 ##########################################################################################
 ##########################################################################################
-import itertools
 from pathlib import Path
 import os
 import glob
@@ -900,7 +899,7 @@ def spec_confuse_wave(
     energy_low = np.ones_like(wave, dtype=float)
     energy_high = np.ones_like(wave, dtype=float)
 
-    for i, j in itertools.product(range(wave.shape[0]), range(wave.shape[1])):
+    for i, j in np.ndindex(mwave.shape):
         if confusion[i, j].any():
             result = osip(
                 intersect[i, j, 0],
@@ -927,9 +926,7 @@ def spec_confuse_wave(
 
     # Step 4: Do we expect any signal from the confuser within the OSIP range?
     confuser_0th_counts = np.full_like(wave2, -1)
-    for i, j, o in itertools.product(
-        range(wave.shape[0]), range(wave.shape[1]), range(len(orders))
-    ):
+    for i, j, o in np.ndindex(wave.shape):
         if confusion[i, j, o, :].any():
             confuser_0th_counts[i, j, o] = counts_circle_band(
                 evtcrates,
@@ -950,12 +947,7 @@ def spec_confuse_wave(
     # Step 5: See if confuser contributes any counts.
     confuser_counts_secondary = np.full_like(confusion, -1, dtype=float)
 
-    for i, j, m1, m2 in itertools.product(
-        range(wave.shape[0]),
-        range(wave.shape[1]),
-        range(len(orders)),
-        range(len(orders)),
-    ):
+    for i, j, m1, m2 in np.ndindex(confusion.shape):
         if confusion[i, j, m1, m2]:
             order = orders[m2]
             counts = confuser_0th_counts[i, j, m1]
@@ -976,9 +968,7 @@ def spec_confuse_wave(
     confused_0th_counts = np.zeros_like(wave)
     confused_counts_primary = np.zeros_like(wave)
 
-    for i, j, o in itertools.product(
-        range(wave.shape[0]), range(wave.shape[1]), range(wave.shape[2])
-    ):
+    for i, j, o in np.ndindex(wave.shape):
         if confusion[i, j, o, :].any():
             order = orders[o]
             counts = counts_circle_band(
@@ -1192,9 +1182,7 @@ def pntsrc_confuse_wave(
 
     wave_low = np.zeros_like(wave)
     wave_high = np.zeros_like(wave)
-    for i, j, o in itertools.product(
-        range(wave.shape[0]), range(wave.shape[1]), range(wave.shape[2])
-    ):
+    for i, j, o in np.ndindex(wave.shape):
         if confusion[i, j, o]:  # only calculate for potential sources of confusion
             wave_low[i, j, o], wave_high[i, j, o] = pnt_src_masking_region(
                 evtcrates,
