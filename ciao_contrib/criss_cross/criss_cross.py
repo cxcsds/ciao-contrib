@@ -688,7 +688,7 @@ def determine_line_intersect_values(src_pos, norm_arm1, norm_arm2):
 
 
 # Calculate number of counts when determining CONFUSER counts in one order compared to CONFUSED counts in another order.
-def calc_num_counts(ratio_pycrates, order, order_zero_counts, bin_start, bin_end):
+def arf_ratio(ratio_pycrates, order, bin_start, bin_end):
     """
     Estimates the number of Nth order counts in a spectral arm given a number of 0th order counts and a discrete
     wavelength range. This information comes from the data table of ARF ratios (Nth_order / 0th_order) calculated
@@ -712,17 +712,15 @@ def calc_num_counts(ratio_pycrates, order, order_zero_counts, bin_start, bin_end
 
     Returns
     -------
-    num_counts = An estimation of the number of counts from the confusing source expected to be dispersed into
-    the confused spectral order.
-    avg_ratio_value = The average spectral response in the bin_start, bin_end bandpass used to estimate num_counts.
+    avg_ratio_value : float
+        The average spectral response in the bin_start, bin_end bandpass.
     """
     bin_lo = ratio_pycrates.BIN_LO.values
     in_range = (bin_start <= bin_lo) & (bin_lo < bin_end)
     order_data = ratio_pycrates.get_column(order)
     avg_ratio_value = np.average(order_data.values[in_range])
-    num_counts = avg_ratio_value * order_zero_counts
 
-    return (num_counts, avg_ratio_value)
+    return avg_ratio_value
 
 
 def spec_confuse_wave(
@@ -951,10 +949,10 @@ def spec_confuse_wave(
     ):
         if confusion[i, j, m1, m2]:
             order = orders[m2]
-            confuser_counts_secondary[i, j, m1, m2], temp = calc_num_counts(
+            counts = confuser_0th_counts[i, j, m1]
+            confuser_counts_secondary[i, j, m1, m2] = counts * arf_ratio(
                 ratio_pycrates=secondary_arf,
                 order=f"{'p' if order > 0 else 'm'}{abs(order)}_to_0",
-                order_zero_counts=confuser_0th_counts[i, j, m1],
                 bin_start=osip_low[i, j, m1],
                 bin_end=osip_high[i, j, m1],
             )
@@ -974,7 +972,7 @@ def spec_confuse_wave(
     ):
         if confusion[i, j, o, :].any():
             order = orders[o]
-            confused_0th_counts[i, j, o] = counts_circle_band(
+            counts = counts_circle_band(
                 evtcrates,
                 srcpos_subset[i],
                 [
@@ -984,10 +982,10 @@ def spec_confuse_wave(
                 skyconverter,
                 psffrac=0.9,
             )  # num 0th order counts in the spectrum of interest at osip window of confusion
-            confused_counts_primary[i, j, o], temp = calc_num_counts(
+            confused_0th_counts[i, j, o] = counts
+            confused_counts_primary[i, j, o] = counts * arf_ratio(
                 ratio_pycrates=primary_arf,
                 order=f"{'p' if order > 0 else 'm'}{abs(order)}_to_0",
-                order_zero_counts=confused_0th_counts[i, j, o],
                 bin_start=osip_low[i, j, o],
                 bin_end=osip_high[i, j, o],
             )
@@ -1409,6 +1407,7 @@ def arm_confuse_wave(
 
     for i in range(len(subset_sources)):
         if np.sum(confuser_close_enough[i, :]) == 0:
+            assert False
             continue  # skip this source if there are no potential confusers
         # the dimension of "confused" will be
         # (n_wavelengths, n_confusers, n_orders_m1, n_orders_m2)
