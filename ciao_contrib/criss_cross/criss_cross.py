@@ -260,24 +260,24 @@ def wavedetect_match_obsid(fits_list_par, wavdetect_list_par):
     wavdetect_list_par : str
         a single wavdetect output source table or a list of them.
     """
-
-    fits_obsid = []
-    wave_obsid = []
+    wave_obsid = [
+        get_header_par(fits_file=f, keyword_par="obs_id") for f in wavdetect_list_par
+    ]
+    fits_obsid = [
+        get_header_par(fits_file=f, keyword_par="obs_id") for f in fits_list_par
+    ]
+    if not set(wave_obsid) == set(fits_obsid):
+        raise ValueError(
+            f"The obsIDs in the wavdetect source tables {wave_obsid} do not match the obsIDs in the evt2 files {fits_obsid}."
+        )
 
     wavedetect_sorted = []
-
-    for i in range(0, len(fits_list_par)):
-        wave_obsid.append(
-            get_header_par(fits_file=wavdetect_list_par[i], keyword_par="obs_id")
-        )
-        fits_obsid.append(
-            get_header_par(fits_file=fits_list_par[i], keyword_par="obs_id")
-        )
 
     for i in range(0, len(fits_list_par)):
         for j in range(0, len(wave_obsid)):
             if fits_obsid[i] == wave_obsid[j]:
                 wavedetect_sorted.append(wavdetect_list_par[j])
+                continue
 
     return wavedetect_sorted
 
