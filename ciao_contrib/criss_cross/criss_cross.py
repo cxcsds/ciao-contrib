@@ -56,28 +56,28 @@ hc = 4.1357e-15 * 2.998e18
 ##### FLAG DEFINITIONS #####
 # Which flag do they get if the intersection point is outside the CCD?
 flags_spec = {
-    "outside_primary_source_wave_coverage": 1,  # 995
-    "outside_confuser_source_wave_coverage": 2,  # 996
+    "outside_primary_source_wave_coverage": 1,
+    "outside_confuser_source_wave_coverage": 2,
     "outside_osip_range": 4,
-    "confuser_has_no_0th_order_counts": 8,  # 992
-    "confuser_has_0_disp_counts_in_order": 16,  # 981
-    "confusion_smaller_than_conf_ratio": 32,  # 985
-    "confused_has_0_disp_counts_and_confuser_gtr_0": 64,  # 980
-    "confusion_above_conf_ratio": 128,  # 986
+    "confuser_has_no_0th_order_counts": 8,
+    "confuser_has_0_disp_counts_in_order": 16,
+    "confusion_smaller_than_conf_ratio": 32,
+    "confused_has_0_disp_counts_and_confuser_gtr_0": 64,
+    "confusion_above_conf_ratio": 128,
 }
 flags_spec_levels = {"clean": -1, "warn": 0, "confused": 64}
 
 flags_pnt = {
-    "confusing_pntsrc_but_no_counts": 1,  # 9999
-    "confusing_pntsrc_but_relatively_few_counts": 2,  # 9998
-    "confusing_pntsrc_too_weak_and_too_far": 4,  # 9997
-    "pntsrc_conf_outside_resp_region": 8,  # 9995
-    "pntsrc_confusion": 16,  # 9996
+    "confusing_pntsrc_but_no_counts": 1,
+    "confusing_pntsrc_but_relatively_few_counts": 2,
+    "confusing_pntsrc_too_weak_and_too_far": 4,
+    "pntsrc_conf_outside_resp_region": 8,
+    "pntsrc_confusion": 16,
 }
 flags_pnt_levels = {"clean": 0, "warn": 2, "confused": 16}
 
-flags_arm = {"outside_primary_source_wave_coverage": 1, "arm_confusion": 2}
-flags_arm_levels = {"clean": 0, "warn": 1, "confused": 2}
+flags_arm = flags_spec
+flags_arm_levels = flags_spec_levels
 
 flags = {
     "spec": (flags_spec, flags_spec_levels),
@@ -722,6 +722,52 @@ def arf_ratio(ratio_pycrates, order, bin_start, bin_end):
     return avg_ratio_value
 
 
+def counts_scaled_by_arf(pos, order, band, evtcrates, skyconverter, arf, psffrac=0.9):
+    """Estimate the number of counts in a spectral arm from 0th order counts and wavelength range.
+
+    This function extracts the number of counts in a given wavelength range at a given position
+    and scales that number by ratios of an ARF relative to 0th order.
+
+    Parameters
+    ----------
+    pos : list
+        The x and y position of the source in Chandra physical coordinates.
+    order : int
+        The order of the spectral arm for which to calculate the counts.
+    band : list
+        The first and last wavelength in Angstrom where mean response is taken in the ARF tables.
+    evtcrates : `pycrates.tablecrate.TABLECrate`
+        A crates object holding an event file.
+    skyconverter : `ciao_contrib.criss_cross.iocaldb.Sky2Chandra`
+        Object that can convert Chandra coordiantes for the event file used.
+    arf : fits table
+        CrissCross table of typical ARF ratios for different orders based on a single on-axis HETG observation. Note, since this takes the ratio of different orders, the buildup of ACIS contamination over time should not affect this calculation.
+    psffrac : float
+        The encircled energy fraction to use when calculating the counts in the band. This should be the same as the value used for wavdetect if wavdetect is used to determine 0th order counts.
+
+    Returns
+    -------
+    counts : float
+        The number of counts in the spectral arm given the number of 0th order counts and the ARF ratio.
+    arf_counts : float
+        The number of counts in the spectral arm scaled by the ARF ratio.
+    """
+    counts = counts_circle_band(
+        evtcrates,
+        pos,
+        band,
+        skyconverter,
+        psffrac=psffrac,
+    )
+    arf_counts = counts * arf_ratio(
+        ratio_pycrates=arf,
+        order=f"{'p' if order > 0 else 'm'}{abs(order)}_to_0",
+        bin_start=band[0],
+        bin_end=band[1],
+    )
+    return counts, arf_counts
+
+
 def spec_confuse_wave(
     subset_sources,
     intersect_info,
@@ -970,24 +1016,19 @@ def spec_confuse_wave(
 
     for i, j, o in np.ndindex(wave.shape):
         if confusion[i, j, o, :].any():
-            order = orders[o]
-            counts = counts_circle_band(
-                evtcrates,
+            counts, arf_counts = counts_scaled_by_arf(
                 srcpos_subset[i],
+                orders[o],
                 [
                     osip_low[i, j, o],
                     osip_high[i, j, o],
                 ],
+                evtcrates,
                 skyconverter,
-                psffrac=0.9,
-            )  # num 0th order counts in the spectrum of interest at osip window of confusion
-            confused_0th_counts[i, j, o] = counts
-            confused_counts_primary[i, j, o] = counts * arf_ratio(
-                ratio_pycrates=primary_arf,
-                order=f"{'p' if order > 0 else 'm'}{abs(order)}_to_0",
-                bin_start=osip_low[i, j, o],
-                bin_end=osip_high[i, j, o],
+                primary_arf,
             )
+            confused_0th_counts[i, j, o] = counts
+            confused_counts_primary[i, j, o] = arf_counts
 
     flag[confusion & (confused_counts_primary == 0)[:, :, :, np.newaxis]] += flags_spec[
         "confused_has_0_disp_counts_and_confuser_gtr_0"
@@ -1291,7 +1332,11 @@ def arm_confuse_wave(
     zero_counts,
     min_arm_counts,
     max_arm_dist,
+    arf_ratios_dir,
     cutoff,
+    skyconverter,
+    evtcrates,
+    arm_confuse_limit,
     nsig_par=6.0,
 ):
     r"""
@@ -1346,14 +1391,13 @@ def arm_confuse_wave(
         Only valid confusion is listed, all sources and arm combinations
         processed that are not listed are to be considered unconfused.
     """
-    # First order confused by 2nd order is much less dramatic than third order confused by first order.
-    # In the spectral confusion there are already routine to deal with that.
-    # Let's use those here, too.
-    # Moritz: For next version
+    arf = read_file(f"{arf_ratios_dir}/{arm.upper()}_Nth_0th_order_ratios_mkarf.fits")
 
     distance2line = intersect_info["point2arm"][arm][subset_sources, :]
     n_sources = distance2line.shape[1]
     orders = intersect_info["orders"]
+    intersect = intersect_info["heg_meg_intersects"]
+    srcpos = np.diagonal(intersect).T
 
     off_axis_modifier = calc_off_axis_modifier(src_off_axis_par)
 
@@ -1439,39 +1483,101 @@ def arm_confuse_wave(
 
         # Step 3: Arms where the masking area only covers very short or very long wanvelengths
         # are not really confused because the user would likely ignore those wavelengths anyway.
-        far_out_confused = (wav_high < cutoff[arm][0]) | (wav_low > cutoff[arm][1])
+        far_out_confused = (wav_high < cutoff[arm][0]) | (
+            wav_low > cutoff[arm][1] / m1[None, :, None]
+        )
         flag[confusion & far_out_confused] += flags_arm[
             "outside_primary_source_wave_coverage"
         ]
         confusion &= ~far_out_confused
+        # We are not sclaing the inner edge, since that's more about the max energy
+        # that the CCD can detect, so we don't have to repeat the "< cutoff[arm][0]" test.
+        far_out_confused = wav_low > cutoff[arm][1] / m2[None, None, :]
+        flag[confusion & far_out_confused] += flags_arm[
+            "outside_confuser_source_wave_coverage"
+        ]
+        confusion &= ~far_out_confused
+
+        # Step 4: Determine how important suspected arm confusion is
+        confused_counts = np.full_like(wav_low, -1)
+        confused_zero_counts = np.full_like(wav_low, -1)
+        confuser_counts = np.full_like(wav_low, -1)
+        confuser_zero_counts = np.full_like(wav_low, -1)
+        for j, m, n in np.ndindex(confusion.shape):
+            if confusion[j, m, n]:
+                counts, arf_counts = counts_scaled_by_arf(
+                    srcpos[iconf.nonzero()[0][j]],
+                    m2[m],
+                    [wav_low[j, m, n], wav_high[j, m, n]],
+                    evtcrates,
+                    skyconverter,
+                    arf,
+                )
+                confuser_counts[j, m, n] = arf_counts
+                confuser_zero_counts[j, m, n] = counts
+
+        flag[confusion & (confuser_zero_counts == 0)] += flags_arm[
+            "confuser_has_no_0th_order_counts"
+        ]
+        confusion &= confuser_zero_counts > 0
+        flag[confusion & (confuser_counts == 0)] += flags_arm[
+            "confuser_has_0_disp_counts_in_order"
+        ]
+        confusion &= confuser_counts > 0
+
+        for j, m, n in np.ndindex(confusion.shape):
+            if confusion[j, m, n]:
+                counts, arf_counts = counts_scaled_by_arf(
+                    srcpos[subset_sources[i]],
+                    m1[m],
+                    [wav_low[j, m, n], wav_high[j, m, n]],
+                    evtcrates,
+                    skyconverter,
+                    arf,
+                )
+                confused_counts[j, m, n] = arf_counts
+                confused_zero_counts[j, m, n] = counts
+
+        flag[confusion & (confused_counts == 0)] += flags_arm[
+            "confused_has_0_disp_counts_and_confuser_gtr_0"
+        ]
+        confusion &= confused_counts > 0
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            conf_ratio = confuser_counts / confused_counts
+
+        flag[confusion & (conf_ratio < arm_confuse_limit)] += flags_arm[
+            "confusion_smaller_than_conf_ratio"
+        ]
+        confusion &= conf_ratio >= arm_confuse_limit
 
         intersect_wav = np.clip(
             intersect_wav, a_min=cutoff[arm][0], a_max=cutoff[arm][1]
         )
 
-        flag[confusion] += flags_arm["arm_confusion"]
+        flag[confusion] += flags_arm["confusion_above_conf_ratio"]
         confuser_srcid_numbers = np.arange(n_sources)[iconf]
         confuser_srcid = np.extract(
-            confusion,
+            flag > 0,
             np.broadcast_to(confuser_srcid_numbers[:, None, None], confusion.shape),
         )
 
         result = {
-            "src_id": np.full(confusion.sum(), subset_sources[i]),
+            "src_id": np.full((flag > 0).sum(), subset_sources[i]),
             "confuser_srcid": confuser_srcid,
             "0_order_confused_counts": zero_counts[confuser_srcid],
-            "grating_type": np.full(confusion.sum(), arm),
+            "grating_type": np.full((flag > 0).sum(), arm),
             "order": np.extract(
-                confusion, np.broadcast_to(m1[None, :, None], confusion.shape)
+                flag > 0, np.broadcast_to(m1[None, :, None], confusion.shape)
             ),
             "confusing_order": np.extract(
-                confusion, np.broadcast_to(m2[None, None, :], confusion.shape)
+                flag > 0, np.broadcast_to(m2[None, None, :], confusion.shape)
             ),
-            "confusion_type": np.full(confusion.sum(), "arm"),
-            "confusion_wave": np.abs(np.extract(confusion, intersect_wav)),
-            "wave_low": np.abs(np.extract(confusion, wav_low)),
-            "wave_high": np.abs(np.extract(confusion, wav_high)),
-            "flag_id": np.extract(confusion, flag),
+            "confusion_type": np.full((flag > 0).sum(), "arm"),
+            "confusion_wave": np.abs(np.extract(flag > 0, intersect_wav)),
+            "wave_low": np.abs(np.extract(flag > 0, wav_low)),
+            "wave_high": np.abs(np.extract(flag > 0, wav_high)),
+            "flag_id": np.extract(flag > 0, flag),
         }
         arm_conf.append(
             np.rec.fromarrays([result[n] for n in rec_type.names], dtype=rec_type)
@@ -2280,6 +2386,7 @@ def run_crisscross(
     max_arm_dist=8,
     min_arm_counts=50,
     arm_nsig=6.0,
+    arm_confuse_limit=0.1,
     meg_cutoff_low=1.0,
     meg_cutoff_high=32.0,
     heg_cutoff_low=1.0,
@@ -2302,7 +2409,7 @@ def run_crisscross(
 
     Parameters
     ----------
-    cc_outidr : str
+    cc_outdir : str
         A directory for holding the output of CrissCross. If it does not exist then it will be made.
     arf_ratios_dir : str
         The directory which holds the ARF response ratios fits tables necessary for Crisscross.
@@ -2363,6 +2470,8 @@ def run_crisscross(
         Approximation for how wide the OSIP range is for order sorting when determining which events are part of the
         Nth order spectrum. This parameter is for arm confusion only and increasing it will cause larger portions of a
         spectrum to be considered confused by arm confusion (default: 6.0).
+    arm_confuse_limit : float
+        The fraction of dispersed events allowed in an arm confusion region before deciding the region is contaminated.
     min_arm_counts : int
         The minimum number of 0th order counts a confuser source can have before being considered a candidate for arm
         confusion. Note, while it depends on the spectrum, if a 0th order source has 50 counts then there are only
@@ -2671,7 +2780,11 @@ def run_crisscross(
                     zero_counts=counts,
                     min_arm_counts=min_arm_counts,
                     max_arm_dist=max_arm_dist,
+                    arf_ratios_dir=arf_ratios_dir,
                     cutoff=cutoff,
+                    skyconverter=skyconverter,
+                    evtcrates=evtcrates,
+                    arm_confuse_limit=arm_confuse_limit,
                     nsig_par=arm_nsig,
                 )
             )
