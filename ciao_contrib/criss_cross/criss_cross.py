@@ -76,8 +76,8 @@ flags_pnt = {
 }
 flags_pnt_levels = {"clean": 0, "warn": 2, "confused": 16}
 
-flags_arm = {"arm_confusion": 1}
-flags_arm_levels = {"clean": 0, "warn": 0, "confused": 1}
+flags_arm = {"outside_primary_source_wave_coverage": 1, "arm_confusion": 2}
+flags_arm_levels = {"clean": 0, "warn": 1, "confused": 2}
 
 flags = {
     "spec": (flags_spec, flags_spec_levels),
@@ -995,7 +995,7 @@ def spec_confuse_wave(
     confusion &= confused_counts_primary[:, :, :, np.newaxis] > 0
 
     # This will raise a "devide by 0" warning for sources where confused_counts_primary == 0
-    # Above, we already marked thos as not-confused and we will never need those values.
+    # Above, we already marked those as not-confused and we will never need those values.
     # So, we just hide the error message.
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = confuser_counts_secondary / confused_counts_primary[:, :, :, np.newaxis]
@@ -1291,6 +1291,7 @@ def arm_confuse_wave(
     zero_counts,
     min_arm_counts,
     max_arm_dist,
+    cutoff,
     nsig_par=6.0,
 ):
     r"""
@@ -1333,6 +1334,7 @@ def arm_confuse_wave(
         Maximal distance perpendicular to the dispersion direction that a source can
         have to be considered for confusion. For sources at some distance from the
         optical axis is number is scaled up.
+
     nsig_par : float
          Approximation for how wide the OSIP range is for order sorting when determining which events are part of the
          Nth order spectrum.
@@ -1370,7 +1372,7 @@ def arm_confuse_wave(
     # Because we will need the index array of potentially confusing sources often
     # we give it a shorthand name "iconf" for "index_of_confusers"
     iconf = np.any(confuser_close_enough, axis=0)
-    confuser_close_enough = confuser_close_enough[subset_sources, :]
+    confuser_close_enough = confuser_close_enough[subset_sources, :][:, iconf]
     mwave = intersect_info["mwave"][arm][subset_sources, :][:, iconf]
 
     res_power, wave_arr = calc_ccd_energy_res()
@@ -1404,7 +1406,6 @@ def arm_confuse_wave(
 
     for i in range(len(subset_sources)):
         if np.sum(confuser_close_enough[i, :]) == 0:
-            assert False
             continue  # skip this source if there are no potential confusers
         # the dimension of "confused" will be
         # (n_wavelengths, n_confusers, n_orders_m1, n_orders_m2)
@@ -1414,22 +1415,18 @@ def arm_confuse_wave(
         )  # shape (n_wavelengths, n_orders_m1, n_orders_m2)
         term2 = mwave[i, :, None] / m2  # shape (n_confusers, n_orders_m2)
 
-        # Source is confused if
-        # - the confuser is close enough to the spectrum (confuser_close_enough)
-        # - the wavelength difference between the confused and confuser arm is smaller than sigma * resolution (rhs)
-        confused = confuser_close_enough[i, iconf][None, :, None, None] & (
-            np.abs(term1[:, None, :, :] - term2[None, :, None, :])
-            < rhs[:, None, None, None]
-        )
+        # Step 1:The wavelength difference between the confused and confuser arm is smaller than sigma * resolution (rhs)
+        lhs = np.abs(term1[:, None, :, :] + term2[None, :, None, :])
+        confused = lhs < rhs[:, None, None, None]
         wav_low = np.min(wave_arr4d, axis=0, where=confused, initial=np.inf)
         wav_high = np.max(wave_arr4d, axis=0, where=confused, initial=0)
 
         confusion = confused.sum(axis=0) > 0
-        confuser_srcid_numbers = np.arange(n_sources)[iconf]
-        confuser_srcid = np.extract(
-            confusion,
-            np.broadcast_to(confuser_srcid_numbers[:, None, None], confusion.shape),
-        )
+        # Step 2: And the source is close enough in cross-dispersion direction
+        confusion &= confuser_close_enough[i, :, None, None]
+
+        # 0 mean "clean". All flags start clean and flages are added step by step.
+        flag = np.zeros_like(confusion, dtype=int)
 
         # For m1=m2, the arms meet asymptocially at infinity.
         # Intersection of a source with itself, gives 0/0, but those cases are
@@ -1439,6 +1436,25 @@ def arm_confuse_wave(
             intersect_wav = mwave[i, :, None, None] / (
                 m1[None, :, None] - m2[None, None, :]
             )
+
+        # Step 3: Arms where the masking area only covers very short or very long wanvelengths
+        # are not really confused because the user would likely ignore those wavelengths anyway.
+        far_out_confused = (wav_high < cutoff[arm][0]) | (wav_low > cutoff[arm][1])
+        flag[confusion & far_out_confused] += flags_arm[
+            "outside_primary_source_wave_coverage"
+        ]
+        confusion &= ~far_out_confused
+
+        intersect_wav = np.clip(
+            intersect_wav, a_min=cutoff[arm][0], a_max=cutoff[arm][1]
+        )
+
+        flag[confusion] += flags_arm["arm_confusion"]
+        confuser_srcid_numbers = np.arange(n_sources)[iconf]
+        confuser_srcid = np.extract(
+            confusion,
+            np.broadcast_to(confuser_srcid_numbers[:, None, None], confusion.shape),
+        )
 
         result = {
             "src_id": np.full(confusion.sum(), subset_sources[i]),
@@ -1455,7 +1471,7 @@ def arm_confuse_wave(
             "confusion_wave": np.abs(np.extract(confusion, intersect_wav)),
             "wave_low": np.abs(np.extract(confusion, wav_low)),
             "wave_high": np.abs(np.extract(confusion, wav_high)),
-            "flag_id": np.full(confusion.sum(), flags_arm["arm_confusion"]),
+            "flag_id": np.extract(confusion, flag),
         }
         arm_conf.append(
             np.rec.fromarrays([result[n] for n in rec_type.names], dtype=rec_type)
@@ -2450,6 +2466,7 @@ def run_crisscross(
         )  # always reads the region block because the block number is variable
         heg_ang = np.radians(grating_rotang.ROTANG.values[1])  # tg_part = 1
         meg_ang = np.radians(grating_rotang.ROTANG.values[2])  # tg_part = 2
+
         # It is physically arbitrary which direction are positive and negative. The minus
         # signs are here to match the Chandra convention.
         norm_vec_heg = -np.array([np.cos(heg_ang), np.sin(heg_ang)])
@@ -2654,6 +2671,7 @@ def run_crisscross(
                     zero_counts=counts,
                     min_arm_counts=min_arm_counts,
                     max_arm_dist=max_arm_dist,
+                    cutoff=cutoff,
                     nsig_par=arm_nsig,
                 )
             )
