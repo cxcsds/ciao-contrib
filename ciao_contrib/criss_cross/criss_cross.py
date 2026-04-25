@@ -9,9 +9,9 @@
 ##########################################################################################
 ##########################################################################################
 ##########################################################################################
-from pathlib import Path
-import os
 import glob
+import os
+from pathlib import Path
 import shutil
 import time
 
@@ -46,7 +46,8 @@ Period = {
     "meg": 4001.95,  # however in marxsim it uses 4001.41 A
     "heg": 2000.81,
 }
-mm_per_pix = 0.023987  # pixel size in mm for acis same for I and S;  pix size in arcsec is 0.492''
+mm_per_pix = 0.023987  # pixel size in mm for acis same for I and S
+arcsec_per_pix = 0.492  # arcsec per pixel for ACIS
 
 hc = 4.1357e-15 * 2.998e18
 "conversion for E = hc/lamda where h and c are units of plancks const and angstrom/s"
@@ -104,7 +105,7 @@ rec_type = np.dtype(
 )
 
 #############FUNCTION DEFINITIONS###############
-def calc_off_axis_modifier(theta_arcsec):
+def calc_off_axis_modifier(theta_arcmin):
     """
 
     At larger off-axis angles, the PSF gets larger and thus point sources and grating arms
@@ -112,17 +113,17 @@ def calc_off_axis_modifier(theta_arcsec):
 
     Parameters
     ----------
-    theta_arcsec : float
-        off-axis angle in arcseconds
+    theta_arcmin : float
+        off-axis angle in arcminutes
 
     Returns
     -------
     modifier : float
         multiplier to apply to distances
     """
-    out = np.ones_like(theta_arcsec)
-    out[theta_arcsec > 180] = 2
-    out[theta_arcsec > 360] = 3
+    out = np.ones_like(theta_arcmin)
+    out[theta_arcmin > 3] = 2
+    out[theta_arcmin > 6] = 3
     return out
 
 
@@ -424,7 +425,7 @@ def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, round_sig=6):
     return element
 
 
-def calc_physical_coords(fits_par, RA_par, DEC_par):
+def calc_physical_coords(fits_par, RA, DEC):
     """
     Converts from RA and DEC in WCS degrees to Chandra physical coordinates. This also determines the off-axis angle
     and converts it to arcseconds.
@@ -433,28 +434,25 @@ def calc_physical_coords(fits_par, RA_par, DEC_par):
     ----------
     fits_par : str
         evt2 fits file.
-    RA_par : str
+    RA : ndarray
         Right ascension in degrees.
-    DEC_par : str
+    DEC : ndarray
         Declination in degrees.
     """
-
     cel_convert = Cel2Chandra(fits_par)
-
-    pos_x_par = np.zeros(len(RA_par))
-    pos_y_par = np.zeros(len(DEC_par))
-    off_axis_ang = np.zeros(len(RA_par))
-
-    for i in range(0, len(RA_par)):
-        a = cel_convert(RA_par[i], DEC_par[i])
-        pos_x_par[i] = a["x"][0]
-        pos_y_par[i] = a["y"][0]
-        off_axis_ang[i] = a["theta"][0] * 60.0  # convert from arcmin to arcsec
-
-    return (pos_x_par, pos_y_par, off_axis_ang)
+    src = cel_convert(RA, DEC)
+    for key, value in src.items():
+        if isinstance(value, list):
+            src[key] = np.array(value)
+    src["RA"] = RA
+    src["DEC"] = DEC
+    src["pos"] = np.stack([src["x"], src["y"]], axis=-1)
+    src["n"] = len(src["x"])
+    src["ID"] = np.arange(0, src["n"])
+    return src
 
 
-def find_closest_source(src_x, src_y, wave_file, max_offset=3.0):
+def find_closest_source(src, wave_file, max_offset=3.0):
     """
     Matches sources from the main_list to the wavdetect source table with the goal of removing erroneous
     disperssed-grating-line sources. Wavdetect is not meant to be run on HETG observations and thus will include many
@@ -466,10 +464,8 @@ def find_closest_source(src_x, src_y, wave_file, max_offset=3.0):
 
     Parameters
     ----------
-    src_x : float, array
-        src x position in Chandra physical units.
-    src_y : float, array
-        src y position in Chandra physical units.
+    src : dict
+        Dictionary with source properties including positions in Chandra physical units.
     wave_file : str
         path to wavdetect output source fits table.
     max_offset : float
@@ -477,12 +473,6 @@ def find_closest_source(src_x, src_y, wave_file, max_offset=3.0):
         list and the wavdetect table. All sources are treated the same regardless of off-axis angle which is generally
         ok because centroids should be relatively good as determined by wavdetect.
     """
-
-    # ACIS parameters for converting distance from pixels to arcseconds
-    acis_platescale = 48.82e-6  # meters/arcsec
-    acis_pix_size = 24e-6  # meters / pixel (square pixels)
-    acis_arcsec_per_pix = acis_pix_size / acis_platescale
-
     # read in and assign relevant wavdetect columns
     wave_data = read_file(wave_file)
 
@@ -491,33 +481,33 @@ def find_closest_source(src_x, src_y, wave_file, max_offset=3.0):
     counts_wave = wave_data.NET_COUNTS.values
 
     closest_dist_arr = np.empty(
-        len(src_x), dtype="float"
+        src["n"], dtype="float"
     )  # holds the distance in arcsec to the closest matching source from the wavedetect table
     closest_match_arr = np.empty(
-        len(src_x), dtype="int"
+        src["n"], dtype="int"
     )  # holds the index value from the wavedetect table that is the closest match to a source in the source list.
 
     # these will hold the values above for the matched source AFTER you remove double matches and sources > max_offset.
-    final_match_arr = np.empty(len(src_x), dtype=object)
-    final_dist_arr = np.empty(len(src_x), dtype=object)
+    final_match_arr = np.empty(src["n"], dtype=object)
+    final_dist_arr = np.empty(src["n"], dtype=object)
 
     matched_0th_counts_arr = np.empty(
-        len(src_x), dtype="float"
+        src["n"], dtype="float"
     )  # the final 0th_order counts array (NET_COUNTS) from the wavedetect table MATCHED to the user-provided source list.
 
     # this loop determines the distance from the user-provided source to ALL the sources in the wavedetect table and
     # only saves a non-bogus value if there is a source with separation < max_offset.
-    for i in range(0, len(src_x)):
+    for i in range(0, src["n"]):
         dist_arr = []
         dist_arr = np.sqrt(
-            (src_x[i] - src_wave_x_arr) ** 2 + (src_y[i] - src_wave_y_arr) ** 2
+            (src["x"][i] - src_wave_x_arr) ** 2 + (src["y"][i] - src_wave_y_arr) ** 2
         )  # This calculates the physical distance from source [i] in the user-provided table to ALL sources in the
         # wavedetect table. This is just the hypotenuse in the xy plane. Note, calculating the ENTIRE array here for
         #  each [i] source and NOT each [i] and each [j] individually.
 
         closest_dist = []
         closest_dist = (
-            np.min(dist_arr) * acis_arcsec_per_pix
+            np.min(dist_arr) * arcsec_per_pix
         )  # converted from sky coords to arsec
 
         # if distance is > max offset then assign values of 99999 (bogus) and filter out in next loop. Otherwise,
@@ -531,7 +521,7 @@ def find_closest_source(src_x, src_y, wave_file, max_offset=3.0):
 
     # this loop will remove 'double counting' where a single user-provided source might match to multiple wavedetect
     #  sources. This will only match to the closest one and remove that from the pool of potential matches for other sources.
-    for i in range(0, len(src_x)):
+    for i in range(0, src["n"]):
         common_matches = np.where(
             closest_match_arr == closest_match_arr[i]
         )[
@@ -559,31 +549,23 @@ def find_closest_source(src_x, src_y, wave_file, max_offset=3.0):
 
 
 def write_matched_file(
-    srcid_par,
-    ra_par,
-    dec_par,
-    counts_par,
+    src,
     fileroot="matched_source_list",
     output_type="txt",
 ):
     """
     Creates a csv or txt file to save SrcID, RA, Dec and wave_detect_matched 0th order counts.
 
-    Parameter
-    ---------
-    srcid_par : int, array
-        source ID values from the input main_list.
-    ra_par, dec_par : float
-        J2000 Right ascension and declination taken from the input main_list
-    counts_par : float
-        The number of 0th order counts matched to each main_list source using the wavdetect source detection table.
+    Parameters
+    ----------
+    src : dict
+        Dictionary the source information.
     fileroot : str
         root for naming purposes
     output_type : str
         text file output type to save. Can be 'txt' or 'csv'.
     """
-
-    filestack = np.column_stack((srcid_par, ra_par, dec_par, counts_par))
+    filestack = np.column_stack((src["ID"], src["RA"], src["DEC"], src["counts"]))
     if output_type not in ["txt", "csv"]:
         raise ValueError("The only output types accepted are csv and txt.")
 
@@ -647,7 +629,7 @@ def determine_line_intersect_values(src_pos, norm_arm1, norm_arm2):
     the distance from source i along the first line to the intersection point with the second line
     defined by source j and `norm_arm2`.
 
-    This this definition, you cna obtain the x,y coordinates of all intersection points with:
+    With this definition, you can obtain the x,y coordinates of all intersection points with:
 
         >>> intersect = xy[:, np.newaxis, :] + k1[:, :, np.newaxis] * norm_arm1
 
@@ -769,10 +751,10 @@ def counts_scaled_by_arf(pos, order, band, evtcrates, skyconverter, arf, psffrac
 
 
 def spec_confuse_wave(
+    sources,
     subset_sources,
     intersect_info,
     arm,
-    zero_counts,
     min_spec_counts,
     min_spec_confuser_counts,
     width_mask_pixel,
@@ -795,14 +777,14 @@ def spec_confuse_wave(
 
     Parameters
     ----------
+    sources : dict
+        Dictionary with source properties including positions in Chandra physical units and 0th order counts.
     subset_sources : list of int
         List of sources to create confusion tables for whose elements are matched to the main_list.
     interset_info : dict
         Holding information aboout the source locations, arm locations, and arm intersection points.
     arm : str
         HETG arm type of 'heg' or 'meg'.
-    zero_counts : np.array
-        number of 0th order counts for all sources
     min_spec_counts: int
         Confusion is only calcualted for sources with more 0th order counts than "min_spec_count".
         This parameters saves time to prevent long calculations for sources that are too faint
@@ -883,7 +865,6 @@ def spec_confuse_wave(
     # For the meg we need to transpose the first two axis
     intersect = intersect_info["heg_meg_intersects"]
     orders = intersect_info["orders"]
-    srcpos = np.diagonal(intersect).T
 
     if arm == "meg":
         intersect = np.moveaxis(intersect, 1, 0)
@@ -897,7 +878,7 @@ def spec_confuse_wave(
     )
 
     intersect = intersect[subset_sources, :, :]
-    srcpos_subset = srcpos[subset_sources, :]
+    srcpos_subset = sources["pos"][subset_sources, :]
 
     mwave = intersect_info["mwave"][arm][subset_sources, :]
     mwave2 = intersect_info["mwave"][secondary_arm][:, subset_sources].T
@@ -906,8 +887,8 @@ def spec_confuse_wave(
     wave2 = mwave2[..., np.newaxis] / intersect_info["orders"]
 
     # Step 1: Select spectra and confusers with enough counts to be relevant.
-    confusion = (zero_counts > min_spec_counts)[subset_sources, np.newaxis] & (
-        zero_counts > min_spec_confuser_counts
+    confusion = (sources["counts"] > min_spec_counts)[subset_sources, np.newaxis] & (
+        sources["counts"] > min_spec_confuser_counts
     )[np.newaxis, :]
     # Now expand to 4d shape
     confusion = np.tile(
@@ -976,7 +957,7 @@ def spec_confuse_wave(
         if confusion[i, j, o, :].any():
             confuser_0th_counts[i, j, o] = counts_circle_band(
                 evtcrates,
-                srcpos[j],
+                sources["pos"][j],
                 [
                     osip_low[i, j, o],
                     osip_high[i, j, o],
@@ -1047,8 +1028,6 @@ def spec_confuse_wave(
 
     flag[confusion] += flags_spec["confusion_above_conf_ratio"]
 
-    src_ids = np.arange(intersect_info["heg_meg_intersects"].shape[0])
-    subset_ids = src_ids[subset_sources]
     wave_extracted = np.extract(
         flag > 0, np.broadcast_to(wave[:, :, :, None], flag.shape)
     )
@@ -1056,11 +1035,13 @@ def spec_confuse_wave(
     result = {
         "src_id": np.extract(
             flag > 0,
-            np.broadcast_to(subset_ids[:, None, None, None], flag.shape),
+            np.broadcast_to(
+                sources["ID"][subset_sources, None, None, None], flag.shape
+            ),
         ),
         "confuser_srcid": np.extract(
             flag > 0,
-            np.broadcast_to(src_ids[None, :, None, None], flag.shape),
+            np.broadcast_to(sources["ID"][None, :, None, None], flag.shape),
         ),
         "0_order_confused_counts": np.extract(
             flag > 0,
@@ -1132,11 +1113,10 @@ def pntsrc_dist_to_spec(src_pos, norm_arm):
 
 
 def pntsrc_confuse_wave(
+    sources,
     subset_sources,
     intersect_info,
     arm,
-    src_off_axis_par,
-    zero_counts,
     max_pntsrc_dist,
     min_spec_counts,
     min_pntsrc_counts,
@@ -1153,7 +1133,11 @@ def pntsrc_confuse_wave(
     spectrum of another source then it will be identified as having point
     source confusion. A single confusing point source can only confuse a single arm for
     each 'confused' source.
+
+    Parameters
     ----------
+    sources : dict
+        Dictionary with source properties including positions in Chandra physical units and 0th order counts.
     subset_sources : list of int
         List of sources to create confusion tables for whose elements are matched to the main_list.
     interset_info : dict
@@ -1163,10 +1147,6 @@ def pntsrc_confuse_wave(
     pntsrc_dict : dictionary
         Point source confusion dict which holds all possible pntsrc confusion entries for every source in main_list.
         This dictionary is modified in place by this function.
-    src_off_axis_par : float
-        Off-axis angle of the source in arcseconds
-    zero_counts : array
-        The number of 0th order counts.
     max_pntsrc_dist_par : int
         CrissCross parameter threshold in number of pixels for how far a point source can be perpendicular to a
         disperssed spectrum before it is no longer considered in the confusion calculation. This number can be increased
@@ -1200,19 +1180,16 @@ def pntsrc_confuse_wave(
     orders = intersect_info["orders"]
     mwave = intersect_info["mwave"][arm][subset_sources, :]
     wave = mwave[..., np.newaxis] / orders
-    srcpos = np.diagonal(intersect_info["heg_meg_intersects"]).T
+    off_axis_limit = max_pntsrc_dist * sources["off_axis_modifier"]
 
-    off_axis_modifier = calc_off_axis_modifier(src_off_axis_par)
-    off_axis_limit = max_pntsrc_dist * off_axis_modifier
-
-    # Array shape is (n_confused_sources, n_confuser_sources, n_orders_confuser).
+    # Array shape is (n_confused_sources, n_confuser_sources, n_orders_confused).
     confusion = np.ones_like(wave, dtype=bool)
     flag = np.zeros_like(wave, dtype=int)
     distance2line = intersect_info["point2arm"][arm][subset_sources, :]
 
     confusion &= (distance2line < off_axis_limit)[:, :, np.newaxis]
-    confusion &= (zero_counts[subset_sources] > min_spec_counts)[:, None, None]
-    confusion &= (zero_counts > min_pntsrc_counts)[np.newaxis, :, np.newaxis]
+    confusion &= (sources["counts"][subset_sources] > min_spec_counts)[:, None, None]
+    confusion &= (sources["counts"] > min_pntsrc_counts)[np.newaxis, :, np.newaxis]
     # A source does not confuse itself, i.e. distance to source is > 0:
     confusion &= (distance2line > 0)[:, :, np.newaxis]
 
@@ -1229,8 +1206,8 @@ def pntsrc_confuse_wave(
                 evtcrates,
                 osip,
                 skyconverter,
-                srcpos[subset_sources[i]],
-                srcpos[j],
+                sources["pos"][subset_sources[i]],
+                sources["pos"][j],
                 intersect_info["point2arm"][arm][subset_sources[i], j],
                 wave[i, j, o],
                 tg_part_name.index(arm),
@@ -1261,21 +1238,18 @@ def pntsrc_confuse_wave(
 
     flag[confusion] = flags_pnt["pntsrc_confusion"]
 
-    src_ids = np.arange(intersect_info["heg_meg_intersects"].shape[0])
-    subset_ids = src_ids[subset_sources]
-
     result = {
         "src_id": np.extract(
             flag > 0,
-            np.broadcast_to(subset_ids[:, None, None], flag.shape),
+            np.broadcast_to(sources["ID"][subset_sources, None, None], flag.shape),
         ),
         "confuser_srcid": np.extract(
             flag > 0,
-            np.broadcast_to(src_ids[None, :, None], flag.shape),
+            np.broadcast_to(sources["ID"][None, :, None], flag.shape),
         ),
         "0_order_confused_counts": np.extract(
             flag > 0,
-            np.broadcast_to(zero_counts[subset_sources, None, None], flag.shape),
+            np.broadcast_to(sources["counts"][subset_sources, None, None], flag.shape),
         ),
         "grating_type": np.full((flag > 0).sum(), arm),
         "order": np.extract(
@@ -1325,11 +1299,10 @@ def calc_ccd_energy_res():
 
 
 def arm_confuse_wave(
+    sources,
     subset_sources,
     intersect_info,
     arm,
-    src_off_axis_par,
-    zero_counts,
     min_arm_counts,
     max_arm_dist,
     arf_ratios_dir,
@@ -1363,23 +1336,20 @@ def arm_confuse_wave(
 
     Parameters
     ----------
+    sources : dict
+        Dictionary with source properties including positions in Chandra physical units and 0th order counts.
     subset_sources : list of int
         List of sources to create confusion tables for whose elements are matched to the main_list.
     interset_info : dict
         Holding information aboout the source locations, arm locations, and arm intersection points.
     arm : str
         HETG arm type of 'heg' or 'meg'.
-    src_off_axis_par : array
-        Off-axis angle for all sources in arcseconds
-    zero_counts : np.array
-        number of 0th order counts for all sources
     min_arm_counts : float
         Only consider sources with more zero order counts than `min_arm_counts`.
     arm_dist : float
         Maximal distance perpendicular to the dispersion direction that a source can
         have to be considered for confusion. For sources at some distance from the
         optical axis is number is scaled up.
-
     nsig_par : float
          Approximation for how wide the OSIP range is for order sorting when determining which events are part of the
          Nth order spectrum.
@@ -1394,19 +1364,14 @@ def arm_confuse_wave(
     arf = read_file(f"{arf_ratios_dir}/{arm.upper()}_Nth_0th_order_ratios_mkarf.fits")
 
     distance2line = intersect_info["point2arm"][arm][subset_sources, :]
-    n_sources = distance2line.shape[1]
     orders = intersect_info["orders"]
-    intersect = intersect_info["heg_meg_intersects"]
-    srcpos = np.diagonal(intersect).T
-
-    off_axis_modifier = calc_off_axis_modifier(src_off_axis_par)
 
     confuser_close_enough = (
         distance2line
         < max_arm_dist
-        * off_axis_modifier[np.newaxis, :]
-        * off_axis_modifier[:, np.newaxis]
-    ) & (zero_counts > min_arm_counts)[np.newaxis, :]
+        * sources["off_axis_modifier"][np.newaxis, :]
+        * sources["off_axis_modifier"][:, np.newaxis]
+    ) & (sources["counts"] > min_arm_counts)[np.newaxis, :]
     # A source has distance=0 from itself, but that's not confusion.
     np.fill_diagonal(confuser_close_enough, False)
 
@@ -1506,7 +1471,7 @@ def arm_confuse_wave(
         for j, m, n in np.ndindex(confusion.shape):
             if confusion[j, m, n]:
                 counts, arf_counts = counts_scaled_by_arf(
-                    srcpos[iconf.nonzero()[0][j]],
+                    sources["pos"][iconf.nonzero()[0][j]],
                     m2[m],
                     [wav_low[j, m, n], wav_high[j, m, n]],
                     evtcrates,
@@ -1528,7 +1493,7 @@ def arm_confuse_wave(
         for j, m, n in np.ndindex(confusion.shape):
             if confusion[j, m, n]:
                 counts, arf_counts = counts_scaled_by_arf(
-                    srcpos[subset_sources[i]],
+                    sources["pos"][subset_sources[i]],
                     m1[m],
                     [wav_low[j, m, n], wav_high[j, m, n]],
                     evtcrates,
@@ -1556,7 +1521,7 @@ def arm_confuse_wave(
         )
 
         flag[confusion] += flags_arm["confusion_above_conf_ratio"]
-        confuser_srcid_numbers = np.arange(n_sources)[iconf]
+        confuser_srcid_numbers = np.arange(sources["n"])[iconf]
         confuser_srcid = np.extract(
             flag > 0,
             np.broadcast_to(confuser_srcid_numbers[:, None, None], confusion.shape),
@@ -1565,7 +1530,7 @@ def arm_confuse_wave(
         result = {
             "src_id": np.full((flag > 0).sum(), subset_sources[i]),
             "confuser_srcid": confuser_srcid,
-            "0_order_confused_counts": zero_counts[confuser_srcid],
+            "0_order_confused_counts": sources["counts"][confuser_srcid],
             "grating_type": np.full((flag > 0).sum(), arm),
             "order": np.extract(
                 flag > 0, np.broadcast_to(m1[None, :, None], confusion.shape)
@@ -2624,11 +2589,8 @@ def run_crisscross(
             RA_main=RA_wcs, DEC_main=DEC_wcs, RA_sub=subset_RA, DEC_sub=subset_DEC
         )
 
-        # convert from RA/DEC in degrees to Chandra Sky physical coordinates and determine off-axis angle in arcsec
-        src_pos_x, src_pos_y, src_off_axis = calc_physical_coords(
-            fits_par=evt2_file[k], RA_par=RA_wcs, DEC_par=DEC_wcs
-        )
-        src_pos = np.array([src_pos_x, src_pos_y]).T
+        # convert from RA/DEC in degrees to Chandra Sky physical coordinates
+        src = calc_physical_coords(evt2_file[k], RA_wcs, DEC_wcs)
 
         time_message = "Finished converting RA/DEC into chandra coords"
         time_log_counter = time_logger(
@@ -2640,30 +2602,22 @@ def run_crisscross(
 
         # match input source list to wavedetect table to catalog 0th order counts for each source in each obsid
         final_match_arr, final_dist_arr, counts = find_closest_source(
-            src_x=src_pos_x,
-            src_y=src_pos_y,
+            src=src,
             wave_file=wavdetect_file[k],
             max_offset=3.0,
         )
+        src["counts"] = counts
+        src["off_axis_modifier"] = calc_off_axis_modifier(src["theta"])
 
         # create an output file of the input source list with the wave-detect-matched 0th order counts
-        write_matched_file(
-            srcid_par=srcID,
-            ra_par=RA_wcs,
-            dec_par=DEC_wcs,
-            counts_par=counts,
-            fileroot=f"{output_dir}/src_list_{obsid}",
-        )
+        write_matched_file(src, fileroot=f"{output_dir}/src_list_{obsid}")
 
         # Print to the screen the number of sources that satisfy the above conditions as well as the total number of
         # sources in input list.
-        src_num = len(src_pos_x)
 
-        counts_intercept_num = len(
-            counts[counts > min_spec_counts]
-        )  # will count the number of sources that are above the threshold
+        counts_intercept_num = np.sum(counts > min_spec_counts)
 
-        print("The total number of sources input is %s." % (src_num))
+        print("The total number of sources input is %s." % (src["n"]))
         print(
             "The number of sources above the contamination intercept threshold of %s counts for ObsID %s is %s."
             % (min_spec_counts, obsid, counts_intercept_num)
@@ -2671,10 +2625,10 @@ def run_crisscross(
 
         # calculate relevant parameters for when two lines intersect in the Chandra FOV
         k_heg, k_meg = determine_line_intersect_values(
-            src_pos, norm_vec_heg, norm_vec_meg
+            src["pos"], norm_vec_heg, norm_vec_meg
         )
         heg_meg_intersects = (
-            src_pos[:, np.newaxis, :] + k_heg[:, :, np.newaxis] * norm_vec_heg
+            src["pos"][:, np.newaxis, :] + k_heg[:, :, np.newaxis] * norm_vec_heg
         )
 
         orders = np.arange(-highest_order, highest_order + 1)
@@ -2711,10 +2665,10 @@ def run_crisscross(
         for arm in ["heg", "meg"]:
             records.append(
                 spec_confuse_wave(
+                    sources=src,
                     subset_sources=subset_list,
                     intersect_info=intersect_info,
                     arm=arm,
-                    zero_counts=counts,
                     min_spec_counts=min_spec_counts,
                     min_spec_confuser_counts=min_spec_confuser_counts,
                     width_mask_pixel=120,
@@ -2737,18 +2691,17 @@ def run_crisscross(
         )
 
         #########POINT SOURCE CONFUSION START ############
-        dist_along_heg, point_to_heg = pntsrc_dist_to_spec(src_pos, norm_vec_heg)
-        dist_along_meg, point_to_meg = pntsrc_dist_to_spec(src_pos, norm_vec_meg)
+        dist_along_heg, point_to_heg = pntsrc_dist_to_spec(src["pos"], norm_vec_heg)
+        dist_along_meg, point_to_meg = pntsrc_dist_to_spec(src["pos"], norm_vec_meg)
         intersect_info["point2arm"] = {"heg": point_to_heg, "meg": point_to_meg}
 
         for arm in ["heg", "meg"]:
             records.append(
                 pntsrc_confuse_wave(
+                    sources=src,
                     subset_sources=subset_list,
                     intersect_info=intersect_info,
                     arm=arm,
-                    src_off_axis_par=src_off_axis,
-                    zero_counts=counts,
                     max_pntsrc_dist=max_pntsrc_dist,
                     min_spec_counts=min_spec_counts,
                     min_pntsrc_counts=min_pntsrc_counts,
@@ -2773,11 +2726,10 @@ def run_crisscross(
         for arm in ["heg", "meg"]:
             records.append(
                 arm_confuse_wave(
+                    sources=src,
                     subset_sources=subset_list,
                     intersect_info=intersect_info,
                     arm=arm,
-                    src_off_axis_par=src_off_axis,
-                    zero_counts=counts,
                     min_arm_counts=min_arm_counts,
                     max_arm_dist=max_arm_dist,
                     arf_ratios_dir=arf_ratios_dir,
@@ -2849,7 +2801,7 @@ The counts threshold to be considered a potential contaminating spectral source 
 The counts threshold to be considered a potential 0th order point source contaminating source is {min_pntsrc_counts} counts.
 The distance in pixels required for two very bright sources to be considered for ARM REMOVAL --tis but a scratch-- is {max_arm_dist} pixels.
 The fraction of the OSIP window to include when considering two arm overlaps is set at {osip_frac * 100} percent.
-The total number of sources input is {src_num}.
+The total number of sources input is {src["n"]}.
 The number of sources above the contamination intercept threshold of {min_spec_counts} counts for ObsID {obsid} is {counts_intercept_num}.
 The minimum counts in Src Bs 0th order to assess total arm confusion in source A is {min_arm_counts}.
 The HEG/MEG angles for this observation are {heg_ang:.2f} and {meg_ang:.2f} degrees.
