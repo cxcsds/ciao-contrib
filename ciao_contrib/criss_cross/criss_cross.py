@@ -1705,73 +1705,60 @@ def end_of_run_cleanup(output_dir_list_par, obsid_par, wavdetect_par=False):
     return ()
 
 
-def time_logger(mode, time_started=[], time_counter=[], message=[]):
+class TimeLogger:
+    """Class for logging time at different steps of the CrissCross process.
+
+    Can be used as a context manager and also allows for logging time at different steps.
+
+    Examples
+    --------
+    Use as a contect manager:
+    >>> with TimeLogger() as tl:
+    ...     # some code here
+    ...     tl("Finished step 1")
+    ...     # some more code here
+    ...     tl("Finished step 2")
+
+    Or use without context manager and call end() at the end of the process:
+    >>> tl = TimeLogger()
+    ... # some code here
+    ... tl("Finished step 1")
+    ... # some more code here
+    ... tl("Finished step 2")
+    ... end_time = tl.end()
     """
-    Creates a time logger and prints relevant steps in the code to the screen.
 
-    Parameters
-    ---------
-    mode : str
-        Controls much of the logic how function prints info to screen. Options are 'start', 'update', 'end'.
-    time_started : time object
-        The time at the moment of program execution
-    time_counter : int
-        A counter to count the number of times the function was run throughout the program.
-    message : str
-        A message to print to the screen when executed.
-
-    Example usage
-    -------------
-
-    time_log_start, time_log_counter = time_logger(mode='start')
-    time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter,
-    message='message 1')
-    time_log_counter = time_logger(mode='update', time_started = time_log_start, time_counter = time_log_counter,
-    message='message 2')
-
-    """
-    if mode == "start":
-        time_start = time.time()
-        time_log_counter = 0
-        time_log_start = time_start
-
-        obj = time.localtime()
-        t = time.asctime(obj)
+    def __init__(self):
+        self.start = time.time()
+        self.counter = 0
 
         print("\n")
         print("CrissCross Time Start:")
-        print(t)
+        print(time.asctime(time.localtime()))
         print("\n")
 
-        return (time_log_start, time_log_counter)
+    def __enter__(self):
+        return self
 
-    elif mode == "update":
-        time_counter_update = time_counter + 1
-        time_log_elapsed = round((time.time() - time_started) / 60, 2)
-        time_log_obj = time.localtime()  # these three are necessary to print local time in readable format AND its still of by four hours SIGHHH
+    def __call__(self, message):
+        self.counter += 1
+        elapsed = round((time.time() - (self.start)) / 60, 2)
 
-        t_log = time.asctime(time_log_obj)
         print("\n")
-        print(f"TIME LOG #{time_counter_update}  -- {message}")
-        print(t_log)
-        print("%s minutes have elapsed" % (time_log_elapsed))
+        print(f"TIME LOG #{self.counter}  -- {message}")
+        print(time.asctime(time.localtime()))
+        print(f"{elapsed} minutes have elapsed")
         print("\n")
 
-        return time_counter_update
-
-    elif mode == "end":
-        time_stop = time.time()
-        total_time = round((time_stop - time_started) / 60, 2)
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.total_time = round((time.time() - self.start) / 60, 2)
         print()
-        print(f"total elapsed time has been {total_time} minutes.")
+        print(f"total elapsed time has been {self.total_time} minutes.")
         print()
 
-        return total_time
-
-    else:
-        print("mode was not set to appropriate value")
-
-    return ()
+    def end(self):
+        self.__exit__(None, None, None)
+        return self.total_time
 
 
 def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par=None):
@@ -2497,7 +2484,7 @@ def run_crisscross(
         # ardlib.punlearn()
 
         # start the time logger for printing steps to the screen
-        time_log_start, time_log_counter = time_logger(mode="start")
+        timelogger = TimeLogger()
 
         # print the tweakable paramters to the screen and then record them near the end along with the time it took to run.
         print("\n")
@@ -2592,13 +2579,7 @@ def run_crisscross(
         # convert from RA/DEC in degrees to Chandra Sky physical coordinates
         src = calc_physical_coords(evt2_file[k], RA_wcs, DEC_wcs)
 
-        time_message = "Finished converting RA/DEC into chandra coords"
-        time_log_counter = time_logger(
-            mode="update",
-            time_started=time_log_start,
-            time_counter=time_log_counter,
-            message=time_message,
-        )
+        timelogger("Finished converting RA/DEC into chandra coords")
 
         # match input source list to wavedetect table to catalog 0th order counts for each source in each obsid
         final_match_arr, final_dist_arr, counts = find_closest_source(
@@ -2642,14 +2623,9 @@ def run_crisscross(
             "heg": k_heg * mm_per_pix / X_R * Period["heg"],
             "meg": k_meg * mm_per_pix / X_R * Period["meg"],
         }
-        time_message = (
+
+        timelogger(
             "Finished calculating XY intercepts for all sources in the field of view."
-        )
-        time_log_counter = time_logger(
-            mode="update",
-            time_started=time_log_start,
-            time_counter=time_log_counter,
-            message=time_message,
         )
 
         cutoff = {
@@ -2682,13 +2658,7 @@ def run_crisscross(
                 )
             )
 
-        time_message = "Finished calculating spectral confusion."
-        time_log_counter = time_logger(
-            mode="update",
-            time_started=time_log_start,
-            time_counter=time_log_counter,
-            message=time_message,
-        )
+        timelogger("Finished calculating spectral confusion.")
 
         #########POINT SOURCE CONFUSION START ############
         dist_along_heg, point_to_heg = pntsrc_dist_to_spec(src["pos"], norm_vec_heg)
@@ -2714,13 +2684,7 @@ def run_crisscross(
                 )
             )
 
-        time_message = "Finished assigning point source confusion."
-        time_log_counter = time_logger(
-            mode="update",
-            time_started=time_log_start,
-            time_counter=time_log_counter,
-            message=time_message,
-        )
+        timelogger("Finished calculating point source confusion.")
 
         ##########ARM CONFUSION START ############################
         for arm in ["heg", "meg"]:
@@ -2741,13 +2705,7 @@ def run_crisscross(
                 )
             )
 
-        time_message = "Finished assigning arm confusion."
-        time_log_counter = time_logger(
-            mode="update",
-            time_started=time_log_start,
-            time_counter=time_log_counter,
-            message=time_message,
-        )
+        timelogger("Finished assigning arm confusion.")
 
         ##### Table writing and cleanup ############
         records = rfn.stack_arrays(records)
@@ -2780,16 +2738,10 @@ def run_crisscross(
             output_dir_list_par=output_dir, obsid_par=obsid, wavdetect_par=run_wave
         )
 
-        time_message = "Finished Running CrissCross!."
-        time_log_counter = time_logger(
-            mode="update",
-            time_started=time_log_start,
-            time_counter=time_log_counter,
-            message=time_message,
-        )
+        timelogger("Finished Running CrissCross!")
 
         log_file = open(f"{output_dir}/LOG_{obsid}.txt", "w")
-        total_time = time_logger(mode="end", time_started=time_log_start)
+        total_time = timelogger.end()
         log_file.write(
             f"""This run is for observation {evt2_file[k]}.
 The wavdetect source list used for this observation is {wavdetect_file[k]}.
