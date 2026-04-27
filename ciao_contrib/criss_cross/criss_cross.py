@@ -579,8 +579,28 @@ def write_matched_file(
         comments="",
     )
 
+### Vector arithmetic ###
 
-def determine_line_intersect_values(src_pos, norm_arm1, norm_arm2):
+
+def perpendicular_vector(vec):
+    """Calculate a perpendicular vector in 2D.
+
+    Parameters
+    ----------
+    vec : np.ndarray
+        A (2,) array representing a vector in 2D.
+
+    Returns
+    -------
+    perp_vec : np.ndarray
+        A (2,) array representing a vector that is perpendicular to the input vector.
+    """
+    if len(vec) != 2:
+        raise ValueError("Input vector must be of length 2.")
+    return np.array([-vec[1], vec[0]])
+
+
+def line_line_intersect(src_pos, norm_arm1, norm_arm2):
     r"""Calculate the intersection of two lines defined by norm_arm1 and norm_arm2.
 
     Each line is defined by the equation:
@@ -883,8 +903,8 @@ def spec_confuse_wave(
     mwave = intersect_info["mwave"][arm][subset_sources, :]
     mwave2 = intersect_info["mwave"][secondary_arm][:, subset_sources].T
     # divide by order number to get wavelength for each order
-    wave = mwave[..., np.newaxis] / intersect_info["orders"]
-    wave2 = mwave2[..., np.newaxis] / intersect_info["orders"]
+    wave = mwave[..., np.newaxis] / orders
+    wave2 = mwave2[..., np.newaxis] / orders
 
     # Step 1: Select spectra and confusers with enough counts to be relevant.
     confusion = (sources["counts"] > min_spec_counts)[subset_sources, np.newaxis] & (
@@ -1064,54 +1084,6 @@ def spec_confuse_wave(
 
 
 ####POINT SOURCE CONFUSION FUNCTIONS####
-def pntsrc_dist_to_spec(src_pos, norm_arm):
-    r"""Get distance of each point from line, and line position closest to each point.
-
-    Calculate the distance from each point in src_pos to the line defined
-    by norm_arm and passing through each point in src_pos.
-
-    The line is defined by the equation:
-    :math:`\vec{X} = \vec{S} + k \cdot \vec{N}_{arm}`
-
-    where :math:`\vec{X}` describes any point on the line
-    :math:`\vec{S}` is the source position
-    :math:`\vec{N}_{arm}` is the normalized direction vector for the arm
-    and :math:`k` is a scalar parameter that describes how far along the line you are from the source.
-
-    Parameters
-    ----------
-    src_pos : np.ndarray
-        An (n, 2) array of source positions.
-    norm_arm : np.ndarray
-        A (2,) array representing the normalized direction vector of the line.
-
-    Returns
-    -------
-    k : np.ndarray
-        An (n, n) array of scalar parameters k for each pair of source positions.
-        :math:`\vec{S} + k \cdot \vec{N_{arm}}` is the point on the line closest
-        to the source position.
-        k[i, :] gives the k values for the line defined by source position i to the
-        point of closed approach for each source position
-        (so, ``k[i,i] == 0`` because it's the distance of a source to itself).
-    distance_to_line : np.ndarray
-        An (n, n) array of distances from each source position to the
-        line defined by norm_arm.
-
-    Note
-    ----
-    See https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line#Vector_formulation
-    for more details on the mathematical formulation used in this function.
-    """
-    s_minus_s = src_pos[None, :, :] - src_pos[:, None, :]
-    k = np.vecdot(s_minus_s, norm_arm)
-    vec_along_line = k[:, :, None] * norm_arm
-    vec_perpendicular_to_line = s_minus_s - vec_along_line
-    distance_to_line = np.linalg.norm(vec_perpendicular_to_line, axis=-1)
-
-    return k, distance_to_line
-
-
 def pntsrc_confuse_wave(
     sources,
     subset_sources,
@@ -2530,8 +2502,10 @@ def run_crisscross(
 
         # It is physically arbitrary which direction are positive and negative. The minus
         # signs are here to match the Chandra convention.
-        norm_vec_heg = -np.array([np.cos(heg_ang), np.sin(heg_ang)])
-        norm_vec_meg = -np.array([np.cos(meg_ang), np.sin(meg_ang)])
+        norm_vec = {
+            "heg": -np.array([np.cos(heg_ang), np.sin(heg_ang)]),
+            "meg": -np.array([np.cos(meg_ang), np.sin(meg_ang)]),
+        }
 
         print(
             "The HEG/MEG angles for this observation are %s and %s degrees."
@@ -2604,30 +2578,6 @@ def run_crisscross(
             % (min_spec_counts, obsid, counts_intercept_num)
         )
 
-        # calculate relevant parameters for when two lines intersect in the Chandra FOV
-        k_heg, k_meg = determine_line_intersect_values(
-            src["pos"], norm_vec_heg, norm_vec_meg
-        )
-        heg_meg_intersects = (
-            src["pos"][:, np.newaxis, :] + k_heg[:, :, np.newaxis] * norm_vec_heg
-        )
-
-        orders = np.arange(-highest_order, highest_order + 1)
-        orders = orders[orders != 0]  # exclude 0 order
-        intersect_info = {
-            "orders": orders,
-            "heg_meg_intersects": heg_meg_intersects,
-        }
-        intersect_info["distance_along"] = {"heg": k_heg, "meg": k_meg}
-        intersect_info["mwave"] = {
-            "heg": k_heg * mm_per_pix / X_R * Period["heg"],
-            "meg": k_meg * mm_per_pix / X_R * Period["meg"],
-        }
-
-        timelogger(
-            "Finished calculating XY intercepts for all sources in the field of view."
-        )
-
         cutoff = {
             "heg": [heg_cutoff_low, heg_cutoff_high],
             "meg": [meg_cutoff_low, meg_cutoff_high],
@@ -2638,6 +2588,23 @@ def run_crisscross(
         records = []
 
         #########SPECTRAL CONFUSION START ############
+        # calculate relevant parameters for when two lines intersect in the Chandra FOV
+        k_heg, k_meg = line_line_intersect(src["pos"], norm_vec["heg"], norm_vec["meg"])
+        heg_meg_intersects = (
+            src["pos"][:, np.newaxis, :] + k_heg[:, :, np.newaxis] * norm_vec["heg"]
+        )
+
+        orders = np.arange(-highest_order, highest_order + 1)
+        orders = orders[orders != 0]  # exclude 0 order
+        intersect_info = {
+            "orders": orders,
+            "heg_meg_intersects": heg_meg_intersects,
+        }
+        intersect_info["mwave"] = {
+            "heg": k_heg * mm_per_pix / X_R * Period["heg"],
+            "meg": k_meg * mm_per_pix / X_R * Period["meg"],
+        }
+
         for arm in ["heg", "meg"]:
             records.append(
                 spec_confuse_wave(
@@ -2660,10 +2627,27 @@ def run_crisscross(
 
         timelogger("Finished calculating spectral confusion.")
 
+        ######### Perpendicular distance
+        # Point, arm, and streak confusion all depend on the distance of
+        # a source perpendicular to the arm, so we can set up the same
+        # intersect info for all of them.
+        intersect_info = {
+            "orders": orders,
+            "intersects": {},
+            "mwave": {},
+            "point2arm": {},
+        }
+        for arm in ["heg", "meg"]:
+            k_arm, k_src = line_line_intersect(
+                src["pos"], norm_vec[arm], perpendicular_vector(norm_vec[arm])
+            )
+            intersect_info["intersects"][arm] = (
+                src["pos"][:, np.newaxis, :] + k_arm[:, :, np.newaxis] * norm_vec[arm]
+            )
+            intersect_info["mwave"][arm] = k_arm * mm_per_pix / X_R * Period[arm]
+            intersect_info["point2arm"][arm] = np.abs(k_src)
+
         #########POINT SOURCE CONFUSION START ############
-        dist_along_heg, point_to_heg = pntsrc_dist_to_spec(src["pos"], norm_vec_heg)
-        dist_along_meg, point_to_meg = pntsrc_dist_to_spec(src["pos"], norm_vec_meg)
-        intersect_info["point2arm"] = {"heg": point_to_heg, "meg": point_to_meg}
 
         for arm in ["heg", "meg"]:
             records.append(
