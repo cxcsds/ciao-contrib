@@ -365,8 +365,7 @@ def load_sourcelist(filename=None, subset_list=False):
             "CrissCross needs to be run with a list of known sources RA and DEC."
         )
 
-
-def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, round_sig=6):
+def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, match_offset=1.0):
     """
     Matches sources from the subset_list to the main_list by RA and DEC. All sources in the subset list MUST be also in
     the main list and matched via the element number of the input main_list array. For example, if source number 10 in
@@ -376,39 +375,51 @@ def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, round_sig=6):
 
     Parameters
     ----------
-    RA_main : float, deg
-        Right Ascension of main_list source in J2000 degrees
-    DEC_main : float, deg
-        Declination of main_list source in J2000 degrees
-    RA_sub : float, deg
-        Right Ascension of subset_list source in J2000 degrees
-    DEC_sub : float, deg
-        Declination of main_list source in J2000 degrees
-    round_sig : int
-        Number of digits to round RA/DEC to for matching purposes.
+    RA_main : np.array
+        Right Ascension of main_list source in degrees
+    DEC_main : np.array
+        Declination of main_list source in degrees
+    RA_sub : np.array
+        Right Ascension of subset_list source in degrees
+    DEC_sub : np.array
+        Declination of subset_list source in degrees
+    match_offset : float, arcsec
+        Maximum offset for matching sources between the main and subset lists.
+
+    On a sphere, the distance between points is given by the haversine formula, which
+    works well numerically except for point that are almost exactly opposites,
+    which is not the case here [1].
+
+    Notes
+    -----
+    This implementation simply calculates all pairwise distances. A KD-Tree or
+    similar structure would be more efficient, but we expect that this will
+    be used for no more than a few thousand sources and thus the brute-force
+    approach is sufficient.
+
+    References
+    ----------
+    [1] https://en.wikipedia.org/wiki/Haversine_formula
     """
-
-    element = [None] * len(RA_sub)
-    # for each source in the subset_list match it using RA and DEC to a source in the main_list. Check for mult matches
-    for i in range(0, len(RA_sub)):
-        element[i] = np.where(
-            (np.round(RA_sub[i], round_sig) == np.round(RA_main, round_sig))
-            & (np.round(DEC_sub[i], round_sig) == np.round(DEC_main, round_sig))
-        )[0]
-        if len(element[i]) == 0:
-            raise ValueError(
-                f"No match in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please make sure RA and DEC value of source to clean matches a source in main_list."
-            )
-
-        elif len(element[i]) > 1:
-            raise ValueError(
-                f"Multiple matches [{len(element[i])}] in main list found for subset source RA={RA_sub[i]} and DEC={DEC_sub[i]}. Please make sure there are no duplicate entries in main list or subset_list"
-            )
-        # strip array to provide only integer value
-        else:
-            element[i] = element[i][0]
-
-    return element
+    dlat = RA_main[None, :] - RA_sub[:, None]
+    dlon = DEC_main[None, :] - DEC_sub[:, None]
+    hav_theta = (1 / 2) * (
+        np.sin(dlat / 2) ** 2 + np.cos(RA_sub) * np.cos(RA_main) * np.sin(dlon / 2) ** 2
+    )
+    theta = 2 * np.arcsin(np.sqrt(hav_theta))
+    min_theta = np.min(theta, axis=1)
+    if np.any(min_theta > np.deg2rad(match_offset / 3600)):
+        ind = min_theta > np.deg2rad(match_offset / 3600)
+        raise ValueError(
+            f"No match in main list found for the sources with RA={RA_sub[ind]} and DEC={DEC_sub[ind]} with min distance {min_theta} arcsec. Please make sure RA and DEC value of source to clean matches a source in main_list."
+        )
+    ind = theta < np.deg2rad(match_offset / 3600)
+    if np.any(ind.sum(axis=1) > 1):
+        ind_multi = ind.sum(axis=1) > 1
+        raise ValueError(
+            f"Multiple matches in main list found for the sources with RA={RA_sub[ind_multi]} and DEC={DEC_sub[ind_multi]} with min distance {min_theta} arcsec. Please make sure there are no duplicate entries in main list or subset_list"
+        )
+    return np.argmin(theta, axis=1)
 
 
 def calc_physical_coords(fits_par, RA, DEC):
@@ -2650,8 +2661,8 @@ def run_crisscross(
                 filename=subset_src_list, subset_list=True
             )
         else:
-            subset_RA = [float(clean_single_RA)]
-            subset_DEC = [float(clean_single_DEC)]
+            subset_RA = np.array([float(clean_single_RA)])
+            subset_DEC = np.array([float(clean_single_DEC)])
 
         # match the element number of the subset list to the main list using RA and DEC to 6 digits accuracy.
         subset_list = match_subset_to_main(
