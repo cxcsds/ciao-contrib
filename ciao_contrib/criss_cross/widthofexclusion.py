@@ -2,21 +2,11 @@ from functools import partial
 
 import numpy as np
 from sherpa.optmethods.optfcts import lmdif
+from constants import arcsec_per_pix, wavelength_scale
 
 from ciao_contrib.psf_contrib import PSF
 
 psf = PSF()
-
-# Currently, we only do HETG/ACIS,
-# so I hardcode the default min_tg_d number here
-min_tg_d = -2.39  # arcsec
-max_tg_d = 2.39   # arcsec
-acis_pix_size = 0.4920  # arcsec / pixel
-cross_disp_width = (max_tg_d - min_tg_d) / acis_pix_size  # pixel
-
-wavelength_scale = {1: 0.0055595,  # HEG Ang / ACIS pixel
-                    2: 0.0111200,  # MEG Ang / ACIS pixel
-                   }
 
 
 def counts_circle_band(evt, pos, waveband, skyconverter, psffrac=0.9):
@@ -60,7 +50,7 @@ def counts_circle_band(evt, pos, waveband, skyconverter, psffrac=0.9):
 # sa function
 
 
-def pntsrc_fluxlevel(r, maxlevel, energy, theta, phi, N, wavelength_scale):
+def pntsrc_fluxlevel(r, maxlevel, energy, theta, phi, N, arm, cross_disp_pixel):
     """Estimate radius where point source flux drops below maxlevel
 
     For a given radius, this function estimates how much above or below a certain level
@@ -85,8 +75,10 @@ def pntsrc_fluxlevel(r, maxlevel, energy, theta, phi, N, wavelength_scale):
         Source coordinates in Chandra's MSC coordinate system
     N : float or int
         total point source number of counts
-    wavelength_scale : float
-        Ang / pixel fo the given grating arm
+    arm : string
+        "heg" or "meg" to select the wavelength scale.
+    cross_disp_pixel : float
+        width of the grating extraction region in the cross-dispersion direction in pixels
 
     Returns
     -------
@@ -98,10 +90,11 @@ def pntsrc_fluxlevel(r, maxlevel, energy, theta, phi, N, wavelength_scale):
         expect this output format)
     """
     r = r[0]
-    dPSFdr = (psf.psfFrac(energy, theta, phi, (r + 1)  * acis_pix_size) -
-              psf.psfFrac(energy, theta, phi, r  * acis_pix_size))
+    dPSFdr = psf.psfFrac(energy, theta, phi, (r + 1) * arcsec_per_pix) - psf.psfFrac(
+        energy, theta, phi, r * arcsec_per_pix
+    )
     counts_per_pixel = N * dPSFdr / (2 * np.pi * (r + 0.5 ))
-    out = counts_per_pixel * cross_disp_width / wavelength_scale - maxlevel
+    out = counts_per_pixel * cross_disp_pixel / wavelength_scale[arm] - maxlevel
     return out, out
 
 
@@ -113,7 +106,8 @@ def pnt_src_masking_region(
     contaminator,
     dg,
     wavelength,
-    tg_part,
+    arm,
+    cross_disp_pixel,
     factor=0.1,
     logfile="terminal",
 ):
@@ -140,8 +134,10 @@ def pnt_src_masking_region(
         spectrum
     wavelength : float
         wavelength (in Ang) on the grating arm
-    tg_part : int
-        1 for an HEG arm, 2 for an MEG arm
+    arm : string
+        "heg" or "meg" to select the grating arm
+    cross_disp_pixel : float
+        width of the grating extraction region in the cross-dispersion direction in pixels
     factor : float
         Acceptable contamination level by point source to grating spectrum,
         e.g. 0.1 means that for any bin in the grating spectrum < 10% of the
@@ -185,22 +181,35 @@ def pnt_src_masking_region(
 
     pnt_src_maxlevel = grt_counts * factor
     coo = skyconverter(contaminator[0], contaminator[1])
-    if pntsrc_fluxlevel([0.], pnt_src_maxlevel, 12.4 / wavelength,
-                        coo['theta'][0], coo['phi'][0],
-                        pnt_src_counts, wavelength_scale[tg_part])[0] < 0:
+    if (
+        pntsrc_fluxlevel(
+            [0.0],
+            pnt_src_maxlevel,
+            12.4 / wavelength,
+            coo["theta"][0],
+            coo["phi"][0],
+            pnt_src_counts,
+            arm,
+            cross_disp_pixel,
+        )[0]
+        < 0
+    ):
         # Point source is so weak that it never contributes more than allowed
         # Nothing needs to be masked.  I just return a interval with size 0 for
         # now, but I think it would be better to have some other mechanism,
         # e.g. return nan or NONE
         return 9998.0, 9998.0
 
-    function = partial(pntsrc_fluxlevel,
-                   maxlevel=pnt_src_maxlevel,
-                   energy=12.4 / wavelength,
-                   theta=coo['theta'][0],
-                   phi=coo['phi'][0],
-                   N=pnt_src_counts,
-                   wavelength_scale=wavelength_scale[tg_part])
+    function = partial(
+        pntsrc_fluxlevel,
+        maxlevel=pnt_src_maxlevel,
+        energy=12.4 / wavelength,
+        theta=coo["theta"][0],
+        phi=coo["phi"][0],
+        N=pnt_src_counts,
+        arm=arm,
+        cross_disp_pixel=cross_disp_pixel,
+    )
     out = lmdif(function, (5.0,), (0.,), (1000,))
     if not out[0]:
         raise Exception(f'Failed to find PSF radius with flux level {pnt_src_maxlevel}: {out[3]}')
@@ -211,5 +220,5 @@ def pnt_src_masking_region(
         return 9997.0, 9997.0
     else:
         d_g = np.sqrt(out[1][0]**2 - dg**2)  # all in units of pixels
-        d_lambda = d_g * wavelength_scale[tg_part]
+        d_lambda = d_g * wavelength_scale[arm]
         return max(0, wavelength - d_lambda), wavelength + d_lambda

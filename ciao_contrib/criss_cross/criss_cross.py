@@ -34,25 +34,7 @@ from crates_contrib.utils import make_table_crate
 from ciao_contrib import runtool as rt
 from iocaldb import OSIP, Sky2Chandra, Cel2Chandra
 from widthofexclusion import counts_circle_band, pnt_src_masking_region
-
-
-############## CONSTANTS ##############
-tg_part_name = ["zeroth order", "heg", "meg", "leg"]
-
-X_R = 8632.48  # rowland diameter in mm constant
-
-# period in angstroms constant. Note, this is value from telD1999-07-23geomN0006.fits in CALDB
-Period = {
-    "meg": 4001.95,  # however in marxsim it uses 4001.41 A
-    "heg": 2000.81,
-}
-mm_per_pix = 0.023987  # pixel size in mm for acis same for I and S
-arcsec_per_pix = 0.492  # arcsec per pixel for ACIS
-
-hc = 4.1357e-15 * 2.998e18
-"conversion for E = hc/lamda where h and c are units of plancks const and angstrom/s"
-
-############################################################
+from constants import tg_part_name, X_R, Period, mm_per_pix, arcsec_per_pix, hc
 
 ##### FLAG DEFINITIONS #####
 # Which flag do they get if the intersection point is outside the CCD?
@@ -105,6 +87,10 @@ rec_type = np.dtype(
 )
 
 #############FUNCTION DEFINITIONS###############
+def on_chip(chipx, chipy):
+    return (0 < chipx) & (chipx < 1024) & (0 < chipy) & (chipy < 1024)
+
+
 def calc_off_axis_modifier(theta_arcmin):
     """
 
@@ -1098,6 +1084,9 @@ def pntsrc_confuse_wave(
     evtcrates,
     logfile_par,
     evt_frac_thresh=0.1,
+    min_tg_d=-6.6e-4,
+    max_tg_d=6.6e-4,
+    mode="point",
 ):
     r"""Identify point source confusion
 
@@ -1119,7 +1108,7 @@ def pntsrc_confuse_wave(
     pntsrc_dict : dictionary
         Point source confusion dict which holds all possible pntsrc confusion entries for every source in main_list.
         This dictionary is modified in place by this function.
-    max_pntsrc_dist_par : int
+    max_pntsrc_dist : float
         CrissCross parameter threshold in number of pixels for how far a point source can be perpendicular to a
         disperssed spectrum before it is no longer considered in the confusion calculation. This number can be increased
         to reduce the number of potentially confusing point sources.
@@ -1141,6 +1130,12 @@ def pntsrc_confuse_wave(
         Name of the logfile for capturing pnt_src_masking_region() log output.
     evt_frac_thresh : float
         Fraction of events allowed by confuser before considering confusion occurs (0.1 = 10%)
+    min_tg_d, max_tg_d : float
+        Lower and upper bounds of the spectral extraction of a dispersed spectrum in cross-dispersion direction in degrees.
+        These parameters should be set to the same values used in `tg_extract` and they default
+        to the default used in `tg_extract`. Crisscross assumes rectangular extraction regions.
+    mode : str
+        Select between "point" source confusion or "streak" confusion.
 
     Returns
     -------
@@ -1151,22 +1146,63 @@ def pntsrc_confuse_wave(
     """
     orders = intersect_info["orders"]
     mwave = intersect_info["mwave"][arm][subset_sources, :]
-    wave = mwave[..., np.newaxis] / orders
-    off_axis_limit = max_pntsrc_dist * sources["off_axis_modifier"]
+    inter_pos = intersect_info["intersects"][arm][subset_sources, :]
 
-    # Array shape is (n_confused_sources, n_confuser_sources, n_orders_confused).
-    confusion = np.ones_like(wave, dtype=bool)
-    flag = np.zeros_like(wave, dtype=int)
+    cross_disp_pixel = (max_tg_d - min_tg_d) * 3600 / arcsec_per_pix
+
+    # Array shape is (n_confused_sources, n_confuser_sources).
+    confusion = np.ones_like(mwave, dtype=bool)
+    confusion &= (sources["counts"][subset_sources] > min_spec_counts)[:, None]
+    confusion &= (sources["counts"] > min_pntsrc_counts)[np.newaxis, :]
+
+    off_axis_limit = max_pntsrc_dist * sources["off_axis_modifier"]
     distance2line = intersect_info["point2arm"][arm][subset_sources, :]
 
-    confusion &= (distance2line < off_axis_limit)[:, :, np.newaxis]
-    confusion &= (sources["counts"][subset_sources] > min_spec_counts)[:, None, None]
-    confusion &= (sources["counts"] > min_pntsrc_counts)[np.newaxis, :, np.newaxis]
-    # A source does not confuse itself, i.e. distance to source is > 0:
-    confusion &= (distance2line > 0)[:, :, np.newaxis]
+    if mode == "point":
+        confusion &= distance2line < off_axis_limit
+        # A source does not confuse itself, i.e. distance to source is > 0:
+        confusion &= distance2line > 0
+    elif mode == "streak":
+        # Confuser is not so close that it would be counted as point source confusion
+        confusion &= distance2line >= off_axis_limit
+        # Confuser is on a chip (list of sources could include sources where the 0th
+        # order is not on a CCD)
+        confusion &= on_chip(sources["chipx"], sources["chipy"])[None, :]
+        # Check if confuser and intersection are on the same chip.
+        # We start with a simple check based on the
+        # distance in pixels (fast) and then use the full Chandra coordinate
+        # conversion for all remaining potential intersections (slower).
+        dist_to_edge = np.maximum(sources["chipy"], 1023 - sources["chipy"])
+        d_arm = intersect_info["point2arm"][arm][subset_sources, :]
+        confusion &= d_arm < dist_to_edge[None, :]
+        chipx = np.zeros_like(mwave)
+        chipy = np.zeros_like(mwave)
+        ccd_id = np.zeros_like(mwave)
+        # Find with source/confuser pairs are still suspected of confusion.
+        # We will run the skyconverter only for those because it can be slow.
+        # Since skyconverter takes only 1D arrays, we ravel the 2D arrays to 1D.
+        pos = skyconverter(
+            inter_pos[:, :, 0].ravel()[confusion.ravel()],
+            inter_pos[:, :, 1].ravel()[confusion.ravel()],
+        )
+        chipx.ravel()[confusion.ravel()] = pos["chipx"]
+        chipy.ravel()[confusion.ravel()] = pos["chipy"]
+        ccd_id.ravel()[confusion.ravel()] = pos["chip_id"]
+        # Intersection between streak and spectrum is on a chip...
+        confusion &= on_chip(chipx, chipy)
+        # ... and it's actually on the same chip
+        confusion &= ccd_id == sources["chip_id"][np.newaxis, :]
+    else:
+        raise ValueError("mode parameter needs to be either 'point' or 'streak'.")
+
+    # So far, this was all about geometry. Now, we look at which orders are
+    # affected by confusion.
+    # Array shape is now (n_confused_sources, n_confuser_sources, n_orders_confused).
+    wave = mwave[..., np.newaxis] / orders
+    flag = np.zeros_like(wave, dtype=int)
 
     # Wavelength of real photons are always positive
-    confusion &= wave > 0
+    confusion = confusion[:, :, np.newaxis] & (wave > 0)
 
     pntsrc_confuse_log_file = open(f"{logfile_par}", "w")
 
@@ -1180,9 +1216,12 @@ def pntsrc_confuse_wave(
                 skyconverter,
                 sources["pos"][subset_sources[i]],
                 sources["pos"][j],
-                intersect_info["point2arm"][arm][subset_sources[i], j],
+                intersect_info["point2arm"][arm][subset_sources[i], j]
+                if mode == "point"
+                else 0.0,
                 wave[i, j, o],
-                tg_part_name.index(arm),
+                arm,
+                cross_disp_pixel,
                 evt_frac_thresh,
                 pntsrc_confuse_log_file,
             )
@@ -1521,6 +1560,70 @@ def arm_confuse_wave(
         )
 
     return rfn.stack_arrays([arm_conf])
+
+
+def streak_confuse_wave(
+    sources,
+    subset_sources,
+    intersect_info,
+    arm,
+    min_spec_counts,
+    min_pntsrc_counts,
+    cutoff,
+    osip,
+    skyconverter,
+    evtcrates,
+    logfile_par,
+    evt_frac_thresh=0.1,
+    min_tg_d=-6.6e-04,
+    max_tg_d=6.6e-04,
+):
+    r"""Identify streak source confusion
+
+    If a 0th order source is sufficiently bright on the same chip as a dispersed
+    spectrum of another source then it will be identified as having streak
+    source confusion.
+
+    Parameters
+    ----------
+    sources, subset_sources, intersect_info, arm, min_spec_counts, min_pntsrc_counts, cutoff,
+    osip, skyconverter, evtcrates, logfile_par, evt_frac_thresh : see `pntsrc_confuse_wave()``
+        These parameters are passed to `pntsrc_confuse_wave()` with a scaling to account for the
+        relative fraction of the exposure spend in out-of-time events that cross a dispersed spectrum.
+    min_tg_d, max_tg_d : float
+        Lower and upper bounds of the spectral extraction of a dispersed spectrum in cross-dispersion direction in degrees.
+        These parameters should be set to the same values used in `tg_extract` and they default
+        to the default used in `tg_extract`. Crisscross assumes rectangular extraction regions.
+
+    Returns
+    -------
+    streak_conf : numpy.rec.array
+        Information about each occurance of confusion.
+        Only valid confusion is listed, all sources and arm combinations
+        processed that are not listed are to be considered unconfused.
+    """
+    n_rows = (max_tg_d - min_tg_d) * 3600 / arcsec_per_pix
+    frac_outoftime = 4e-5 * n_rows / evtcrates.get_key_value("EXPTIME")
+
+    streak_conf = pntsrc_confuse_wave(
+        sources=sources,
+        subset_sources=subset_sources,
+        intersect_info=intersect_info,
+        arm=arm,
+        max_pntsrc_dist=1024,  # limit is based on CCD ID not distance in this mode.
+        min_spec_counts=min_spec_counts,
+        min_pntsrc_counts=min_pntsrc_counts / frac_outoftime,
+        cutoff=cutoff,
+        osip=osip,
+        skyconverter=skyconverter,
+        evtcrates=evtcrates,
+        logfile_par=logfile_par,
+        evt_frac_thresh=evt_frac_thresh / frac_outoftime,
+        mode="streak",
+    )
+
+    streak_conf["confusion_type"][:] = "strk"
+    return streak_conf
 
 
 ####TABLE OUTPUT FUNCTIONS####
@@ -2317,6 +2420,8 @@ def run_crisscross(
     heg_cutoff_high=16.0,
     highest_order=3,
     writing_level="confused",
+    min_tg_d=-6.6e-04,
+    max_tg_d=6.6e-04,
 ):
     """
     Main function for running criss cross. CrissCross identifies portions of a sources spectrum where events from other
@@ -2408,7 +2513,10 @@ def run_crisscross(
         The wavelength boundaries for all confusion calculations in Angstroms. If users only care about e.g., the 5-10
         A region of meg then they can set heg_cutoff_low=5.0 and heg_cutoff_high=10.0 and only confusion that occurs
         within this wavelength region is considered. This parameter is not used for arm confusion (default: 1.0, 16.0).
-
+    min_tg_d, max_tg_d : float
+        Lower and upper bounds of the spectral extraction of a dispersed spectrum in cross-dispersion direction in degrees.
+        These parameters should be set to the same values used in `tg_extract` and they default
+        to the default used in `tg_extract`. Crisscross assumes rectangualr extraction regions.
     """
 
     # sanitize clobber
@@ -2665,6 +2773,25 @@ def run_crisscross(
                     evtcrates=evtcrates,
                     logfile_par=f"{output_dir}/pnt_src_confuse_{obsid}_log.txt",
                     evt_frac_thresh=0.1,
+                )
+            )
+        for arm in ["heg", "meg"]:
+            records.append(
+                streak_confuse_wave(
+                    sources=src,
+                    subset_sources=subset_list,
+                    intersect_info=intersect_info,
+                    arm=arm,
+                    min_spec_counts=min_spec_counts,
+                    min_pntsrc_counts=min_pntsrc_counts,
+                    cutoff=cutoff,
+                    osip=osip,
+                    skyconverter=skyconverter,
+                    evtcrates=evtcrates,
+                    logfile_par=f"{output_dir}/streak_confuse_{obsid}_log.txt",
+                    evt_frac_thresh=0.1,
+                    min_tg_d=min_tg_d,
+                    max_tg_d=max_tg_d,
                 )
             )
 
