@@ -145,11 +145,6 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par=None):
             "Could not identify responses. Please load responses manually."
         )
 
-    # Some response files were found so tell user matching will begin
-    print(
-        f"\n{resp_type_par.upper()} files identified. Attempting to match them to PHA2 spectra:"
-    )
-    print("-" * 63)
 
     # check that the length of the ARF or RMF lists match the number of PHA spec in the PHA2 file
     if len(resp_list_par) != num_spec_par:
@@ -160,8 +155,10 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par=None):
     return resp_list_par
 
 
-def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
+def match_resp_order(pha2_file_par, resp_list_par, resp_type_par, verbose_par=False):
     """
+    Matches each response to the appropriate spectrum.
+
     This uses the PHA2 file structure and matches the input response file list/array (resp_list_par) to the appropriate
     PHA2 spectrum using the header keywords tg_m, tg_part and obsid. This function is designed to take the output of
     find_resp_files() and put them in order of the PHA2 spectra.
@@ -177,6 +174,8 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
     resp_dir_par: directory
         The directory where the HETG response files associated with the PHA2 file are located. If none provided, it
         will attempt to search for them.
+    verbose_par: bool, optional
+        If 'True' then the matched response files to each spectrum will be printed to the screen. The default is 'False'.
 
     Returns
     ----------
@@ -260,21 +259,20 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
         elif len(match_resp) == 0:
             matched_resp_list_par[i] = "no match"
 
+    if verbose_par is True:
     # report the files matched to the screen in a nice format so it is clear it worked or didn't work
-    print(
-        f"\nThe following {resp_type_par.upper()} response files were found for obsID {pha2_tg_obsid}\n"
-    )
-
-    # name the arm and order something more readable for output message
-    arm = lambda x: "HEG" if x == 1 else "MEG" if x == 2 else "ERROR"
-    order = lambda x: f"+{x}" if x > 0 else f"-{-1*x}" if x < 0 else "ERROR"
-
-    print()
-    for i in range(0, num_spec_pha2):
         print(
-            f"{arm(pha2_tg_part_arr[i])+order(pha2_tg_m_arr[i])} -- {resp_type_par.upper()}: {matched_resp_list_par[i]}"
+            f"\nThe following {resp_type_par.upper()} response files were found for obsID {pha2_tg_obsid}\n"
         )
-    print()
+
+        # name the arm and order something more readable for output message
+        arm = {1: 'HEG', 2: 'MEG', 3: 'LEG'}
+
+        for i in range(0, num_spec_pha2):
+            print(
+                f"{arm[pha2_tg_part_arr[i]]}{pha2_tg_m_arr[i]:+} -- {resp_type_par.upper()}: {matched_resp_list_par[i]}"
+            )
+        print() #add one extra line to separate load_hetg_resp text from sherpa text
 
     # check if no responses matched and report to user. Most common issue would be the OBSID parameter is wrong
     if (matched_resp_list_par == "no match").all():
@@ -286,9 +284,10 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
     return matched_resp_list_par
 
 
-def load_hetg_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_start=1):
+def load_hetg_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_start=1, use_errors_par=False, verbose=False):
     """
-
+    Loads the PHA2 spectrum and responses into the sherpa session.
+    
     This function loads an HETG PHA2 file and any associated ARF and RMF response files. If matching responses are
     found only for a subset of HETG orders (e.g., orders +1 and -1) then only those order's responses will be loaded.
     This works only for PHA2 files and not PHA files. If arf_dir or rmf_dir are not provided then this tool will
@@ -310,9 +309,14 @@ def load_hetg_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_start=
         The directory that holds the arfs associated with the pha2_file
     rmf_dir: str
         The directory that holds the rmfs associated with the pha2_file
-    dataset_id_start : int
+    dataset_id_start: int
         A sherpa dataset id into which PHA2 spectra will begin loading. A typical HETG PHA2 spectral file contains
         12 individual spectra so choosing a value 1 (default) will load dataset ids 1-12.
+    use_errors_par: bool, optional
+        If 'True' then the statistical errors are taken from the input data, rather than calculated by Sherpa from 
+        the count values. The default is 'False'. 
+    verbose: bool, optional
+        If 'True' then the matched response files to each spectrum will be printed to the screen. The default is 'False'.         
 
     Related Sherpa functions
     ------------------------
@@ -328,7 +332,7 @@ def load_hetg_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_start=
         pha2_file_par=pha2_file, resp_type_par="arf", resp_dir_par=arf_dir
     )
     arf_list_matched = match_resp_order(
-        pha2_file_par=pha2_file, resp_list_par=arf_list, resp_type_par="arf"
+        pha2_file_par=pha2_file, resp_list_par=arf_list, resp_type_par="arf", verbose_par=verbose
     )
 
     # find and match RMFs
@@ -336,7 +340,7 @@ def load_hetg_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_start=
         pha2_file_par=pha2_file, resp_type_par="rmf", resp_dir_par=rmf_dir
     )
     rmf_list_matched = match_resp_order(
-        pha2_file_par=pha2_file, resp_list_par=rmf_list, resp_type_par="rmf"
+        pha2_file_par=pha2_file, resp_list_par=rmf_list, resp_type_par="rmf", verbose_par=verbose
     )
 
     # check for mismatches and unmatched pairs
@@ -355,7 +359,7 @@ def load_hetg_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_start=
         dataset_id_start = int(dataset_id_start)
 
     # load data first so responses can be assigned after.
-    load_data(id=dataset_id_start, filename=pha2_file)
+    load_data(id=dataset_id_start, filename=pha2_file, use_errors=use_errors_par)
 
     # for every identified response (arf), load matching arf and rmf. It should be ok to load RMFs with the arf loop
     # cause an error would be previously thrown if every arf didn't have a matching rmf.
@@ -365,4 +369,4 @@ def load_hetg_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_start=
             load_arf(i + dataset_id_start, arf_list_matched[i])
             load_rmf(i + dataset_id_start, rmf_list_matched[i])
 
-    return ()
+    return
