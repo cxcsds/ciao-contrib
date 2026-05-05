@@ -16,15 +16,15 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par=None):
         PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after
         running chandra_repro on a chandra HETG obsID.
     resp_type_par: 'arf' or 'rmf'
-        The type of response files for matchign to PHA spectra
+        The type of response files for matching to PHA spectra
     resp_dir_par: directory
         The directory where the HETG response files associated with the PHA2 file are located. If none provided, it
         will attempt to search for them.
 
     Returns
-    ----------
+    --------
     resp_list_par: list
-    Returns a list of ARF or RMF files found.
+        Returns a list of ARF or RMF files found.
 
     """
 
@@ -61,7 +61,7 @@ def find_resp_files(pha2_file_par, resp_type_par, resp_dir_par=None):
         pha_root = pha_name.partition("_pha2.fits")[0]
 
         # uses provided resp_dir to check for files. First check for ARF/RMF.fits and if not found then check compressed.
-        if resp_dir_par != None:  # use provided resp_dir_par
+        if resp_dir_par is not None:  # use provided resp_dir_par
             resp_list_par = glob.glob(
                 f"{resp_dir_par}/{pha_root}*{resp_type_par}*.fits"
             )
@@ -259,10 +259,6 @@ def match_resp_order(pha2_file_par, resp_list_par, resp_type_par):
             )
         elif len(match_resp) == 0:
             matched_resp_list_par[i] = "no match"
-        else:
-            raise ValueError(
-                f"ERROR - Something with wrong identifying {resp_type_par.upper()}s for TG_M={pha2_tg_m_arr[i]}, TG_PART={pha2_tg_part_arr[i]} and obsID={pha2_tg_obsid}"
-            )
 
     # report the files matched to the screen in a nice format so it is clear it worked or didn't work
     print(
@@ -299,13 +295,15 @@ def load_hetg_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_start=
     search for the responses in subdirectories where the PHA2 file is located using standard CIAO directory naming
     formats.
 
-    Example: load_hetg_pha2(pha2_file=16370/repro/acisf16370_repro_pha2.fits, dataset_id_start=1)
-             load_hetg_pha2(pha2_file=16371/repro/acisf16371_repro_pha2.fits, dataset_id_start=13)
+    Example
+    -------
+    >>> load_hetg_pha2(pha2_file="16370/repro/acisf16370_repro_pha2.fits", dataset_id_start=1)
+    >>> load_hetg_pha2("pha2_file=16371/repro/acisf16371_repro_pha2.fits", dataset_id_start=13)
 
     Parameters
     ----------
 
-    pha2_file : PHA2 fits file
+    pha2_file : str
          PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG observation or after
          running chandra_repro on a chandra HETG obsID.
     arf_dir: str
