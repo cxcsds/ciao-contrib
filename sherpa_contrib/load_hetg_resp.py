@@ -13,7 +13,7 @@ def find_resp_files(pha2_file, resp_type, resp_dir=None):
     ----------
 
     pha2_file : PHA2 fits file
-        PHA2 spectrum which is typically provided in the chandra archive of a downloaded /LETG observation or after
+        PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG/LETG observation or after
         running chandra_repro on a chandra HETG/LETG obsID.
     resp_type: 'arf' or 'rmf'
         The type of response files for matching to PHA spectra
@@ -306,7 +306,7 @@ def match_resp_order(pha2_file, resp_list, resp_type, verbose=False):
 
 def load_gratings_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_start=1, use_errors=False, verbose=False):
     """
-    Loads the PHA2 spectrum and responses into the sherpa session.
+    Loads the HETG/LETG PHA2 spectrum and responses into the sherpa session.
     
     This function loads an HETG/LETG PHA2 file and any associated ARF and RMF response files. If matching responses are
     found only for a subset of HETG/LETG orders (e.g., orders +1 and -1) then only those order's responses will be loaded.
