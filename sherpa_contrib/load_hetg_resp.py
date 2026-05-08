@@ -12,13 +12,13 @@ def find_resp_files(pha2_file, resp_type, resp_dir=None):
     Parameters
     ----------
 
-    pha2_file : PHA2 fits file
-        PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG/LETG observation or after
+    pha2_file : str
+        Path to a PHA2 fits file which is typically provided in the chandra archive of a downloaded HETG/LETG observation or after
         running chandra_repro on a chandra HETG/LETG obsID.
     resp_type: 'arf' or 'rmf'
         The type of response files for matching to PHA spectra
-    resp_dir: directory
-        The directory where the HETG/LETG response files associated with the PHA2 file are located. If none provided, it
+    resp_dir: str
+        The path to a directory where the HETG/LETG response files associated with the PHA2 file are located. If none provided, it
         will attempt to search for them.
 
     Returns
@@ -167,13 +167,13 @@ def match_resp_order(pha2_file, resp_list, resp_type, verbose=False):
     Parameters
     ----------
 
-    pha2_file : PHA2 fits file
-        PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG/LETG observation or after
+    pha2_file : str
+        Path to a PHA2 fits file which is typically provided in the chandra archive of a downloaded HETG/LETG observation or after
         running chandra_repro on a chandra HETG/LETG obsID.
     resp_type: 'arf' or 'rmf'
         The type of response files for matchign to PHA spectra
-    resp_dir: directory
-        The directory where the HETG/LETG response files associated with the PHA2 file are located. If none provided, it
+    resp_dir: str
+        The path to a directory where the HETG/LETG response files associated with the PHA2 file are located. If none provided, it
         will attempt to search for them.
     verbose: bool, optional
         If 'True' then the matched response files to each spectrum will be printed to the screen. The default is 'False'.
@@ -237,7 +237,7 @@ def match_resp_order(pha2_file, resp_list, resp_type, verbose=False):
                resp_pha2_tg_part_arr.append(3) #note LEG --> tg_part = 3
             else:
                 raise ValueError(
-                    f"ERROR-- Could not identify grating type and/or order. Please check load responses manually.")           
+                    f"ERROR-- Could not identify grating type and/or order. Please load responses manually.")           
         
         #identify the obsID
         try:
@@ -323,12 +323,12 @@ def load_gratings_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_st
     ----------
 
     pha2_file : str
-         PHA2 spectrum which is typically provided in the chandra archive of a downloaded HETG/LETG observation or after
+         Path to a PHA2 fits file which is typically provided in the chandra archive of a downloaded HETG/LETG observation or after
          running chandra_repro on a chandra HETG/LETG obsID.
     arf_dir: str
-        The directory that holds the arfs associated with the pha2_file
+        The path to a directory that holds the arfs associated with the pha2_file
     rmf_dir: str
-        The directory that holds the rmfs associated with the pha2_file
+        The path to a directory that holds the rmfs associated with the pha2_file
     dataset_id_start: int
         A sherpa dataset id into which PHA2 spectra will begin loading. A typical HETG/LETG PHA2 spectral file contains
         12 individual spectra so choosing a value 1 (default) will load dataset ids 1-12.
