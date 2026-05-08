@@ -13,7 +13,7 @@ def find_resp_files(pha2_file, resp_type, resp_dir=None):
     ----------
 
     pha2_file : str
-        Path to a PHA2 fits file which is typically provided in the chandra archive of a downloaded HETG/LETG observation or after
+        Path to a Chandra PHA2 fits file which is typically provided in the Chandra archive of a downloaded HETG/LETG observation or after
         running chandra_repro on a chandra HETG/LETG obsID.
     resp_type: 'arf' or 'rmf'
         The type of response files for matching to PHA spectra
@@ -160,7 +160,7 @@ def match_resp_order(pha2_file, resp_list, resp_type, verbose=False):
     """
     Matches each response to the appropriate spectrum.
 
-    This uses the PHA2 file structure and matches the input response file list/array (resp_list) to the appropriate
+    This uses the Chandra PHA2 file structure and matches the input response file list/array (resp_list) to the appropriate
     PHA2 spectrum using the header keywords tg_m, tg_part and obsid. This function is designed to take the output of
     find_resp_files() and put them in order of the PHA2 spectra.
 
@@ -171,7 +171,7 @@ def match_resp_order(pha2_file, resp_list, resp_type, verbose=False):
         Path to a PHA2 fits file which is typically provided in the chandra archive of a downloaded HETG/LETG observation or after
         running chandra_repro on a chandra HETG/LETG obsID.
     resp_type: 'arf' or 'rmf'
-        The type of response files for matchign to PHA spectra
+        The type of response files for matching to PHA spectra
     resp_dir: str
         The path to a directory where the HETG/LETG response files associated with the PHA2 file are located. If none provided, it
         will attempt to search for them.
@@ -308,7 +308,7 @@ def load_gratings_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_st
     """
     Loads the HETG/LETG PHA2 spectrum and responses into the sherpa session.
     
-    This function loads an HETG/LETG PHA2 file and any associated ARF and RMF response files. If matching responses are
+    This function loads a Chandra HETG/LETG PHA2 file and any associated ARF and RMF response files. If matching responses are
     found only for a subset of HETG/LETG orders (e.g., orders +1 and -1) then only those order's responses will be loaded.
     This works only for PHA2 files and not PHA files. If arf_dir or rmf_dir are not provided then this tool will
     search for the responses in subdirectories where the PHA2 file is located using standard CIAO directory naming
