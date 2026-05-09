@@ -56,6 +56,7 @@ class Source():
 
     color = "forestgreen"
     radius = 0.5/3600.  # 0.5 arcsec
+    tag = "Input"
 
     def __init__(self, crate, index):
         self.crate = crate
@@ -84,7 +85,14 @@ class Source():
 
         shape = f"circle({self.ra},{self.dec},{self.radius})"
         fill = 1 if self.include else 0
-        src = f"{shape} # fill={fill} color={self.color}\n"
+
+        state = "Unmatched"
+        if self.matched:
+            state = "Matched"
+            if fill:
+                state = "Used"
+
+        src = f"{shape} # text={{{self.index}}} fill={fill} color={self.color} tag={{{self.tag}}} tag={{{self.tag}_{state}}}\n"
         return src
 
     def link_cross_match(self, ref_src_list):
@@ -110,6 +118,7 @@ class ReferenceSource(Source):
     'Sub class for reference sources'
 
     color = "magenta"
+    tag = "Reference"
 
     def __init__(self, crate, index):
         'Use same init as src'
@@ -188,7 +197,7 @@ class Director():
         self.__fp.write('global color=green dashlist=8 3 width=2 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=0 move=0 delete=0 include=1 source=1\n')
         self.__fp.write("fk5\n")
 
-    def write(self, src, ref, lines):
+    def write_region(self, src, ref, lines):
         """ Function doc """
 
         with open(self.outfile, "w", encoding="ascii") as self.__fp:
@@ -196,6 +205,29 @@ class Director():
             self.__fp.write(lines)
             self.__fp.write(src)
             self.__fp.write(ref)
+
+    def write_legend(self, legend):
+        "Write fixed legend that can be loaded in illustrate mode"
+        with open(legend, "w", encoding="ascii") as fp:
+            fp.write('# Illustrate file format: DS9 version 1.0\n')
+            fp.write('global color = cyan fill = no width = 1 dash = no\n')
+            fp.write('global font = helvetica fontsize = 12 fontweight = normal fontslant = roman\n')
+            fp.write('circle 55.0 45.0 15.0  # color = forestgreen width = 2.0\n')
+            fp.write('circle 55.0 90.0 15.0  # color = magenta width = 2.0\n')
+            fp.write('circle 55.0 135.0 15.0  # color = forestgreen fill = yes width = 2.0\n')
+            fp.write('circle 55.0 180.0 15.0  # color = magenta fill = yes width = 2.0\n')
+            fp.write('circle 55.0 225.0 15.0  # color = forestgreen width = 2.0\n')
+            fp.write('circle 105.0 225.0 15.0  # color = magenta width = 2.0\n')
+            fp.write('circle 55.0 270.0 15.0  # color = forestgreen fill = yes width = 2.0\n')
+            fp.write('circle 105.0 270.0 15.0  # color = magenta fill = yes width = 2.0\n')
+            fp.write('text 157.0 45.0 "Unused Input Source" # color = white\n')
+            fp.write('text 176.0 90.0 "Unused Reference Source" # color = white\n')
+            fp.write('text 149.0 135.0 "Used Input Source" # color = white\n')
+            fp.write('text 170.0 180.0 "Used Reference Source" # color = white\n')
+            fp.write('text 177.0 225.0 "Unused match" # color = white\n')
+            fp.write('text 168.0 270.0 "Used match" # color = white\n')
+            fp.write('box 80.0 270.0 25.0 2.0  # color = white fill = yes\n')
+            fp.write('box 80.0 225.0 25.0 2.0  # color = white fill = yes\n')
 
 
 @lw.handle_ciao_errors(__toolname__, __revision__)
@@ -214,7 +246,8 @@ def main():
     src_reg, line_reg = src_obj.render(ref_obj)
     ref_reg, _ = ref_obj.render()
 
-    outfile.write(src_reg, ref_reg, line_reg)
+    outfile.write_region(src_reg, ref_reg, line_reg)
+    outfile.write_legend(pars["legend"])
 
 
 def test():
@@ -225,7 +258,7 @@ def test():
     goo = Director("foo.reg", True)
     ss, ll = foo.render(ref)
     rr, _ = ref.render()
-    goo.write(ss, rr, ll)
+    goo.write_region(ss, rr, ll)
 
 
 if __name__ == '__main__':

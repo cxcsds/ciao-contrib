@@ -278,8 +278,13 @@ def cross_match(ref_srclist, refevt, srclists, obis, outroot):
         wcs_match.radius = 4
         wcs_match.method = "trans"
         wcs_match.verbose = 1
+        wcs_match.logfile = f"{outroot}_{obi}.log"
         try:
             vv = wcs_match(clobber=True)
+            verb2(vv)
+            with open(wcs_match.logfile, "r", encoding="ascii") as fp:
+                vv = fp.read()
+
         except IOError as failed:
             ss = str(failed)
             if 'Cannot find at least 1 source match' in ss:
@@ -290,6 +295,23 @@ def cross_match(ref_srclist, refevt, srclists, obis, outroot):
                 raise failed
 
         summarize_xmatch(vv, src, wcs_match.refsrcfile, wcs_match.outfile)
+
+        log_parse = make_tool("parse_wcs_match_log")
+        log_parse.infile = wcs_match.infile
+        log_parse.refsrcfile = wcs_match.refsrcfile
+        log_parse.logfile = wcs_match.logfile
+        log_parse.outfile = f"{outroot}_{obi}.tbl"
+        vv = log_parse(clobber=True)
+        verb2(vv)
+
+        xmatch_viz = make_tool("xmatch_viz")
+        xmatch_viz.infile = log_parse.outfile
+        xmatch_viz.refsrcfile = log_parse.refsrcfile
+        xmatch_viz.outfile = f"{outroot}_{obi}.reg"
+        xmatch_viz.legend = f"{outroot}_{obi}.seg"
+        vv = xmatch_viz(clobber=True)
+        verb2(vv)
+
         xmatches.append(wcs_match.outfile)
 
     return xmatches

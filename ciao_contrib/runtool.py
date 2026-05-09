@@ -3901,7 +3901,7 @@ parinfo['ximage_lut'] = {
 
 parinfo['xmatch_viz'] = {
     'istool': True,
-    'req': [ParValue("infile","f","Input crossmatch table",None),ParValue("refsrcfile","f","Input reference source list",None),ParValue("outfile","f","Output region file name",None)],
+    'req': [ParValue("infile","f","Input crossmatch table",None),ParValue("refsrcfile","f","Input reference source list",None),ParValue("outfile","f","Output region file name",None),ParValue("legend","f","Output legend illustration",None)],
     'opt': [ParValue("clobber","b","Overwrite existing output dataset with same name?",False),ParRange("verbose","i","Tool verbosity",1,0,5)],
     }
 

@@ -121,11 +121,12 @@ class ParseWcsMatchVerbosity():
             self.ra_err = [nan] * self.nvals
             self.dec_err = [nan] * self.nvals
 
-    def write_output(self, outfile, clobber):
+    def write_output(self, pars):
         'Write output'
 
         from crates_contrib.utils import add_colvals
         from pycrates import set_key, TABLECrate
+        from ciao_contrib.runtool import add_tool_history
 
         cr = TABLECrate()
 
@@ -224,7 +225,9 @@ class ParseWcsMatchVerbosity():
         add_colvals(cr, "INCLUDE", self.include, unit=None,
                     desc="Source included in final transform solution")
 
-        cr.write(outfile, clobber=clobber)
+        cr.write(pars["outfile"], clobber=pars["clobber"])
+        add_tool_history(pars["outfile"], __toolname__,
+                         pars, toolversion=__revision__)
 
     @staticmethod
     def parse_line(verbose_line):
@@ -348,7 +351,7 @@ def main():
     verbose = open(pars["logfile"], encoding="ascii").read()
     remaining_lines = xform_tab.parse_xmatch_table(verbose, ref)
     xform_tab.parse_summary_stats(remaining_lines)
-    xform_tab.write_output(pars["outfile"], pars["clobber"])
+    xform_tab.write_output(pars)
 
 
 if __name__ == '__main__':
