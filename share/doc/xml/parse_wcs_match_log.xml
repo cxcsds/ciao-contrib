@@ -1,0 +1,139 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="parse_wcs_match_log"
+         context="Tools::Coordinates"
+         refkeywords="wcs_match wcs match residuals statistics log parse transformation"
+         seealsogroups="reproject">
+    <SYNOPSIS>Parse the output from the wcs_match tool</SYNOPSIS>
+    <DESC>
+      <PARA>
+        'parse_wcs_match_log' is a utility script designed to extract and structure data from the verbose output of the 'wcs_match' tool. While 'wcs_match' computes the transformation between two source lists, much of the diagnostic information—such as individual source residuals and aggregate statistics—is typically only available in the tool's verbose log output.
+      </PARA>
+      <PARA>
+        This tool parses that log file and creates a FITS binary table containing the cross-match results. The output includes source positions from both the input and reference lists, the residuals (X, Y, and RSS) before and after the transformation was applied, the residual ratios, and a flag indicating whether each source was included in the final transformation solution. Additionally, summary statistics (Average, Maximum, and RMS residuals) are recorded as header keywords in the output file.
+      </PARA>
+    </DESC>
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+              parse_wcs_match_log infile="src.fits" refsrcfile="ref.fits" logfile="wcs_match.log" outfile="match_stats.fits"
+          </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+            In this example, the user provides the original source list (infile), the reference list (refsrcfile), and the log file captured from a previous 'wcs_match' run (logfile). The tool parses the log and saves the structured results into 'match_stats.fits'.
+          </PARA>
+        </DESC>
+      </QEXAMPLE>
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>Input file with duplicate/source candidates</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The source list that was used as the 'infile' for the 'wcs_match' tool. This file is used to retrieve the original RA and Dec coordinates for the sources.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="refsrcfile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>Input file with reference sources</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The reference source list that was used as the 'refsrcfile' for the 'wcs_match' tool. This is used to retrieve the reference coordinates (RA_REF, DEC_REF) for the matched pairs.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="logfile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>wcs_match debug log file</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The ASCII log file containing the verbose output from the 'wcs_match' tool. This log must contain the "Source Residuals" table and summary statistics blocks produced when 'wcs_match' is run with verbose=1.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+        <SYNOPSIS>Output cross match table file name</SYNOPSIS>
+        <DESC>
+          <PARA>
+            The name of the output FITS binary table to be created.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>Overwrite existing files?</SYNOPSIS>
+        <DESC>
+          <PARA>
+            If set to "yes", an existing file with the same name as 'outfile' will be overwritten.
+          </PARA>
+        </DESC>
+      </PARAM>
+
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+        <SYNOPSIS>Output verbosity.</SYNOPSIS>
+        <DESC>
+          <PARA>
+            Controls the amount of information printed to the screen during execution.
+          </PARA>
+        </DESC>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Output Table Columns">
+      <PARA>
+        The output FITS table contains the following columns for each matched source:
+      </PARA>
+      <LIST>
+        <ITEM>SRC_INDEX: The row number of the source in the input 'infile'.</ITEM>
+        <ITEM>RA, DEC: The coordinates of the source from the 'infile'.</ITEM>
+        <ITEM>REF_INDEX: The row number of the matching source in the 'refsrcfile'.</ITEM>
+        <ITEM>RA_REF, DEC_REF: The coordinates of the matching reference source.</ITEM>
+        <ITEM>PRIOR_RESIDUAL_RSS: The Root-Sum-Square (RSS) residual before the transformation (arcsec).</ITEM>
+        <ITEM>PRIOR_RESIDUAL_X, PRIOR_RESIDUAL_Y: The X and Y components of the pre-transformation residual.</ITEM>
+        <ITEM>XFORM_RESIDUAL_RSS: The RSS residual after applying the transformation (arcsec).</ITEM>
+        <ITEM>XFORM_RESIDUAL_X, XFORM_RESIDUAL_Y: The X and Y components of the post-transformation residual.</ITEM>
+        <ITEM>RESIDUAL_RATIO: The ratio of the residuals before and after the transformation.</ITEM>
+        <ITEM>INCLUDE: A boolean flag indicating if the source pair was included in the final astrometric solution.</ITEM>
+      </LIST>
+    </ADESC>
+
+    <ADESC title="Summary Statistics Keywords">
+      <PARA>
+        Summary statistics are added as keywords to the FITS header of the output file. These include:
+      </PARA>
+      <LIST>
+        <ITEM>AVG_R_B / AVG_R_A: Average residuals before and after the transformation.</ITEM>
+        <ITEM>RMS_R_B / RMS_R_A: RMS residuals before and after the transformation.</ITEM>
+        <ITEM>MAX_R_B / MAX_R_A: Maximum residuals before and after the transformation.</ITEM>
+        <ITEM>AVG_F_R: Fractional improvement in average residuals.</ITEM>
+      </LIST>
+    </ADESC>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+
+
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/parse_wcs_match_log.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>May 2026</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

@@ -1,0 +1,108 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="xmatch_viz"
+         context="Tools::Coordinates"
+         refkeywords="wcs match visualize region ds9 crossmatch wcs_match"
+         seealsogroups="reproject">
+    <SYNOPSIS>Create a region file to visualize cross match results</SYNOPSIS>
+    <DESC>
+      <PARA>
+        'xmatch_viz' creates a DS9 region file to help users visually inspect
+        astrometric cross-match results.
+      </PARA>
+      <PARA>
+        In the resulting output region file:
+        Input sources are colored green (forestgreen) and reference sources
+        are colored magenta. A line is drawn between matching pairs to
+        show the astrometric shift. Sources included in the final transformation
+        solution are shown as filled circles, while unused sources are
+        hollow circles.
+      </PARA>
+      <PARA>
+        The tool also generates a legend in the format of a DS9 illustrate mode save file
+        that can be loaded into DS9 to identify the different symbols used in the visualization.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+        <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+$ wcs_match infile=src.fits refsrc=ref_src.fits wcsfile=acis.img outfile=out.xform logfile=out.log verbose=1 clob+
+          </LINE>
+
+          <LINE>
+$ parse_wcs_match_log infile=src.fits refsrc=ref_src.fits logfile=out.log outfile=out.stats
+          </LINE>
+
+          <LINE>
+$ xmatch_viz infile=out.stats refsrc=ref_src.fits outfile=ds9.reg legend=ds9.seg
+          </LINE>
+
+          <LINE>
+$ ds9 acis.img -region format ds9 -region ds9.reg -illustrate load ds9.seg
+          </LINE>
+
+        </SYNTAX>
+        <DESC>
+          <PARA>
+    This example shows the 4 commands to run wcs_match, parse the log output,
+    generate the crossmatch regions, and display the results.
+          </PARA>
+        </DESC>
+        </QEXAMPLE>
+    </QEXAMPLELIST>
+
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>Input crossmatch table</SYNOPSIS>
+        <DESC>
+          <PARA>The table containing match results (e.g., from parse_wcs_match_log).</PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="refsrcfile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>Input reference source list</SYNOPSIS>
+      </PARAM>
+      <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+        <SYNOPSIS>Output DS9 region file name</SYNOPSIS>
+      </PARAM>
+      <PARAM name="legend" type="file" filetype="output" reqd="yes">
+        <SYNOPSIS>Output legend illustration</SYNOPSIS>
+        <DESC>
+            <PARA>
+                The legend file is a DS9 illustrate mode save file.
+                It must be loaded using the
+            <SYNTAX><LINE>-illustrate load&#160;</LINE></SYNTAX>  command.
+            </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>Overwrite existing files?</SYNOPSIS>
+      </PARAM>
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+        <SYNOPSIS>Tool verbosity.</SYNOPSIS>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/xmatch_viz.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>May 2026</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
