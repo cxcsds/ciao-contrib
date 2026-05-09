@@ -59,6 +59,29 @@ class Source():
     tag = "Input"
 
     def __init__(self, crate, index):
+        """
+        Initialize a Source object with the given crate and index.
+
+        Parameters
+        ----------
+        crate : pycrates.Crate
+            The crate object containing source data
+        index : int
+            The row index (1-based) of the source in the crate
+
+        Attributes
+        ----------
+        ra : float
+            Right ascension of the source
+        dec : float
+            Declination of the source
+        matched : bool
+            Whether the source has been matched (ref_index > 0)
+        include : bool
+            Whether the source is included in the analysis
+        ref_index : int
+            Reference index for matched sources (-999 if unmatched)
+        """
         self.crate = crate
         self.index = index
 
@@ -70,8 +93,11 @@ class Source():
         self.load()
 
     def load(self):
-        'Load data from row in crate'
+        """Load data from row in crate.
 
+        Populates source attributes (ra, dec, include, ref_index, matched)
+        by reading the corresponding row from the crate table.
+        """
         _idx = self.index - 1  # row number to python array index
 
         self.ra = self.crate.get_column("RA").values[_idx]
@@ -81,7 +107,12 @@ class Source():
         self.matched = self.ref_index > 0
 
     def render(self):
-        'Create region'
+        """Create a region string for the source.
+
+        Returns a formatted region description for the source with a circle
+        shape at the source coordinates, the fill state based on inclusion,
+        and tags indicating the source type and match state.
+        """
 
         shape = f"circle({self.ra},{self.dec},{self.radius})"
         fill = 1 if self.include else 0
@@ -96,7 +127,25 @@ class Source():
         return src
 
     def link_cross_match(self, ref_src_list):
-        'Link source to reference source'
+        """Create a line linking this source to its matched reference source.
+
+        If this source has a valid reference index, construct a line region
+        string between the source and the corresponding reference source.
+        Also mark the referenced source as matched and propagate the inclusion
+        state.
+
+        Parameters
+        ----------
+        ref_src_list : ReferenceSourceList
+            The list of reference sources containing the matched source.
+
+        Returns
+        -------
+        str
+            A region string describing the line between the source and the
+            matched reference source, or an empty string if there is no
+            match.
+        """
 
         ref_idx = self.ref_index-1
         line = ""
@@ -121,11 +170,16 @@ class ReferenceSource(Source):
     tag = "Reference"
 
     def __init__(self, crate, index):
-        'Use same init as src'
+        """Initialize a ReferenceSource using the given crate and source index."""
         super().__init__(crate, index)
 
     def load(self):
-        'Only load ra/dec from the ref src list'
+        """Load only the right ascension and declination for this reference source.
+
+        The reference source is represented by a crate and an index. This method
+        reads the RA and DEC columns from the crate and stores the values on the
+        instance.
+        """
         _idx = self.index - 1
         self.ra = self.crate.get_column("RA").values[_idx]
         self.dec = self.crate.get_column("DEC").values[_idx]
@@ -140,21 +194,39 @@ class SourceList():
     'a list of sources'
 
     def __init__(self, infile):
-        'Init stuff'
+        """Initialize a SourceList with the given input file.
+
+        Args:
+            infile: Path to the input file containing source data.
+        """
         self.infile = infile
         self.num_src = 0
         self.srcs = []
         self.load()
 
     def load(self):
-        'Load the table'
+        """Load the table from the input file and populate sources.
+
+        Reads the source data from the input file, determines the number of
+        sources, and creates Source objects for each row in the table.
+        """
         tab = read_file(self.infile)
         self.num_src = tab.get_nrows()
         for idx in range(self.num_src):
             self.srcs.append(Source(tab, idx+1))
 
     def render(self, ref_src_list=None):
-        'Create regions'
+        """Create regions for all sources and generate cross-match links.
+
+        Args:
+            ref_src_list: Optional reference source list for cross-matching.
+                         Defaults to None.
+
+        Returns:
+            tuple: A tuple containing:
+                - out_src (str): Concatenated region output from all sources.
+                - out_line (str): Concatenated cross-match link output from all sources.
+        """
         out_src = ""
         out_line = ""
         for src in self.srcs:
@@ -168,11 +240,20 @@ class ReferenceSourceList(SourceList):
     'List of references sources'
 
     def __init__(self, infile):
-        'Call SourceList init'
+        """Initialize a ReferenceSourceList.
+
+        Args:
+            infile (str): Path to the input file containing reference sources.
+        """
         super().__init__(infile)
 
     def load(self):
-        'Load just ra/dec for ref src list'
+        """Load reference sources from input file.
+
+        Reads the input file and loads reference sources containing only
+        their RA/DEC coordinates. Populates the srcs list with ReferenceSource
+        objects and sets the total number of sources.
+        """
         tab = read_file(self.infile)
         self.num_src = tab.get_nrows()
         for idx in range(self.num_src):
@@ -183,7 +264,12 @@ class Director():
     'Write to output file'
 
     def __init__(self, outfile, clobber):
-        'Get ready for output'
+        """Initialize a Director for writing output files.
+
+        Args:
+            outfile (str): Path to the output file.
+            clobber (bool): Whether to overwrite existing files.
+        """
 
         from ciao_contrib._tools.fileio import outfile_clobber_checks
         self.outfile = outfile
@@ -191,14 +277,24 @@ class Director():
         outfile_clobber_checks(clobber, self.outfile)
 
     def __write_header(self):
-        'Write DS9 header info'
+        """Write DS9 region file header information.
+
+        Writes the DS9 version header, global region properties (color, line style,
+        font, etc.), and coordinate frame specification (FK5) to the output file.
+        """
 
         self.__fp.write("# Region file format: DS9 version 4.1\n")
         self.__fp.write('global color=green dashlist=8 3 width=2 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=0 move=0 delete=0 include=1 source=1\n')
         self.__fp.write("fk5\n")
 
     def write_region(self, src, ref, lines):
-        """ Function doc """
+        """Write a DS9 region file with the specified regions and lines.
+
+        Args:
+            src (str): String containing source regions to write.
+            ref (str): String containing reference regions to write.
+            lines (str): Additional lines to include in the region file.
+        """
 
         with open(self.outfile, "w", encoding="ascii") as self.__fp:
             self.__write_header()
@@ -207,7 +303,14 @@ class Director():
             self.__fp.write(ref)
 
     def write_legend(self, legend):
-        "Write fixed legend that can be loaded in illustrate mode"
+        """Write a fixed DS9 illustrate-mode legend file.
+
+        Parameters:
+            legend (str): Path to the output legend file.
+
+        The legend file contains a fixed set of DS9 shapes and labels
+        illustrating the meaning of the various source and match symbols.
+        """
         with open(legend, "w", encoding="ascii") as fp:
             fp.write('# Illustrate file format: DS9 version 1.0\n')
             fp.write('global color = cyan fill = no width = 1 dash = no\n')

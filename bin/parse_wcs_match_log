@@ -78,7 +78,17 @@ class ParseWcsMatchVerbosity():
     """
 
     def __init__(self, infile):
-        'Setup output columns'
+        """Initialize the parser with input file and set up output columns.
+
+        Initializes all data storage lists for source residuals, reference
+        coordinates, and transformation metrics. Loads the input file and
+        populates the data structures with parsed values.
+
+        Parameters
+        ----------
+        infile : str
+            Path to the wcs_match verbose output log file to parse.
+        """
 
         self.infile = infile
         self.ra = None
@@ -105,7 +115,14 @@ class ParseWcsMatchVerbosity():
         self.include = [False] * self.nvals
 
     def _load_infile(self):
-        'Load data from input file'
+        """Load input table data and initialize member arrays.
+
+        Reads the input file into an internal table object, extracts the
+        right ascension and declination columns, and records the number of
+        rows. It also initializes the source index list and loads the
+        positional uncertainty columns ra_err and dec_err if they exist.
+        Otherwise, the error arrays are filled with NaN values.
+        """
 
         self.__tab = read_file(self.infile)
 
@@ -122,7 +139,17 @@ class ParseWcsMatchVerbosity():
             self.dec_err = [nan] * self.nvals
 
     def write_output(self, pars):
-        'Write output'
+        """Write crossmatch results to output file.
+
+        Creates a FITS table with all crossmatch data including source positions,
+        reference positions, residuals before and after transformation, residual
+        ratios, and inclusion flags. Also adds summary statistics as keywords.
+
+        Args:
+            pars (dict): Parameter dictionary containing:
+                - outfile: Output file path
+                - clobber: Boolean to overwrite existing file
+        """
 
         from crates_contrib.utils import add_colvals
         from pycrates import set_key, TABLECrate
@@ -231,7 +258,37 @@ class ParseWcsMatchVerbosity():
 
     @staticmethod
     def parse_line(verbose_line):
-        'Parse the x-match table in the verbose output'
+        """
+        Parse a line from the cross-match table in the verbose output.
+
+        This method uses a regular expression to extract various fields from a
+        line of the cross-match table, including match numbers, reference and
+        input numbers, coordinates, residuals, and inclusion status.
+
+        Parameters
+        ----------
+        verbose_line : str
+            A string representing a line from the verbose output log file.
+
+        Returns
+        -------
+        dict or None
+            A dictionary containing the parsed fields if the line matches the
+            expected pattern, otherwise None. The dictionary keys include:
+            - match_num: Match number (int)
+            - ref_num: Reference number (int)
+            - input_num: Input number (int)
+            - ra_ref: Reference RA (float)
+            - dec_ref: Reference Dec (float)
+            - prior_resid_rss: Prior residual RSS (float)
+            - prior_resid_x: Prior residual X (float)
+            - prior_resid_y: Prior residual Y (float)
+            - xform_resid_rss: Transform residual RSS (float)
+            - xform_resid_x: Transform residual X (float)
+            - xform_resid_y: Transform residual Y (float)
+            - resid_ratio: Residual ratio (float)
+            - include: Inclusion status (str)
+        """
 
         # Regular expression created with Gemini
         # Using Named Groups for readability
@@ -263,7 +320,21 @@ class ParseWcsMatchVerbosity():
         return data
 
     def parse_xmatch_table(self, logfile, ref_file):
-        'Locate and parse the crossmatch table in the verbose'
+        """
+        Locate and parse the crossmatch table in the verbose log output.
+
+        This method finds the last 'Source Residuals' block in the logfile,
+        parses the crossmatch table lines, and populates the object's attributes
+        with reference coordinates, residuals, and other data from the ref_file.
+
+        Args:
+            logfile (str): The full log output as a string.
+            ref_file: An object with methods get_column and column_exists,
+                      likely a FITS file or similar, containing reference data.
+
+        Returns:
+            list: The remaining log lines after the parsed crossmatch table.
+        """
 
         log_lines = logfile.split("\n")
 
@@ -301,7 +372,19 @@ class ParseWcsMatchVerbosity():
         return log_lines[last_info_block_start+__gap__+num_matches:]
 
     def parse_summary_stats(self, lines):
-        'Locate and parse the summary statistics'
+        """Locate and parse the summary statistics block.
+
+        Parameters
+        ----------
+        lines : list of str
+            The lines from a WCS match log file to search for summary statistic
+            entries.
+
+        Side effects
+        ------------
+        Updates the object's keys dictionary with parsed summary statistic values
+        for average, maximum, and RMS residuals and residual ratios.
+        """
 
         self.split_stats_line(lines, 'Average Residuals:', 'avg_resid')
         self.split_stats_line(lines, 'Maximum Residuals:', 'max_resid')
@@ -312,8 +395,25 @@ class ParseWcsMatchVerbosity():
         self.split_stats_line(lines, 'RMS Ratios:', 'rms_resid_ratio')
 
     def split_stats_line(self, lines, str2look4, attname):
-        """Parse lines that look like:
-            Average Residual Ratios:   48.269081   5.973321   87.62%
+        """Parse a statistics line from the WCS match log.
+
+        Searches for a line starting with str2look4, extracts three values
+        (before, after, percentage), and stores them in self.keys with the
+        given attname prefix. Handles NaN values by converting to string.
+
+        Parameters
+        ----------
+        lines : list of str
+            The lines from the log file to search.
+        str2look4 : str
+            The string that the target line starts with.
+        attname : str
+            The prefix for the keys in self.keys (e.g., 'avg_resid').
+
+        Side effects
+        ------------
+        Updates self.keys with attname+"_before", attname+"_after", and
+        attname+"_perc" keys.
         """
 
         line = [x for x in lines if x.strip().startswith(str2look4)]
