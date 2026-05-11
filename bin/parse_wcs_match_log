@@ -113,6 +113,7 @@ class ParseWcsMatchVerbosity():
         self.resid_ratio = [nan] * self.nvals
         self.keys = {}
         self.include = [False] * self.nvals
+        self.multi_match_warning = True
 
     def _load_infile(self):
         """Load input table data and initialize member arrays.
@@ -126,14 +127,14 @@ class ParseWcsMatchVerbosity():
 
         self.__tab = read_file(self.infile)
 
-        self.ra = self.__tab.get_column("ra").values.copy()
-        self.dec = self.__tab.get_column("dec").values.copy()
+        self.ra = list(self.__tab.get_column("ra").values)
+        self.dec = list(self.__tab.get_column("dec").values)
         self.nvals = self.__tab.get_nrows()
 
         self.src_idx = list(range(self.nvals))
         if self.__tab.column_exists("ra_err") and self.__tab.column_exists("dec_err"):
-            self.ra_err = self.__tab.get_column("ra_err").values.copy()
-            self.dec_err = self.__tab.get_column("dec_err").values.copy()
+            self.ra_err = list(self.__tab.get_column("ra_err").values)
+            self.dec_err = list(self.__tab.get_column("dec_err").values)
         else:
             self.ra_err = [nan] * self.nvals
             self.dec_err = [nan] * self.nvals
@@ -348,28 +349,109 @@ class ParseWcsMatchVerbosity():
         while vals := self.parse_line(log_lines[last_info_block_start+__gap__+num_matches]):
             num_matches += 1
 
+            # If index already has value then we are in a mutli-match
+            # case. Need to append a new row to src list
             idx = int(vals['input_num'])
-
-            assert idx == self.src_idx[idx], f"Mismatch source numbers {idx} {self.src_idx[idx]}"
-
-            self.ref_idx[idx] = int(vals['ref_num'])
-            self.ra_ref[idx] = ref_file.get_column("ra").values[self.ref_idx[idx]]
-            self.dec_ref[idx] = ref_file.get_column("dec").values[self.ref_idx[idx]]
-
-            if ref_file.column_exists("ra_err") and ref_file.column_exists("dec_err"):
-                self.ra_ref_err[idx] = ref_file.get_column("ra_err").values[self.ref_idx[idx]]
-                self.dec_ref_err[idx] = ref_file.get_column("dec_err").values[self.ref_idx[idx]]
-
-            self.prior_resid_rss[idx] = float(vals['prior_resid_rss'])
-            self.prior_resid_x[idx] = float(vals['prior_resid_x'])
-            self.prior_resid_y[idx] = float(vals['prior_resid_y'])
-            self.xform_resid_rss[idx] = float(vals['xform_resid_rss'])
-            self.xform_resid_x[idx] = float(vals['xform_resid_x'])
-            self.xform_resid_y[idx] = float(vals['xform_resid_y'])
-            self.resid_ratio[idx] = float(vals['resid_ratio'])
-            self.include[idx] = vals['include'] == 'Y'
+            if self.ref_idx[idx] < 0:
+                self.update(vals, ref_file)
+            else:
+                self.append(vals, ref_file)
 
         return log_lines[last_info_block_start+__gap__+num_matches:]
+
+    def update(self, vals, ref_file):
+        """
+        Update output list values in-place based on source index.
+
+        Parameters
+        ----------
+        vals : dict
+            Dictionary containing 'input_num' (the list index to update),
+            'ref_num' (the catalog reference index), and updated residual
+            and inclusion data.
+        ref_file : object
+            Reference file handler used to fetch RA/Dec and error values.
+
+        Raises
+        ------
+        AssertionError
+            Raised if the source index at the target position does not match
+            the 'input_num' provided in the vals dictionary.
+
+        Notes
+        -----
+        Unlike `append()`, this method requires that the lists have already
+        been initialized to a sufficient length. It performs an in-place
+        assignment using the index derived from 'input_num'.
+        """
+
+        idx = int(vals['input_num'])
+        assert idx == self.src_idx[idx], f"Mismatch source numbers {idx} {self.src_idx[idx]}"
+
+        self.ref_idx[idx] = int(vals['ref_num'])
+        self.ra_ref[idx] = ref_file.get_column("ra").values[self.ref_idx[idx]]
+        self.dec_ref[idx] = ref_file.get_column("dec").values[self.ref_idx[idx]]
+
+        if ref_file.column_exists("ra_err") and ref_file.column_exists("dec_err"):
+            self.ra_ref_err[idx] = ref_file.get_column("ra_err").values[self.ref_idx[idx]]
+            self.dec_ref_err[idx] = ref_file.get_column("dec_err").values[self.ref_idx[idx]]
+
+        self.prior_resid_rss[idx] = float(vals['prior_resid_rss'])
+        self.prior_resid_x[idx] = float(vals['prior_resid_x'])
+        self.prior_resid_y[idx] = float(vals['prior_resid_y'])
+        self.xform_resid_rss[idx] = float(vals['xform_resid_rss'])
+        self.xform_resid_x[idx] = float(vals['xform_resid_x'])
+        self.xform_resid_y[idx] = float(vals['xform_resid_y'])
+        self.resid_ratio[idx] = float(vals['resid_ratio'])
+        self.include[idx] = vals['include'] == 'Y'
+
+    def append(self, vals, ref_file):
+        """
+        Append values to internal coordinate and residual lists.
+
+        Parameters
+        ----------
+        vals : dict
+            Collection of input parameters containing 'input_num', 'ref_num',
+            various residual values (RSS, X, Y), and the 'include' status.
+        ref_file : object
+            Reference catalog object used to retrieve RA/Dec coordinates and
+            optional error values via `get_column` calls.
+
+        Notes
+        -----
+        The method converts 'input_num' and 'ref_num' to integers and various
+        residual metrics to floats. The 'include' flag is converted to a boolean
+        based on the string value 'Y'.
+        """
+
+        if self.multi_match_warning is True:
+            self.multi_match_warning = False
+            verb0("Warning: multiple matches found. Duplicated sources will be found at the end of the output table.")
+
+        idx = int(vals['input_num'])
+        self.ra.append(self.ra[idx])
+        self.dec.append(self.dec[idx])
+        self.ra_err.append(self.ra_err[idx])
+        self.dec_err.append(self.dec_err[idx])
+        self.src_idx.append(idx)
+
+        self.ref_idx.append(int(vals['ref_num']))
+        self.ra_ref.append(ref_file.get_column("ra").values[self.ref_idx[idx]])
+        self.dec_ref.append(ref_file.get_column("dec").values[self.ref_idx[idx]])
+
+        if ref_file.column_exists("ra_err") and ref_file.column_exists("dec_err"):
+            self.ra_ref_err.append(ref_file.get_column("ra_err").values[self.ref_idx[idx]])
+            self.dec_ref_err.append(ref_file.get_column("dec_err").values[self.ref_idx[idx]])
+
+        self.prior_resid_rss.append(float(vals['prior_resid_rss']))
+        self.prior_resid_x.append(float(vals['prior_resid_x']))
+        self.prior_resid_y.append(float(vals['prior_resid_y']))
+        self.xform_resid_rss.append(float(vals['xform_resid_rss']))
+        self.xform_resid_x.append(float(vals['xform_resid_x']))
+        self.xform_resid_y.append(float(vals['xform_resid_y']))
+        self.resid_ratio.append(float(vals['resid_ratio']))
+        self.include.append(vals['include'] == 'Y')
 
     def parse_summary_stats(self, lines):
         """Locate and parse the summary statistics block.
@@ -448,7 +530,8 @@ def main():
 
     xform_tab = ParseWcsMatchVerbosity(pars["infile"])
     ref = read_file(pars["refsrcfile"])
-    verbose = open(pars["logfile"], encoding="ascii").read()
+    with open(pars["logfile"], encoding="ascii") as fp:
+        verbose = fp.read()
     remaining_lines = xform_tab.parse_xmatch_table(verbose, ref)
     xform_tab.parse_summary_stats(remaining_lines)
     xform_tab.write_output(pars)
