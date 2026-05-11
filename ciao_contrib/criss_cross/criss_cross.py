@@ -1471,7 +1471,7 @@ def arm_confuse_wave(
         # Step 3: Arms where the masking area only covers very short or very long wanvelengths
         # are not really confused because the user would likely ignore those wavelengths anyway.
         far_out_confused = (wav_high < cutoff[arm][0]) | (
-            wav_low > cutoff[arm][1] / m1[None, :, None]
+            wav_low > cutoff[arm][1] / np.abs(m1[None, :, None])
         )
         flag[confusion & far_out_confused] += flags_arm[
             "outside_primary_source_wave_coverage"
@@ -1479,7 +1479,7 @@ def arm_confuse_wave(
         confusion &= ~far_out_confused
         # We are not sclaing the inner edge, since that's more about the max energy
         # that the CCD can detect, so we don't have to repeat the "< cutoff[arm][0]" test.
-        far_out_confused = wav_low > cutoff[arm][1] / m2[None, None, :]
+        far_out_confused = wav_low > cutoff[arm][1] / np.abs(m2[None, None, :])
         flag[confusion & far_out_confused] += flags_arm[
             "outside_confuser_source_wave_coverage"
         ]
