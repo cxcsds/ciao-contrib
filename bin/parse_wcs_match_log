@@ -516,6 +516,17 @@ class ParseWcsMatchVerbosity():
                 self.keys[attname+suffix] = 'NaN'
 
 
+def read_logfile(logfile):
+    'Read log file. If "-" or "stdin" then read from stdin'
+
+    if logfile.lower() in ['-', 'stdin']:
+        verbose = sys.stdin.read()
+    else:
+        with open(logfile, encoding="ascii") as fp:
+            verbose = fp.read()
+    return verbose
+
+
 @lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
     'Main routine'
@@ -530,8 +541,7 @@ def main():
 
     xform_tab = ParseWcsMatchVerbosity(pars["infile"])
     ref = read_file(pars["refsrcfile"])
-    with open(pars["logfile"], encoding="ascii") as fp:
-        verbose = fp.read()
+    verbose = read_logfile(pars["logfile"])
     remaining_lines = xform_tab.parse_xmatch_table(verbose, ref)
     xform_tab.parse_summary_stats(remaining_lines)
     xform_tab.write_output(pars)
