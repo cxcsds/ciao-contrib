@@ -65,6 +65,7 @@ flags_arm_levels = flags_spec_levels
 flags = {
     "spec": (flags_spec, flags_spec_levels),
     "pnt": (flags_pnt, flags_pnt_levels),
+    "strk": (flags_pnt, flags_pnt_levels),
     "arm": (flags_arm, flags_arm_levels),
 }
 
@@ -1176,6 +1177,8 @@ def pntsrc_confuse_wave(
     elif mode == "streak":
         # Confuser is not so close that it would be counted as point source confusion
         confusion &= distance2line >= off_axis_limit
+        # confusion is less than 1024 so it *could* be on the same chip
+        confusion &= distance2line < 1024
         # Confuser is on a chip (list of sources could include sources where the 0th
         # order is not on a CCD)
         confusion &= on_chip(sources["chipx"], sources["chipy"])[None, :]
@@ -1578,6 +1581,7 @@ def streak_confuse_wave(
     subset_sources,
     intersect_info,
     arm,
+    max_pntsrc_dist,
     min_spec_counts,
     min_pntsrc_counts,
     cutoff,
@@ -1597,7 +1601,7 @@ def streak_confuse_wave(
 
     Parameters
     ----------
-    sources, subset_sources, intersect_info, arm, min_spec_counts, min_pntsrc_counts, cutoff,
+    sources, subset_sources, intersect_info, arm, max_pntsrc_dist, min_spec_counts, min_pntsrc_counts, cutoff,
     osip, skyconverter, evtcrates, logfile_par, evt_frac_thresh : see `pntsrc_confuse_wave()``
         These parameters are passed to `pntsrc_confuse_wave()` with a scaling to account for the
         relative fraction of the exposure spend in out-of-time events that cross a dispersed spectrum.
@@ -1621,7 +1625,7 @@ def streak_confuse_wave(
         subset_sources=subset_sources,
         intersect_info=intersect_info,
         arm=arm,
-        max_pntsrc_dist=1024,  # limit is based on CCD ID not distance in this mode.
+        max_pntsrc_dist=max_pntsrc_dist,
         min_spec_counts=min_spec_counts,
         min_pntsrc_counts=min_pntsrc_counts / frac_outoftime,
         cutoff=cutoff,
@@ -2793,6 +2797,7 @@ def run_crisscross(
                     subset_sources=subset_list,
                     intersect_info=intersect_info,
                     arm=arm,
+                    max_pntsrc_dist=max_pntsrc_dist,
                     min_spec_counts=min_spec_counts,
                     min_pntsrc_counts=min_pntsrc_counts,
                     cutoff=cutoff,
