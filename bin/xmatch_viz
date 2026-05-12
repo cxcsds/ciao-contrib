@@ -109,7 +109,7 @@ class Source():
 
 
     def get_shape(self):
-        '''  '''
+        'Construct the shape string'
         shape = f"{self.shape}({self.ra},{self.dec},{self.radius})"
         return shape
 
@@ -130,7 +130,8 @@ class Source():
             if fill:
                 state = "Used"
 
-        src = f"{shape} # text={{{self.index}}} fill={fill} color={self.color} tag={{{self.tag}}} tag={{{self.tag}_{state}}}\n"
+        src = f"{shape} # text={{{self.index}}} fill={fill} "
+        src += f"color={self.color} tag={{{self.tag}}} tag={{{self.tag}_{state}}}\n"
         return src
 
     def link_cross_match(self, ref_src_list):
@@ -198,7 +199,7 @@ class ReferenceSource(Source):
         return ''
 
     def get_shape(self):
-        '''  '''
+        'Create the shape string'
         shape = f'{self.shape}({self.ra},{self.dec},{2*3600.0*self.radius}",{2*3600.0*self.radius}",0)'
         return shape
 
@@ -276,7 +277,7 @@ class ReferenceSourceList(SourceList):
 class Director():
     'Write to output file'
 
-    def __init__(self, outfile, clobber):
+    def __init__(self, outfile, legend, clobber):
         """Initialize a Director for writing output files.
 
         Args:
@@ -286,8 +287,11 @@ class Director():
 
         from ciao_contrib._tools.fileio import outfile_clobber_checks
         self.outfile = outfile
+        self.legend = legend
         self.__fp = None
         outfile_clobber_checks(clobber, self.outfile)
+        outfile_clobber_checks(clobber, self.legend)
+
 
     def __write_header(self):
         """Write DS9 region file header information.
@@ -296,8 +300,11 @@ class Director():
         font, etc.), and coordinate frame specification (FK5) to the output file.
         """
 
+        # Note: edit and move are disabled.
         self.__fp.write("# Region file format: DS9 version 4.1\n")
-        self.__fp.write('global color=green dashlist=8 3 width=2 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=0 move=0 delete=0 include=1 source=1\n')
+        self.__fp.write('global color=green dashlist=8 3 width=2 ')
+        self.__fp.write('font="helvetica 10 normal roman" select=1 ')
+        self.__fp.write('highlite=1 dash=0 fixed=0 edit=0 move=0 delete=1 include=1 source=1\n')
         self.__fp.write("fk5\n")
 
     def write_region(self, src, ref, lines):
@@ -315,16 +322,13 @@ class Director():
             self.__fp.write(src)
             self.__fp.write(ref)
 
-    def write_legend(self, legend):
+    def write_legend(self):
         """Write a fixed DS9 illustrate-mode legend file.
-
-        Parameters:
-            legend (str): Path to the output legend file.
 
         The legend file contains a fixed set of DS9 shapes and labels
         illustrating the meaning of the various source and match symbols.
         """
-        with open(legend, "w", encoding="ascii") as fp:
+        with open(self.legend, "w", encoding="ascii") as fp:
             fp.write('# Illustrate file format: DS9 version 1.0\n')
             fp.write('global color = cyan fill = no width = 1 dash = no\n')
             fp.write('global font = helvetica fontsize = 12 fontweight = normal fontslant = roman\n')
@@ -357,13 +361,13 @@ def main():
 
     src_obj = SourceList(pars["infile"])
     ref_obj = ReferenceSourceList(pars["refsrcfile"])
-    outfile = Director(pars["outfile"], pars["clobber"])
+    outfile = Director(pars["outfile"], pars["legend"], pars["clobber"])
 
     src_reg, line_reg = src_obj.render(ref_obj)
     ref_reg, _ = ref_obj.render()
 
     outfile.write_region(src_reg, ref_reg, line_reg)
-    outfile.write_legend(pars["legend"])
+    outfile.write_legend()
 
 
 def test():
@@ -371,7 +375,7 @@ def test():
     foo = SourceList("ngc4755_21169.xmatch[crossmatch]")
     ref = ReferenceSourceList("gaia_dr3.fits")
 
-    goo = Director("foo.reg", True)
+    goo = Director("foo.reg", "foo.seg", True)
     ss, ll = foo.render(ref)
     rr, _ = ref.render()
     goo.write_region(ss, rr, ll)
