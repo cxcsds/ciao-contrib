@@ -2097,7 +2097,7 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         CrissCross produced confusion table for a single source and single obsID.
     pha_file: fits file
         HETG PHA1 or PHA2 spectral file of the source that needs cleaning.
-     spec_root: string
+    spec_root: string
         A root for file naming purposes.
     arf_file: string or list
         A file path or list of file paths to ARFs matching the input pha file.
@@ -2109,9 +2109,7 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
     def clean_data(
         cc_table,
         pha_crate,
-        arf_data_var,
-        pha_arm_var,
-        pha_order_var,
+        arf_file_var,
         pha_element,
         conf_flag_var="confused",
     ):
@@ -2126,12 +2124,8 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
             CrissCross produced confusion table for a single source and single obsID.
         pha_crate: Crate object
             The Crate data for a single spectrum (e.g., HEG+1)
-        arf_data_var: Crate object
-            The Crate data for a single ARF response matched to a spectrum (e.g., HEG+1)
-        pha_arm_var: int (1 or 2)
-            The tg_part value associated with the spectrum (1 = HEG, 2 = MEG)
-        pha_order_var: int (-3, -2, -1, 1, 2, 3)
-            The order associated with the spectrum (e.g., 1 for HEG+1 and -3 for MEG-3)
+        arf_file_var: string
+            A file path to an ARF matching the input pha file.
         pha_element: integer
             The element of the PHA2 file assocaited with the spectrum 'pha_crate'. If standard HETG PHA2 file
             [order,element] = HEG: -3,0; -2,1; -1,2; +1,3; +2,4; +3,5 MEG: -3,6; -2,7; -1,8; +1,9; +2,10; +3,11)
@@ -2151,6 +2145,11 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         # reads in the confusion and PHA data
         cc_data = read_file(cc_table)
         pha_data_var = pha_crate.get_crate(2)
+        arf_data_var = read_file(arf_file_var)
+
+        # identifies ARF tg_m, tg_order, and tg_part 
+        arf_tg_part = get_keyval(arf_data, "TG_PART")
+        arf_tg_m = get_keyval(arf_data, "TG_M")
 
         # PHA1 and PHA2 files have to be treated slightly differently because of how crates stores values. This is to
         # avoid having to slice off each crate spectrum from the PHA2 file.
@@ -2191,8 +2190,8 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         for i in range(0, len(cc_data.wave_low.values)):
             if (
                 cc_data.flag.values[i] == conf_flag_var
-                and cc_data.grating_type.values[i] == pha_arm_var
-                and cc_data.order.values[i] == pha_order_var
+                and cc_data.grating_type.values[i] == tg_part_name[arf_tg_part]
+                and cc_data.order.values[i] == arf_tg_m
             ):
                 elements_to_clean = np.where(
                     (bin_low_arr >= cc_data.wave_low.values[i])
@@ -2248,9 +2247,7 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         cleaned_spec, cleaned_staterr, cleaned_specresp, cleaned_fracexpo = clean_data(
             cc_table=cc_table,
             pha_crate=pha_crate_dataset,
-            arf_data_var=arf_data,
-            pha_arm_var=pha_arm,
-            pha_order_var=pha_order,
+            arf_file_var=arf_file,
             pha_element=0,
             conf_flag_var="confused",
         )
@@ -2359,9 +2356,7 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
                 clean_data(
                     cc_table=cc_table,
                     pha_crate=pha_crate_dataset,
-                    arf_data_var=arf_data,
-                    pha_arm_var=pha_arm_arr[i],
-                    pha_order_var=pha_order_arr[i],
+                    arf_file_var=matched_resp_list[i],
                     pha_element=i,
                     conf_flag_var="confused",
                 )
