@@ -81,7 +81,7 @@ class ScriptError(RuntimeError):
 
 
 
-def _get_roll(kwdict: dict) -> float:
+def _get_roll(kwdict : dict) -> float:
     inst = kwdict["INSTRUME"]
     detector = kwdict["DETNAM"]
     roll = kwdict["ROLL_NOM"]
@@ -95,7 +95,7 @@ def _get_roll(kwdict: dict) -> float:
 
 
 
-# def _get_samp_range(evt):
+# def _get_samp_range(evt : str) -> tuple[int,int]:
 #     cr = read_file(f"{evt}[cols SAMP]")
 #     samp = cr.SAMP.values
 #     del cr
@@ -104,7 +104,7 @@ def _get_roll(kwdict: dict) -> float:
 
 
 
-def _get_samp_range(evt) -> tuple[Decimal,Decimal]:
+def _get_samp_range(evt : str) -> tuple[Decimal,Decimal]:
     stats = make_tool("dmstat")
 
     stats.punlearn()
@@ -174,7 +174,7 @@ def _find_emp_PSF_file(evt : str, kwdict : dict) -> str:
 
 
 
-def check_offaxis_angle(evt, skyx, skyy):
+def check_offaxis_angle(evt : str, skyx : float, skyy : float):
     """
     return off-axis angle in arcmin
     """
@@ -197,8 +197,7 @@ def check_offaxis_angle(evt, skyx, skyy):
 
 
 
-def roll_psf(psf : str, outpsf : str,
-             wcsimg : str, roll : float,
+def roll_psf(psf : str, outpsf : str, wcsimg : str, roll : float,
              ximg_center : float|int, yimg_center : float|int,
              regrid_res: int = 10, tmpdir : str=os.getenv("ASCDS_WORK_PATH"),
              clobber : bool = True, verbose : int=0):
@@ -292,7 +291,7 @@ def image_deconvolve(imgfile : str, psfimg : str, deconvimg : str,
 #
 ##########################################################################
 
-def get_par(argv) -> dict:
+def get_par(argv) -> tuple[dict,dict]:
     """
     Get data_products parameters from parameter file
     """
@@ -301,18 +300,19 @@ def get_par(argv) -> dict:
 
     # Parameters:
     pars: dict = {}
+    orig_pars: dict = {}
 
-    pars["evt"] = paramio.pgetstr(pfile, "evtfile")
-    pars["outpsf"] =  paramio.pgetstr(pfile, "outpsf")
-    pars["outimg"] =  paramio.pgetstr(pfile, "outimg")
-    pars["outdeconv"] = paramio.pgetstr(pfile, "outdeconv")
-    pars["src_skyx"] = paramio.pgetd(pfile, "src_x")
-    pars["src_skyy"] = paramio.pgetd(pfile, "src_y")
-    pars["samp_range"] = paramio.pgetstr(pfile, "samp")
-    pars["arestore_niter"] = paramio.pgetd(pfile, "deconv_niter")
-    pars["tmpdir"] = paramio.pgetstr(pfile,"tmpdir")
-    pars["verbose"] = paramio.pgeti(pfile, "verbose")
-    pars["clobber"] = paramio.pgetstr(pfile, "clobber")
+    pars["evt"] = orig_pars["evtfile"] = paramio.pgetstr(pfile, "evtfile")
+    pars["outpsf"] = orig_pars["outpsf"] =  paramio.pgetstr(pfile, "outpsf")
+    pars["outimg"] = orig_pars["outimg"] =  paramio.pgetstr(pfile, "outimg")
+    pars["outdeconv"] = orig_pars["outdeconv"] = paramio.pgetstr(pfile, "outdeconv")
+    pars["src_skyx"] = orig_pars["src_x"] = paramio.pgetd(pfile, "src_x")
+    pars["src_skyy"] = orig_pars["src_y"] = paramio.pgetd(pfile, "src_y")
+    pars["samp_range"] = orig_pars["samp"] = paramio.pgetstr(pfile, "samp")
+    pars["arestore_niter"] = orig_pars["deconv_niter"] = paramio.pgetd(pfile, "deconv_niter")
+    pars["tmpdir"] = orig_pars["tmpdir"] = paramio.pgetstr(pfile,"tmpdir")
+    pars["verbose"] = orig_pars["verbose"] = paramio.pgeti(pfile, "verbose")
+    pars["clobber"] = orig_pars["clobber"] = paramio.pgetstr(pfile, "clobber")
 
     paramio.paramclose(pfile)
 
@@ -351,15 +351,14 @@ def get_par(argv) -> dict:
 
     v3(f"  Parameters: {pars}")
 
-    return pars
+    return pars, orig_pars
 
 
 
 @handle_ciao_errors(__toolname__, __revision__)
-def doit(evt, outpsf, outimg, outdeconv,
-         src_skyx, src_skyy, samp_range="16:300", arestore_niter=50,
-         tmpdir=os.getenv("ASCDS_WORK_PATH"), clobber=True, verbose=0):
-    #evt, outpsf, outimg, outdeconv, src_skyx, src_skyy, samp_range, arestore_niter, tmpdir, clobber, verbose = args
+def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
+         src_skyx : float|int, src_skyy : float|int, samp_range : str="16:300", arestore_niter : int=50,
+         tmpdir : str=os.getenv("ASCDS_WORK_PATH"), clobber : bool=True, verbose : int=0):
 
     with new_pfiles_environment(ardlib=False):
         check_offaxis_angle(evt, src_skyx, src_skyy)
@@ -397,5 +396,12 @@ def doit(evt, outpsf, outimg, outdeconv,
 
 
 if __name__ == "__main__":
-    params = get_par( preprocess_arglist(sys.argv) )
+    params,orig_pars = get_par( preprocess_arglist(sys.argv) )
     doit(**params)
+
+    for arg in ("outpsf", "outimg", "outdeconv"):
+        fn = params[arg]
+
+        if fn != "":
+            add_tool_history(fn, __toolname__, orig_pars)
+
