@@ -1,0 +1,401 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2026
+#        Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Script:
+
+  Rotate empirical PSF file to match an observation and bin reference
+  event file to match the spatial scale of the PSF image.  Optionally,
+  a deconvolved image (via 'arestore') may also be generated.
+"""
+
+
+__version__ = "CIAO 4.18"
+__toolname__ = "empPSF"
+__revision__ = "XX May 2026"
+
+
+import os
+import sys
+import tempfile
+import math
+
+from decimal import Decimal
+from collections import namedtuple
+from datetime import datetime
+
+import paramio
+from ciao_contrib.param_wrapper import open_param_file
+
+from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors, preprocess_arglist
+
+#from pycrates import read_file
+from ciao_contrib.runtool import make_tool, new_pfiles_environment, add_tool_history
+from ciao_contrib._tools import fileio, utils
+
+
+#############################################################################
+
+# Set up the logging/verbose code
+initialize_logger(__toolname__)
+
+# Use v<n> to display messages at the given verbose level.
+v0 = make_verbose_level(__toolname__, 0)
+v1 = make_verbose_level(__toolname__, 1)
+v2 = make_verbose_level(__toolname__, 2)
+v3 = make_verbose_level(__toolname__, 3)
+v4 = make_verbose_level(__toolname__, 4)
+v5 = make_verbose_level(__toolname__, 5)
+
+
+
+class ScriptError(RuntimeError):
+    """Error found during running the script. This class is introduced
+    in case there is a need to catch such an error and deal with it
+    appropriately (e.g. recognize it as distinct from an error raised
+    by the code).
+    """
+    pass
+
+#############################################################################
+
+
+
+def _get_roll(kwdict: dict) -> float:
+    inst = kwdict["INSTRUME"]
+    detector = kwdict["DETNAM"]
+    roll = kwdict["ROLL_NOM"]
+
+    if inst == "HRC":
+        if detector == "HRC-I":
+            return roll - 45.0
+        return roll
+
+    raise IOError("HRC observations are only supported presently!")
+
+
+
+# def _get_samp_range(evt):
+#     cr = read_file(f"{evt}[cols SAMP]")
+#     samp = cr.SAMP.values
+#     del cr
+#
+#     return min(samp), max(samp)
+
+
+
+def _get_samp_range(evt) -> tuple[Decimal,Decimal]:
+    stats = make_tool("dmstat")
+
+    stats.punlearn()
+    stats.infile = f"{evt}[cols SAMP]"
+    stats.centroid = False
+    stats.sigma = False
+    stats.verbose = 0
+    stats()
+
+    return Decimal(stats.out_min), Decimal(stats.out_max)
+
+
+
+def _find_emp_PSF_file(evt : str, kwdict : dict) -> str:
+
+    hrc_config  = namedtuple("hrcconfig",["hrcs","hrci"])
+    samp_config = namedtuple("sampconfig",["samp16_300","samp300"])
+
+    samp_dict = { "2000-2005" : hrc_config(samp_config("empPSF_sARLac_v2025_2000-2005_s15.fits",
+                                                       "empPSF_sARLac_v2025_2000-2016.fits"),
+                                           samp_config("empPSF_iARLac_v2025_2000-2005_s15.fits",
+                                                       "empPSF_iARLac_v2025_2000-2005.fits")
+                                           ),
+                  "2006-2016" : hrc_config(samp_config("empPSF_sARLac_v2025_2006-2016_s15.fits",
+                                                       "empPSF_sARLac_v2025_2006-2016.fits"),
+                                           samp_config("empPSF_iARLac_v2025_2006-2016_s15.fits",
+                                                       "empPSF_iARLac_v2025_2006-2016.fits")
+                                           ),
+                  "2017-2025" : hrc_config(samp_config("empPSF_sARLac_v2025_2017-2025_s15.fits",
+                                                       "empPSF_sARLac_v2025_2017-2025.fits"),
+                                           samp_config("empPSF_iARLac_v2025_2017-2025_s15.fits",
+                                                       "empPSF_iARLac_v2025_2017-2025.fits")
+                                           )
+                }
+
+    inst = kwdict["INSTRUME"]
+    detector = kwdict["DETNAM"]
+
+    date_obs = datetime.strptime(kwdict["DATE-OBS"], "%Y-%m-%dT%H:%M:%S")
+    year = date_obs.year
+
+    if inst == "HRC":
+        if year <= 2005:
+            D = samp_dict["2000-2005"]
+        elif year >= 2017:
+            D = samp_dict["2017-2025"]
+        else:
+            D = samp_dict["2006-2016"]
+
+        if detector == "HRC-I":
+            d = D.hrci
+        else:
+            d = D.hrcs
+            raise IOError("Only HRC-I observations are presently supported!")
+
+        samp_min, samp_max = _get_samp_range(evt)
+
+        if samp_max <= 300:
+            if samp_min < 16:
+                return d.samp300
+
+            return d.samp16_300
+
+        raise IOError("Empirical PSFs do not support SAMP values >300.  Please apply a SAMP filter.")
+
+    raise IOError("HRC observations are only supported presently!")
+
+
+
+def check_offaxis_angle(evt, skyx, skyy):
+    """
+    return off-axis angle in arcmin
+    """
+
+    coords = make_tool("dmcoords")
+
+    coords.punlearn()
+
+    coords.infile = evt
+    coords.x = skyx
+    coords.y = skyy
+    coords.option = "sky"
+    coords.verbose = 0
+    coords()
+
+    offaxis = coords.theta
+
+    if offaxis > (offaxis_limit := 0.5):
+        raise IOError(f"The empirical PSFs are usable for point sources with an off-axis angle less than {offaxis_limit} arcmin from the aimpoint.  The source position provided is {offaxis} arcmin off-axis.")
+
+
+
+def roll_psf(psf : str, outpsf : str,
+             wcsimg : str, roll : float,
+             ximg_center : float|int, yimg_center : float|int,
+             regrid_res: int = 10, tmpdir : str=os.getenv("ASCDS_WORK_PATH"),
+             clobber : bool = True, verbose : int=0):
+
+    regrid2 = make_tool("dmregrid2")
+    imgcalc = make_tool("dmimgcalc")
+
+    regrid2.punlearn()
+    imgcalc.punlearn()
+
+    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp:
+        regrid2.infile = psf
+        regrid2.outfile = tmp.name
+        regrid2.resolution = regrid_res
+        regrid2.theta = roll
+        regrid2.rotxcenter = ximg_center
+        regrid2.rotycenter = yimg_center
+        regrid2.method = "average"
+        #regrid2.coord_sys = "logical"
+        regrid2.verbose = verbose
+        regrid2.clobber = clobber
+
+        imgcalc.infile = wcsimg
+        imgcalc.infile2 = tmp.name
+        imgcalc.outfile = outpsf
+        imgcalc.operation = "add"
+        imgcalc.weight = 0
+        imgcalc.weight2 = 1
+        imgcalc.lookupTab = f"{os.getenv('ASCDS_INSTALL')}/data/empPSF-merge_header_lookup.txt"
+        imgcalc.verbose = verbose
+        imgcalc.clobber = clobber
+
+        regrid2()
+        imgcalc()
+
+
+
+def cut_img(evt : str, outimg : str,
+            skyx_ctr : float, skyy_ctr : float, binsize : float,
+            nx : int, ny : int, samp : str=":300", tmpdir : str=os.getenv("ASCDS_WORK_PATH")):
+
+    dmcp = make_tool("dmcopy")
+
+    x = binsize * round( Decimal(skyx_ctr)/binsize )
+    y = binsize * round( Decimal(skyy_ctr)/binsize )
+
+    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp:
+        dmcp.punlearn()
+
+        dmcp.verbose = 0
+        dmcp.clobber = True
+
+        dmcp.infile = f"{evt}[sky=box({x},{y},{nx},{ny}),samp={samp}][bin sky={binsize}]"
+        dmcp.outfile = tmp.name
+        dmcp()
+
+        dmcp.infile = f"{tmp.name}[sky=box({x},{y},{binsize*nx},{binsize*ny})]"
+        dmcp.outfile = outimg
+        dmcp()
+
+
+
+def image_deconvolve(imgfile : str, psfimg : str, deconvimg : str,
+                     x_img : int|float, y_img : int|float, niter : int=10,
+                     verbose : int=0, clobber : bool=True):
+
+    arestore = make_tool("arestore")
+
+    arestore.punlearn()
+
+    arestore.infile = imgfile
+    arestore.psffile = psfimg
+    arestore.outfile = deconvimg
+    arestore.numiter = niter
+    arestore.psf_x_center = x_img
+    arestore.psf_y_center = y_img
+    arestore.verbose = verbose
+    arestore.clobber = clobber
+
+    arestore()
+
+
+
+
+##########################################################################
+#
+#  Parameter related tasks
+#
+#  Retrieve parameter values set in the referenced parameter file
+#  and create a dictionary matching parameter name to parameter value.
+#
+##########################################################################
+
+def get_par(argv) -> dict:
+    """
+    Get data_products parameters from parameter file
+    """
+
+    pfile = open_param_file(argv, toolname=__toolname__)["fp"]
+
+    # Parameters:
+    pars: dict = {}
+
+    pars["evt"] = paramio.pgetstr(pfile, "evtfile")
+    pars["outpsf"] =  paramio.pgetstr(pfile, "outpsf")
+    pars["outimg"] =  paramio.pgetstr(pfile, "outimg")
+    pars["outdeconv"] = paramio.pgetstr(pfile, "outdeconv")
+    pars["src_skyx"] = paramio.pgetd(pfile, "src_x")
+    pars["src_skyy"] = paramio.pgetd(pfile, "src_y")
+    pars["samp_range"] = paramio.pgetstr(pfile, "samp")
+    pars["arestore_niter"] = paramio.pgetd(pfile, "deconv_niter")
+    pars["tmpdir"] = paramio.pgetstr(pfile,"tmpdir")
+    pars["verbose"] = paramio.pgeti(pfile, "verbose")
+    pars["clobber"] = paramio.pgetstr(pfile, "clobber")
+
+    paramio.paramclose(pfile)
+
+    ################################
+    ##
+    ## check and modify parameters
+    ##
+    ################################
+
+    # files with information to reproject
+    if pars["evt"] == "":
+        raise ScriptError("Input event file must be specified.")
+
+    # output file name
+    if pars["outpsf"] == "":
+        raise ScriptError("Please specify an output PSF image file name.")
+
+    if pars["outimg"] == "":
+        raise ScriptError("Please specify an output counts image file name.")
+
+    for arg in ("outpsf", "outimg", "outdeconv"):
+
+        path = pars[arg]
+
+        outdir,outfile = utils.split_outroot(path)
+
+        if outdir != "" and outfile == "":
+            raise ScriptError(f"An output file name must be specified by the '{arg}' path!")
+
+        # check if output directory is writable
+        fileio.validate_outdir(outdir)
+
+    # print script info #
+    set_verbosity(pars["verbose"])
+    utils.print_version(__toolname__, __revision__)
+
+    v3(f"  Parameters: {pars}")
+
+    return pars
+
+
+
+@handle_ciao_errors(__toolname__, __revision__)
+def doit(evt, outpsf, outimg, outdeconv,
+         src_skyx, src_skyy, samp_range="16:300", arestore_niter=50,
+         tmpdir=os.getenv("ASCDS_WORK_PATH"), clobber=True, verbose=0):
+    #evt, outpsf, outimg, outdeconv, src_skyx, src_skyy, samp_range, arestore_niter, tmpdir, clobber, verbose = args
+
+    with new_pfiles_environment(ardlib=False):
+        check_offaxis_angle(evt, src_skyx, src_skyy)
+
+        evt_kw = fileio.get_keys_from_file(f"{evt}[#row=0]")
+        psf = _find_emp_PSF_file(f"{evt}[samp={samp_range}]", evt_kw)
+
+        psf = f"{os.getenv('ASCDS_INSTALL')}/data/empPSF/{psf}"
+
+        _grid, binval, _xrng, _yrng, (nx,ny) = utils.parse_xygrid(psf)
+
+        binsize = round(Decimal(binval), 3)
+
+        if nx % 2. != 0:
+            ximg = math.ceil(nx/2.) + 0.5
+        else:
+            ximg = nx/2.
+
+        if ny % 2. != 0:
+            yimg = math.ceil(ny/2.) + 0.5
+        else:
+            yimg = ny/2.
+
+        psfroll = _get_roll(evt_kw)
+
+        cut_img(evt, outimg, src_skyx, src_skyy, binsize, nx, ny, samp_range, tmpdir)
+
+        roll_psf(psf, outpsf, outimg, roll=psfroll, ximg_center=ximg, yimg_center=yimg,
+                 tmpdir=tmpdir, clobber=clobber, verbose=verbose)
+
+        if outdeconv != "":
+            image_deconvolve(outimg, outpsf, outdeconv, x_img=ximg, y_img=yimg,
+                             niter=arestore_niter, clobber=clobber, verbose=verbose)
+
+
+
+if __name__ == "__main__":
+    params = get_par( preprocess_arglist(sys.argv) )
+    doit(**params)
