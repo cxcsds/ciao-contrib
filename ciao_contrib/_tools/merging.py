@@ -2895,7 +2895,11 @@ def merge_psfmaps(mergetype, psfmap, psfmap_files, expmap_files,
             expmap_weight(pmap_files, emap_files, out, lut)
 
         else:
+<<<<<<< HEAD
             raise ValueError(f"Unexpected mergetype={mergetype} for combining PSF maps")
+=======
+            raise ValueError("Unexpected mergetype={} for combining PSF maps".format(mergetype))
+>>>>>>> 117b411 (estimate memory usage to generate exposure and PSF maps and stacking counts and PSF maps; if it's estimated that system memory will be exhausted, a warning is thrown on limiting the number of cores used for parallelized processes or will alter the stack chunksize to co-add at a time)
 
 
     if nchunk is None or mergetype in ["exptime", "expmap"]:
@@ -2926,8 +2930,12 @@ def merge_psfmaps(mergetype, psfmap, psfmap_files, expmap_files,
 
                 dmfilt_stk([_d.name for _d in d], f"{_tmp.name}[PSFMAP]", mergetype)
 
+<<<<<<< HEAD
                 for _d in d:
                     _d.close()
+=======
+                for _d in d: _d.close()
+>>>>>>> 117b411 (estimate memory usage to generate exposure and PSF maps and stacking counts and PSF maps; if it's estimated that system memory will be exhausted, a warning is thrown on limiting the number of cores used for parallelized processes or will alter the stack chunksize to co-add at a time)
 
             _iter += 1
             tmplist = _tmplist
@@ -2937,8 +2945,12 @@ def merge_psfmaps(mergetype, psfmap, psfmap_files, expmap_files,
 
         dmfilt_stk(tmp_fn, outfile, mergetype)
 
+<<<<<<< HEAD
         for t in tmplist:
             t.close()
+=======
+        for t in tmplist: t.close()
+>>>>>>> 117b411 (estimate memory usage to generate exposure and PSF maps and stacking counts and PSF maps; if it's estimated that system memory will be exhausted, a warning is thrown on limiting the number of cores used for parallelized processes or will alter the stack chunksize to co-add at a time)
 
     run.fix_bunit(psfmap_files[0], psfmap, verbose=verbose)
 
@@ -3223,8 +3235,11 @@ def _check_open_file_limits(nfiles: int, Ntemp: int = 4, Npad: int = 20) -> None
     if softlim < N_open_file:
         resource.setrlimit(open_file_lim, (N_open_file, hardlim))
 
+<<<<<<< HEAD
         return True
 
     return False
+=======
+>>>>>>> 117b411 (estimate memory usage to generate exposure and PSF maps and stacking counts and PSF maps; if it's estimated that system memory will be exhausted, a warning is thrown on limiting the number of cores used for parallelized processes or will alter the stack chunksize to co-add at a time)
 
 # End

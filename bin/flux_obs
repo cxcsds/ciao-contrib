@@ -45,17 +45,17 @@ import ciao_contrib.logger_wrapper as lw
 
 from ciao_contrib.param_wrapper import open_param_file
 
-import ciao_contrib._tools.bands as bands
-import ciao_contrib._tools.fileio as fileio
-import ciao_contrib._tools.fluximage as fi
-import ciao_contrib._tools.merging as merging
-import ciao_contrib._tools.utils as utils
+from ciao_contrib._tools import bands
+from ciao_contrib._tools import fileio
+from ciao_contrib._tools import merging
+from ciao_contrib._tools import utils
+from ciao_contrib._tools import fluximage as fi
 
 from ciao_contrib._tools.aspsol import AspectSolution
 from ciao_contrib._tools.taskrunner import TaskRunner
 
 toolname = 'flux_obs'
-__revision__ = '05 November 2021'
+__revision__ = '12 May 2026'
 
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
@@ -435,6 +435,38 @@ def setup_output_names(outdir, outhead, obsinfos, enbands,
     return out
 
 
+
+def project_mem_use(obsinfos, xygrid, ncore) -> tuple[int,int]:
+    """
+    project memory usage for flux_obs and return how the counts/expmap
+    images and psfmap images should be chunked to avoid exhausing the
+    available system memory.
+    """
+
+    _evts = ( obs.evtfile for obs in obsinfos )
+    _dx = xygrid[0].as_grid().split("#")[-1]
+    _dy = xygrid[1].as_grid().split("#")[-1]
+    _pix_datasize = 4 # float32/int4: 4-bytes
+    img_filesize = int(_dx) * int(_dy) * _pix_datasize
+    nchunk_default = 100
+
+    with fi.Project_Memory_Use(evtfiles=_evts, filesize=img_filesize, ncore=ncore) as memcheck:
+        _ = memcheck.project_parallel_memory()
+        cnts_nchunk = memcheck.check_stk_psfmap_memory()
+        psf_nchunk = memcheck.check_stk_counts_memory()
+
+    # set nchunk values to what was used by default
+    # before this check was introduced to the script
+    if cnts_nchunk is None or cnts_nchunk > nchunk_default:
+        cnts_nchunk = 100
+
+    if psf_nchunk is None:
+        psf_nchunk = len(obsinfos)
+
+    return cnts_nchunk, psf_nchunk
+
+
+
 @lw.handle_ciao_errors(toolname, __revision__)
 def fluxobs():
     "Run the tool."
@@ -487,6 +519,13 @@ def fluxobs():
                                                                      params['xrange'],
                                                                      params['yrange'],
                                                                      tmpdir=tmpdir)
+    ### project memory usage ###
+
+    cnts_nchunk, psf_nchunk = project_mem_use(obsinfos, xygrid=xygrids[0], ncore=params["nproc"])
+
+    merging._check_open_file_limits(len(obsinfos))
+
+    ############################
 
     taskrunner = TaskRunner()
     data_products(taskrunner,
@@ -525,7 +564,9 @@ def fluxobs():
                   threshold=is_thresh,
                   clobber=clobber,
                   pathfrom=__file__,
-                  tmpdir=tmpdir)
+                  tmpdir=tmpdir,
+                  counts_nchunk=cnts_nchunk,
+                  psfmap_nchunk=psf_nchunk)
 
 
 # doit

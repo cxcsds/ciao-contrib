@@ -52,7 +52,7 @@ import ciao_contrib.logger_wrapper as lw
 
 from ciao_contrib.stacklib import make_stackfile
 import ciao_contrib.runtool as rt
-import ciao_contrib._tools.fileio as fileio
+from ciao_contrib._tools import fileio
 
 
 __all__ = (
@@ -279,7 +279,8 @@ def dmimgcalc_add(infiles, outfile,
                   clobber=False,
                   lookupTab=None,
                   tmpdir="/tmp/",
-                  nchunk=100):
+                  nchunk=100,
+                  bigN_smallNchunk_bypass=False):
     """Add up all the images in infiles (an array) to create outfile,
     using dmimgcalc.
 
@@ -321,7 +322,7 @@ def dmimgcalc_add(infiles, outfile,
 
     # We could recurse, but let's error out if we have too-many
     # files.
-    if chunking >= nchunk:
+    if chunking >= nchunk and not bigN_smallNchunk_bypass:
         raise ValueError(f"Sent too many images to add: {nfiles}")
 
     start = 0
@@ -335,7 +336,8 @@ def dmimgcalc_add(infiles, outfile,
         dmimgcalc_add(filelist, tmpfile.name,
                       verbose=verbose, clobber=True,
                       lookupTab=lookupTab, tmpdir=tmpdir,
-                      nchunk=nchunk)
+                      nchunk=nchunk,
+                      bigN_smallNchunk_bypass=bigN_smallNchunk_bypass)
 
         start += nchunk
 
@@ -344,7 +346,8 @@ def dmimgcalc_add(infiles, outfile,
     dmimgcalc_add([t.name for t in tmpfiles], outfile,
                   verbose=verbose, clobber=clobber,
                   lookupTab=lookupTab, tmpdir=tmpdir,
-                  nchunk=nchunk)
+                  nchunk=nchunk,
+                  bigN_smallNchunk_bypass=bigN_smallNchunk_bypass)
 
 
 def dmkeypar(infile, key, rtype='string'):
@@ -566,7 +569,7 @@ def make_fov(evtfile, asolfiles, msk, outfile):
     """
 
     afiles = stk.build(asolfiles)
-    contents = set([get_content(f) for f in afiles])
+    contents = { get_content(f) for f in afiles }
     if len(contents) != 1:
         emsg = f"Multiple types of aspect solution found: " + \
             f"{', '.join(contents)}\n  {asolfiles}"

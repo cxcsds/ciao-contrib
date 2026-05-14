@@ -62,14 +62,18 @@ import ciao_contrib.logger_wrapper as lw
 from ciao_contrib.runtool import new_pfiles_environment
 from ciao_contrib.runtool import add_tool_history
 
-import ciao_contrib._tools.fileio as fileio
+from ciao_contrib._tools import fileio
 from ciao_contrib._tools.obsinfo import ObsInfo
-import ciao_contrib._tools.utils as utils
+from ciao_contrib._tools import utils
 
-import ciao_contrib._tools.run as run
+from ciao_contrib._tools import run
 from ciao_contrib._tools.run import \
     punlearn, dmcopy, dmimgcalc, dmimgcalc2, dmimgcalc_add, \
     dmhedit_key, dmhedit_file
+
+from psutil import virtual_memory, cpu_count
+from itertools import islice
+
 
 # for now, export nothing
 __all__ = ()
@@ -79,10 +83,205 @@ __all__ = ()
 HRCI_BG_EVTS = "HRC-I_bkg.fits"
 
 lgr = lw.initialize_module_logger('_tools.fluximage')
+v0 = lgr.verbose0
 v1 = lgr.verbose1
 v2 = lgr.verbose2
 v3 = lgr.verbose3
 v4 = lgr.verbose4
+
+#################################################################################
+class Project_Memory_Use:
+    """
+    Estimate memory usage to generate exposure maps and PSF maps and when
+    stacking counts maps and PSF maps, which are the most memory intensive
+    steps in fluximage and flux_obs, which may lead the exhausting system
+    memory.  Return a chunk size for stacking purposes that hopefully avoids
+    using too much memory or error message with a suggestion on limiting the
+    number of logical cores used for parallel proceses to avoid memory exhaustion.
+    """
+
+    def __init__(self, evtfiles:list|tuple, filesize:int, ncore:int|str|None):
+        #self.evts = evtfiles
+        self.filesize = filesize
+        self._nchips_arr = sorted( ( len(fileio.get_ccds(e)) for e in evtfiles ), reverse=True )
+        self.nstk = len(self._nchips_arr)
+
+        if ncore is None:
+            self.ncore = cpu_count(logical=True)
+        else:
+            self.ncore = int(ncore)
+
+
+    def __enter__(self):
+        return self
+
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        return exc_traceback is None
+
+
+    def _get_system_memory(self) -> tuple[int,int]: # in bytes
+        """
+        return total memory on the system and available memory
+        for use at the time
+        """
+
+        _mem = virtual_memory()
+        total = _mem.total # total physical memory #
+        available = _mem.available # available physical memory (not being used by system processes) #
+
+        return total, available
+
+
+    def _expmap_memory(self, nchips:int) -> int:
+        file_buffer = 27_262_976 # buffer of 26 Mb in bytes
+
+        ## mosaicking an observation's per-CCD exposure maps (parallelized) ##
+        expmap_limit = 6
+        if nchips > 1:
+            expmap_limit += nchips
+
+        img_mem_use = (expmap_limit * self.filesize) + file_buffer
+
+        return img_mem_use
+
+
+    def _psfmap_memory(self, nchips:int) -> int:
+        """
+        regardless of number of CCDs, memory used to generate an observation's
+        PSF map is a little less than 7*filesize
+        """
+
+        psfmap_limit = 7.285 + (0.03 * nchips)
+
+        psfmap_mem = psfmap_limit * self.filesize
+
+        return psfmap_mem
+
+
+    def project_parallel_memory(self):
+        _, mem_available = self._get_system_memory()
+
+        nchips_arr = self._nchips_arr
+
+        if self.nstk > self.ncore:
+            def _sublists(lst:list|tuple, step:int) -> list[list]:
+                sublists = []
+
+                match lst:
+                    case list():
+                        len_lst = len(lst)
+                    case tuple():
+                        len_lst = lst.__len__()
+
+                for i in range(0, len_lst, step):
+                    sublists.append(list(islice(lst, i, i+step)))
+
+                return sublists
+
+            _nchips_grp = _sublists(nchips_arr, self.ncore)[0]
+
+        else:
+            _nchips_grp = nchips_arr
+
+        expmap_mem = [self._expmap_memory(n) for n in _nchips_grp]
+        expmap_mem_limit = sum(expmap_mem)
+
+        psfmap_mem = [self._psfmap_memory(n) for n in _nchips_grp]
+        psfmap_mem_limit = sum(psfmap_mem)
+
+        if psfmap_mem_limit > expmap_mem_limit:
+            mem_limit = psfmap_mem_limit
+            mem = psfmap_mem
+        else:
+            mem_limit = expmap_mem_limit
+            mem = expmap_mem
+
+        if mem_limit > mem_available:
+            while sum(mem) > mem_available:
+                _ = mem.pop()
+
+            ncore_mem_lim = len(mem)
+
+            if ncore_mem_lim == 0:
+                raise MemoryError("There is insufficient system memory available to run processes to completion on a single core.")
+
+            if ncore_mem_lim == 1:
+                ncore_str = f"{ncore_mem_lim}"
+            else:
+                ncore_str = f"{ncore_mem_lim} or less"
+
+            raise MemoryError(f"There is insufficient system memory available to run processes in parallel, consider reducing the number of cores used to {ncore_str}.")
+
+
+    def check_stk_counts_memory(self):
+        file_buffer = 27_262_976 # buffer of 26 Mb in bytes
+        _, mem_available = self._get_system_memory()
+        chunk = self.nstk
+        _chunk_floor = 10
+
+        ## stacking counts maps (serialized) ##
+        counts_map_limit = 12
+        if self.nstk > 1:
+            counts_map_limit += (2 * self.nstk)
+
+        expected_size = (counts_map_limit * self.filesize) + file_buffer
+        # available_chunks = (mem_available - file_buffer)/self.filesize
+        # memchunks = expected_size/mem_available
+
+        if expected_size < mem_available:
+            return
+
+        ## size needed to stack two images ##
+        if (16 * self.filesize) + file_buffer > mem_available:
+            raise MemoryError("There is insufficient system memory available to co-add counts images!")
+
+        while chunk > 1:
+            _countslim = (12 + 2*chunk) * self.filesize + file_buffer
+
+            if _countslim < mem_available and chunk > _chunk_floor:
+                chunk = 10 * (chunk//10)
+
+                return chunk
+
+            chunk -= 1
+
+        v0("There may be insufficient system memory availble to co-add counts images!")
+
+
+    def check_stk_psfmap_memory(self):
+        _, mem_available = self._get_system_memory()
+        chunk = self.nstk
+        _chunk_floor = 10
+
+        def _memuse_fit(nstk:int):
+            return 1.69863 + 1.37718 * nstk**0.990286
+
+        ## stacking counts maps (serialized) ##
+        psfmap_limit = _memuse_fit(self.nstk)
+
+        expected_size = psfmap_limit * self.filesize
+
+        if expected_size < mem_available:
+            return
+
+        ## size needed to stack two images ##
+        if _memuse_fit(nstk=2) > mem_available:
+            raise MemoryError("There is insufficient system memory available to co-add PSF maps!")
+
+        while chunk > 1:
+            _countslim = _memuse_fit(nstk=chunk) * self.filesize
+
+            if _countslim < mem_available and chunk > _chunk_floor:
+                chunk = 10 * (chunk//10)
+
+                return chunk
+
+            chunk -= 1
+
+        v0("There may be insufficient system memory availble to co-add PSF maps!")
+
+#################################################################################
 
 
 def add_defargs(args, clobber, verbose):
