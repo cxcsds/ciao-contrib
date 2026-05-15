@@ -387,6 +387,11 @@ def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, match_offset=1.0):
     match_offset : float, arcsec
         Maximum offset for matching sources between the main and subset lists.
 
+    Returns
+    -------
+    match : np.array
+        Array of indices with the one main source list that corresponds to each source in the subset list.
+
     On a sphere, the distance between points is given by the haversine formula, which
     works well numerically except for point that are almost exactly opposites,
     which is not the case here [1].
@@ -402,23 +407,26 @@ def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, match_offset=1.0):
     ----------
     [1] https://en.wikipedia.org/wiki/Haversine_formula
     """
-    dlat = RA_main[None, :] - RA_sub[:, None]
-    dlon = DEC_main[None, :] - DEC_sub[:, None]
+    dlon = RA_main[None, :] - RA_sub[:, None]
+    dlat = DEC_main[None, :] - DEC_sub[:, None]
     hav_theta = (1 / 2) * (
-        np.sin(dlat / 2) ** 2 + np.cos(RA_sub) * np.cos(RA_main) * np.sin(dlon / 2) ** 2
+        np.sin(np.deg2rad(dlat) / 2) ** 2
+        + np.cos(np.deg2rad(DEC_sub[:, None]))
+        * np.cos(np.deg2rad(DEC_main[None, :]))
+        * np.sin(np.deg2rad(dlon) / 2) ** 2
     )
     theta = 2 * np.arcsin(np.sqrt(hav_theta))
     min_theta = np.min(theta, axis=1)
     if np.any(min_theta > np.deg2rad(match_offset / 3600)):
         ind = min_theta > np.deg2rad(match_offset / 3600)
         raise ValueError(
-            f"No match in main list found for the sources with RA={RA_sub[ind]} and DEC={DEC_sub[ind]} with min distance {min_theta} arcsec. Please make sure RA and DEC value of source to clean matches a source in main_list."
+            f"No match in main list found for the sources with RA={RA_sub[ind]} and DEC={DEC_sub[ind]} with min distance {min_theta[ind]} arcsec. Please make sure RA and DEC value of source to clean matches a source in main_list."
         )
     ind = theta < np.deg2rad(match_offset / 3600)
     if np.any(ind.sum(axis=1) > 1):
         ind_multi = ind.sum(axis=1) > 1
         raise ValueError(
-            f"Multiple matches in main list found for the sources with RA={RA_sub[ind_multi]} and DEC={DEC_sub[ind_multi]} with min distance {min_theta} arcsec. Please make sure there are no duplicate entries in main list or subset_list"
+            f"Multiple matches in main list found for the sources with RA={RA_sub[ind_multi]} and DEC={DEC_sub[ind_multi]}. Please make sure there are no duplicate entries in main list or subset_list."
         )
     return np.argmin(theta, axis=1)
 

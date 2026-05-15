@@ -1,7 +1,10 @@
 import pytest
 import numpy as np
 
-from ..criss_cross import pntsrc_dist_to_spec, determine_line_intersect_values
+from ..criss_cross import (
+    line_line_intersect,
+    match_subset_to_main,
+)
 
 # Define some positions and vectors that are used in several of the tests below.
 x = np.array([1, 2, 3])
@@ -9,6 +12,7 @@ y = np.array([4, 5.5, 6.5])
 xy = np.array([x, y]).T
 angle = np.deg2rad(45)
 N = np.array([np.cos(angle), np.sin(angle)])
+N_normal = np.array([-np.sin(angle), np.cos(angle)])
 N2 = np.array([1, 0])
 
 # Use the following code to draw an image of the specific examples with
@@ -38,26 +42,20 @@ def test_line_line_exception():
     with pytest.raises(
         ValueError, match="norm_arm1 needs to be normalized to length 1."
     ):
-        determine_line_intersect_values(
-            src_pos=xy, norm_arm1=np.array([2, 0]), norm_arm2=N
-        )
+        line_line_intersect(src_pos=xy, norm_arm1=np.array([2, 0]), norm_arm2=N)
     with pytest.raises(
         ValueError, match="norm_arm1 needs to be normalized to length 1."
     ):
-        determine_line_intersect_values(
-            src_pos=xy, norm_arm1=np.array([0.1, 0.2]), norm_arm2=N
-        )
+        line_line_intersect(src_pos=xy, norm_arm1=np.array([0.1, 0.2]), norm_arm2=N)
     with pytest.raises(
         ValueError, match="norm_arm2 needs to be normalized to length 1."
     ):
-        determine_line_intersect_values(
-            src_pos=xy, norm_arm1=N, norm_arm2=np.array([-1.1, 0.5])
-        )
+        line_line_intersect(src_pos=xy, norm_arm1=N, norm_arm2=np.array([-1.1, 0.5]))
     with pytest.raises(
         ValueError,
-        match="norm_arm1 and norm_arm2 are parallel, so there are no intersection point.",
+        match="norm_arm1 and norm_arm2 are parallel, so there is no intersection point.",
     ):
-        determine_line_intersect_values(src_pos=xy, norm_arm1=N, norm_arm2=N)
+        line_line_intersect(src_pos=xy, norm_arm1=N, norm_arm2=N)
 
 
 def test_line_point_generic():
@@ -70,7 +68,8 @@ def test_line_point_generic():
     src_pos = rng.uniform(size=(10, 2))
     angle = np.random.uniform(0, 2 * np.pi)
     norm_vec = np.array([np.sin(angle), np.cos(angle)])
-    k, d = pntsrc_dist_to_spec(src_pos, norm_vec)
+    norm_vec_normal = np.array([np.cos(angle), -np.sin(angle)])
+    k, d = line_line_intersect(src_pos, norm_vec, norm_vec_normal)
     # We get back a 10*10 array
     assert k.shape == (10, 10)
     assert d.shape == (10, 10)
@@ -78,20 +77,16 @@ def test_line_point_generic():
     assert d.diagonal() == pytest.approx(0)
     # and be located at the at the origin
     assert k.diagonal() == pytest.approx(0)
-    # Distances are always positive
-    assert np.all(d >= 0)
     # Since lines are parallel, the distance from point i to line j
-    # should be the same as the distance from point j to line i.
-    assert d.T == pytest.approx(d)
-    # The distance to the closed point on one line, is the same,
-    # but in the opposite direction, as the distance to the closest
-    # point on the other line.
+    # should be the same as the distance from point j to line i
+    # but in the opposite direction.
+    assert d.T == pytest.approx(-d)
     assert k.T == pytest.approx(-k)
 
 
 def test_line_point_example():
     """Test line_point with a simple example where we know the answer."""
-    k, d = pntsrc_dist_to_spec(xy, N)
+    k, d = line_line_intersect(xy, N, N_normal)
     # Point 1 and 2 are on the same line.
     assert d[1, 2] == pytest.approx(0)
     assert d[0, 1] == pytest.approx(3.53553391e-01)
@@ -117,7 +112,7 @@ def test_line_line_generic():
     angle2 = np.random.uniform(0, 2 * np.pi)
     norm_vec1 = np.array([np.sin(angle1), np.cos(angle1)])
     norm_vec2 = np.array([np.sin(angle2), np.cos(angle2)])
-    k1, k2 = determine_line_intersect_values(src_pos, norm_vec1, norm_vec2)
+    k1, k2 = line_line_intersect(src_pos, norm_vec1, norm_vec2)
     # We get back a 10*10 array
     assert k1.shape == (10, 10)
     assert k2.shape == (10, 10)
@@ -147,9 +142,81 @@ def test_line_line_example():
     """We use somewhat special values for the angles here to make sure the
     lines intersect at a point that's easy to verify.
     """
-    k1, k2 = determine_line_intersect_values(xy, N, N2)
+    k1, k2 = line_line_intersect(xy, N, N2)
     assert k1[0, :] == pytest.approx([0, 1.5 * np.sqrt(2), 2.5 * np.sqrt(2)])
     assert k2[0, :] == pytest.approx([0, -0.5, -0.5])
     assert k1[1, 2] == pytest.approx(np.sqrt(2))
     # Points 1 and 2 are on the same HEG line
     assert k2[1, 2] == pytest.approx(0)
+
+
+def test_match_all():
+    """Different combiations of subsect sources that all have a match in the main list."""
+    ra_main = np.array([23.23, 89.2, 123.2])
+    dec_main = np.array([12.12, 89.9, 89.8])
+
+    RA_sub_1 = ra_main + 1 / 3600
+    DEC_sub_1 = dec_main
+
+    assert match_subset_to_main(
+        ra_main, dec_main, RA_sub_1, DEC_sub_1
+    ) == pytest.approx([0, 1, 2])
+
+    RA_sub_2 = np.array([23.23, 123.2, 89.2]) + 1 / 3600
+    DEC_sub_2 = np.array([12.12, 89.8, 89.9])
+
+    assert match_subset_to_main(
+        ra_main, dec_main, RA_sub_2, DEC_sub_2
+    ) == pytest.approx([0, 2, 1])
+
+    RA_sub_3 = np.array([123.2, 89.2]) + 1 / 3600
+    DEC_sub_3 = np.array([89.8, 89.9])
+
+    assert match_subset_to_main(
+        ra_main, dec_main, RA_sub_3, DEC_sub_3
+    ) == pytest.approx([2, 1])
+
+    RA_sub_3 = np.array([89.2]) + 1 / 3600
+    DEC_sub_3 = np.array([89.9])
+
+    assert match_subset_to_main(
+        ra_main, dec_main, RA_sub_3, DEC_sub_3
+    ) == pytest.approx([1])
+
+
+def test_match_change_max_offset():
+    """Change the offset and check that fewer sources are matched.
+    Numbers are chosen such that sources at large DEC are within the
+    matching radius, whiel sources the small DEC are not.
+    At the same time, this tests the ValueError if not match is found.
+    """
+    ra_main = np.array([23.23, 89.2, 123.2])
+    dec_main = np.array([12.12, 89.9, 89.8])
+
+    RA_sub_1 = ra_main + 1 / 3600
+    DEC_sub_1 = dec_main
+
+    assert match_subset_to_main(
+        ra_main, dec_main, RA_sub_1, DEC_sub_1, match_offset=0.9
+    ) == pytest.approx([0, 1, 2])
+
+    with pytest.raises(
+        ValueError,
+        match=r"No match in main list found for the sources with RA=\[23.23027778\] and DEC=\[12.12\] with min distance \[3.35",
+    ):
+        match_subset_to_main(ra_main, dec_main, RA_sub_1, DEC_sub_1, match_offset=0.5)
+
+
+def test_match_multiple_matches():
+    """Test that we get an error if there are multiple matches in the main list."""
+    ra_main = np.array([23.23, 89.2, 123.2, 89.2])
+    dec_main = np.array([12.12, 89.9, 89.8, 89.9])
+
+    RA_sub_1 = np.array([89.2]) + 1 / 3600
+    DEC_sub_1 = np.array([89.9])
+
+    with pytest.raises(
+        ValueError,
+        match=r"Multiple matches in main list found for the sources with RA=\[89.20027778\] and DEC=\[89.9\]. Please make sure there are no duplicate entries in main list or subset_list.",
+    ):
+        match_subset_to_main(ra_main, dec_main, RA_sub_1, DEC_sub_1)
