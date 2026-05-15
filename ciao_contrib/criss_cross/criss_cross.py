@@ -1396,9 +1396,10 @@ def arm_confuse_wave(
     """
     arf = read_file(f"{arf_ratios_dir}/{arm.upper()}_Nth_0th_order_ratios_mkarf.fits")
 
-    distance2line = intersect_info["point2arm"][arm][subset_sources, :]
+    distance2line = intersect_info["point2arm"][arm]
     orders = intersect_info["orders"]
 
+    # Array shape is (n_confused_sources, n_confuser_sources).
     confuser_close_enough = (
         distance2line
         < max_arm_dist
@@ -1410,7 +1411,8 @@ def arm_confuse_wave(
 
     # Many sources are too faint to confuse anything.
     # To keep arrays from getting too big in memory, we don't consider those faint
-    # source any further for arm confusion.
+    # source any further for arm confusion and we also don't need to consider
+    # sources as potentially confused if they are not in subset_sources.
     # Because we will need the index array of potentially confusing sources often
     # we give it a shorthand name "iconf" for "index_of_confusers"
     iconf = np.any(confuser_close_enough, axis=0)
@@ -1447,8 +1449,11 @@ def arm_confuse_wave(
     arm_conf = []
 
     for i in range(len(subset_sources)):
-        if np.sum(confuser_close_enough[i, :]) == 0:
-            continue  # skip this source if there are no potential confusers
+        # If there are no confusers, we still run though all of this loop.
+        # That generates an empty table with the right datatype to stack all the outputs later.
+        # We *could* just skip here and only make an empty table,
+        # but the rest of the code is fast so it's not worth it to write a separate code path.
+
         # the dimension of "confused" will be
         # (n_wavelengths, n_confusers, n_orders_m1, n_orders_m2)
         # Note that `None` has the same meaning as `np.newaxis` but is shorter to type
@@ -1581,7 +1586,7 @@ def arm_confuse_wave(
             np.rec.fromarrays([result[n] for n in rec_type.names], dtype=rec_type)
         )
 
-    return rfn.stack_arrays([arm_conf])
+    return rfn.stack_arrays(arm_conf)
 
 
 def streak_confuse_wave(
@@ -1675,6 +1680,13 @@ def write_full_conf_table(
     if src_id is not None:
         to_write = to_write & (records["src_id"] == src_id)
 
+    if cc_table_root is not None and len(set(records["src_id"])) == 1:
+        filename = (
+            f"{output_dir}/confused_{cc_table_root}_consolidated_obsID_{obsid}.fits"
+        )
+    else:
+        filename = f"{output_dir}/confused_src_{src_id}_consolidated_obsID_{obsid}.fits"
+
     records = records[to_write]
 
     # Add a column "ObsID" to the front of recrod array
@@ -1722,14 +1734,6 @@ def write_full_conf_table(
             desc="Dec of src with potential HETG confusion",
         )
 
-    if cc_table_root is not None or len(set(records["src_id"])) == 1:
-        filename = (
-            f"{output_dir}/confused_{cc_table_root}_consolidated_obsID_{obsid}.fits"
-        )
-    else:
-        filename = (
-            f"{output_dir}/confused_src_{src_id}_consolidated_obsID_{obsid}.fits",
-        )
     write_file(merged_crate, filename, clobber=True)
 
 
