@@ -2104,6 +2104,34 @@ def make_fluxed_images(taskrunner, labelconv, preconditions,
 def read_first_row(filename, colname):
     "Return the value of the first row of the given column."
 
+    ##############################
+
+    # for colorized build, the 4.18 dmhistory output is terminated
+    # by a new line at the end of each parameter causing erroneous
+    # interpretation by pycrates; parse and clean up this syntax
+    # before passing on to pycrates, for regular dmhistory, the
+    # returned string array is not altered.
+    with open(filename, mode="r", encoding="utf-8") as hist:
+        c = hist.readlines()
+
+    if any("\\\n" in _c for _c in c):
+        cc = []
+        ii = 0
+
+        for i,s in enumerate(c):
+            if i == ii:
+                _ = s
+            if _.endswith("\\\n"):
+                _ = _.replace("\\\n", c[i+1].lstrip(" "))
+            else:
+                cc.append(_)
+                ii = i+1
+
+        with open(filename, mode="w", encoding="utf-8") as hist:
+            hist.write(" ".join(cc))
+
+    ##############################
+
     cr = pcr.read_file(filename + "[#row=1]")
     return pcr.copy_colvals(cr, colname)[0]
 

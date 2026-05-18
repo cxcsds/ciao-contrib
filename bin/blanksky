@@ -19,7 +19,7 @@
 #
 
 __toolname__ = "blanksky"
-__revision__  = "18 March 2024"
+__revision__  = "18 May 2026"
 
 
 import os
@@ -201,7 +201,13 @@ def check_tool_par(evt,tool,param):
     except OSError as exc:
         raise ValueError(f"{tool} was not used to generate {evt}") from exc
 
-    hist = [t for t in hist.split("\n") if t.startswith(tool)]
+    if "\\\n" in hist:
+        ## support colorized dmhistory where each parameter is
+        ## terminated with a new line, as modified for 4.18
+        hist = [ " ".join( ( s.strip(" ") for s in _h.split("\\\n") ) )
+                for _h in hist[hist.index(tool):].split("\n\n") ]
+    else:
+        hist = [t for t in hist.split("\n") if t.startswith(tool)]
 
     par_instance = []
 
@@ -653,7 +659,7 @@ with valid HRC-I background files.")
         # *      any data on ACIS-4
         # *      CTI-corrected data on ACIS-9
         # *      ACIS-0 data, when ACIS-S is in the focal plane (a SIM_Z limit is exceeded)
-        if stowedbg and not set([4,8,9]).isdisjoint(set(ccds)):
+        if stowedbg and not {4,8,9}.isdisjoint(set(ccds)):
             v1("ACIS-S0, -S4, and/or -S5 will be ignored, as no stowed background files are \
 available for these chips.\n")
 
@@ -675,7 +681,7 @@ available for these chips.\n")
             v1("Ignoring ACIS-S5, as no blank-sky map is available for this chip with CTI corrections applied.\n")
             ccds.remove(9)
 
-        if [0 in ccds, set([4,5,6,7,8,9]).isdisjoint(set(ccds))] == [True,False]:
+        if [0 in ccds, {4,5,6,7,8,9}.isdisjoint(set(ccds))] == [True,False]:
             # check location of aimpoint with dmcoords using the
             # time-averaged optical-axis coordinates
             ra_pnt = keywords["RA_PNT"]
