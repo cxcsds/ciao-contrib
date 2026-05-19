@@ -16,23 +16,39 @@
 #  with this program; if not, write to the Free Software Foundation, Inc.,
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+from caldb4 import Caldb
+from pycrates import read_file
 
-# This file holds some constants used throughout criss-cross.
-# They are all found in the CALDB, but are unlikely to change and
-# are thus hardcoded in this location.
+caldb = Caldb(telescope="Chandra", instrume="", product="GEOM")
+for f in caldb.search:
+    # ephin/geom/ephinD1999-07-22geomNXXX is also found that way, but that's not the one we want
+    if "tel" in f:
+        break
+    else:
+        raise ValueError("Could not find geom file in CALDB")
+
+geom = read_file(f.split("[")[0] + "[GRATINGS]")
+
 tg_part_name = ["zeroth order", "heg", "meg", "leg"]
 
-X_R = 8632.48  # rowland diameter in mm constant
+X_R = {}
+Period = {}
+Alpha = {}
 
-# period in angstroms constant. Note, this is value from telD1999-07-23geomN0006.fits in CALDB
-Period = {
-    "meg": 4001.95,  # however in marxsim it uses 4001.41 A
-    "heg": 2000.81,
-}
+for arm in tg_part_name[1:]:
+    row = (
+        (geom.INSTRUMENT.values == "ACIS") & (geom.GRATING_ARM.values == arm.upper())
+    ).nonzero()[0][0]
+    X_R[arm] = geom.ROWLAND.values[row]
+    Period[arm] = geom.PERIOD.values[row]
+    Alpha[arm] = geom.ALPHA.values[row]
+
 mm_per_pix = 0.023987  # pixel size in mm for acis same for I and S
 arcsec_per_pix = 0.492  # arcsec per pixel for ACIS
 
 hc = 4.1357e-15 * 2.998e18
 "conversion for E = hc/lamda where h and c are units of plancks const and angstrom/s"
 
-wavelength_scale = {arm: mm_per_pix / X_R * Period[arm] for arm in ["heg", "meg"]}
+wavelength_scale = {
+    arm: mm_per_pix / X_R[arm] * Period[arm] for arm in tg_part_name[1:]
+}

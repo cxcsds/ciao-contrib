@@ -34,7 +34,7 @@ from crates_contrib.utils import make_table_crate
 from ciao_contrib import runtool as rt
 from iocaldb import OSIP, Sky2Chandra, Cel2Chandra
 from widthofexclusion import counts_circle_band, pnt_src_masking_region
-from constants import tg_part_name, X_R, Period, mm_per_pix, arcsec_per_pix, hc
+from constants import tg_part_name, X_R, Period, mm_per_pix, arcsec_per_pix, hc, Alpha
 
 ##### FLAG DEFINITIONS #####
 # Which flag do they get if the intersection point is outside the CCD?
@@ -895,7 +895,7 @@ def spec_confuse_wave(
     if arm == "meg":
         intersect = np.moveaxis(intersect, 1, 0)
     secondary_arm = "meg" if arm == "heg" else "heg"
-    mask_interval = width_mask_pixel * mm_per_pix / X_R * Period[arm]
+    mask_interval = width_mask_pixel * mm_per_pix / X_R[arm] * Period[arm]
     primary_arf = read_file(
         f"{arf_ratios_dir}/{arm.upper()}_Nth_0th_order_ratios_mkarf.fits"
     )
@@ -2624,23 +2624,15 @@ def run_crisscross(
         # set a few obsid_specific parameters
         obsid = get_header_par(fits_file=evt2_file[k], keyword_par="obs_id")
         roll_nom = float(get_header_par(fits_file=evt2_file[k], keyword_par="ROLL_NOM"))
-        grating_rotang = read_file(
-            f"{evt2_file[k]}[REGION]"
-        )  # always reads the region block because the block number is variable
-        heg_ang = np.radians(grating_rotang.ROTANG.values[1])  # tg_part = 1
-        meg_ang = np.radians(grating_rotang.ROTANG.values[2])  # tg_part = 2
 
-        # It is physically arbitrary which direction are positive and negative. The minus
-        # signs are here to match the Chandra convention.
-        norm_vec = {
-            "heg": -np.array([np.cos(heg_ang), np.sin(heg_ang)]),
-            "meg": -np.array([np.cos(meg_ang), np.sin(meg_ang)]),
-        }
-
-        print(
-            "The HEG/MEG angles for this observation are %s and %s degrees."
-            % (heg_ang, meg_ang)
-        )
+        norm_vec = {}
+        for arm in ["heg", "meg", "leg"]:
+            norm_vec[arm] = np.array(
+                [
+                    np.cos(np.deg2rad(roll_nom + Alpha[arm])),
+                    -np.sin(np.deg2rad(roll_nom + Alpha[arm])),
+                ]
+            )
 
         print("The roll angle of this observation is %s" % roll_nom)
 
@@ -2731,8 +2723,8 @@ def run_crisscross(
             "heg_meg_intersects": heg_meg_intersects,
         }
         intersect_info["mwave"] = {
-            "heg": k_heg * mm_per_pix / X_R * Period["heg"],
-            "meg": k_meg * mm_per_pix / X_R * Period["meg"],
+            "heg": k_heg * mm_per_pix / X_R["heg"] * Period["heg"],
+            "meg": k_meg * mm_per_pix / X_R["meg"] * Period["meg"],
         }
 
         for arm in ["heg", "meg"]:
@@ -2774,7 +2766,7 @@ def run_crisscross(
             intersect_info["intersects"][arm] = (
                 src["pos"][:, np.newaxis, :] + k_arm[:, :, np.newaxis] * norm_vec[arm]
             )
-            intersect_info["mwave"][arm] = k_arm * mm_per_pix / X_R * Period[arm]
+            intersect_info["mwave"][arm] = k_arm * mm_per_pix / X_R[arm] * Period[arm]
             intersect_info["point2arm"][arm] = np.abs(k_src)
 
         #########POINT SOURCE CONFUSION START ############
