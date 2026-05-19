@@ -366,7 +366,7 @@ def load_sourcelist(filename=None, subset_list=False):
             "CrissCross needs to be run with a list of known sources RA and DEC."
         )
 
-def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, match_offset=1.0):
+def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, match_offset=0.5):
     """
     Matches sources from the subset_list to the main_list by RA and DEC. All sources in the subset list MUST be also in
     the main list and matched via the element number of the input main_list array. For example, if source number 10 in
@@ -1486,8 +1486,8 @@ def arm_confuse_wave(
 
         # Step 3: Arms where the masking area only covers very short or very long wanvelengths
         # are not really confused because the user would likely ignore those wavelengths anyway.
-        far_out_confused = (wav_high < cutoff[arm][0]) | (
-            wav_low > cutoff[arm][1] / np.abs(m1[None, :, None])
+        far_out_confused = (wav_high <= cutoff[arm][0]) | (
+            wav_low >= cutoff[arm][1] / np.abs(m1[None, :, None])
         )
         flag[confusion & far_out_confused] += flags_arm[
             "outside_primary_source_wave_coverage"
@@ -2872,7 +2872,6 @@ def run_crisscross(
             f"""This run is for observation {evt2_file[k]}.
 The wavdetect source list used for this observation is {wavdetect_file[k]}.
 The roll angle of this observation is {roll_nom:.2f} degrees.
-MEG angle = {meg_ang:.2f} degrees and HEG angle = {heg_ang:.2f} degrees.
 The contamination offset threshold is set to {max_pntsrc_dist} pixels.
 The counts threshold to be considered a spectrum of interest is set to {min_spec_counts} counts.
 The counts threshold to be considered a potential contaminating spectral source is {min_spec_confuser_counts} counts.
@@ -2882,7 +2881,6 @@ The fraction of the OSIP window to include when considering two arm overlaps is 
 The total number of sources input is {src["n"]}.
 The number of sources above the contamination intercept threshold of {min_spec_counts} counts for ObsID {obsid} is {counts_intercept_num}.
 The minimum counts in Src Bs 0th order to assess total arm confusion in source A is {min_arm_counts}.
-The HEG/MEG angles for this observation are {heg_ang:.2f} and {meg_ang:.2f} degrees.
 The total elapsed time for obsID {obsid} is {total_time} minutes."""
         )
         log_file.close()
