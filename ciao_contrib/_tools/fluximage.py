@@ -2101,7 +2101,7 @@ def make_fluxed_images(taskrunner, labelconv, preconditions,
     return etask
 
 
-def read_first_row(filename, colname):
+def read_first_row(filename, colname, patch_ssc=False):
     "Return the value of the first row of the given column."
 
     ##############################
@@ -2126,6 +2126,10 @@ def read_first_row(filename, colname):
             else:
                 cc.append(_)
                 ii = i+1
+
+        if patch_ssc:
+            cc = [_c for _c in cc if _c != "\n"]
+            cc = cc[-2:]
 
         with open(filename, mode="w", encoding="utf-8") as hist:
             hist.write(" ".join(cc))
@@ -2286,18 +2290,21 @@ def find_status_filter(infile, obsid, tmpdir="/tmp"):
     status filter it returns the empty string.
     """
 
-    status = tempfile.NamedTemporaryFile(dir=tmpdir,
-                                         suffix=".status")
-    args = ["infile=" + infile,
-            "outfile=" + status.name,
-            "tool=dmcopy",
-            "action=get",
-            "clobber=yes"]
-    run.run("dmhistory", args)
+    with tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".status") as status:
+        args = ["infile=" + infile,
+                "outfile=" + status.name,
+                "tool=dmcopy",
+                "action=get",
+                "clobber=yes"]
+        run.run("dmhistory", args)
 
-    # Need to convert from np.string_ to Python string
-    statbits = str(read_first_row(status.name, "col2"))
-    status.close()
+        kw = fileio.get_keys_from_file(f"{infile}[#row=0]")
+
+        if kw.get("SSC") is not None and kw.get("SSCFIX") is not None:
+            statbits = str(read_first_row(status.name, "col2", patch_ssc=True))
+        else:
+            statbits = str(read_first_row(status.name, "col2"))
+
     v2(f"Finding status bit filter for ObsId {obsid} from: {statbits}")
 
     # I had planned to report this at verbose=2 but that is
