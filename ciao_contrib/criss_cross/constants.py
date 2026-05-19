@@ -16,18 +16,18 @@
 #  with this program; if not, write to the Free Software Foundation, Inc.,
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-from caldb4 import Caldb
+from glob import glob
+import os
+
 from pycrates import read_file
 
-caldb = Caldb(telescope="Chandra", instrume="", product="GEOM")
-for f in caldb.search:
-    # ephin/geom/ephinD1999-07-22geomNXXX is also found that way, but that's not the one we want
-    if "tel" in f:
-        break
-    else:
-        raise ValueError("Could not find geom file in CALDB")
-
-geom = read_file(f.split("[")[0] + "[GRATINGS]")
+geomfiles = glob(
+    os.path.join(os.environ["CALDB"], "data", "chandra", "default", "geom", "tel*")
+)
+# Get the last NXXX file.
+# At the time of writing, no time-dependent tel files are existing or planned, bit if that
+# ever happens, this code needs to be updated.
+geom = read_file(sorted(geomfiles)[-1] + "[GRATINGS]")
 
 tg_part_name = ["zeroth order", "heg", "meg", "leg"]
 
