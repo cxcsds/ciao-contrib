@@ -2290,38 +2290,45 @@ def find_status_filter(infile, obsid, tmpdir="/tmp"):
     status filter it returns the empty string.
     """
 
-    with tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".status") as status:
-        args = ["infile=" + infile,
-                "outfile=" + status.name,
-                "tool=dmcopy",
-                "action=get",
-                "clobber=yes"]
-        run.run("dmhistory", args)
+    kw = fileio.get_keys_from_file(f"{infile}[#row=0]")
+    statfilt = kw.get("STATFILT") # keyword added by chandra_repro in contrib 4.6.6
 
-        kw = fileio.get_keys_from_file(f"{infile}[#row=0]")
+    if statfilt is None:
+        with tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".status") as status:
+            args = [f"infile={infile}",
+                    f"outfile={status.name}",
+                    "tool=dmcopy",
+                    "action=get",
+                    "clobber=yes"]
+            run.run("dmhistory", args)
 
-        if kw.get("SSC") is not None and kw.get("SSCFIX") is not None:
-            statbits = str(read_first_row(status.name, "col2", patch_ssc=True))
-        else:
-            statbits = str(read_first_row(status.name, "col2"))
+            if kw.get("SSC") is not None and kw.get("SSCFIX") is not None:
+                statbits = str(read_first_row(status.name, "col2", patch_ssc=True))
+            else:
+                statbits = str(read_first_row(status.name, "col2"))
 
-    v2(f"Finding status bit filter for ObsId {obsid} from: {statbits}")
+        v2(f"Finding status bit filter for ObsId {obsid} from: {statbits}")
 
-    # I had planned to report this at verbose=2 but that is
-    # *very* noisy, so adding it to the verbose=1 level,
-    # since it's important to know.
-    spos = statbits.find("[status=")
-    if spos == -1:
-        v1(f"WARNING: no STATUS filter found in {infile} so unable to filter background for obsid {obsid}!")
-        return ""
+        # I had planned to report this at verbose=2 but that is
+        # *very* noisy, so adding it to the verbose=1 level,
+        # since it's important to know.
+        spos = statbits.find("[status=")
+        if spos == -1:
+            v1(f"WARNING: no STATUS filter found in {infile} so unable to filter background for obsid {obsid}!")
+            return ""
 
-    epos = statbits.find("]", spos)
-    if epos == -1:
-        v1(f"WARNING: illegal STATUS filter found in {infile} so unable to filter background for obsid {obsid}!")
-        return ""
+        epos = statbits.find("]", spos)
+        if epos == -1:
+            v1(f"WARNING: illegal STATUS filter found in {infile} so unable to filter background for obsid {obsid}!")
+            return ""
 
-    statbits = statbits[spos:epos + 1]
+        statbits = statbits[spos:epos + 1]
+
+    else:
+        statbits = f"[status={statfilt}]"
+
     v1(f"Background filter (obsid {obsid}): {statbits}")
+
     return statbits
 
 
