@@ -54,9 +54,8 @@ verb2 = log_wrapper(lw.get_logger(__toolname__).verbose2)
 class Source():
     'everything about a source region'
 
-    color = "forestgreen"
+    color = "green"
     shape = "circle"
-    radius = 0.5/3600.  # 0.5 arcsec
     tag = "Input"
 
     def __init__(self, crate, index):
@@ -107,13 +106,12 @@ class Source():
         self.ref_index = self.crate.get_column("REF_INDEX").values[_idx]
         self.matched = self.ref_index > 0
 
-
-    def get_shape(self):
+    def get_shape(self, radius):
         'Construct the shape string'
-        shape = f"{self.shape}({self.ra},{self.dec},{self.radius})"
+        shape = f"{self.shape}({self.ra},{self.dec},{radius}\")"
         return shape
 
-    def render(self):
+    def render(self, pars):
         """Create a region string for the source.
 
         Returns a formatted region description for the source with a circle
@@ -121,7 +119,7 @@ class Source():
         and tags indicating the source type and match state.
         """
 
-        shape = self.get_shape()
+        shape = self.get_shape(float(pars["radius"]))
         fill = 1 if self.include else 0
 
         state = "Unmatched"
@@ -131,7 +129,7 @@ class Source():
                 state = "Used"
 
         src = f"{shape} # text={{{self.index}}} fill={fill} "
-        src += f"color={self.color} tag={{{self.tag}}} tag={{{self.tag}_{state}}}\n"
+        src += f"color={self.color} tag={{All_{self.tag}}} tag={{{self.tag}_{state}}}\n"
         return src
 
     def link_cross_match(self, ref_src_list):
@@ -155,15 +153,19 @@ class Source():
             match.
         """
 
-        ref_idx = self.ref_index-1
         line = ""
+        if ref_src_list is None:
+            return line
+
+        ref_idx = self.ref_index-1
         if self.ref_index > 0:
             ref_ra = ref_src_list.srcs[ref_idx].ra
             ref_dec = ref_src_list.srcs[ref_idx].dec
 
             shape = f"line({self.ra},{self.dec},{ref_ra},{ref_dec})"
             color = "white"
-            line = f"{shape} # line=0 0 color={color}\n"
+            dash = 0 if self.include else 1
+            line = f"{shape} # line=0 0 color={color} dash={dash}\n"
 
             ref_src_list.srcs[ref_idx].matched = True
             ref_src_list.srcs[ref_idx].include = self.include
@@ -178,10 +180,6 @@ class ReferenceSource(Source):
     tag = "Reference"
     shape = "box"
 
-    def __init__(self, crate, index):
-        """Initialize a ReferenceSource using the given crate and source index."""
-        super().__init__(crate, index)
-
     def load(self):
         """Load only the right ascension and declination for this reference source.
 
@@ -193,14 +191,9 @@ class ReferenceSource(Source):
         self.ra = self.crate.get_column("RA").values[_idx]
         self.dec = self.crate.get_column("DEC").values[_idx]
 
-    def link_cross_match(self, ref_src_list):
-        'Dummy routine'
-
-        return ''
-
-    def get_shape(self):
+    def get_shape(self, radius):
         'Create the shape string'
-        shape = f'{self.shape}({self.ra},{self.dec},{2*3600.0*self.radius}",{2*3600.0*self.radius}",0)'
+        shape = f'{self.shape}({self.ra},{self.dec},{2*radius}",{2*radius}",0)'
         return shape
 
 
@@ -229,7 +222,7 @@ class SourceList():
         for idx in range(self.num_src):
             self.srcs.append(Source(tab, idx+1))
 
-    def render(self, ref_src_list=None):
+    def render(self, pars, ref_src_list=None):
         """Create regions for all sources and generate cross-match links.
 
         Args:
@@ -244,7 +237,7 @@ class SourceList():
         out_src = ""
         out_line = ""
         for src in self.srcs:
-            out_src += src.render()
+            out_src += src.render(pars)
             out_line += src.link_cross_match(ref_src_list)
 
         return (out_src, out_line)
@@ -252,14 +245,6 @@ class SourceList():
 
 class ReferenceSourceList(SourceList):
     'List of references sources'
-
-    def __init__(self, infile):
-        """Initialize a ReferenceSourceList.
-
-        Args:
-            infile (str): Path to the input file containing reference sources.
-        """
-        super().__init__(infile)
 
     def load(self):
         """Load reference sources from input file.
@@ -291,7 +276,6 @@ class Director():
         self.__fp = None
         outfile_clobber_checks(clobber, self.outfile)
         outfile_clobber_checks(clobber, self.legend)
-
 
     def __write_header(self):
         """Write DS9 region file header information.
@@ -350,6 +334,20 @@ class Director():
             fp.write('box 80.0 225.0 25.0 2.0  # color = white fill = yes\n')
 
 
+def postface(pars):
+    "Provide ds9 command line to load files"
+
+    verb1(" ")
+    verb1("Use the following command to load the regions into DS9:")
+    verb1(" ")
+    verb1("ds9 FILE_NAME \\")
+    verb1(f"    -region format ds9 -region {pars["outfile"]} \\")
+    verb1(f"    -illustrate load {pars["legend"]} \\")
+    verb1(f"    -catalog import fits {pars["infile"]}")
+    verb1(" ")
+    verb1("replacing FILE_NAME with the name of your event file or image.")
+
+
 @lw.handle_ciao_errors(__toolname__, __revision__)
 def main():
     'Main routine'
@@ -363,21 +361,22 @@ def main():
     ref_obj = ReferenceSourceList(pars["refsrcfile"])
     outfile = Director(pars["outfile"], pars["legend"], pars["clobber"])
 
-    src_reg, line_reg = src_obj.render(ref_obj)
-    ref_reg, _ = ref_obj.render()
+    src_reg, line_reg = src_obj.render(pars, ref_obj)
+    ref_reg, _ = ref_obj.render(pars)
 
     outfile.write_region(src_reg, ref_reg, line_reg)
     outfile.write_legend()
+    postface(pars)
 
 
 def test():
     'Test routine'
-    foo = SourceList("ngc4755_21169.xmatch[crossmatch]")
+    bleck = SourceList("ngc4755_21169.xmatch[crossmatch]")
     ref = ReferenceSourceList("gaia_dr3.fits")
 
-    goo = Director("foo.reg", "foo.seg", True)
-    ss, ll = foo.render(ref)
-    rr, _ = ref.render()
+    goo = Director("bleck.reg", "bleck.seg", True)
+    ss, ll = bleck.render({'radius': 0.5}, ref)
+    rr, _ = ref.render({'radius': 0.5})
     goo.write_region(ss, rr, ll)
 
 
