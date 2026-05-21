@@ -33,7 +33,7 @@ Script:
 
 __version__ = "CIAO 4.18"
 __toolname__ = "specextract"
-__revision__ = "5 November 2025"
+__revision__ = "21 May 2026"
 
 ##########################################################################
 #
@@ -47,7 +47,6 @@ __revision__ = "5 November 2025"
 # Load the necessary libraries.
 
 import os
-import resource
 import sys
 import shutil
 import tempfile
@@ -63,7 +62,7 @@ import cxcdm
 import pycrates as pcr
 
 import ciao_contrib._tools.specextract as spec
-from ciao_contrib._tools import fileio, utils
+from ciao_contrib._tools import fileio, utils, merging
 from ciao_contrib.param_wrapper import open_param_file
 from ciao_contrib.cxcdm_wrapper import get_info_from_file
 from ciao_contrib.runtool import make_tool, new_pfiles_environment, add_tool_history
@@ -1035,6 +1034,12 @@ def _cxcdm_header_info(fn: str, blkno: int|None=None) -> tuple[cxcdm.dmDataset, 
 
 
 
+def _cxcdm_header_close(ds: cxcdm.dmDataset, blk: cxcdm.dmBlock) -> None:
+    cxcdm.dmBlockClose(blk)
+    cxcdm.dmDatasetClose(ds)
+
+
+
 def edit_header(fn_cr: str|pcr.TABLECrate|pcr.IMAGECrate, key, val,
                 blkno: int|None=None, crate: bool=False, **kwargs) -> None:
     """
@@ -1065,29 +1070,28 @@ def edit_header(fn_cr: str|pcr.TABLECrate|pcr.IMAGECrate, key, val,
                 blkno = cr.get_current_crate()
                 _cr = cr.get_crate(blkno) # first interesting block
                 _cr.add_key(crkw)
-                cr.write(fn_cr, clobber=True)
+                return cr.write(fn_cr, clobber=True)
 
             case pcr.TABLECrate() | pcr.IMAGECrate():
-                fn_cr.add_key(crkw)
+                return fn_cr.add_key(crkw)
 
             case _:
                 raise IOError("'edit_header' requires a file name string or data crate as input!")
 
-    else:
-        ds,blk = _cxcdm_header_info(fn_cr, blkno)
+    # use cxcdm to write header keyword
+    ds,blk = _cxcdm_header_info(fn_cr, blkno)
 
-        if "comment" in kwargs:
-            kwargs["desc"] = kwargs.pop("comment")
+    if "comment" in kwargs:
+        kwargs["desc"] = kwargs.pop("comment")
 
-        try:
-            cxcdm.dmKeyWrite(blk, key, val, **kwargs)
+    try:
+        cxcdm.dmKeyWrite(blk, key, val, **kwargs)
 
-        except KeyError as exc:
-            raise RuntimeError(f"{exc}\nRequired: list or tuple of dictionaries with 'key' \
+    except KeyError as exc:
+        raise RuntimeError(f"{exc}\nRequired: list or tuple of dictionaries with 'key' \
 keyword and 'val' value, with optional 'unit' and 'comment' dictionary items.") from exc
 
-        cxcdm.dmBlockClose(blk)
-        cxcdm.dmDatasetClose(ds)
+    return _cxcdm_header_close(ds, blk)
 
 
 
@@ -1118,28 +1122,27 @@ keyword and 'val' value, with optional 'unit' and 'comment' dictionary items.") 
 
             edit_header(_cr, key, val, crate=True, **kwargs)
 
-        cr.write(fn_cr, clobber=True) # cr.write(cr.get_filename(), clobber=True)
+        return cr.write(fn_cr, clobber=True) # cr.write(cr.get_filename(), clobber=True)
 
-    else:
-        ds,blk = _cxcdm_header_info(fn_cr, blkno)
+    # use cxcdm to write header keywords
+    ds,blk = _cxcdm_header_info(fn_cr, blkno)
 
-        for _kwargs in kwdicts:
-            kwargs = _kwargs.copy()
+    for _kwargs in kwdicts:
+        kwargs = _kwargs.copy()
 
-            if "comment" in kwargs:
-                kwargs["desc"] = kwargs.pop("comment")
+        if "comment" in kwargs:
+            kwargs["desc"] = kwargs.pop("comment")
 
-            try:
-                key = kwargs.pop("key")
-                val = kwargs.pop("val")
-            except KeyError as exc:
-                raise RuntimeError(f"{exc}\nRequired: list or tuple of dictionaries with 'key' \
+        try:
+            key = kwargs.pop("key")
+            val = kwargs.pop("val")
+        except KeyError as exc:
+            raise RuntimeError(f"{exc}\nRequired: list or tuple of dictionaries with 'key' \
 keyword and 'val' value, with optional 'unit' and 'comment' dictionary items.") from exc
 
-            cxcdm.dmKeyWrite(blk, key, val, **kwargs)
+        cxcdm.dmKeyWrite(blk, key, val, **kwargs)
 
-        cxcdm.dmBlockClose(blk)
-        cxcdm.dmDatasetClose(ds)
+    return _cxcdm_header_close(ds, blk)
 
 
 
@@ -1184,6 +1187,7 @@ def resp_setup(args,asphist,rmftool):
     ccd_id = args["chip_id"]
     chipx = args["chipx"]
     chipy = args["chipy"]
+    resp_pos = args["resp_pos"]
 
     tmpdir = args["tmpdir"]
     verbose = args["verbose"]
@@ -1193,32 +1197,61 @@ def resp_setup(args,asphist,rmftool):
     with new_pfiles_environment(ardlib=False,copyuser=False):
         acis_fef_lookup = make_tool("acis_fef_lookup")
         sky2tdet = make_tool("sky2tdet")
+        dmimgfilt = make_tool("dmimgfilt")
+
+        if verbose == 2:
+            verbose = 1
 
         if all([srcbkg == "src", weight == "yes"]) or all([srcbkg == "bkg", dobkgresp]):
-            try:
-                if verbose == 2:
-                    verbose = 1
+            if resp_pos.upper() == "REGION" and args.get("zero_counts"):
+                # c.f. cxcsds/ciao-contrib/issues/1005:
+                #
+                # Without any counts, for weighted responses we do not know how to
+                # weight individual pixels, so all pixels should have the same,
+                # non-zero weight. One option is create a unit image (i.e. pixel
+                # values of 1s) that respect the image subspace, so pixels outside
+                # the region are 0/NaN/Null-values.
+                #
+                # There are a couple ways to do this but dmimgfilt can be used in
+                # a single-shot, which will create an image bound the extraction
+                # region.  Pixels outside the region will be NaN and pixels inside
+                # will have the number of pixels encompassed by the point mask,
+                # which will be 1.
 
-                sky2tdet.punlearn()
+                dmimgfilt.punlearn()
 
-                sky2tdet.infile = f"{infile}[energy={ewmap_param}][bin sky]" # include extraction region
-                                                                             # plus same energy filter
+                dmimgfilt.infile = infile
+                dmimgfilt.outfile = f"{tdetwmap}[wmap]"
+                dmimgfilt.function = "count"
+                dmimgfilt.mask = "point(0,0)"
+                dmimgfilt.clobber = True
+                dmimgfilt.verbose = verbose
 
-                # used for dmextract wmap input to mkacisrmf
-                sky2tdet.bin = bintwmap_param
-                sky2tdet.asphistfile = asp_param
-                sky2tdet.outfile = f"{tdetwmap}[wmap]"
-                sky2tdet.clobber = True
-                sky2tdet.verbose = verbose
+                dmimgfilt()
 
-                sky2tdet()
+            else:
+                try:
+                    sky2tdet.punlearn()
 
-                # generate clipped WMAP to speed up response generation
-                if wmap_clip:
-                    clip_wmap(tdetwmap,wmap_thresh,tmpdir)
+                    sky2tdet.infile = f"{infile}[energy={ewmap_param}][bin sky]" # include extraction region
+                                                                                 # plus same energy filter
 
-            except OSError as exc:
-                raise IOError("Error generating WMAP w/sky2tdet!") from exc
+                    # used for dmextract wmap input to mkacisrmf
+                    sky2tdet.bin = bintwmap_param
+                    sky2tdet.asphistfile = asp_param
+                    sky2tdet.outfile = f"{tdetwmap}[wmap]"
+                    sky2tdet.clobber = True
+                    sky2tdet.verbose = verbose
+
+                    sky2tdet()
+
+                    # generate clipped WMAP to speed up response generation
+                    if wmap_clip:
+                        clip_wmap(tdetwmap,wmap_thresh,tmpdir)
+
+                except OSError as exc:
+                    raise IOError("Error generating WMAP w/sky2tdet!") from exc
+
         else:
             tdetwmap = None
 
@@ -2328,32 +2361,6 @@ def update_param_args_and_dict(dict_update,dict_orig,args_list,cmd_pars_history)
 
 
 
-def _check_open_file_limits(nfiles: int, Ntemp: int = 4, Npad: int = 20) -> None:
-    """
-    Check number of open files the working shell supports; opening too many
-    temporary files exceeding the suported value will throw an OSError.
-
-    This would be the equivalent of using:
-
-    bash:
-    'ulimit -n' and 'ulimit -Sn <softlim>'
-
-    csh:
-    'limit descriptors' and 'limit descriptors <softlim>'
-
-    from within Python.
-    """
-
-    open_file_lim = resource.RLIMIT_NOFILE
-    softlim, hardlim = resource.getrlimit(open_file_lim)
-
-    N_open_file = Ntemp * nfiles + Npad
-
-    if softlim < N_open_file:
-        resource.setrlimit(open_file_lim, (N_open_file, hardlim))
-
-
-
 #######################################################################
 #######################################################################
 #####
@@ -2453,7 +2460,7 @@ cannot contain any spaces")
                 return [func(arg) for arg in args]
 
     ## check open file limits on the system ##
-    _check_open_file_limits(len(specextract_args))
+    merging._check_open_file_limits(len(specextract_args))
 
     ###########################
     #

@@ -24,6 +24,7 @@ Routines used when merging and combining data.
 
 import os
 import tempfile
+import resource
 
 import numpy as np
 
@@ -42,11 +43,11 @@ import ciao_contrib.runtool as rt
 import coords.format
 import coords.utils
 
-import ciao_contrib._tools.fileio as fileio
-import ciao_contrib._tools.fluximage as fi
+from ciao_contrib._tools import fileio
+from ciao_contrib._tools import fluximage as fi
 from ciao_contrib._tools.obsinfo import ObsInfo
-import ciao_contrib._tools.run as run
-import ciao_contrib._tools.utils as utils
+from ciao_contrib._tools import run
+from ciao_contrib._tools import utils
 
 from ciao_contrib._tools.headers import HeaderMerge
 from ciao_contrib.stacklib import TemporaryStack
@@ -1165,10 +1166,10 @@ def validate_obsinfo(infiles, colcheck=True):
                 except TypeError:
                     continue
 
-        for obsid in obs_cycle.keys():
+        for obsid,val in obs_cycle.items():
             # if ObsID has both cycle=P and cycle=S files, then remove it
             # from the multi-obi list
-            if obs_cycle[obsid] in ["PS", "SP"]:
+            if val in ["PS", "SP"]:
                 v3(f"ObsID {obsid} is an interleaved observation")
                 multis.remove(obsid)
 
@@ -2475,7 +2476,7 @@ def which_obsids_overlap(obsinfos,
 
 def merge_files(imgfiles, expmap_files, imgfile, expmap, fluxmap,
                 lookupTable, toolname, pars, toolversion,
-                verbose=1, clobber=False, tmpdir="/tmp/"):
+                verbose=1, clobber=False, tmpdir="/tmp/", nchunk=100):
     """Combine the images"""
 
     run.dmimgcalc_add(imgfiles,
@@ -2483,14 +2484,18 @@ def merge_files(imgfiles, expmap_files, imgfile, expmap, fluxmap,
                       verbose=verbose,
                       clobber=clobber,
                       lookupTab=lookupTable,
-                      tmpdir=tmpdir)
+                      tmpdir=tmpdir,
+                      nchunk=nchunk,
+                      bigN_smallNchunk_bypass=True)
 
     run.dmimgcalc_add(expmap_files,
                       expmap + '[EXPMAP]',
                       verbose=verbose,
                       clobber=clobber,
                       lookupTab=lookupTable,
-                      tmpdir=tmpdir)
+                      tmpdir=tmpdir,
+                      nchunk=nchunk,
+                      bigN_smallNchunk_bypass=True)
 
     run.fix_bunit(expmap_files[0], expmap, verbose=verbose)
 
@@ -2856,7 +2861,7 @@ def expmap_weight(infiles, expmaps, outfile, lookupTable,
 
 def merge_psfmaps(mergetype, psfmap, psfmap_files, expmap_files,
                   lookupTable, toolname, pars, toolversion,
-                  verbose=1, clobber=False, tmpdir="/tmp/"):
+                  verbose=1, clobber=False, tmpdir="/tmp", nchunk=None):
     """Combine the PSF maps.
 
     It is assumed that the PSF maps have no spatial subspace filters
@@ -2867,30 +2872,79 @@ def merge_psfmaps(mergetype, psfmap, psfmap_files, expmap_files,
     dmfilttypes = ['min', 'max', 'mean', 'median', 'mid']
     clstr = "yes" if clobber else "no"
 
-    outfile = "{}[PSFMAP]".format(psfmap)
-    if mergetype in dmfilttypes:
+    outfile = f"{psfmap}[PSFMAP]"
 
-        with TemporaryStack(psfmap_files, dir=tmpdir) as tmp_stk:
-            run.punlearn("dmimgfilt")
-            args = ["infile=@{}".format(tmp_stk.name),
-                    "outfile={}".format(outfile),
-                    "function={}".format(mergetype),
-                    "mask=point(0,0)",
-                    "lookupTab={}".format(lookupTable),
-                    "clobber={}".format(clstr),
-                    "verbose={}".format(verbose)]
-            run.run("dmimgfilt", args)
 
-    elif mergetype == 'exptime':
+    def dmfilt_stk(stk, out, merge_type, lut=lookupTable, clob=clstr, verb=verbose):
+        with rt.new_pfiles_environment(ardlib=False):
+            with TemporaryStack(stk, dir=tmpdir) as tmp_stk:
+                run.punlearn("dmimgfilt")
 
-        exposure_weight(psfmap_files, outfile, lookupTable)
+                args = [f"infile=@{tmp_stk.name}",
+                        f"outfile={out}",
+                        f"function={merge_type}",
+                        "mask=point(0,0)",
+                        f"lookupTab={lut}",
+                        f"clobber={clob}",
+                        f"verbose={verb}"]
 
-    elif mergetype == 'expmap':
+                run.run("dmimgfilt", args)
 
-        expmap_weight(psfmap_files, expmap_files, outfile, lookupTable)
+
+    def combine_psfmap(pmap_files=psfmap_files, emap_files=expmap_files, out=outfile,
+                       mergetype=mergetype, lut=lookupTable):
+        if mergetype in dmfilttypes:
+            dmfilt_stk(pmap_files, out, mergetype)
+
+        elif mergetype == 'exptime':
+            exposure_weight(pmap_files, out, lut)
+
+        elif mergetype == 'expmap':
+            expmap_weight(pmap_files, emap_files, out, lut)
+
+        else:
+            raise ValueError("Unexpected mergetype={} for combining PSF maps".format(mergetype))
+
+
+    if nchunk is None or mergetype in ["exptime", "expmap"]:
+        combine_psfmap(psfmap_files, expmap_files, outfile, mergetype, lookupTable)
 
     else:
-        raise ValueError("Unexpected mergetype={} for combining PSF maps".format(mergetype))
+        chunks = int(np.ceil( len(psfmap_files)/nchunk ))
+        datachunks = [ list(zip(*[psfmap_files,expmap_files]))[i::chunks] for i in range(chunks) ]
+        tmplist = []
+
+        for d in datachunks:
+            pmaps, emaps = zip(*d)
+
+            tmplist.append( _tmp := tempfile.NamedTemporaryFile(dir=tmpdir) )
+
+            combine_psfmap(pmaps, emaps, f"{_tmp.name}[PSFMAP]", mergetype, lookupTable)
+
+        tmp_fn = [t.name for t in tmplist]
+        _iter = 0
+
+        while chunks > nchunk:
+            chunks = int(np.ceil( chunks/nchunk ))
+            _datachunks = [ tmplist[i::chunks] for i in range(chunks) ]
+            _tmplist = []
+
+            for d in _datachunks:
+                _tmplist.append( _tmp := tempfile.NamedTemporaryFile(dir=tmpdir) )
+
+                dmfilt_stk([_d.name for _d in d], f"{_tmp.name}[PSFMAP]", mergetype)
+
+                for _d in d: _d.close()
+
+            _iter += 1
+            tmplist = _tmplist
+
+        if _iter > 0:
+            tmp_fn = [t.name for t in _tmplist]
+
+        dmfilt_stk(tmp_fn, outfile, mergetype)
+
+        for t in tmplist: t.close()
 
     run.fix_bunit(psfmap_files[0], psfmap, verbose=verbose)
 
@@ -2910,7 +2964,9 @@ def merge(process,
           threshold=False,
           clobber=False,
           pathfrom=None,
-          tmpdir="/tmp/"):
+          tmpdir="/tmp/",
+          counts_nchunk : int|None=100,
+          psfmap_nchunk : int|None=None):
     """Combine the fluximage outputs into single images.
     outfiles is the output of setup_output_names().
 
@@ -2990,7 +3046,8 @@ def merge(process,
         merge_files(images[eband], expmaps[eband],
                     imgfile, expmap, fluxmap,
                     ltable, toolname, pars, toolversion,
-                    verbose=verbose, clobber=clobber, tmpdir=tmpdir)
+                    verbose=verbose, clobber=clobber,
+                    tmpdir=tmpdir, nchunk=counts_nchunk)
 
     if psfmerge is not None:
         psfmaps = outfiles['psfmaps']
@@ -2998,7 +3055,8 @@ def merge(process,
 
             merge_psfmaps(psfmerge, psfmap, psfmaps[eband], expmaps[eband],
                           ltable, toolname, pars, toolversion,
-                          verbose=verbose, clobber=clobber, tmpdir=tmpdir)
+                          verbose=verbose, clobber=clobber,
+                          tmpdir=tmpdir, nchunk=psfmap_nchunk)
 
     try:
         rt.add_tool_history(outfiles['mergedevtfile'], toolname, pars,
@@ -3144,5 +3202,32 @@ def handle_xygrid(pfile, instrument, pars, params):
         params['sizes'] = sizes
 
     params['xygrid'] = xygrid
+
+
+def _check_open_file_limits(nfiles: int, Ntemp: int = 4, Npad: int = 20) -> None:
+    """
+    Check number of open files the working shell supports; opening too many
+    temporary files exceeding the suported value will throw an OSError.
+
+    This would be the equivalent of using:
+
+    bash:
+    'ulimit -n' and 'ulimit -Sn <softlim>'
+
+    csh:
+    'limit descriptors' and 'limit descriptors <softlim>'
+
+    from within Python.  This is only applied for the Python process instance
+    executing this resource usage.
+    """
+
+    open_file_lim = resource.RLIMIT_NOFILE
+    softlim, hardlim = resource.getrlimit(open_file_lim)
+
+    N_open_file = Ntemp * nfiles + Npad
+
+    if softlim < N_open_file:
+        resource.setrlimit(open_file_lim, (N_open_file, hardlim))
+
 
 # End
