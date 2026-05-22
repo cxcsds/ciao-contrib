@@ -39,16 +39,14 @@ from constants import tg_part_name, X_R, Period, mm_per_pix, arcsec_per_pix, hc,
 ##### FLAG DEFINITIONS #####
 # Which flag do they get if the intersection point is outside the CCD?
 flags_spec = {
-    "outside_primary_source_wave_coverage": 1,
-    "outside_confuser_source_wave_coverage": 2,
-    "outside_osip_range": 4,
-    "confuser_has_no_0th_order_counts": 8,
-    "confuser_has_0_disp_counts_in_order": 16,
-    "confusion_smaller_than_conf_ratio": 32,
-    "confused_has_0_disp_counts_and_confuser_gtr_0": 64,
-    "confusion_above_conf_ratio": 128,
+    "outside_osip_range": 1,
+    "confuser_has_no_0th_order_counts": 2,
+    "confuser_has_0_disp_counts_in_order": 4,
+    "confusion_smaller_than_conf_ratio": 8,
+    "confused_has_0_disp_counts_and_confuser_gtr_0": 16,
+    "confusion_above_conf_ratio": 32,
 }
-flags_spec_levels = {"clean": -1, "warn": 0, "confused": 64}
+flags_spec_levels = {"clean": -1, "warn": 0, "confused": 16}
 
 flags_pnt = {
     "confusing_pntsrc_but_no_counts": 1,
@@ -935,16 +933,10 @@ def spec_confuse_wave(
     # That's true if either the confused or the confuser spectrum is in the range of
     # energies that can't be detected with ACIS or the grating's don't disperse them.
     far_out_confused = (wave <= cutoff[arm][0]) | (wave >= cutoff[arm][1])
-    flag[confusion & far_out_confused[:, :, :, np.newaxis]] += flags_spec[
-        "outside_primary_source_wave_coverage"
-    ]
     confusion &= ~far_out_confused[:, :, :, np.newaxis]
     far_out_confuser = (wave2 < cutoff[secondary_arm][0]) | (
         wave2 >= cutoff[secondary_arm][1]
     )
-    flag[confusion & far_out_confuser[:, :, np.newaxis, :]] += flags_spec[
-        "outside_confuser_source_wave_coverage"
-    ]
     confusion &= ~far_out_confuser[:, :, np.newaxis, :]
 
     # Step 4: Is the confusing arm within the OSIP?
@@ -1491,16 +1483,10 @@ def arm_confuse_wave(
         far_out_confused = (wav_high <= cutoff[arm][0]) | (
             wav_low >= cutoff[arm][1] / np.abs(m1[None, :, None])
         )
-        flag[confusion & far_out_confused] += flags_arm[
-            "outside_primary_source_wave_coverage"
-        ]
         confusion &= ~far_out_confused
         # We are not scaling the inner edge, since that's more about the max energy
         # that the CCD can detect, so we don't have to repeat the "< cutoff[arm][0]" test.
         far_out_confused = wav_low >= cutoff[arm][1] / np.abs(m2[None, None, :])
-        flag[confusion & far_out_confused] += flags_arm[
-            "outside_confuser_source_wave_coverage"
-        ]
         confusion &= ~far_out_confused
 
         # Step 4: Determine how important suspected arm confusion is
