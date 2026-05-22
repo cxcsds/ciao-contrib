@@ -922,30 +922,32 @@ def spec_confuse_wave(
     )
     # 0 mean "clean". All flags start clean and flages are added step by step.
     flag = np.zeros_like(confusion, dtype=int)
+
     # Step 2: Negative k values correspond to negative orders and positive k values
     # correspond to positive orders, so mwave / k is always positive for valid
     # intersections.
     # It's 0 for a source compared to itself.
     confusion &= wave[:, :, :, np.newaxis] > 0
+    confusion &= wave2[:, :, np.newaxis, :] > 0
 
-    # Step 2: Arms that intersect so close in or so far out that confusion would be
+    # Step 3: Arms that intersect so close in or so far out that confusion would be
     # at undetectable wavelengths can be ignored.
     # That's true if either the confused or the confuser spectrum is in the range of
     # energies that can't be detected with ACIS or the grating's don't disperse them.
-    far_out_confused = (wave < cutoff[arm][0]) | (wave > cutoff[arm][1])
+    far_out_confused = (wave <= cutoff[arm][0]) | (wave >= cutoff[arm][1])
     flag[confusion & far_out_confused[:, :, :, np.newaxis]] += flags_spec[
         "outside_primary_source_wave_coverage"
     ]
     confusion &= ~far_out_confused[:, :, :, np.newaxis]
     far_out_confuser = (wave2 < cutoff[secondary_arm][0]) | (
-        wave2 > cutoff[secondary_arm][1]
+        wave2 >= cutoff[secondary_arm][1]
     )
     flag[confusion & far_out_confuser[:, :, np.newaxis, :]] += flags_spec[
         "outside_confuser_source_wave_coverage"
     ]
     confusion &= ~far_out_confuser[:, :, np.newaxis, :]
 
-    # Step 3: Is the confusing arm within the OSIP?
+    # Step 4: Is the confusing arm within the OSIP?
 
     # For all vallues we consider below, the initial value will be overwritten.
     # Setting the initial value to 1 avoids "devide by zero" errors for elements we don't care about.
@@ -977,7 +979,7 @@ def spec_confuse_wave(
     flag[confusion & outside_osip] += flags_spec["outside_osip_range"]
     confusion &= ~outside_osip
 
-    # Step 4: Do we expect any signal from the confuser within the OSIP range?
+    # Step 5: Do we expect any signal from the confuser within the OSIP range?
     confuser_0th_counts = np.full_like(wave2, -1)
     for i, j, o in np.ndindex(wave.shape):
         if confusion[i, j, o, :].any():
@@ -997,7 +999,7 @@ def spec_confuse_wave(
     ]
     confusion &= (confuser_0th_counts > 0)[:, :, :, np.newaxis]
 
-    # Step 5: See if confuser contributes any counts.
+    # Step 6: See if confuser contributes any counts.
     confuser_counts_secondary = np.full_like(confusion, -1, dtype=float)
 
     for i, j, m1, m2 in np.ndindex(confusion.shape):
@@ -1017,7 +1019,7 @@ def spec_confuse_wave(
 
     confusion &= confuser_counts_secondary > 0
 
-    # Step 6: Get counts for confused source and calculate confusion ratio.
+    # Step 7: Get counts for confused source and calculate confusion ratio.
     confused_0th_counts = np.zeros_like(wave)
     confused_counts_primary = np.zeros_like(wave)
 
@@ -1255,7 +1257,7 @@ def pntsrc_confuse_wave(
     flag[confusion & (wave_low == 9999.0)] = flags_pnt["confusing_pntsrc_but_no_counts"]
     confusion &= wave_low != 9999.0
 
-    outside_range = (wave < cutoff[arm][0]) | (wave > cutoff[arm][1])
+    outside_range = (wave <= cutoff[arm][0]) | (wave >= cutoff[arm][1])
     flag[confusion & outside_range] = flags_pnt["pntsrc_conf_outside_resp_region"]
     confusion &= ~outside_range
 
@@ -1493,9 +1495,9 @@ def arm_confuse_wave(
             "outside_primary_source_wave_coverage"
         ]
         confusion &= ~far_out_confused
-        # We are not sclaing the inner edge, since that's more about the max energy
+        # We are not scaling the inner edge, since that's more about the max energy
         # that the CCD can detect, so we don't have to repeat the "< cutoff[arm][0]" test.
-        far_out_confused = wav_low > cutoff[arm][1] / np.abs(m2[None, None, :])
+        far_out_confused = wav_low >= cutoff[arm][1] / np.abs(m2[None, None, :])
         flag[confusion & far_out_confused] += flags_arm[
             "outside_confuser_source_wave_coverage"
         ]
