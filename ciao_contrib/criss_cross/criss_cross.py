@@ -33,6 +33,7 @@ from pycrates import (
 from crates_contrib.utils import make_table_crate
 from ciao_contrib import runtool as rt
 from iocaldb import OSIP, Sky2Chandra, Cel2Chandra
+from ciao_contrib.psf_contrib import PSF
 from widthofexclusion import counts_circle_band, pnt_src_masking_region
 from constants import tg_part_name, X_R, Period, mm_per_pix, arcsec_per_pix, hc, Alpha
 
@@ -225,6 +226,7 @@ def run_wavdetect(
     rt.wavdetect.imagefile = f"{outdir}/{outroot}_imgfile.fits"
     rt.wavdetect.defnbkgfile = f"{outdir}/{outroot}_nbgd.fits"
     rt.wavdetect.regfile = f"{outdir}/{outroot}_src.reg"
+    rt.wavdetect.scales = "1 2 4 8 16"
     rt.wavdetect.verbose = verbose
     rt.wavdetect.clobber = clobber
 
@@ -432,7 +434,7 @@ def match_subset_to_main(RA_main, DEC_main, RA_sub, DEC_sub, match_offset=0.5):
 def calc_physical_coords(fits_par, RA, DEC):
     """
     Converts from RA and DEC in WCS degrees to Chandra physical coordinates. This also determines the off-axis angle
-    and converts it to arcseconds.
+    in arcmin and the size of the PSF at the off-axis angle.
 
     Parameters
     ----------
@@ -453,6 +455,18 @@ def calc_physical_coords(fits_par, RA, DEC):
     src["pos"] = np.stack([src["x"], src["y"]], axis=-1)
     src["n"] = len(src["x"])
     src["ID"] = np.arange(0, src["n"])
+
+    psf = PSF()
+    psf_size = np.zeros(src["n"])
+    for i in range(0,src["n"]):
+        psf_size[i] = psf.psfSize(
+            energy_keV=2.0,
+            theta_arcmin=src["theta"][i],
+            phi_deg=src["phi"][i],
+            ecf=0.9,
+        )
+    src["psf_size"] = psf_size
+
     return src
 
 
@@ -516,7 +530,7 @@ def find_closest_source(src, wave_file, max_offset=3.0):
 
         # if distance is > max offset then assign values of 99999 (bogus) and filter out in next loop. Otherwise,
         # assign matched values.
-        if closest_dist <= max_offset:
+        if closest_dist <= src['psf_size'][i]:
             closest_dist_arr[i] = closest_dist
             closest_match_arr[i] = np.where(dist_arr == np.min(dist_arr))[0][0]  #
         else:
@@ -537,7 +551,7 @@ def find_closest_source(src, wave_file, max_offset=3.0):
         # only the closest distance can be assigned to a single source (no double counting).
 
         if (
-            (closest_dist_arr[i] <= max_offset)
+            (closest_dist_arr[i] <= src['psf_size'][i])
             and (closest_dist_arr[i] == np.min(common_matches_dist))
         ):  # if the current source's closest distance is the closest of all the common matches then it is 'correct'
             # and assigned the wavedetect number of counts. Otherwise, counts are set to 0 (not detected)
