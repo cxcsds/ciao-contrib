@@ -1,0 +1,69 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2010-2012, 2013, 2014, 2015, 2016, 2018, 2020, 2021
+# Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 USA.
+#
+
+"""
+clean_spec - clean a spectrum using a CrissCross produced cleaning table
+"""
+
+
+#import paramio
+import sys
+#from ciao_contrib.param_wrapper import open_param_file
+import ciao_contrib.logger_wrapper as lw
+
+#import ciao_contrib._tools.clean_spec as cs
+import clean_spec as cs
+
+TOOLNAME = 'clean_spec'
+__revision__  = '28 May 2026'
+
+lgr = lw.initialize_logger(TOOLNAME)
+v1 = lgr.verbose1
+v3 = lgr.verbose3
+
+
+@lw.handle_ciao_errors(TOOLNAME, __revision__)
+def run_clean_spec():
+
+    from ciao_contrib.param_soaker import get_params
+
+    pars = get_params(TOOLNAME, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": v1})
+    
+    if pars['arf_file'] == 'None':
+        pars['arf_file'] = None
+
+    if pars['resp_dir'] == 'None':
+        pars['resp_dir'] = None
+
+    cs.clean_spec(pha_file=pars['infile'], cc_table=pars['conf_file'], spec_root=pars['spec_root'], arf_file=pars['arf_file'], resp_dir=pars['resp_dir'])
+
+#    print(pars)
+    print('FINISHED --')
+
+
+
+#run cleanspec
+if __name__ == "__main__":
+    run_clean_spec()
