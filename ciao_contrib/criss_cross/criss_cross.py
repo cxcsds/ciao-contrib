@@ -1876,9 +1876,8 @@ def run_crisscross(
     arf_ratios_dir="input_files",
     main_list="input_files/full_coup_src_list.tsv",
     subset_src_list="input_files/subset_onc.tsv",
-    clean_single_RA=None,
-    clean_single_DEC=None,
-    clean_single_root=None,
+    single_src_pos=None,
+    single_src_root=None,
     evt2_file=None,
     wavdetect_file=None,
     clobber_par=False,
@@ -1909,10 +1908,11 @@ def run_crisscross(
     and a list of RA+DEC (main_list) for every X-ray source in the field of view. A list of sources in the field of
     view can often be obtained by running wavdetect on the same field if there are non-HETG archival Chandra
     observations. CrissCross can create spectral confusion tables for all sources present in a secondary
-    (subset_src_list) list or can be run for a single source using the 'clean_single_RA/DEC' parameters.
+    (subset_src_list) list or can be run for a single source using the 'single_src_pos' parameter.
 
-    If users have PHA files extracted using the relevant evt2 file they can run clean_spec() using the CrissCross
-    confusion tables as input to remove confused counts from their spectra before performing their spectral analysis.
+    If users have PHA files extracted using the relevant evt2 file they can run the complimentary CIAO tool clean_spec() 
+    using the CrissCross confusion tables as input to remove confused counts from their spectra and associated ARFs
+    before performing their spectral analysis.
 
     Parameters
     ----------
@@ -1927,9 +1927,11 @@ def run_crisscross(
     subset_src_list : str
         A tsv or ascii file of sources to create confusion tables for. This should be a subset of main_list and include
         sources bright enough for HETG spectral extraction. The table format requires columns RA, and DEC.
-    clean_single_RA, clean_single_DEC : float
-        RA and DEC for a single source if the user wishes to create only one confusion table. Format must be
-        J2000 degrees.
+    single_src_pos : string
+        RA and DEC position in degrees to calculate confusion for only a single source. The source coordinates must 
+        also be in the main_list file. Format must be J2000 degrees in format e.g., '83.8186447, -5.3896515'.
+    single_src_root : string
+        Root name for single_src_pos confusion table. If None then element number of main_list is used in table name.
     evt2_file : str
         A single evt2 file or a list of evt2 files which contain sources in main_list and subset_src_list.
     wavdetect_file : str, None
@@ -1968,7 +1970,7 @@ def run_crisscross(
         (wavelength range) is estimated using the HETG instrument effeciency (ARF) and the number of 0th order counts
         from each source within the wavelength range (default: 0.1).
     max_arm_dist : float
-        Two bright sources whose 0th order distance, measured in ACIS pixels perpendicular from one soruce to the
+        Two bright sources whose 0th order distance, measured in ACIS pixels perpendicular from one source to the
         dispersed spectrum of an extracted source, is less than this will be considered as potential arm confusion.
         Users can increase this parameter if they believe spectra are unfairly being flagged as arm confused. Note: an
         on-axis spectrum has a width of approximately 5 pixels and thus if two on-axis sources are within 10 pixels
@@ -2115,13 +2117,15 @@ def run_crisscross(
         RA_wcs, DEC_wcs, srcID = load_sourcelist(filename=main_list)
 
         # save the RA, DEC from the subset input list or the user input individual source
-        if clean_single_RA is None and clean_single_DEC is None:
+        if single_src_pos is None:
             subset_RA, subset_DEC = load_sourcelist(
                 filename=subset_src_list, subset_list=True
             )
         else:
-            subset_RA = np.array([float(clean_single_RA)])
-            subset_DEC = np.array([float(clean_single_DEC)])
+            #convert user input string 'ra,dec'.
+            single_RA, single_DEC = [float(x.strip()) for x in single_src_pos.split(',')]
+            subset_RA = np.array([single_RA])
+            subset_DEC = np.array([single_DEC])
 
         # match the element number of the subset list to the main list using RA and DEC to 6 digits accuracy.
         subset_list = match_subset_to_main(
@@ -2296,11 +2300,10 @@ def run_crisscross(
             # If users run cc with just a single source, allow them to name the confusion file. Otherwise a single root
             #  will get clobbered when looped over multiple sources.
             if (
-                clean_single_RA is not None
-                and clean_single_DEC is not None
-                and clean_single_root is not None
+                single_src_pos is not None
+                and single_src_root is not None
             ):
-                cc_table_root = clean_single_root
+                cc_table_root = single_src_root
             else:
                 cc_table_root = None
             write_full_conf_table(
