@@ -1,6 +1,29 @@
+# Copyright (C) 2022,2025 MIT
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+clean_spec - Uses confusion tables produced by CrissCross to create 'cleaned' PHA1 or PHA2 spectra and ARF response files.
+"""
+
 from load_hetg_resp import find_resp_files, match_resp_order
+#from from sherpa_contrib.load_hetg_resp import find_resp_files, match_resp_order
 import numpy as np
 from constants import tg_part_name
+import ciao_contrib.logger_wrapper as lw
 
 from pycrates import (
     read_file,
@@ -13,8 +36,15 @@ from pycrates import (
     update_crate_checksum,
 )
 
+TOOLNAME = 'clean_spec'
+__revision__  = '28 May 2026'
 
-def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
+lw.initialize_logger(TOOLNAME)
+v1 = lw.make_verbose_level(TOOLNAME, 1)
+v2 = lw.make_verbose_level(TOOLNAME, 2)
+v3 = lw.make_verbose_level(TOOLNAME, 3)
+
+def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None, clobber=False):
     """
     Uses confusion tables produced by CrissCross to create 'cleaned' PHA1 or PHA2 spectra and ARF response files. The
     confusion tables identify portions of a source's spectrum that may have erroneous events that should not be
@@ -36,6 +66,8 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         A file path or list of file paths to ARFs matching the input pha file.
     resp_dir: directory
         The directory where the ARFs associated with the pha_file is stored.
+    clobber: Bool
+        If clobber=True then output file will be over-written.
 
     """
 
@@ -212,12 +244,12 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         write_pha(
             pha_crate_dataset,
             f"{spec_root}_obsid_{tg_obs}_{pha_arm}{pha_order}_cleaned.pha",
-            clobber=True,
+            clobber=clobber,
         )
         write_file(
             arf_data,
             f"{spec_root}_obsid_{tg_obs}_{pha_arm}{pha_order}_cleaned.arf",
-            clobber=True,
+            clobber=clobber,
         )
 
     # PHA2 files need to be treated a little different because they are arrays of arrays and order/arm info is not in
@@ -240,7 +272,7 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
         # if user doesn't enter arfs then try to find them either using the user included response dir or the standard
         # CIAO-produced file structure
         else:
-            print(
+            v1(
                 "Warning, no ARF response files provided in parameter arf_file. Attempting to find them."
             )
             resp_list = find_resp_files(
@@ -311,7 +343,7 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
             write_file(
                 arf_data,
                 f"{spec_root}_obsid_{tg_obs}_{pha_arm_arr[i]}{pha_order_arr[i]}_cleaned.arf",
-                clobber=True,
+                clobber=clobber,
             )
 
         # appends the original files to the history of the new file for record keeping
@@ -324,9 +356,8 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None):
 
         # saves a new PHA2 file while maintaining the original header.
         write_pha(
-            pha_crate_dataset, f"{spec_root}_obsid_{tg_obs}_cleaned.pha2", clobber=True
+            pha_crate_dataset, f"{spec_root}_obsid_{tg_obs}_cleaned.pha2", clobber=clobber
         )
-
     else:
         raise ValueError("Input PHA file was not a PHA1 or PHA2 type file")
 
