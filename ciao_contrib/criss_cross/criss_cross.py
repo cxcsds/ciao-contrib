@@ -36,6 +36,17 @@ from iocaldb import OSIP, Sky2Chandra, Cel2Chandra
 from ciao_contrib.psf_contrib import PSF
 from widthofexclusion import counts_circle_band, pnt_src_masking_region
 from constants import tg_part_name, X_R, Period, mm_per_pix, arcsec_per_pix, hc, Alpha
+import ciao_contrib.logger_wrapper as lw
+
+TOOLNAME = 'crisscross'
+__revision__  = '28 May 2026'
+
+lw.initialize_logger(TOOLNAME)
+v0 = lw.make_verbose_level(TOOLNAME, 0)
+v1 = lw.make_verbose_level(TOOLNAME, 1)
+v2 = lw.make_verbose_level(TOOLNAME, 2)
+v3 = lw.make_verbose_level(TOOLNAME, 3)
+
 
 ##### FLAG DEFINITIONS #####
 # Which flag do they get if the intersection point is outside the CCD?
@@ -204,7 +215,7 @@ def run_wavdetect(
         f"\nNo input wavdetect source fits table provided so running wavdetect on {evt2_file} with binsize={binsize}, bands={bands} and psfecf={psfecf}."
     )
     print(
-        "If you wish to use other wavdetect parameters please run wavdetect and provide a wavdetect source fits table.\n"
+        "If you wish to use other wavdetect parameters please run wavdetect and provide a wavdetect source fits table with parameter 'wavdetect_file'.\n"
     )
 
     rt.fluximage.punlearn()
@@ -1836,10 +1847,10 @@ class TimeLogger:
         self.start = time.time()
         self.counter = 0
 
-        print("\n")
+        #print("\n")
         print("CrissCross Time Start:")
         print(time.asctime(time.localtime()))
-        print("\n")
+        #print("\n")
 
     def __enter__(self):
         return self
@@ -2052,34 +2063,34 @@ def run_crisscross(
         timelogger = TimeLogger()
 
         # print the tweakable paramters to the screen and then record them near the end along with the time it took to run.
-        print("\n")
-        print("This run is for observation %s" % evt2_file[k])
+        v0("\n")
+        v0("This run is for observation %s." % evt2_file[k])
         if wavdetect_file[k] is not None:
-            print("This run is using the wavedetect file %s" % wavdetect_file[k])
-        print(
+            v0("This run is using the wavedetect file %s." % wavdetect_file[k])
+        v1(
             "The contamination offset threshold is set to %s pixels." % max_pntsrc_dist
         )
-        print(
+        v1(
             "The counts threshold to be considered a spectrum of interest is set to %s counts."
             % min_spec_counts
         )
-        print(
+        v1(
             "The counts threshold to be considered a potential contaminating spectral source is %s counts."
             % min_spec_confuser_counts
         )
-        print(
+        v1(
             "The counts threshold to be considered a potential 0th order point source contaminating source is %s counts."
             % min_pntsrc_counts
         )
-        print(
+        v1(
             "The distance in pixels required for two very bright sources to be considered for ARM REMOVAL --tis but a scratch-- is %s pixels"
             % max_arm_dist
         )
-        print(
+        v1(
             "The fraction of the OSIP window to include when considering two arm overlaps is set at %s percent "
             % (osip_frac * 100)
         )
-        print(
+        v1(
             "The minimum counts in Src Bs 0th order to assess total arm confusion in source A is %s "
             % (min_arm_counts)
         )
@@ -2097,7 +2108,7 @@ def run_crisscross(
                 ]
             )
 
-        print("The roll angle of this observation is %s" % roll_nom)
+        v1("The roll angle of this observation is %s" % roll_nom)
 
         # create the output files directory but if clobber=False and it exists then stop CrissCross
         output_dir, dir_exists = make_output_dir(
@@ -2140,7 +2151,7 @@ def run_crisscross(
         # convert from RA/DEC in degrees to Chandra Sky physical coordinates
         src = calc_physical_coords(evt2_file[k], RA_wcs, DEC_wcs)
 
-        timelogger("Finished converting RA/DEC into chandra coords")
+        #timelogger("Finished converting RA/DEC into chandra coords")
 
         # match input source list to wavedetect table to catalog 0th order counts for each source in each obsid
         final_match_arr, final_dist_arr, counts = find_closest_source(
@@ -2159,8 +2170,8 @@ def run_crisscross(
 
         counts_intercept_num = np.sum(counts > min_spec_counts)
 
-        print("The total number of sources input is %s." % (src["n"]))
-        print(
+        v0("The total number of X-ray field sources input is %s. These will be assessed as potential sources of confusion for sources in 'subset_src_list' or 'single_src_pos'." % (src["n"]))
+        v1(
             "The number of sources above the contamination intercept threshold of %s counts for ObsID %s is %s."
             % (min_spec_counts, obsid, counts_intercept_num)
         )
@@ -2212,7 +2223,7 @@ def run_crisscross(
                 )
             )
 
-        timelogger("Finished calculating spectral confusion.")
+        #timelogger("Finished calculating spectral confusion.")
 
         ######### Perpendicular distance
         # Point, arm, and streak confusion all depend on the distance of
@@ -2275,7 +2286,7 @@ def run_crisscross(
                 )
             )
 
-        timelogger("Finished calculating point source confusion.")
+        #timelogger("Finished calculating point source confusion.")
 
         ##########ARM CONFUSION START ############################
         for arm in ["heg", "meg"]:
@@ -2296,7 +2307,7 @@ def run_crisscross(
                 )
             )
 
-        timelogger("Finished assigning arm confusion.")
+        #timelogger("Finished assigning arm confusion.")
 
         ##### Table writing and cleanup ############
         records = rfn.stack_arrays(records)
@@ -2328,7 +2339,7 @@ def run_crisscross(
             output_dir_list_par=output_dir, obsid_par=obsid, wavdetect_par=run_wave
         )
 
-        timelogger("Finished Running CrissCross!")
+        #timelogger("Finished Running CrissCross!")
 
         log_file = open(f"{output_dir}/LOG_{obsid}.txt", "w")
         total_time = timelogger.end()
