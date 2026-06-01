@@ -1788,21 +1788,21 @@ def end_of_run_cleanup(output_dir_list_par, obsid_par, wavdetect_par=False):
         f"{output_dir_list_par}/confused_*consolidated_obsID_{obsid_par}.fits"
     )
 
-    for i in range(len(output_table_full)):
-        file_size_table = os.stat(output_table_full[i])
-        if (
-            file_size_table.st_size == 46080
-        ):  # note, this filesize is for the 'empty' fits but it is likely to change since I will probably change the
-            # number of columns!
-            os.remove(output_table_full[i])
+    # for i in range(len(output_table_full)):
+    #     file_size_table = os.stat(output_table_full[i])
+    #     if (
+    #         file_size_table.st_size == 46080
+    #     ):  # note, this filesize is for the 'empty' fits but it is likely to change since I will probably change the
+    #         # number of columns!
+    #         os.remove(output_table_full[i])
 
-    for i in range(len(output_table_consolidated)):
-        file_size_table = os.stat(output_table_consolidated[i])
-        if (
-            file_size_table.st_size == 5760
-        ):  # note, this filesize is for the 'empty' fits but it is likely to change since I will probably change the
-            # number of columns!
-            os.remove(output_table_consolidated[i])
+    # for i in range(len(output_table_consolidated)):
+    #     file_size_table = os.stat(output_table_consolidated[i])
+    #     if (
+    #         file_size_table.st_size == 5760
+    #     ):  # note, this filesize is for the 'empty' fits but it is likely to change since I will probably change the
+    #         # number of columns!
+    #         os.remove(output_table_consolidated[i])
 
     # move the remaining table files to the table directory
     files_to_move = glob.glob(
@@ -1811,7 +1811,7 @@ def end_of_run_cleanup(output_dir_list_par, obsid_par, wavdetect_par=False):
     # check that some files exist after removing the tables that have no confusion.
     if len(files_to_move) == 0:
         print(
-            "WARNING -- No confusion tables exist after removing empty tables. No confusion identified with input source(s) or something went wrong in CrissCross."
+            "WARNING -- No confusion tables exist. No confusion identified with input source(s) or something went wrong in CrissCross."
         )
     else:
         for i in files_to_move:
@@ -1847,7 +1847,7 @@ class TimeLogger:
         self.start = time.time()
         self.counter = 0
 
-        #print("\n")
+        print("\n")
         print("CrissCross Time Start:")
         print(time.asctime(time.localtime()))
         #print("\n")
@@ -2062,38 +2062,30 @@ def run_crisscross(
         # start the time logger for printing steps to the screen
         timelogger = TimeLogger()
 
-        # print the tweakable paramters to the screen and then record them near the end along with the time it took to run.
+        #print parameters to screen if verbose is > 0
         v0("\n")
-        v0("This run is for observation %s." % evt2_file[k])
+        v0(f'This run is for observation "{evt2_file[k]}".')
+        #v1('\n')
+        v1(f'The list of X-ray field sources to assess as potential sources of confusion is "{main_list}".')
+        if single_src_pos is not None:
+            v1(f'The HETG-bright source for which confusion tables will be generated is RA,DEC = ({single_src_pos}).')
+        else:
+            v1(f'The list of HETG-bright sources for which confusion tables will be generated is "{subset_src_list}".')
         if wavdetect_file[k] is not None:
-            v0("This run is using the wavedetect file %s." % wavdetect_file[k])
-        v1(
-            "The contamination offset threshold is set to %s pixels." % max_pntsrc_dist
-        )
-        v1(
-            "The counts threshold to be considered a spectrum of interest is set to %s counts."
-            % min_spec_counts
-        )
-        v1(
-            "The counts threshold to be considered a potential contaminating spectral source is %s counts."
-            % min_spec_confuser_counts
-        )
-        v1(
-            "The counts threshold to be considered a potential 0th order point source contaminating source is %s counts."
-            % min_pntsrc_counts
-        )
-        v1(
-            "The distance in pixels required for two very bright sources to be considered for ARM REMOVAL --tis but a scratch-- is %s pixels"
-            % max_arm_dist
-        )
-        v1(
-            "The fraction of the OSIP window to include when considering two arm overlaps is set at %s percent "
-            % (osip_frac * 100)
-        )
-        v1(
-            "The minimum counts in Src Bs 0th order to assess total arm confusion in source A is %s "
-            % (min_arm_counts)
-        )
+            v0(f'0th order counts are estimated using the wavdetect file "{wavdetect_file[k]}"')
+        v1(f'The max distance in pixels perpendicular to confused spectra to be considered a potential point source confuser is {max_pntsrc_dist}.')
+        v1(f'The min number of counts for a 0th order field source to be considered a potential confuser is {min_pntsrc_counts}.')
+        v1(f'The min number of 0th order counts required to calculate confusion for sources in subset_src list is {min_spec_counts}.')
+        v1(f'The min number of 0th order counts required for field sources to be considered a source of spectral confusion is {min_spec_confuser_counts}.')
+        v1(f'Fraction of the OSIP window to use in spectral intersection calculation is {osip_frac}.')
+        v1(f'The fraction of dispersed counts allowed in a subset_src spectral confusion region before flagging as confused is {spec_confuse_limit}.')
+        v1(f'The max distance, in pixels perpendicular to a subset_src spectrum, to be considered a potential arm confuser is {max_arm_dist}.')
+        #v1(f'The distance in pixels required for two very bright sources to be considered for ARM REMOVAL --tis but a scratch-- is %s pixels {max_arm_dist} pixels.')
+        v1(f'The min number of 0th order counts before a field source is considered a potential arm confuser is {min_arm_counts}.')
+        v1(f'The approximate OSIP range for arm confusion is {arm_nsig}. Higher values will ignore more of a spectrum for arm confusion.')
+        v1(f'The fraction of events allowed in subset_src arm confusion regions before flagging as confusion is {arm_confuse_limit}.')
+        v1(f'The MEG and HEG cutoff wavelengths are {meg_cutoff_low, meg_cutoff_high} A and {heg_cutoff_low, heg_cutoff_high} A , respectively.')
+
 
         # set a few obsid_specific parameters
         obsid = get_header_par(fits_file=evt2_file[k], keyword_par="obs_id")
@@ -2171,10 +2163,6 @@ def run_crisscross(
         counts_intercept_num = np.sum(counts > min_spec_counts)
 
         v0("The total number of X-ray field sources input is %s. These will be assessed as potential sources of confusion for sources in 'subset_src_list' or 'single_src_pos'." % (src["n"]))
-        v1(
-            "The number of sources above the contamination intercept threshold of %s counts for ObsID %s is %s."
-            % (min_spec_counts, obsid, counts_intercept_num)
-        )
 
         cutoff = {
             "heg": [heg_cutoff_low, heg_cutoff_high],
@@ -2341,21 +2329,43 @@ def run_crisscross(
 
         #timelogger("Finished Running CrissCross!")
 
-        log_file = open(f"{output_dir}/LOG_{obsid}.txt", "w")
+        log_file = open(f"{output_dir}/crisscross_obsID_{obsid}_log.txt", "w")
         total_time = timelogger.end()
+#         log_file.write(
+#             f"""This run is for observation {evt2_file[k]}.
+# The wavdetect source list used for this observation is {wavdetect_file[k]}.
+# The roll angle of this observation is {roll_nom:.2f} degrees.
+# The contamination offset threshold is set to {max_pntsrc_dist} pixels.
+# The counts threshold to be considered a spectrum of interest is set to {min_spec_counts} counts.
+# The counts threshold to be considered a potential contaminating spectral source is {min_spec_confuser_counts} counts.
+# The counts threshold to be considered a potential 0th order point source contaminating source is {min_pntsrc_counts} counts.
+# The distance in pixels required for two very bright sources to be considered for ARM REMOVAL --tis but a scratch-- is {max_arm_dist} pixels.
+# The fraction of the OSIP window to include when considering two arm overlaps is set at {osip_frac * 100} percent.
+# The total number of sources input is {src["n"]}.
+# The number of sources above the contamination intercept threshold of {min_spec_counts} counts for ObsID {obsid} is {counts_intercept_num}.
+# The minimum counts in Src Bs 0th order to assess total arm confusion in source A is {min_arm_counts}.
+# The total elapsed time for obsID {obsid} is {total_time} minutes."""
+#         )
         log_file.write(
-            f"""This run is for observation {evt2_file[k]}.
-The wavdetect source list used for this observation is {wavdetect_file[k]}.
-The roll angle of this observation is {roll_nom:.2f} degrees.
-The contamination offset threshold is set to {max_pntsrc_dist} pixels.
-The counts threshold to be considered a spectrum of interest is set to {min_spec_counts} counts.
-The counts threshold to be considered a potential contaminating spectral source is {min_spec_confuser_counts} counts.
-The counts threshold to be considered a potential 0th order point source contaminating source is {min_pntsrc_counts} counts.
-The distance in pixels required for two very bright sources to be considered for ARM REMOVAL --tis but a scratch-- is {max_arm_dist} pixels.
-The fraction of the OSIP window to include when considering two arm overlaps is set at {osip_frac * 100} percent.
-The total number of sources input is {src["n"]}.
-The number of sources above the contamination intercept threshold of {min_spec_counts} counts for ObsID {obsid} is {counts_intercept_num}.
-The minimum counts in Src Bs 0th order to assess total arm confusion in source A is {min_arm_counts}.
-The total elapsed time for obsID {obsid} is {total_time} minutes."""
+            f"""
+This run is for observation {evt2_file[k]}.
+
+0th order counts are estimated using the wavdetect file {wavdetect_file[k]}.
+The list of X-ray field sources to assess as potential sources of confusion is "{main_list}".
+The list of HETG-bright sources for which confusion tables will be generated is "{subset_src_list}" or single src = {single_src_pos}.
+The max distance in pixels perpendicular to confused spectra to be considered a potential point source confuser is {max_pntsrc_dist}.
+The min number of counts for a 0th order field source to be considered a potential confuser is {min_pntsrc_counts}.
+The min number of 0th order counts required to calculate confusion for sources in subset_src list is {min_spec_counts}.
+The min number of 0th order counts required for field sources to be considered a source of spectral confusion is {min_spec_confuser_counts}.
+Fraction of the OSIP window to use in spectral intersection calculation is {osip_frac}.
+The fraction of dispersed counts allowed in a subset_src spectral confusion region before flagging as confused is {spec_confuse_limit}.
+The max distance, in pixels perpendicular to a subset_src spectrum, to be considered a potential arm confuser is {max_arm_dist}.
+The min number of 0th order counts before a field source is considered a potential arm confuser is {min_arm_counts}.
+The approximate OSIP range for arm confusion is {arm_nsig}. Higher values will ignore more of a spectrum for arm confusion.
+The fraction of events allowed in subset_src arm confusion regions before flagging as confusion is {arm_confuse_limit}.
+The MEG and HEG cutoff wavelengths are {meg_cutoff_low, meg_cutoff_high} A and {heg_cutoff_low, heg_cutoff_high} A , respectively.
+
+The total elapsed time for obsID {obsid} is {total_time} minutes.
+            """
         )
         log_file.close()
