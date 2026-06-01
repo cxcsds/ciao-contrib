@@ -1872,14 +1872,15 @@ class TimeLogger:
 
 
 def run_crisscross(
-    cc_outdir="criss_cross_output",
-    arf_ratios_dir="input_files",
-    main_list="input_files/full_coup_src_list.tsv",
-    subset_src_list="input_files/subset_onc.tsv",
+    evt2_file=None,
+    cc_outdir=None,
+    main_list=None,
+    subset_src_list=None,
     single_src_pos=None,
     single_src_root=None,
-    evt2_file=None,
     wavdetect_file=None,
+    conf_table_level="confused",
+    arf_ratios_dir="input_files",
     clobber_par=False,
     max_pntsrc_dist=8,
     min_pntsrc_counts=5,
@@ -1896,7 +1897,6 @@ def run_crisscross(
     heg_cutoff_low=1.0,
     heg_cutoff_high=16.0,
     highest_order=3,
-    writing_level="confused",
     min_tg_d=-6.6e-04,
     max_tg_d=6.6e-04,
 ):
@@ -1916,10 +1916,10 @@ def run_crisscross(
 
     Parameters
     ----------
+    evt2_file : str
+        A single evt2 file or a list of evt2 files which contain sources in main_list and subset_src_list.    
     cc_outdir : str
         A directory for holding the output of CrissCross. If it does not exist then it will be made.
-    arf_ratios_dir : str
-        The directory which holds the ARF response ratios fits tables necessary for Crisscross.
     main_list : str
         A tsv or ascii file with columns RA, DEC, ID of source positions. This is used to distinguish real sources in a
         wavdetect source table from false sources (identified from the dispersed spectra). This can include sources
@@ -1932,17 +1932,22 @@ def run_crisscross(
         also be in the main_list file. Format must be J2000 degrees in format e.g., '83.8186447, -5.3896515'.
     single_src_root : string
         Root name for single_src_pos confusion table. If None then element number of main_list is used in table name.
-    evt2_file : str
-        A single evt2 file or a list of evt2 files which contain sources in main_list and subset_src_list.
     wavdetect_file : str, None
         A single wavdetect source fits table or a list of wavdetect source fits tables. This is the '*src.fits' file
         output from wavdetect. If no files are included (e.g., wavdetect_file=None) then wavdetect will be run during
         execution of CrissCross.
-    clobber_par : bool
-        If clobber_par = True then CrissCross overwrites previous CrissCross run if output directory already exists.
+    conf_table_level : str, 'confused', 'warn', or 'clean'
+        Determines the output saved in the confusion tables. 'confused': includes only the locations of confusion.
+        'warn': includes confusion and 'warn' locations where confusion could have occured but detection is marginal 
+        typically due to source brightness (see warn flag in table). 'clean': includes 'confused', 'warn' and 'clean'
+        where 'clean' represents locations where there should be no confusion. (default is 'confused') 
     highest_order : int
         The highest order of the HETG spectra to consider for confusion. Default is 3 which means orders -3, -2, -1, 1, 2, and
         3 are included in the confusion calculations.
+    arf_ratios_dir : str
+        The directory which holds the ARF response ratios fits tables necessary for Crisscross.
+    clobber_par : bool
+        If clobber_par = True then CrissCross overwrites previous CrissCross run if output directory already exists.
 
     Special Parameters
     ------------------
@@ -2314,7 +2319,7 @@ def run_crisscross(
                 RA=RA_wcs[i],
                 DEC=DEC_wcs[i],
                 cc_table_root=cc_table_root,
-                level=writing_level,
+                level=conf_table_level,
                 add_description=True,
             )
 
