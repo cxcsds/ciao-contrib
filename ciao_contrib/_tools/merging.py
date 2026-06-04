@@ -3236,10 +3236,16 @@ def _check_open_file_limits(nfiles: int, Ntemp: int = 4, Npad: int = 20) -> None
         resource.setrlimit(open_file_lim, (N_open_file, hardlim))
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         return True
 
     return False
 =======
 >>>>>>> 117b411 (estimate memory usage to generate exposure and PSF maps and stacking counts and PSF maps; if it's estimated that system memory will be exhausted, a warning is thrown on limiting the number of cores used for parallelized processes or will alter the stack chunksize to co-add at a time)
+=======
+        return True
+
+    return False
+>>>>>>> 088affd (_check_open_file_limits returns True if limits adjusted)
 
 # End
