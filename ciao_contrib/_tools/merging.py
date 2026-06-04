@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2025
+#  Copyright (C) 2012 - 2026
 #  Smithsonian Astrophysical Observatory
 #
 #
@@ -97,8 +97,7 @@ def match_obsid(obsinfos, infiles, label):
             cycle = obsid.cycle
         if utils.is_multi_obi_obsid(obsid.obsid):
             return (obsid.obsid, cycle, obsid.obi)
-        else:
-            return (obsid.obsid, cycle)
+        return (obsid.obsid, cycle)
 
     cache = {}
     for infile in infiles:
@@ -201,8 +200,7 @@ def match_obsid_asol(obsinfos, asolfiles):
     def make_key(obsid):
         if utils.is_multi_obi_obsid(obsid.obsid):
             return (obsid.obsid, obsid.obi)
-        else:
-            return obsid.obsid
+        return obsid.obsid
 
     aobsids = {}
     for asolfile in asolfiles:
@@ -213,7 +211,7 @@ def match_obsid_asol(obsinfos, asolfiles):
         try:
             aobsids[key].add(asolfile)
         except KeyError:
-            aobsids[key] = set([asolfile])
+            aobsids[key] = { asolfile }
 
     out = []
     keys = []
@@ -691,10 +689,10 @@ def adjust_rule(key, rule, obsinfos):
 
     if rule.startswith('Merge-'):
         return adjust_merge_rule(key, rule, obsinfos)
-    elif rule.startswith('WarnOmit-'):
+    if rule.startswith('WarnOmit-'):
         return adjust_warnomit_rule(key, rule, obsinfos)
-    else:
-        return (key, rule)
+
+    return (key, rule)
 
 
 def adjust_warnomit_rule(key, rule, obsinfos):
@@ -987,16 +985,17 @@ def validate_obsinfo(infiles, colcheck=True):
 
     sinfiles = fileio.expand_evtfiles_stack(infiles)
     norig = len(sinfiles)
-    if norig == 0:
-        raise IOError("No valid event files were found.")
-    elif norig == 1:
-        # TODO: does it make sense to allow only one observation here?
-        v1("Verifying one observation.")
-    else:
-        v1(f"Verifying {norig} observations.")
+    match norig:
+        case 0:
+            raise IOError("No valid event files were found.")
+        case 1:
+            # TODO: does it make sense to allow only one observation here?
+            v1("Verifying one observation.")
+        case _:
+            v1(f"Verifying {norig} observations.")
 
-    acols = set(['TIME', 'CHIP', 'DET', 'SKY', 'CCD_ID', 'ENERGY'])
-    hcols = set(['TIME', 'CHIP', 'DET', 'SKY', 'CHIP_ID'])
+    acols = {'TIME', 'CHIP', 'DET', 'SKY', 'CCD_ID', 'ENERGY'}
+    hcols = {'TIME', 'CHIP', 'DET', 'SKY', 'CHIP_ID'}
     req_columns = {'ACIS': acols, 'HRC': hcols}
 
     obsinfos = []
@@ -1245,7 +1244,7 @@ def obsinfo_checks(obsinfos):
         return None
 
     pi_ranges = [get_pi_range(obs.get_columns()) for obs in obsinfos]
-    v4("PI ranges={}".format(pi_ranges))
+    v4(f"PI ranges={pi_ranges}")
     pi_ranges = [pir for pir in pi_ranges if pir is not None]
     if pi_ranges != []:
         pi_flags = [pir != pi_ranges[0] for pir in pi_ranges]
@@ -1302,11 +1301,11 @@ def find_hrci_backgrounds(obsinfos, bgndmap=None, tmpdir=None):
         return None
 
     if nmissing == 1:
-        v1("Skipping {} as it has no matching HRC-I background file.".format(missing[0]))
+        v1(f"Skipping {missing[0]} as it has no matching HRC-I background file.")
         v1("Set background=none to turn off the background subtraction and include this file.")
         return bgfiles
 
-    elif nmissing > 1:
+    if nmissing > 1:
         v1("Skipping the following as they have no matching HRC-I background file.")
         for mfile in missing:
             v1("    " + mfile)
@@ -1395,7 +1394,7 @@ def merge_event_files(infiles,
     else:
         v1("Merging reprojected events files to " + outfile)
 
-    v3(" ... using lookup table: {}".format(lookupTab))
+    v3(f" ... using lookup table: {lookupTab}")
 
     # We can reduce the history record (and the argument length to
     # dmmerge) if we know the instrument type: at present we only
@@ -1406,7 +1405,7 @@ def merge_event_files(infiles,
         if inst not in ['ACIS', 'HRC']:
             raise TypeError("Hack to break out of the loop")
 
-        v4(" ... using instrument = {} to specialize subspace rules".format(inst))
+        v4(f" ... using instrument = {inst} to specialize subspace rules")
 
     except TypeError:
         v4("No obs info included, so can not specialize subspace rules when merging.")
@@ -1418,15 +1417,15 @@ def merge_event_files(infiles,
     hrc_pi_case = False
 
     if inst is None or inst == 'ACIS':
-        excl_cols = set(["phas"])
+        excl_cols = { "phas" }
     else:
         excl_cols = set()
 
     if colfilter and obsinfos is not None:
         v3(" ... checking the columns match")
 
-        cols = dict([(ci.name, ci) for ci in obsinfos[0].get_columns()])
-        cmatch = dict([(ci.name, 1) for ci in obsinfos[0].get_columns()])
+        cols = { ci.name : ci for ci in obsinfos[0].get_columns() }
+        cmatch = { ci.name : 1 for ci in obsinfos[0].get_columns() }
 
         for obs in obsinfos[1:]:
             for ci in obs.get_columns():
@@ -1449,8 +1448,7 @@ def merge_event_files(infiles,
                    not hrc_pi_case and ci.range != ci0.range:
                     v1("WARNING: dropping the PI column from the merged " +
                        "event file.")
-                    v2("         PI ranges = " +
-                       "{} vs {}".format(ci0.range, ci.range))
+                    v2(f"{'':>9}PI ranges = {ci0.range} vs {ci.range}")
                     hrc_pi_case = True
                     excl_cols.add(ci.name)
                     continue
@@ -1461,7 +1459,7 @@ def merge_event_files(infiles,
             if nfound != nfiles:
                 excl_cols.add(cname)
 
-        v3(" ... and removing {}".format([' '.join([exc for exc in excl_cols])]))
+        v3(f" ... and removing {[' '.join(exc for exc in excl_cols)]}")
 
         # dmmerge needs the same column order in all the files, so use
         # the ordering of the first file.
@@ -1479,7 +1477,7 @@ def merge_event_files(infiles,
         # the same in all the files. This is a little bit messy to get right,
         # so leave as is for the moment.
         #
-        colfilter = "[cols {}]".format(','.join(colfilter))
+        colfilter = f"[cols {','.join(colfilter)}]"
 
     elif inst == 'ACIS':
         colfilter = "[cols -phas]"
@@ -1501,7 +1499,7 @@ def merge_event_files(infiles,
     else:
         excl_subspace = excl_subspace_acis + excl_subspace_hrc
 
-    v4("  ... excluding subspace: {}".format(excl_subspace))
+    v4(f"  ... excluding subspace: {excl_subspace}")
     for colname in excl_subspace:
         excl_cols.add(colname)
 
@@ -1514,8 +1512,8 @@ def merge_event_files(infiles,
     else:
         ltab = lookupTab
 
-    v3("Column filter for merge: {}".format(colfilter))
-    v3("Subspace filter for merge: {}".format(subspacefilter))
+    v3(f"Column filter for merge: {colfilter}")
+    v3(f"Subspace filter for merge: {subspacefilter}")
 
     # If we are removing the PI column from HRC data then the
     # merge is to a temporary file so that we can then have a
@@ -1530,16 +1528,14 @@ def merge_event_files(infiles,
                                                          suffix=".merged")
         merge_outfile = merge_outfile_temp.name
         clobber_merge = True
-        v3("Merge to temporary file: {}".format(merge_outfile))
+        v3(f"Merge to temporary file: {merge_outfile}")
     else:
         merge_outfile = outfile
         clobber_merge = clobber
 
     stkfile = make_stackfile(infiles, dir=tmpdir, suffix=".merge")
     try:
-        run.dmmerge("@{}{}[subspace {}]".format(stkfile.name,
-                                                colfilter,
-                                                subspacefilter),
+        run.dmmerge(f"@{stkfile.name}{colfilter}[subspace {subspacefilter}]",
                     merge_outfile,
                     clobber=clobber_merge,
                     verbose=verbose,
@@ -1576,9 +1572,9 @@ def merge_event_files(infiles,
         # but not really worth it
 
         if val.find('/') != -1:
-            val = "'{}'".format(val)
+            val = f"'{val}'"
 
-        action = "{} = {}".format(name, val)
+        action = f"{name} = {val}"
         edits.append(action)
 
     add_edit("ASOLFILE", asolfile)
@@ -1587,10 +1583,10 @@ def merge_event_files(infiles,
     add_edit("MASKFILE", maskfile)
 
     if edits == []:
-        v3("No ancillary file keywords to edit in {}".format(outfile))
+        v3(f"No ancillary file keywords to edit in {outfile}")
         return
 
-    v3("Editing ancillary file keywords in {}".format(outfile))
+    v3(f"Editing ancillary file keywords in {outfile}")
     tfile = tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+',
                                         suffix=".dmhedit")
     tfile.write('#add\n')
@@ -1620,16 +1616,15 @@ def process_reference_position(refpos, obsinfos):
                                                             list(decs))
 
     elif rpos[2] is not None:
-        v1("Tangent point is taken from the file {}".format(rpos[2]))
+        v1(f"Tangent point is taken from the file {rpos[2]}")
         try:
             (ra, dec) = fileio.get_tangent_point(rpos[2])
 
         except IOError as ioe:
             # could look for RA_NOM/DEC_NOM as a fall back but doubt it is
             # worth it.
-            v2("Error is: {}".format(ioe))
-            raise ValueError("Unable to find a tangent position in " +
-                             "{}".format(rpos[2]))
+            v2(f"Error is: {ioe}")
+            raise ValueError(f"Unable to find a tangent position in {rpos[2]}")
 
         rval = rpos[2]
 
@@ -1647,7 +1642,7 @@ def process_reference_position(refpos, obsinfos):
     v1(f"New tangent point: RA={rastr} Dec={decstr}")
 
     if rval is None:
-        rval = "{0} {1}".format(ra, dec)
+        rval = f"{ra} {dec}"
 
     return (rval, ra, dec)
 
@@ -1690,7 +1685,7 @@ def list_observations(instrume, ranom, decnom, obsinfos):
         suffix = ''
     else:
         suffix = 's'
-    v1("\nObservation{} to be reprojected:\n".format(suffix))
+    v1(f"\nObservation{suffix} to be reprojected:\n")
 
     # Check for any multi-obi datasets, as this increases the ObsId field
     # width. For ACIS datasets this can get further increased if there
@@ -1710,7 +1705,7 @@ def list_observations(instrume, ranom, decnom, obsinfos):
     if instrume == "ACIS":
         # Do we need to allocate more space for interleaved-mode data?
         obsids = [obs.obsid for obs in obsinfos]
-        if not all([obsid.cycle is None for obsid in obsids]):
+        if not all(obsid.cycle is None for obsid in obsids):
             olen += 2
 
         fmt = "{:" + str(nchar) + "} {:^" + str(olen) + \
@@ -1834,7 +1829,7 @@ def list_observations(instrume, ranom, decnom, obsinfos):
             v1(fmt.format(*fmtargs))
 
         except KeyError as ke:
-            raise ValueError("ObsId {} ({}) is missing the {} keyword.".format(obsid, obs.get_evtfile(), ke))
+            raise ValueError(f"ObsId {obsid} ({obs.get_evtfile()}) is missing the {ke} keyword.")
 
     v1("")
 
@@ -1845,7 +1840,7 @@ def list_observations(instrume, ranom, decnom, obsinfos):
         if len(values) < 2:
             continue
 
-        v1("WARNING - {} values differ:".format(keyname))
+        v1(f"WARNING - {keyname} values differ:")
         out = [(len(value), key, value)
                for (key, value) in values.items()]
         out.sort(reverse=True)
@@ -1856,25 +1851,25 @@ def list_observations(instrume, ranom, decnom, obsinfos):
             nlarger = larger[0]
 
             if nlarger == 1:
-                lbl = "{} has".format(larger[2][0])
+                lbl = f"{larger[2][0]} has"
             else:
                 lbl = "the rest have"
 
             if nsmaller == 1:
-                v1("  Obsid {} has {}={} and {} {}".format(smaller[2][0], keyname, smaller[1], lbl, larger[1]))
+                v1(f"  Obsid {smaller[2][0]} has {keyname}={smaller[1]} and {lbl} {larger[1]}")
             elif nsmaller < 6:
-                v1("  Obsids {} have {}={} and {} {}".format(" ".join([str(s) for s in smaller[2]]), keyname, smaller[1], lbl, larger[1]))
+                v1(f"  Obsids {' '.join([str(s) for s in smaller[2]])} have {keyname}={smaller[1]} and {lbl} {larger[1]}")
             else:
-                v1("  {} Obsids have {}={} and {} {}".format(nsmaller, keyname, smaller[1], lbl, larger[1]))
+                v1(f"  {nsmaller} Obsids have {keyname}={smaller[1]} and {lbl} {larger[1]}")
 
         else:
             for (nobsids, val, obsids) in out:
                 if nobsids == 1:
-                    v1("  ObsId {} has {}={}".format(obsids[0], keyname, val))
+                    v1(f"  ObsId {obsids[0]} has {keyname}={val}")
                 elif nobsids < 6:
-                    v1("  ObsIds {} have {}={}".format(" ".join([str(o) for o in obsids]), keyname, val))
+                    v1(f"  ObsIds {" ".join([str(o) for o in obsids])} have {keyname}={val}")
                 else:
-                    v1("  {} ObsIds have {}={}".format(nobsids, keyname, val))
+                    v1(f"  {nobsids} ObsIds have {keyname}={val}")
 
         v1("")
 
@@ -1979,7 +1974,7 @@ def display_merging_warnings(warnings, evtfile, obsinfos):
             #
             ndp = number_decimal_places(mdiff)
             if ndp > 0:
-                fmt = "{{:.{}f}}".format(ndp)
+                fmt = f"{{:.{ndp}f}}"
                 diff = fmt.format(diff)
 
             msg = f"{spacer}the {key} keyword varies by {diff} " + \
@@ -2000,7 +1995,7 @@ def display_merging_warnings(warnings, evtfile, obsinfos):
             v1(f"{spacer}[internal error] unrecognized warning {warnvals}")
 
     if len(aimpoints) > 1:
-        v1("{}the aim points fall on CCDs: {}".format(spacer, ' '.join([str(a) for a in aimpoints])))
+        v1(f"{spacer}the aim points fall on CCDs: {' '.join([str(a) for a in aimpoints])}")
         v1(f"{spacer}  which means that the ONTIME/LIVETIME/EXPOSURE keywords")
         v1(f"{spacer}  do not reflect the full observation length.")
 
@@ -2024,12 +2019,11 @@ def setup_obsid_asol(obsinfos, asolfiles):
 
         nmissing = len(missing)
         if nmissing == 1:
-            raise IOError("Missing the asol file(s) for " +
-                          "{}.".format(missing[0]))
+            raise IOError(f"Missing the asol file(s) for {missing[0]}.")
 
-        elif nmissing > 1:
+        if nmissing > 1:
             indent = "\n    "
-            raise IOError("Missing the asol files for {} observations:{}{}".format(nmissing, indent, indent.join(missing)))
+            raise IOError(f"Missing the asol files for {nmissing} observations:{indent}{indent.join(missing)}")
 
     else:
         asol = stk.build(asolfiles)
@@ -2070,11 +2064,11 @@ def setup_obsid_bpix(obsinfos, badpixfiles):
                 obs.set_ancillary('bpix', 'CALDB')
 
         elif nmissing == 1:
-            raise IOError("Missing the bad-pixel file for {}.".format(missing[0]))
+            raise IOError(f"Missing the bad-pixel file for {missing[0]}.")
 
         elif nmissing > 1:
             indent = "\n    "
-            raise IOError("Missing bad-pixel files for {} observations:{}{}".format(nmissing, indent, indent.join(missing)))
+            raise IOError(f"Missing bad-pixel files for {nmissing} observations:{indent}{indent.join(missing)}")
 
     else:
         badpix = stk.build(badpixfiles)
@@ -2090,7 +2084,7 @@ def setup_obsid_bpix(obsinfos, badpixfiles):
             if not os.path.isfile(bpixfile):
                 bpixfile += ".gz"
                 if not os.path.isfile(bpixfile):
-                    raise IOError("Unable to find bad pixel file={} (or .gz version)".format(bpixfile[:-3]))
+                    raise IOError(f"Unable to find bad pixel file={bpixfile[:-3]} (or .gz version)")
 
                 v3(f"Found .gz version of badpixfile={bpixfile}")
 
@@ -2099,7 +2093,7 @@ def setup_obsid_bpix(obsinfos, badpixfiles):
         badpix = match_obsid(obsinfos, out, 'bad-pixel')
         nbpix = len(badpix)
         if nbpix != nobs:
-            raise ValueError("The number of bad-pixel files ({}) does not match the number of input files ({})".format(nbpix, nobs))
+            raise ValueError(f"The number of bad-pixel files ({nbpix}) does not match the number of input files ({nobs})")
 
         for (obs, bpix) in zip(obsinfos, badpix):
             obs.set_ancillary('bpix', bpix)
@@ -2135,23 +2129,23 @@ def setup_obsid_ancillary(obsinfos, userinput, anctype, warnmsg):
 
         nmissing = len(missing)
         if nmissing == nobs:
-            v1("WARNING - no {0} files were found, setting {0}files=NONE. {1}".format(anctype, warnmsg))
+            v1(f"WARNING - no {anctype} files were found, setting {anctype}files=NONE. {warnmsg}")
             for obs in obsinfos:
                 obs.set_ancillary(anctype, 'NONE')
 
         elif nmissing == 1:
-            raise IOError("Missing the {} file for {}.".format(anctype, missing[0]))
+            raise IOError(f"Missing the {anctype} file for {missing[0]}.")
 
         elif nmissing > 1:
             indent = "\n    "
-            raise IOError("Missing {} files for {} observations:{}{}".format(anctype, nmissing, indent, indent.join(missing)))
+            raise IOError(f"Missing {anctype} files for {nmissing} observations:{indent}{indent.join(missing)}")
 
     else:
         files = stk.build(userinput)
         files = match_obsid(obsinfos, files, anctype)
         nfiles = len(files)
         if nfiles != nobs:
-            raise ValueError("The number of {} files ({}) does not match the number of input files ({})".format(anctype, nfiles, nobs))
+            raise ValueError(f"The number of {anctype} files ({nfiles}) does not match the number of input files ({nobs})")
 
         for (obs, filename) in zip(obsinfos, files):
             obs.set_ancillary(anctype, filename)
@@ -2421,7 +2415,7 @@ def which_obsids_overlap(obsinfos,
     The return raises a ValueError if no observations overlap.
     """
 
-    user_filter = "RECT({},{},{},{})".format(xlo, ylo, xhi, yhi)
+    user_filter = f"RECT({xlo},{ylo},{xhi},{yhi})"
     keep = []
     chipslist = []
     skipped_obsids = []
@@ -2433,12 +2427,11 @@ def which_obsids_overlap(obsinfos,
 
     for obs in obsinfos:
         infile = obs.get_evtfile()
-        fname = "{}[sky={}]".format(infile, user_filter)
+        fname = f"{infile}[sky={user_filter}]"
         chips = getfunc(fname)
 
         if chips is None:
-            v3("Skipping Obsid {} as it does not ".format(obs.obsid) +
-               "overlap the requested grid.")
+            v3(f"Skipping Obsid {obs.obsid} as it does not overlap the requested grid.")
             keep.append(False)
             chipslist.append([])
             skipped_obsids.append(str(obs.obsid))
@@ -2453,12 +2446,12 @@ def which_obsids_overlap(obsinfos,
     nobs = len(obsinfos)
     nskip = len(skipped_obsids)
     if nskip == nobs:
-        raise ValueError("No observations overlap the requested grid: x={}:{} y={}:{}".format(xlo, xhi, ylo, yhi))
+        raise ValueError(f"No observations overlap the requested grid: x={xlo}:{xhi} y={ylo}:{yhi}")
 
-    elif nskip == (nobs - 1):
+    if nskip == (nobs - 1):
         obsid = [obs.obsid
                  for (flag, obs) in zip(keep, obsinfos) if flag]
-        raise ValueError("Only one observation left ({}) that overlaps the requested grid: x={}:{} y={}:{}".format(obsid[0], xlo, xhi, ylo, yhi))
+        raise ValueError(f"Only one observation left ({obsid[0]}) that overlaps the requested grid: x={xlo}:{xhi} y={ylo}:{yhi}")
 
     if nskip != 0:
         if nskip == 1:
@@ -2468,8 +2461,8 @@ def which_obsids_overlap(obsinfos,
             lbl1 = "s"
             lbl2 = "they do"
 
-        v1("\nRemoved {} observation{} as {} not overlap the requested grid.".format(nskip, lbl1, lbl2))
-        v1("   ObsId{}: {}".format(lbl1, " ".join(skipped_obsids)))
+        v1(f"\nRemoved {nskip} observation{lbl1} as {lbl2} not overlap the requested grid.")
+        v1(f"   ObsId{lbl1}: {' '.join(skipped_obsids)}")
 
     return (keep, chipslist)
 
@@ -2655,15 +2648,14 @@ def exposure_weight(infiles, outfile, lookupTable,
     for infile in infiles:
         cr = pycrates.read_file(infile)
         if not isinstance(cr, pycrates.IMAGECrate):
-            raise ValueError("Not an image: {}".format(infile))
+            raise ValueError(f"Not an image: {infile}")
 
         exp = cr.get_key_value('EXPOSURE')
         if exp is None:
-            raise ValueError("No EXPOSURE keyword in {}".format(infile))
+            raise ValueError(f"No EXPOSURE keyword in {infile}")
 
         if exp <= 0.0:
-            raise ValueError("EXPOSURE keyword = {} in {}".format(exp,
-                                                                  infile))
+            raise ValueError(f"EXPOSURE keyword = {exp} in {infile}")
 
         # NOTE: using NaN as an indicator that the pixel is outside the
         #       filtered data; really should also check the subspace
@@ -2681,7 +2673,7 @@ def exposure_weight(infiles, outfile, lookupTable,
             if numerator.shape != pixvals.shape:
                 shape = shape_to_string(numerator.shape)
                 got = shape_to_string(pixvals.shape)
-                raise ValueError("Expected {} but found {} in {}".format(shape, got, infile))
+                raise ValueError(f"Expected {shape} but found {got} in {infile}")
 
             numerator += pixvals
             denominator += expvals
@@ -2793,11 +2785,11 @@ def expmap_weight(infiles, expmaps, outfile, lookupTable,
     for infile, expmap in zip(infiles, expmaps):
         cr = pycrates.read_file(infile)
         if not isinstance(cr, pycrates.IMAGECrate):
-            raise ValueError("Not an image: {}".format(infile))
+            raise ValueError(f"Not an image: {infile}")
 
         ecr = pycrates.read_file(expmap)
         if not isinstance(cr, pycrates.IMAGECrate):
-            raise ValueError("Not an image: {}".format(expmap))
+            raise ValueError(f"Not an image: {expmap}")
 
         # NOTE: using NaN as an indicator that the pixel is outside the
         #       filtered data; really should also check the subspace
@@ -2808,7 +2800,7 @@ def expmap_weight(infiles, expmaps, outfile, lookupTable,
         ivals = cr.get_image().values
 
         if ivals.shape != evals.shape:
-            raise ValueError("Shapes do not match: {} and {}".format(infile, expmap))
+            raise ValueError(f"Shapes do not match: {infile} and {expmap}")
 
         expvals = np.nan_to_num(evals)
         pixvals = expvals * np.nan_to_num(ivals)
@@ -2820,7 +2812,7 @@ def expmap_weight(infiles, expmaps, outfile, lookupTable,
             if numerator.shape != pixvals.shape:
                 shape = shape_to_string(numerator.shape)
                 got = shape_to_string(pixvals.shape)
-                raise ValueError("Expected {} but found {} in {}".format(shape, got, infile))
+                raise ValueError(f"Expected {shape} but found {got} in {infile}")
 
             numerator += pixvals
             denominator += expvals
@@ -2903,7 +2895,7 @@ def merge_psfmaps(mergetype, psfmap, psfmap_files, expmap_files,
             expmap_weight(pmap_files, emap_files, out, lut)
 
         else:
-            raise ValueError("Unexpected mergetype={} for combining PSF maps".format(mergetype))
+            raise ValueError(f"Unexpected mergetype={mergetype} for combining PSF maps")
 
 
     if nchunk is None or mergetype in ["exptime", "expmap"]:
@@ -2934,7 +2926,8 @@ def merge_psfmaps(mergetype, psfmap, psfmap_files, expmap_files,
 
                 dmfilt_stk([_d.name for _d in d], f"{_tmp.name}[PSFMAP]", mergetype)
 
-                for _d in d: _d.close()
+                for _d in d:
+                    _d.close()
 
             _iter += 1
             tmplist = _tmplist
@@ -2944,7 +2937,8 @@ def merge_psfmaps(mergetype, psfmap, psfmap_files, expmap_files,
 
         dmfilt_stk(tmp_fn, outfile, mergetype)
 
-        for t in tmplist: t.close()
+        for t in tmplist:
+            t.close()
 
     run.fix_bunit(psfmap_files[0], psfmap, verbose=verbose)
 
@@ -3074,9 +3068,9 @@ def merge(process,
     spacer = '     '
 
     def display(typestr, filenames):
-        v1("{}{}".format(typestr, lbl))
+        v1(f"{typestr}{lbl}")
         fnames = ('\n' + spacer).join(filenames)
-        v1("{}{}\n".format(spacer, fnames))
+        v1(f"{spacer}{fnames}\n")
 
     v1("\nThe following files were created:\n")
     if threshold:

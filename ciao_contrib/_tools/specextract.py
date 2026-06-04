@@ -27,7 +27,7 @@ Routines to support the specextract tool.
 
 __modulename__ = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "31 October 2025"
+__revision__ = "3 June 2026"
 
 import os
 import sys
@@ -273,7 +273,7 @@ aspect solution files. Try entering aspect histogram files into \
 
                 regstk = stk.build(regfile)
 
-                fn_stk = [f"{fi}[{regcoord}={region}]" for region in regstk]
+                fn_stk = [f"{fi}[{regcoord}={region.split('/')[-1]}]" for region in regstk]
 
                 del fi, regfile, regfilter, regcoord, regstk
 
@@ -447,7 +447,7 @@ data with chandra_repro or add the keywords to the event file(s) with r4_header_
                 if refcoord_check.lower() in ["","none","indef"]:
                     if isinstance(resp_pos_type,str) and resp_pos_type.upper() == "REGION":
                         v1(f"{file} has zero counts. Using the region defined position for reference.")
-                        return True
+                        return True, int(counts)
 
                     raise IOError(f"{file} has zero counts. Check that the region formatting is correct \
 (e.g. wrong region, coordinates not in sky pixels or degrees) or use the 'refcoord' parameter.")
@@ -467,7 +467,7 @@ data with chandra_repro or add the keywords to the event file(s) with r4_header_
 
             return False
 
-        return True
+        return True, int(counts)
 
 
     def _event_stats(self,file,colname,args=None):
@@ -795,8 +795,8 @@ source files. Exiting.")
             else:
                 ## parse infile region ##
                 if self._get_region(infile) == infile:
-                    raise IOError("No region filter with the event file, nor a refcoord \
-value, provided to produce response files.")
+                    raise IOError("No region filter, nor a refcoord \
+value, is provided with the event file to produce response files.")
 
                 if resp_pos.lower() in ["centroid","max"]:
                     dmstat = make_tool("dmstat")
@@ -931,8 +931,8 @@ when 'resp_pos' is set to 'MAX' or 'CENTROID'.") from exc
 
                 fef = acis_fef_lookup.outfile
 
-            cr_fef = pcr.read_file(fef)
-            fef_energy = cr_fef.get_column("ENERGY").values
+            cr_fef = pcr.read_file(f"{fef}[cols ENERGY]")
+            fef_energy = cr_fef.ENERGY.values
             del cr_fef
 
             fef_emin = min(fef_energy)
@@ -1760,14 +1760,27 @@ block corresponding to the source region location will be used.\n")
 
                 ### check that 'chip_id' determined by dmcoords is actually present in the event file ###
                 if not self._check_dmcoords_chip(filename, instrument, int(chip_id)):
-                    raise IOError(f"The region 'chip_id' ({chip_id}) determined by 'dmcoords' is \
-not found in the provided event file ({filename})!")
+                    raise IOError(f"The response location, sky=({skyx}, {skyy}), will fall on \
+'chip_id'={chip_id}, as determined by 'dmcoords', which is not present in the provided event file ({filename})!")
 
                 arg_dict["skyx"] = skyx
                 arg_dict["skyy"] = skyy
                 arg_dict["chip_id"] = chip_id
                 arg_dict["chipx"] = chipx
                 arg_dict["chipy"] = chipy
+
+                ### Check that if there are zero-counts in extraction region for weighted
+                ### responses while 'resp_pos=region' so that a unit image may be
+                ### generated as a weights map.
+                if weight == "yes" and resp_pos.lower() == "region":
+                    _, cts = self._check_event_stats(fullfile, refcoord_check=False,
+                                                     weights_check=False, ewmap_range_check=None,
+                                                     resp_pos_type=resp_pos)
+
+                    if cts > 0:
+                        arg_dict["zero_counts"] = False
+                    else:
+                        arg_dict["zero_counts"] = True
 
                 # determine hydrogen column density based on extraction region centroid
                 # or refcoord to add to PI header in units of 1e-22 cm**-2
