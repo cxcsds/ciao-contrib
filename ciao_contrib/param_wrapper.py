@@ -98,6 +98,12 @@ def open_param_file(argv, toolname=None):
         logger.verbose = 5
         args.remove("--paramdebug")
 
+    if "--regtestonly" in args:
+        args.remove("--regtestonly")
+        regtest = True
+    else:
+        regtest = False
+
     args = lw.preprocess_arglist(args)
 
     v5("Tool name = {0}".format(progname))
@@ -136,4 +142,4 @@ def open_param_file(argv, toolname=None):
     except Exception:
         raise IOError("There was a problem with the command-line parameter settings.")
 
-    return {"progname": progname, "parname": parname, "fp": fp, "mode": mode}
+    return {"progname": progname, "parname": parname, "fp": fp, "mode": mode, "regtest_short-circuit" : regtest}

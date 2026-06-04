@@ -3223,5 +3223,8 @@ def _check_open_file_limits(nfiles: int, Ntemp: int = 4, Npad: int = 20) -> None
     if softlim < N_open_file:
         resource.setrlimit(open_file_lim, (N_open_file, hardlim))
 
+        return True
+
+    return False
 
 # End

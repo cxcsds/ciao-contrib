@@ -33,7 +33,7 @@ Script:
 
 __version__ = "CIAO 4.18"
 __toolname__ = "specextract"
-__revision__ = "21 May 2026"
+__revision__ = "4 June 2026"
 
 ##########################################################################
 #
@@ -2250,6 +2250,7 @@ def get_par(args):
 
     pinfo = open_param_file(args, toolname=__toolname__)
     pfile = pinfo["fp"]
+    regtest = pinfo["regtest_short-circuit"]
 
     # Parameters:
     params = {}
@@ -2336,7 +2337,7 @@ def get_par(args):
 
     paramio.paramclose(pfile)
 
-    return params,pars
+    return params,pars,regtest
 
 
 
@@ -2376,7 +2377,7 @@ def run_specextract(args):
     # Retrieve parameter values from specextract parameter file.
     #-----------------------------------------------------------
 
-    params,pars = get_par(args)
+    params, pars, regtest = get_par(args)
 
     #--------------------------------------------------
     # Check the input values and do some initial setup.
@@ -2460,7 +2461,14 @@ cannot contain any spaces")
                 return [func(arg) for arg in args]
 
     ## check open file limits on the system ##
-    merging._check_open_file_limits(len(specextract_args))
+    open_file_lim = merging._check_open_file_limits(len(specextract_args))
+
+    if open_file_lim:
+        v3("Increasing system open file limit for this and child Python instance.")
+
+    if regtest:
+        assert not open_file_lim, f"The system open file limit was increased for this instance, as expected for this test."
+        assert open_file_lim, f"The system open file limit was not increased for this instance, which is not expected for this test!"
 
     ###########################
     #
