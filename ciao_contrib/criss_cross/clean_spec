@@ -44,7 +44,7 @@ def run_clean_spec():
 
     pars = get_params(TOOLNAME, "rw", sys.argv,
                       verbose={"set": lw.set_verbosity, "cmd": v1})
-    
+
     #catch stack file for ARFs and create a list of files before sanitizing.
     if pars['arf_file'].startswith("@"):
         with open(pars['arf_file'][1:], 'r', encoding='utf-8') as f:
@@ -53,15 +53,14 @@ def run_clean_spec():
         v2(f'\nIdentified ARF stack file. Will attempt to clean the following ARFS: {pars['arf_file']} and the input PHA file.\n')
 
     #sanitize ciao values. Make sure arf_file is not a list (stack) first
-    if isinstance(pars['arf_file'], str) and pars['arf_file'].lower() == 'none':
-        pars['arf_file'] = None
-    if pars['resp_dir'].lower() == 'none':
-        pars['resp_dir'] = None
-
-    if pars['clobber'].lower() == 'no':
-        pars['clobber'] = False
-    if pars['clobber'].lower() == 'yes':
-        pars['clobber'] = True
+    #convert 'none' to python none type, 'yes' to True and 'no' to False
+    for k, v in list(pars.items()):  
+        if isinstance(v, str) and v.lower() == 'none':
+            pars[k] = None
+        if isinstance(v, str) and v.lower() == 'yes':
+            pars[k] = True
+        if isinstance(v, str) and v.lower() == 'no':
+            pars[k] = False
 
     #send ciao input to clean_spec
     cs.clean_spec(pha_file=pars['infile'], cc_table=pars['conf_file'], spec_root=pars['spec_root'], arf_file=pars['arf_file'], resp_dir=pars['resp_dir'], clobber=pars['clobber'])

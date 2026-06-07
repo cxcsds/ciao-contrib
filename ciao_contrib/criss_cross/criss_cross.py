@@ -343,10 +343,13 @@ def load_sourcelist(filename=None, subset_list=False):
                 print(
                     f'Warning -- Column 2 of "{filename}" is not ID or id. Assuming it is ID from now on.'
                 )
-
+        #catch the case of reading a subset_list and do not generate ids
+        elif crate_len == 2 and subset_list is True:
+            gen_id = False
+            
         else:
             print(
-                f'File "{filename}" contains more than three columns and the rest will be ignored.'
+                f'File "{filename}" may contain more than three columns and the rest will be ignored.'
             )
 
         # check if the first two columns have typical names of RA and DEC otherwise warn.
@@ -746,6 +749,10 @@ def arf_ratio(ratio_pycrates, order, bin_start, bin_end):
         The average spectral response in the bin_start, bin_end bandpass.
     """
     bin_lo = ratio_pycrates.BIN_LO.values
+    #handle rare-ish error where wave_low and high values were equal leading to an 'average' of an empty list.
+    if bin_start == bin_end:
+        bin_end = bin_end + 0.01 #may need to increase 0.01 to guarantee multiple elements are selected.
+        v2(f'Warning: arf_ratio calculation was estimated because wave_low and wave_high were equal.')
     in_range = (bin_start <= bin_lo) & (bin_lo < bin_end)
     order_data = ratio_pycrates.get_column(order)
     avg_ratio_value = np.average(order_data.values[in_range])
@@ -1891,7 +1898,7 @@ def run_crisscross(
     single_src_root=None,
     wavdetect_file=None,
     conf_table_level="confused",
-    arf_ratios_dir="input_files",
+    arf_ratios_dir=None,
     clobber_par=False,
     max_pntsrc_dist=8,
     min_pntsrc_counts=5,
@@ -1956,7 +1963,8 @@ def run_crisscross(
         The highest order of the HETG spectra to consider for confusion. Default is 3 which means orders -3, -2, -1, 1, 2, and
         3 are included in the confusion calculations.
     arf_ratios_dir : str
-        The directory which holds the ARF response ratios fits tables necessary for Crisscross.
+        The directory which holds the ARF response ratios fits tables necessary for Crisscross. Default is 'None' which
+        will use crisscross-designated arf ratios.
     clobber_par : bool
         If clobber_par = True then CrissCross overwrites previous CrissCross run if output directory already exists.
 
@@ -2054,6 +2062,10 @@ def run_crisscross(
         )
     else:
         wavdetect_file = [None] * len(evt2_file)
+
+    #set arf_ratios_dir to designated directory if the default is 'None'. This will be ciaocontrib-specific location
+    if arf_ratios_dir is None:
+        arf_ratios_dir = 'input_files'
 
     # Start major CrissCross loop for all input evt2 files
     for k in range(len(evt2_file)):
