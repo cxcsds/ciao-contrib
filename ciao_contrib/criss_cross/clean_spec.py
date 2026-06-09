@@ -40,6 +40,7 @@ TOOLNAME = 'clean_spec'
 __revision__  = '28 May 2026'
 
 lw.initialize_logger(TOOLNAME)
+v0 = lw.make_verbose_level(TOOLNAME, 0)
 v1 = lw.make_verbose_level(TOOLNAME, 1)
 v2 = lw.make_verbose_level(TOOLNAME, 2)
 v3 = lw.make_verbose_level(TOOLNAME, 3)
@@ -311,6 +312,11 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None, clob
             0
         ]  # note, the 'no match' string comes from match_resp_order() so be careful if that changes.
 
+        if len(spec_to_clean) != len(tg_m_arr):
+            v0(
+                f"WARNING-- The output 'cleaned' PHA2 file will include all original orders but only those with matching ARFs will be cleaned."
+            )
+
         # run clean_data() for every arm and order which have a spectrum and matching ARF
         for i in spec_to_clean:
             arf_data = read_file(
@@ -361,4 +367,4 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None, clob
     else:
         raise ValueError("Input PHA file was not a PHA1 or PHA2 type file")
 
-    return ()
+    return
