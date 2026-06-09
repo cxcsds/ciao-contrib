@@ -16,7 +16,7 @@
 
       <PARA>
 	  CrissCross and its helper tool clean_spec allow users to analyze Chandra High Energy Transmission Grating (HETG) 
-      spectra that are extracted from a field of view with multiple other astrophysical X-ray sources. The HETG 
+      spectra that are extracted from a field of view with multiple astrophysical X-ray sources. The HETG 
       instrument will disperse events onto the ACIS CCDs from all sources in a field of view and if there are several 
       sufficiently-bright X-ray sources then there is a potential for 'confusion' to occur. Confusion is a term used 
       here for special scenarios where <HREF link="https://cxc.harvard.edu/ciao/threads/gspec.html">standard HETG 
@@ -67,8 +67,7 @@
       is expected at the location in the spectral arm (distance from center of X) then CIAO tools will remove these 
       events automatically using Order Sorting Integrated Probability tables in the CALDB. However, there can be cases 
       where the energy of confusing events from another source is the SAME as what is expected from the spectrum of the
-       extracted source based on the dispersion distance from its 0th order. These cases are currently not handled in 
-       CIAO and are exactly what is identified by CrissCross. For example, lets assume you are interested in the HETG 
+       extracted source based on the dispersion distance from its 0th order. Crisscross is the tool designed to handle these cases. For example, lets assume you are interested in the HETG 
        spectrum of 'Src A' and there is another source in the field of view called 'Src B'. The crisscross routine 
        handles all four possible types of confusion:
       </PARA>
@@ -82,7 +81,7 @@
       Src A. The proximity of Src B (max_pntsrc_dist), the size of its PSF and an estimate of the number of counts in 
       the relevant wavelength range of Src A is used to determine if confusion can occur. If the estimated ratio of 
       counts in the affected wavelength range (Src B / Src A) > 10% then the relevant portion of the Src A spectrum is 
-      marked as confused. Typically, most sources in the field of view are too faint to meaningfully dispersed HEG/MEG 
+      marked as confused. Typically, most sources in the field of view are too faint to have significant dispersed HEG/MEG 
       counts so an on-axis point source confuser will only confuse a small wavelength range of the Src A spectrum 
       (approx. 0.5 Ang). However, if Src B is sufficiently bright then it will also cause ARM confusion (see below).
       </ITEM>
@@ -92,7 +91,7 @@
       and Src B is bright enough to disperse a meaningful number of events. What is a meaningful number of events in 
       this context? When spectral confusion can occur based on the geometry of two sources, the wavelength of confusion 
       is calculated from the gratings equation. Both the confused (Src A) and confuser (Src B) zeroth order point 
-      sources are analyzed to determine how many Nth order (1st, 2nd, 3rd) dispersed counts exist in the energy bandpass
+      sources are analyzed to estimate the number of  Nth order (1st, 2nd, 3rd) dispersed counts in the energy bandpass
        where confusion can occur. If this counts ratio (src B / src A) is > spec_confuse_limit (default = 10%) then 
        CrissCross marks this as confusion. This calculation accounts for the effective area at the location of confusion
         as well as the efficiencies of different spectral orders (e.g., if MEG+3 from src B is confusing HEG+1 of 
@@ -101,7 +100,7 @@
 
       <ITEM>
       'Arm Confusion' occurs when Src B is very bright and lands on/near the HEG or MEG arm of Src A. In this case, 
-      Src B is bright enough to disperse its events into an X-shape and if it lands on the arm of Src A that means it 
+      Src B disperses a significant number of photons into its own X-shape which lands on the arm of Src A that means it 
       will disperse events directly along the entire HEG/MEG arm of Src A. This situation is unfortunate as it 
       potentially confuses a large portion of the Src A spectrum. When arm confusion can occur, the distance between
        the Src A and Src B 0th orders (in the dispersion direction) dictates how much of the arm is likely to be 
@@ -258,7 +257,7 @@
 	  <LINE>&pr; chandra_repro 3</LINE>
 
 	  <LINE>&pr; punlearn crisscross</LINE>
-	  <LINE>&pr; infile=3/repro/acisf00003_repro_evt2.fits outdir=cc_outdir main_list=all_srcs.fits \</LINE>
+	  <LINE>&pr; crisscross infile=3/repro/acisf00003_repro_evt2.fits outdir=cc_outdir main_list=all_srcs.fits \</LINE>
 	  <LINE>subset_src_list=bright_srcs.fits verbose=1 clobber=yes mode=a</LINE>
 
 	  <LINE>&pr; punlearn clean_spec</LINE>
@@ -304,7 +303,7 @@
 	</SYNTAX>
 	<DESC>
 	  <PARA>
-      Run crisscross to assess confusion for a single source. For this example, we utilizes the chandra_repro 
+      Run crisscross to assess confusion for a single source. For this example, we utilize the chandra_repro 
       tg_zo_position parameter which allows users to pick an RA and DEC to extract a specific source's HETG spectra. 
       This runs the standard tg_extract tools and produces PHA files and ARFs and RMFs. The chandra_repro tg_orders 
       parameter can be used to specify more orders than the default +1/-1.  Users can assess confusion for a single 
@@ -404,10 +403,10 @@
 
 	<DESC>
 	  <PARA>
-      Wavdetct must be run on each event file to identify 0th order point sources and obtain an estimate of their 
+      Wavdetect must be run on each event file to identify 0th order point sources and obtain an estimate of their 
       counts. This is done automatically if users do not provide a wavdetect_file. When wavdetect is run on an HETG 
       observation, dispersed events from the HEG/MEG arms can be erroneously identified as 'real' sources. The 'main_list' 
-      of sources is matched to the wavdetect output to ensure only real sources are considered when assessing confusion.  
+      of sources is matched to the wavdetect output and only sources listed in both are treated as real sources and are considered when assessing confusion.  
 	  </PARA>
 
 
@@ -440,8 +439,7 @@
 	<DESC>
 	  <PARA>
 	    Instead of providing a list of relatively-bright HETG sources in subset_src_list, users can provide the RA and 
-        DEC in J2000 deg of a single source. The format should be e.g., '(83.818,-5.389)' and must be in degrees. Use 
-        of this parameter can be used with single_src_root for naming the output file.
+        DEC in J2000 deg of a single source. The format should be (RA, Dec) in degrees, e.g. '(83.818,-5.389)' . When this parameter is used, single_src_root controls the name of the output file.
 	  </PARA>
 
 
@@ -456,7 +454,7 @@
 	<DESC>
 	  <PARA>
       This root will be included in the name of the output confusion table if crisscross is run with a single source 
-      (single_src_post). If 'None' or empty then the element number source matched in the main_list is used in table name.
+      (single_src_pos). If 'None' or empty then the element number of the source matched in the main_list is used in the table name.
 	  </PARA>
 	</DESC>
       </PARAM>
@@ -468,7 +466,7 @@
 	<DESC>
 	  <PARA>
       The wavdetect source fits table(s) associated with the evt2 observation. This is the '*src.fits' file
-        output from wavdetect. If no files are included (e.g., wavdetect_file=None) then wavdetect will be run during
+        output from wavdetect. If no files are included (wavdetect_file=None) then wavdetect will be run during
         execution of CrissCross for each evt2 file provided.
 	  </PARA>
 
@@ -477,7 +475,7 @@
       These parameters are generally optimized for HETG observations to minimize the number of false (dispersed event) 
       detections. Users may wish to run wavdetect separately from crisscross with different parameters. In that case, 
       users should provide their choice of wavdetect source fits table to 'wavdetect_file'. Otherwise crisscross runs 
-      with these default parameters. Depending on ones processor, running wavdetect may take some time so users can 
+      with these default parameters. Running wavdetect may take some time so users can 
       reduce this by providing their own wavdect files.
 	  </PARA>
 
@@ -493,7 +491,9 @@
 	<DESC>
 	  <PARA>
       The 'confused' option (default) includes spectral regions with high confidence of confusion. The 'warn' option 
-      includes both confused regions and regions where confusion could have occured but the detection is marginal. 
+      includes both confused regions and regions where confusion is predicted to occur but below the levels
+      set in the other parameters (typically, that means less than 10% of the counts in a specific spectral
+      region originate from the confusing source). 
       The 'clean' option includes 'confused', 'warn' and regions where there should be no confusion.
  
 	  </PARA>
@@ -503,7 +503,7 @@
       <PARAM name="arf_ratios_dir" type="string" def="None">
 	<SYNOPSIS>
       Path to ARF ratio fits tables that are necessary to estimate the number of counts expected in the nth order based 
-      on the detected 0th order counts. 'None' value defaults to crisscross file.
+      on the detected 0th order counts. 'None' value defaults to files installed with crisscross.
 	</SYNOPSIS>
     <DESC>
       <PARA>
@@ -556,7 +556,7 @@
 	<DESC>
 	  <PARA>
       Minimum number of 0th order counts for a source in subset_src_list or single_src_pos to be considered bright enough 
-      warrant confusion assessment from field sources.This parameter can be used to save computation time by restricting
+      to warrant confusion assessment from field sources.This parameter can be used to save computation time by restricting
       the number of sources for which confusion is assessed.
 	  </PARA>
 	</DESC>
@@ -621,7 +621,7 @@
         dispersed spectrum of an extracted source, is less than this will be considered as potential arm confusion.
         Users can increase this parameter if they believe spectra are unfairly being flagged as arm confused. An
         on-axis source spectrum has a width of approximately 5 pixels so if two on-axis sources are within 10 pixels
-        then it is possible they can cause confusion in eachother's spectra.
+        then it is possible they can cause confusion in each other's spectra.
 	  </PARA>
 	</DESC>
       </PARAM>
@@ -649,7 +649,7 @@
 	<DESC>
 	  <PARA>
 	    This fraction is based on 0th order counts ratio of each arm-confusion pair. For example, if the position and minimum
-        brightness of two sources are sufficient to cause arm confusion with eachother, this ratio allows some confusion 
+        brightness of two sources are sufficient to cause arm confusion with each other, this ratio allows some confusion 
         in the subset_src_list spectrum without flagging it as confused. Arm confusion can result in the flagging of 
         significant portions of an extract sources spectrum so users may wish to tolerate some fraction of erroneous events.
 	  </PARA>
