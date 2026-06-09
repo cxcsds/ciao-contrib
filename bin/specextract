@@ -33,7 +33,7 @@ Script:
 
 __version__ = "CIAO 4.18"
 __toolname__ = "specextract"
-__revision__ = "4 June 2026"
+__revision__ = "8 June 2026"
 
 ##########################################################################
 #
@@ -336,7 +336,7 @@ def create_arf_ps(full_outroot, evt_filename, asp_param, ebin,
     mkarf.asphistfile = asp_param
     mkarf.sourcepixelx = skyx
     mkarf.sourcepixely = skyy
-    mkarf.grating = fileio.get_keys_from_file(evt_filename)["GRATING"]
+    mkarf.grating = fileio.get_keys_from_file(f"{evt_filename}[#row=0]")["GRATING"]
     mkarf.obsfile = evt_filename
     mkarf.dafile = dafile
     mkarf.maskfile = mskfile
@@ -393,6 +393,9 @@ def create_arf_ext(full_outroot, ebin, verbose, dafile, mskfile,
             mkwarf.infile = f"{tdetwmap}[wmap]"
 
         mkwarf()
+
+        ## the FEFFILE keyword unnecessarily provides an absolute path ##
+        edit_header(arffile, "FEFFILE", os.path.basename(fileio.get_keys_from_file(f"{arffile}[#row=0]")["FEFFILE"]))
 
     except Exception as exc:
         raise IOError(f"Failure to create weighted ARF.  Possible causes \
@@ -612,7 +615,7 @@ def build_rmf_ps(rmftool, evt_filename, ptype, full_outroot,
 
 
 def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose,
-                  specfile, weightfile, wmap_clip, wmap_sky2tdet, infostr):
+                  specfile, weightfile, wmap_clip, wmap_sky2tdet, infostr, force_tdetwmap : bool=False):
     """
     Run either mkrmf or mkacisrmf depending on input conditions.
     For mkrmf: input CALDB and weight file and return RMF name.
@@ -646,9 +649,14 @@ def build_rmf_ext(rmftool, ptype, full_outroot, ebin, rmfbin, clobber, verbose,
             # ## (since ACIS RMF originally calibrated by splitting each CCD into 32x32 sections)
             # mkacisrmf.wmap = f"{specfile}[WMAP]"
 
+            if force_tdetwmap:
+                detwmap = wmap_sky2tdet
+            else:
+                detwmap = f"{specfile}[WMAP]"
+
             run_mkacisrmf(infile="CALDB",outfile=rmffile,
                           energy=ebin,channel=channel[0],chantype=ptype.upper(),
-                          obsfile="",wmap=f"{specfile}[WMAP]",
+                          obsfile="",wmap=detwmap,
                           clobber=clobber,verbose=verbose)
 
         return rmffile
@@ -731,7 +739,7 @@ reprocess the dataset or re-download the observation from the archive.")
         mkarf.asphistfile = asp_param
         mkarf.sourcepixelx = skyx
         mkarf.sourcepixely = skyy
-        mkarf.grating = fileio.get_keys_from_file(specfile)["GRATING"]
+        mkarf.grating = fileio.get_keys_from_file(f"{specfile}[#row=0]")["GRATING"]
         mkarf.obsfile = specfile
         mkarf.maskfile = mskfile
         mkarf.verbose = verbose
@@ -777,7 +785,7 @@ def set_badpix(evtfile, bpixfile, instrument, verbose, dobpix):
                 raise IOError(f"Failed to set {bpixfile} bad pixel file in ardlib.par for {evtfile}.") from exc
 
         else:
-            detnam = fileio.get_keys_from_file(evtfile)["DETNAM"].replace("-","_")
+            detnam = fileio.get_keys_from_file(f"{evtfile}[#row=0]")["DETNAM"].replace("-","_")
             bpixpar = f"AXAF_{detnam}_BADPIX_FILE"
             bpix = f"{bpixfile}[BADPIX]"
 
@@ -1193,6 +1201,7 @@ def resp_setup(args,asphist,rmftool):
     verbose = args["verbose"]
 
     tdetwmap = args["tdetwmap"]
+    zero_counts = args.get("zero_counts")
 
     with new_pfiles_environment(ardlib=False,copyuser=False):
         acis_fef_lookup = make_tool("acis_fef_lookup")
@@ -1203,57 +1212,70 @@ def resp_setup(args,asphist,rmftool):
             verbose = 1
 
         if all([srcbkg == "src", weight == "yes"]) or all([srcbkg == "bkg", dobkgresp]):
-            if resp_pos.upper() == "REGION" and args.get("zero_counts"):
-                # c.f. cxcsds/ciao-contrib/issues/1005:
-                #
-                # Without any counts, for weighted responses we do not know how to
-                # weight individual pixels, so all pixels should have the same,
-                # non-zero weight. One option is create a unit image (i.e. pixel
-                # values of 1s) that respect the image subspace, so pixels outside
-                # the region are 0/NaN/Null-values.
-                #
-                # There are a couple ways to do this but dmimgfilt can be used in
-                # a single-shot, which will create an image bound the extraction
-                # region.  Pixels outside the region will be NaN and pixels inside
-                # will have the number of pixels encompassed by the point mask,
-                # which will be 1.
+            try:
+                sky2tdet.punlearn()
 
-                dmimgfilt.punlearn()
+                sky2tdet.bin = bintwmap_param
+                sky2tdet.asphistfile = asp_param
+                sky2tdet.outfile = f"{tdetwmap}[wmap]"
+                sky2tdet.clobber = True
+                sky2tdet.verbose = verbose
 
-                dmimgfilt.infile = infile
-                dmimgfilt.outfile = f"{tdetwmap}[wmap]"
-                dmimgfilt.function = "count"
-                dmimgfilt.mask = "point(0,0)"
-                dmimgfilt.clobber = True
-                dmimgfilt.verbose = verbose
+                if resp_pos.upper() == "REGION" and zero_counts:
+                    # c.f. cxcsds/ciao-contrib/issues/1005:
+                    #
+                    # Without any counts, for weighted responses we do not know how to
+                    # weigh individual pixels, so all pixels should have the same,
+                    # non-zero weight. One option is create a unit image (i.e. pixel
+                    # values of 1s) that respect the image subspace, so pixels outside
+                    # the region are 0/NaN/Null-values.
+                    #
+                    # There are a couple ways to do this but dmimgfilt can be used in
+                    # a single-shot, which will create an image bound the extraction
+                    # region.  Pixels outside the region will be NaN and pixels inside
+                    # will have the number of pixels encompassed by the point mask,
+                    # which will be 1.
 
-                dmimgfilt()
+                    v1(f"There are zero counts available to create a weights map to generate \
+weighted responses for the extraction region {infile}.  Since 'resp_pos=REGION', proceeding by \
+assuming a uniformly weighted extraction region...")
 
-            else:
-                try:
-                    sky2tdet.punlearn()
+                    with tempfile.NamedTemporaryFile(suffix=".wmsk",dir=tmpdir) as weightmask:
+                        dmimgfilt.punlearn()
 
+                        dmimgfilt.infile = infile
+                        dmimgfilt.outfile = weightmask.name
+                        dmimgfilt.function = "count"
+                        dmimgfilt.mask = "point(0,0)"
+                        dmimgfilt.clobber = True
+                        dmimgfilt.verbose = verbose
+
+                        dmimgfilt()
+
+                        sky2tdet.infile = weightmask.name
+                        sky2tdet()
+
+                        zero_counts_tdetwmap = True
+
+                else:
                     sky2tdet.infile = f"{infile}[energy={ewmap_param}][bin sky]" # include extraction region
                                                                                  # plus same energy filter
-
-                    # used for dmextract wmap input to mkacisrmf
-                    sky2tdet.bin = bintwmap_param
-                    sky2tdet.asphistfile = asp_param
-                    sky2tdet.outfile = f"{tdetwmap}[wmap]"
-                    sky2tdet.clobber = True
-                    sky2tdet.verbose = verbose
-
+                                                                                 # used for dmextract wmap
+                                                                                 # input to mkacisrmf
                     sky2tdet()
 
-                    # generate clipped WMAP to speed up response generation
-                    if wmap_clip:
-                        clip_wmap(tdetwmap,wmap_thresh,tmpdir)
+                    zero_counts_tdetwmap = False
 
-                except OSError as exc:
-                    raise IOError("Error generating WMAP w/sky2tdet!") from exc
+                # generate clipped WMAP to speed up response generation
+                if wmap_clip:
+                    clip_wmap(tdetwmap,wmap_thresh,tmpdir)
+
+            except OSError as exc:
+                raise IOError("Error generating WMAP w/sky2tdet!") from exc
 
         else:
             tdetwmap = None
+            zero_counts_tdetwmap = True
 
         if all([weight_rmf == "no",rmftool == "mkrmf"]) and any([srcbkg == "src", srcbkg == "bkg" and dobkgresp]):
             acis_fef_lookup.punlearn()
@@ -1270,7 +1292,7 @@ def resp_setup(args,asphist,rmftool):
         else:
             feffile = None
 
-    return tdetwmap, feffile
+    return tdetwmap, feffile, zero_counts_tdetwmap
 
 
 
@@ -1396,6 +1418,7 @@ def build_acis_rmf(args):
     tdetwmap = args["tdetwmap"]
     feffile = args["feffile"]
     weightfile = None
+    force_tdetwmap = args.get("zero_counts_tdetwmap")
 
     ###########################
     #
@@ -1417,7 +1440,7 @@ def build_acis_rmf(args):
                     return build_rmf_ext(rmftool,ptype,full_outroot,
                                          ebin,rmfbin,clobber,verbose,
                                          phafile,weightfile,wmap_clip,
-                                         tdetwmap, infostr)
+                                         tdetwmap,infostr,force_tdetwmap)
 
                 return build_rmf_ps(rmftool,filename,ptype,full_outroot,
                                     ebin,rmfbin,clobber,verbose,phafile,feffile,
@@ -1599,7 +1622,7 @@ parameter of dmextract will be set to use DET coordinates instead.\n")
 
                 ccdid = ccds[ccd_counts.tolist().index(max(ccd_counts))]
 
-                bkgscale = fileio.get_keys_from_file(fullfile)[f"BKGSCAL{ccdid}"]
+                bkgscale = fileio.get_keys_from_file(f"{fullfile}[#row=0]")[f"BKGSCAL{ccdid}"]
 
                 edit_header(phafile, "AREASCAL", 1/bkgscale,
                             comment=f"1/BKGSCAL{ccdid} using the 'blanksky' scaling factor") #, set to 1.0 if subtracting background")
@@ -1669,7 +1692,7 @@ def _resps_preprocess_wrapper(args_dict):
         if instrument == "ACIS":
             rmftool = args_dict["rmftool"]
 
-            kdict["tdetwmap"], kdict["feffile"] = resp_setup(args_dict,asphist,rmftool)
+            kdict["tdetwmap"], kdict["feffile"], kdict["zero_counts_tdetwmap"] = resp_setup(args_dict,asphist,rmftool)
 
     return {key_id : kdict}
 
@@ -1798,35 +1821,34 @@ def _build_resps(args):
                     case "RMF":
                         respfile = build_acis_rmf(args)
 
-        else:
+        elif instrument == "HRC" and not all([srcbkg == "bkg", not dobkgresp]):
             ##########################################
             #
             # make HRC ARF and copy RMF from CalDB
             #
             ##########################################
 
-            if not all([srcbkg == "bkg", not dobkgresp]):
-                infostr = f"Creating {srcbkg} ARF {iteminfostr}"
+            infostr = f"Creating {srcbkg} ARF {iteminfostr}"
 
-                try:
-                    ancrfile, respfile = create_hrc_resp(phafile,rmffile,full_outroot,
-                                                         asphist,clobber,verbose,msk,
-                                                         skyx,skyy,instrument,chip_id,infostr)
+            try:
+                ancrfile, respfile = create_hrc_resp(phafile,rmffile,full_outroot,
+                                                     asphist,clobber,verbose,msk,
+                                                     skyx,skyy,instrument,chip_id,infostr)
 
-                    if all([srcbkg == "src",correct == "yes"]):
-                        try:
-                            if verbose == 1:
-                                vprogress("Calculating aperture correction")
-                            else:
-                                v2(f"Calculating aperture correction for {srcbkg} ARF {iteminfostr}")
+                if all([srcbkg == "src",correct == "yes"]):
+                    try:
+                        if verbose == 1:
+                            vprogress("Calculating aperture correction")
+                        else:
+                            v2(f"Calculating aperture correction for {srcbkg} ARF {iteminfostr}")
 
-                            ancrfile = correct_arf(full_outroot,fullfile,filename,
-                                                   ancrfile,skyx,skyy,binarfcorr)
-                        except OSError as exc:
-                            raise IOError(f"Failed to PSF correct the ARF: {ancrfile}") from exc
+                        ancrfile = correct_arf(full_outroot,fullfile,filename,
+                                               ancrfile,skyx,skyy,binarfcorr)
+                    except OSError as exc:
+                        raise IOError(f"Failed to PSF correct the ARF: {ancrfile}") from exc
 
-                except OSError as exc:
-                    raise IOError(f"Failed to create ARF for {fullfile}") from exc
+            except OSError as exc:
+                raise IOError(f"Failed to create ARF for {fullfile}") from exc
 
     if srcbkg == "bkg" and not dobkgresp:
         return None
@@ -1902,9 +1924,9 @@ def resps(args,specdicts,specextract_args,pars,parallelize):
                                        progress=True,
                                        prefix="Generating ARFs & RMFs:")
 
-    for key in asphists.keys():
-        if asphists[key] is not None:
-            asphists[key].close()
+    for key,ahist_val in asphists.items():
+        if ahist_val is not None:
+            ahist_val.close()
 
         if tdetwmap[key] is not None:
             tdetwmap[key].close()
@@ -2096,7 +2118,7 @@ in the 'infile' parameter; the 'combine=yes' setting will be ignored.\n")
     #
     #################################################
 
-    nsrcs = set([len(spec_src_stk), len(arf_src_stk), len(rmf_src_stk)])
+    nsrcs = { len(spec_src_stk), len(arf_src_stk), len(rmf_src_stk) }
     if len(nsrcs) > 1:
         v1("Output spectra and responses were not combined \
 because spectra and/or responses were not created for every \
@@ -2449,16 +2471,16 @@ cannot contain any spaces")
 
                 return status
 
-    else:
-        if verbose == 1 and _check_tty():
-            def parallelize(func,args,numcores=nproc,progress=True,prefix=""):
-                if progress:
-                    return [func(arg) for arg in progressbar_iter(args,use_unicode=_use_unicode(),prefix=prefix)]
+    elif parallel == "no" and verbose == 1 and _check_tty():
+        def parallelize(func,args,numcores=nproc,progress=True,prefix=""):
+            if progress:
+                return [func(arg) for arg in progressbar_iter(args,use_unicode=_use_unicode(),prefix=prefix)]
 
-                return [func(arg) for arg in args]
-        else:
-            def parallelize(func,args,numcores=nproc,progress=None,prefix=None):
-                return [func(arg) for arg in args]
+            return [func(arg) for arg in args]
+
+    else:
+        def parallelize(func,args,numcores=nproc,progress=None,prefix=None):
+            return [func(arg) for arg in args]
 
     ## check open file limits on the system ##
     open_file_lim = merging._check_open_file_limits(len(specextract_args))
@@ -2466,9 +2488,10 @@ cannot contain any spaces")
     if open_file_lim:
         v3("Increasing system open file limit for this and child Python instance.")
 
-    if regtest:
-        assert not open_file_lim, f"The system open file limit was increased for this instance, as expected for this test."
-        assert open_file_lim, f"The system open file limit was not increased for this instance, which is not expected for this test!"
+    if regtest and all([len(specextract_args) == 520,
+                        params["outroot"] == f"{os.getenv('PWD')}/too-many-open-files"]):
+        assert not open_file_lim, "The system open file limit was increased for this instance, as expected for this test."
+        assert open_file_lim, "The system open file limit was not increased for this instance, which is not expected for this test!"
 
     ###########################
     #
@@ -2497,8 +2520,8 @@ cannot contain any spaces")
     specextract_args = update_param_args_and_dict(pardict_update_resps,specdicts,specextract_args,pars)
 
     ## clean up converted region stack ##
-    for key in outreg_tmp.keys():
-        outreg_tmp[key].close()
+    for regtemp in outreg_tmp.values():
+        regtemp.close()
     del outreg_name
 
     ###########################

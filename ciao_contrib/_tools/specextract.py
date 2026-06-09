@@ -27,7 +27,7 @@ Routines to support the specextract tool.
 
 __modulename__ = "_tools.specextract"
 __toolname__ = "specextract"
-__revision__ = "3 June 2026"
+__revision__ = "5 June 2026"
 
 import os
 import sys
@@ -458,12 +458,15 @@ data with chandra_repro or add the keywords to the event file(s) with r4_header_
                     v1("WARNING: Using 'refcoord' position to produce response files.\n")
 
             except AttributeError as exc:
-                if ewmap_range_check is not None:
+                if ewmap_range_check is not None and isinstance(resp_pos_type,str) and resp_pos_type.upper() != "REGION":
                     ## do we want to error out if the number of counts is
                     ## smaller than some magic count, instead of just zero?
 
                     raise IOError(f"{file} has zero counts in the \
 'energy_wmap={ewmap_range_check}' eV range needed to generate a weights map.") from exc
+
+                if isinstance(resp_pos_type,str) and resp_pos_type.upper() == "REGION" and all([not refcoord_check, not weights_check, ewmap_range_check is None]):
+                    return True, 0
 
             return False
 
@@ -1403,7 +1406,8 @@ and/or background files. Assuming source and background file lists have a matchi
 
                 if ewmap_range_check is not None and fileio.get_keys_from_file(f"{file}[#row=0]")["INSTRUME"] == "ACIS":
                     return self._check_event_stats(file,
-                                                   ewmap_range_check=ewmap_range_check)
+                                                   ewmap_range_check=ewmap_range_check,
+                                                   resp_pos_type=resp_pos)
                 return None
 
             except Exception as E:

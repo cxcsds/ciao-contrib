@@ -93,6 +93,7 @@ def open_param_file(argv, toolname=None):
     #
     #  --paramdebug      sets verbosity of this module's logger to 5
     #  --tracebackdebug  turns on traceback in error reporting by lw.handle_ciao_error
+    #  --regtestonly     provide flag to allow chunks of code to only be used when invoked
     #
     if "--paramdebug" in args:
         logger.verbose = 5
