@@ -2,7 +2,7 @@ from functools import partial
 
 import numpy as np
 from sherpa.optmethods.optfcts import lmdif
-from constants import arcsec_per_pix, wavelength_scale
+from .constants import arcsec_per_pix, wavelength_scale
 
 from ciao_contrib.psf_contrib import PSF
 

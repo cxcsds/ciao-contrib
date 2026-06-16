@@ -11,7 +11,6 @@
 ##########################################################################################
 import glob
 import os
-from pathlib import Path
 import shutil
 import time
 
@@ -21,28 +20,20 @@ from numpy.lib import recfunctions as rfn
 from pycrates import (
     read_file,
     write_file,
-    get_keyval,
-    read_pha,
-    write_pha,
-    is_pha_type1,
-    is_pha_type2,
-    update_crate_checksum,
-    get_history_records,
     set_key,
 )
 from crates_contrib.utils import make_table_crate
 from ciao_contrib import runtool as rt
-from iocaldb import OSIP, Sky2Chandra, Cel2Chandra
+from .iocaldb import OSIP, Sky2Chandra, Cel2Chandra
 from ciao_contrib.psf_contrib import PSF
-from widthofexclusion import counts_circle_band, pnt_src_masking_region
-from constants import tg_part_name, X_R, Period, mm_per_pix, arcsec_per_pix, hc, Alpha
+from .widthofexclusion import counts_circle_band, pnt_src_masking_region
+from .constants import X_R, Period, mm_per_pix, arcsec_per_pix, hc, Alpha
 import ciao_contrib.logger_wrapper as lw
 
 TOOLNAME = 'crisscross'
 __revision__  = '28 May 2026'
 
 lw.initialize_logger(TOOLNAME)
-v0 = lw.make_verbose_level(TOOLNAME, 0)
 v1 = lw.make_verbose_level(TOOLNAME, 1)
 v2 = lw.make_verbose_level(TOOLNAME, 2)
 v3 = lw.make_verbose_level(TOOLNAME, 3)
@@ -751,8 +742,12 @@ def arf_ratio(ratio_pycrates, order, bin_start, bin_end):
     bin_lo = ratio_pycrates.BIN_LO.values
     #handle rare-ish error where wave_low and high values were equal leading to an 'average' of an empty list.
     if bin_start == bin_end:
-        bin_end = bin_end + 0.01 #may need to increase 0.01 to guarantee multiple elements are selected.
-        v2(f'Warning: arf_ratio calculation was estimated because wave_low and wave_high were equal.')
+        bin_end = (
+            bin_end + 0.01
+        )  # may need to increase 0.01 to guarantee multiple elements are selected.
+        v3(
+            f"Warning: arf_ratio calculation was estimated because wave_low and wave_high were equal."
+        )
     in_range = (bin_start <= bin_lo) & (bin_lo < bin_end)
     order_data = ratio_pycrates.get_column(order)
     avg_ratio_value = np.average(order_data.values[in_range])
@@ -1898,7 +1893,7 @@ def run_crisscross(
     single_src_root=None,
     wavdetect_file=None,
     conf_table_level="confused",
-    arf_ratios_dir=None,
+    arf_ratios_dir=".",
     clobber_par=False,
     max_pntsrc_dist=8,
     min_pntsrc_counts=5,
@@ -1928,14 +1923,14 @@ def run_crisscross(
     observations. CrissCross can create spectral confusion tables for all sources present in a secondary
     (subset_src_list) list or can be run for a single source using the 'single_src_pos' parameter.
 
-    If users have PHA files extracted using the relevant evt2 file they can run the complimentary CIAO tool clean_spec() 
+    If users have PHA files extracted using the relevant evt2 file they can run the complimentary CIAO tool clean_spec()
     using the CrissCross confusion tables as input to remove confused counts from their spectra and associated ARFs
     before performing their spectral analysis.
 
     Parameters
     ----------
     evt2_file : str
-        A single evt2 file or a list of evt2 files which contain sources in main_list and subset_src_list.    
+        A single evt2 file or a list of evt2 files which contain sources in main_list and subset_src_list.
     cc_outdir : str
         A directory for holding the output of CrissCross. If it does not exist then it will be made.
     main_list : str
@@ -1946,7 +1941,7 @@ def run_crisscross(
         A tsv or ascii file of sources to create confusion tables for. This should be a subset of main_list and include
         sources bright enough for HETG spectral extraction. The table format requires columns RA, and DEC.
     single_src_pos : string
-        RA and DEC position in degrees to calculate confusion for only a single source. The source coordinates must 
+        RA and DEC position in degrees to calculate confusion for only a single source. The source coordinates must
         also be in the main_list file. Format must be J2000 degrees in format e.g., '83.8186447, -5.3896515'.
     single_src_root : string
         Root name for single_src_pos confusion table. If None then element number of main_list is used in table name.
@@ -1956,15 +1951,14 @@ def run_crisscross(
         execution of CrissCross.
     conf_table_level : str, 'confused', 'warn', or 'clean'
         Determines the output saved in the confusion tables. 'confused': includes only the locations of confusion.
-        'warn': includes confusion and 'warn' locations where confusion could have occured but detection is marginal 
+        'warn': includes confusion and 'warn' locations where confusion could have occured but detection is marginal
         typically due to source brightness (see warn flag in table). 'clean': includes 'confused', 'warn' and 'clean'
-        where 'clean' represents locations where there should be no confusion. (default is 'confused') 
+        where 'clean' represents locations where there should be no confusion. (default is 'confused')
     highest_order : int
         The highest order of the HETG spectra to consider for confusion. Default is 3 which means orders -3, -2, -1, 1, 2, and
         3 are included in the confusion calculations.
     arf_ratios_dir : str
-        The directory which holds the ARF response ratios fits tables necessary for Crisscross. Default is 'None' which
-        will use crisscross-designated arf ratios.
+        The directory which holds the ARF response ratios fits tables necessary for Crisscross.
     clobber_par : bool
         If clobber_par = True then CrissCross overwrites previous CrissCross run if output directory already exists.
 
@@ -2063,10 +2057,6 @@ def run_crisscross(
     else:
         wavdetect_file = [None] * len(evt2_file)
 
-    #set arf_ratios_dir to designated directory if the default is 'None'. This will be ciaocontrib-specific location
-    if arf_ratios_dir is None:
-        arf_ratios_dir = 'input_files'
-
     # Start major CrissCross loop for all input evt2 files
     for k in range(len(evt2_file)):
         # ardlib.punlearn()
@@ -2075,28 +2065,56 @@ def run_crisscross(
         timelogger = TimeLogger()
 
         #print parameters to screen if verbose is > 0
-        v0("\n")
-        v0(f'This run is for observation "{evt2_file[k]}".')
-        #v1('\n')
-        v1(f'The list of X-ray field sources to assess as potential sources of confusion is "{main_list}".')
+        v1("\n")
+        v1(f'This run is for observation "{evt2_file[k]}".')
+        v2(
+            f'The list of X-ray field sources to assess as potential sources of confusion is "{main_list}".'
+        )
         if single_src_pos is not None:
-            v1(f'The HETG-bright source for which confusion tables will be generated is RA,DEC = ({single_src_pos}).')
+            v2(
+                f"The HETG-bright source for which confusion tables will be generated is RA,DEC = ({single_src_pos})."
+            )
         else:
-            v1(f'The list of HETG-bright sources for which confusion tables will be generated is "{subset_src_list}".')
+            v2(
+                f'The list of HETG-bright sources for which confusion tables will be generated is "{subset_src_list}".'
+            )
         if wavdetect_file[k] is not None:
-            v0(f'0th order counts are estimated using the wavdetect file "{wavdetect_file[k]}"')
-        v1(f'The max distance in pixels perpendicular to confused spectra to be considered a potential point source confuser is {max_pntsrc_dist}.')
-        v1(f'The min number of counts for a 0th order field source to be considered a potential confuser is {min_pntsrc_counts}.')
-        v1(f'The min number of 0th order counts required to calculate confusion for sources in subset_src list is {min_spec_counts}.')
-        v1(f'The min number of 0th order counts required for field sources to be considered a source of spectral confusion is {min_spec_confuser_counts}.')
-        v1(f'Fraction of the OSIP window to use in spectral intersection calculation is {osip_frac}.')
-        v1(f'The fraction of dispersed counts allowed in a subset_src spectral confusion region before flagging as confused is {spec_confuse_limit}.')
-        v1(f'The max distance, in pixels perpendicular to a subset_src spectrum, to be considered a potential arm confuser is {max_arm_dist}.')
-        #v1(f'The distance in pixels required for two very bright sources to be considered for ARM REMOVAL --tis but a scratch-- is %s pixels {max_arm_dist} pixels.')
-        v1(f'The min number of 0th order counts before a field source is considered a potential arm confuser is {min_arm_counts}.')
-        v1(f'The approximate OSIP range for arm confusion is {arm_nsig}. Higher values will ignore more of a spectrum for arm confusion.')
-        v1(f'The fraction of events allowed in subset_src arm confusion regions before flagging as confusion is {arm_confuse_limit}.')
-        v1(f'The MEG and HEG cutoff wavelengths are {meg_cutoff_low, meg_cutoff_high} A and {heg_cutoff_low, heg_cutoff_high} A , respectively.')
+            v1(
+                f'0th order counts are estimated using the wavdetect file "{wavdetect_file[k]}"'
+            )
+        v2(
+            f"The max distance in pixels perpendicular to confused spectra to be considered a potential point source confuser is {max_pntsrc_dist}."
+        )
+        v2(
+            f"The min number of counts for a 0th order field source to be considered a potential confuser is {min_pntsrc_counts}."
+        )
+        v2(
+            f"The min number of 0th order counts required to calculate confusion for sources in subset_src list is {min_spec_counts}."
+        )
+        v2(
+            f"The min number of 0th order counts required for field sources to be considered a source of spectral confusion is {min_spec_confuser_counts}."
+        )
+        v2(
+            f"Fraction of the OSIP window to use in spectral intersection calculation is {osip_frac}."
+        )
+        v2(
+            f"The fraction of dispersed counts allowed in a subset_src spectral confusion region before flagging as confused is {spec_confuse_limit}."
+        )
+        v2(
+            f"The max distance, in pixels perpendicular to a subset_src spectrum, to be considered a potential arm confuser is {max_arm_dist}."
+        )
+        v2(
+            f"The min number of 0th order counts before a field source is considered a potential arm confuser is {min_arm_counts}."
+        )
+        v2(
+            f"The approximate OSIP range for arm confusion is {arm_nsig}. Higher values will ignore more of a spectrum for arm confusion."
+        )
+        v2(
+            f"The fraction of events allowed in subset_src arm confusion regions before flagging as confusion is {arm_confuse_limit}."
+        )
+        v2(
+            f"The MEG and HEG cutoff wavelengths are {meg_cutoff_low, meg_cutoff_high} A and {heg_cutoff_low, heg_cutoff_high} A , respectively."
+        )
 
 
         # set a few obsid_specific parameters
@@ -2112,7 +2130,7 @@ def run_crisscross(
                 ]
             )
 
-        v1("The roll angle of this observation is %s" % roll_nom)
+        v2(f"The roll angle of this observation is {roll_nom}")
 
         # create the output files directory but if clobber=False and it exists then stop CrissCross
         output_dir, dir_exists = make_output_dir(
@@ -2172,9 +2190,9 @@ def run_crisscross(
         # Print to the screen the number of sources that satisfy the above conditions as well as the total number of
         # sources in input list.
 
-        counts_intercept_num = np.sum(counts > min_spec_counts)
-
-        v0("The total number of X-ray field sources input is %s. These will be assessed as potential sources of confusion for sources in 'subset_src_list' or 'single_src_pos'." % (src["n"]))
+        v1(
+            f"The total number of X-ray field sources input is {src['n']}. These will be assessed as potential sources of confusion for sources in 'subset_src_list' or 'single_src_pos'."
+        )
 
         cutoff = {
             "heg": [heg_cutoff_low, heg_cutoff_high],

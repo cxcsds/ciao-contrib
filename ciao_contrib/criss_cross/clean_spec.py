@@ -19,10 +19,9 @@
 clean_spec - Uses confusion tables produced by CrissCross to create 'cleaned' PHA1 or PHA2 spectra and ARF response files.
 """
 
-from load_hetg_resp import find_resp_files, match_resp_order
-#from from sherpa_contrib.load_hetg_resp import find_resp_files, match_resp_order
+from from sherpa_contrib.load_hetg_resp import find_resp_files, match_resp_order
 import numpy as np
-from constants import tg_part_name
+from .constants import tg_part_name
 import ciao_contrib.logger_wrapper as lw
 
 from pycrates import (

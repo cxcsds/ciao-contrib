@@ -6,10 +6,10 @@
   <ENTRY key="crisscross" context="Tools::Composite"
 	 refkeywords=" spectrum spectra pha gratings HETG wavdetect source-detection MEG HEG pointsource pointsource psf 
      OSIP spectral-extraction cleaning confusion orders 0th-order ARF"
-	 seealsogroups="gratings, tgextract, resptools">
+	 seealsogroups="gratings tgextract resptools">
 
     <SYNOPSIS>
-      Analysis tool for Chandra-HETG observations with multiple bright souces in a field of view.
+      Analysis tool for Chandra-HETG observations with multiple bright sources in a field of view.
     </SYNOPSIS>
 
     <DESC>
@@ -17,7 +17,7 @@
       <PARA>
 	  CrissCross and its helper tool clean_spec allow users to analyze Chandra High Energy Transmission Grating (HETG) 
       spectra that are extracted from a field of view with multiple astrophysical X-ray sources. The HETG 
-      instrument will disperse events onto the ACIS CCDs from all sources in a field of view and if there are several 
+      instrument will disperse events onto the ACIS CCDs from all sources in a field of view. If there are several
       sufficiently-bright X-ray sources then there is a potential for 'confusion' to occur. Confusion is a term used 
       here for special scenarios where <HREF link="https://cxc.harvard.edu/ciao/threads/gspec.html">standard HETG 
       spectral extraction</HREF> of a source may erroneously assign events (counts) from a different astrophysical 
@@ -28,15 +28,16 @@
       <PARA>
       CrissCross is used to identify when spectral confusion occurs for a list of input sources (or a single source) 
       and generates 'confusion tables' which identify the wavelength in each source's spectrum that are likely to 
-      include X-ray events from unrelated field astrophysical sources. The user can then choose to remove all events 
-      from the source spectrum in the wavelenegth range where this confusion occurs. The CrissCross helper program 
+      include X-ray events from other sources in the field. The user can then choose to remove all events
+      from the source spectrum in the wavelength range where this confusion occurs. The CrissCross helper program
       clean_spec uses the CrissCross output confusion tables and input HETG PHA spectra to generate 'cleaned' spectra 
       (and ARFs) where these events are removed. CrissCross is especially useful for crowded X-ray fields with multiple 
       observations such as stellar clusters.
       </PARA>
 
       <PARA title="Try the jupyter notebook tutorial!">
-      Users are encouraged to try CrissCross and clean_spec using the jupyter notebook tutorial [ADD HYPERLINK WHEN READY]. 
+      Users are encouraged to try CrissCross and clean_spec using the
+      <HREF link="https://cxc.cfa.harvard.edu/ciao/threads/criss_cross/criss_cross.html">jupyter notebook tutorial</HREF>.
       It provides two end-to-end examples of running CrissCross on HETG observations of a crowded stellar cluster and 
       extracting a cleaned spectrum. As shown in the tutorial, Sherpa provides a useful interface for checking the results of
       the confusion assessment by viewing HETG spectra before and after cleaning.
@@ -47,29 +48,28 @@
       The CrissCross routine (crisscross) takes advantage of the characteristic 'X' shape the Chandra-HETG instrument 
       makes when dispersing X-ray light onto the ACIS-S CCDs. For each source, the center of this 'X' is located at the 
       position of the (non-dispersed zeroth-order) X-ray source in the field of view. While technically all X-ray sources 
-      cast their own X shape, the majority in most Chandra fields-of-view are too faint to disperse enough events onto 
+      cast their own X shape, most sources are too faint to disperse enough events onto
       the detector for high-resolution X-ray spectroscopy purposes. As a result, only the brightest X-ray sources will 
       produce this X shape visible by eye in an HETG event file. If there are two or more bright sources in the same 
       field of view then their respective X shapes likely intersect with each other somewhere on the detector. In other 
-      words, if one were to extract HETG spectra from each of these sources using 
+      words, if one were to extract HETG spectra from each of these sources using only
       <HREF link="https://cxc.harvard.edu/ciao/threads/gspec.html">standard CIAO tools</HREF>, there are locations 
       (wavelength ranges) in each spectrum that could contain events from other sources. Throughout this documentation, 
       this scenario is referred to as 'confusion'. Confusion occurs when events from another source end up in the 
-      spectrum of your source of interest during extraction.
-
+      spectrum of a source of interest during extraction.
       </PARA>
 
 
       <PARA>
       HETG-ACIS already has a mechanism to handle some level of this confusion. Energy/wavelength as a function of 
-      distance from the center of the HETG 'X' shape is known based on the gratings dispersion equation and the 
+      distance from the center of the HETG 'X' shape is known based on the gratings' dispersion equation and the
       instrumental setup. When the energy of an X-ray event, as measured by the ACIS CCDs, is very different than what 
       is expected at the location in the spectral arm (distance from center of X) then CIAO tools will remove these 
       events automatically using Order Sorting Integrated Probability tables in the CALDB. However, there can be cases 
-      where the energy of confusing events from another source is the SAME as what is expected from the spectrum of the
-       extracted source based on the dispersion distance from its 0th order. Crisscross is the tool designed to handle 
-       these cases. For example, lets assume you are interested in the HETG spectrum of 'Src A' and there is another 
-       source in the field of view called 'Src B'. The crisscross routine handles all four possible types of confusion:
+      where the energy of confusing events from another source matches what is expected from the spectrum of the
+      extracted source based on the dispersion distance from its 0th order. Crisscross is the tool designed to handle
+      these cases. For example, if the user is interested in the HETG spectrum of 'Src A' and there is another
+      source in the field of view called 'Src B'. The crisscross routine handles all four possible types of confusion:
       </PARA>
 
       <LIST>
@@ -100,8 +100,8 @@
 
       <ITEM>
       'Arm Confusion' occurs when Src B is very bright and lands on/near the HEG or MEG arm of Src A. In this case, 
-      Src B disperses a significant number of photons into its own X-shape which lands on the arm of Src A that means it 
-      will disperse events directly along the entire HEG/MEG arm of Src A. This situation is unfortunate as it 
+      Src B disperses a significant number of photons into its own X-shape which lands on the arm of Src A , such that
+      the events from Src B are dispersed directly along the entire HEG/MEG arm of Src A. This situation is unfortunate as it
       potentially confuses a large portion of the Src A spectrum. When arm confusion can occur, the distance between
        the Src A and Src B 0th orders (in the dispersion direction) dictates how much of the arm is likely to be 
        confused. The closer the sources are, the more of the spectral arm is confused. CrissCross will use the distance 
@@ -120,10 +120,10 @@
 
       <PARA title="What are the main considerations for running crisscross and clean_spec?">
       
-      The crisscross tool has a lot of parameters but the vast majority of them can be kept at their default values. The
-      main thing one needs to run crisscross is a list of potential X-ray sources in the field of view of the 
+      The crisscross tool has a lot of parameters but the vast majority of them can be kept at their default values.
+      Most importantly, crisscross needs a list of potential X-ray sources in the field of view of the
       observation (parameter 'main_list'). CrissCross ultimately needs to know the number of counts for every 0th order 
-      point source in the field of view. For non-HETG observations, this can be obtained with CIAO source-detection 
+      point source in the field of view. For non-HETG observations, this list of coordinates can be obtained with CIAO source-detection
       programs like wavdetect. However, these detection tools are not designed to work on HETG event files where many 
       events are dispersed by the gratings which can cause a lot of false detections. CrissCross runs wavdetect by 
       default (or alternatively uses an input wavdetect source table) and cross-matches positive source-detections with 
@@ -138,9 +138,9 @@
       <HREF link="https://cxc.harvard.edu/ciao/threads/gspec.html">standard grating CIAO tools</HREF>. It is these 
       sources for which CrissCross will produce confusion tables that can be used with clean_spec to create 'cleaned' 
       spectra free of identified confusion. CrissCross will create confusion tables for every source in the 
-      subset_src_list so this should include only the bright HETG sources for which the user has extracted spectra. 
+      subset_src_list, which is expected to include only the bright HETG sources for which the user has extracted spectra.
       Note, a source bright enough to obtain quality HETG spectra can also produce confusion for other sources in the 
-      field of view. As such, every source in subset_src_list must also include an identical entry in the 'main list' 
+      field of view. As such, every source in subset_src_list must also include an identical entry in the 'main_list'
       file.
       </PARA>     
 
@@ -153,19 +153,19 @@
 
   <LIST>
       <ITEM>
-      For your HETG observation(s) of choice, create a source list (parameter 'main list') of all potential X-ray 
+      For the HETG observation(s) of choice, the user creates a source list (parameter 'main_list') of all potential X-ray
       sources in the field of view. Many HETG fields have been previously observed with ACIS imaging which can be used 
       with wavdetect to build a source list. Alternatively, all-sky source catalogues like GAIA, 2MASS, SDSS can be 
       used to build an initial list and then members can be removed if they are not observed in the HETG observations 
       emitting X-rays. It is not very important to know exactly which field sources are emitting X-rays in any 
       individual observation since CrissCross will ignore wavdetect-matched sources with 0 counts. However, the more 
-      non-X-ray sources that are in your main list increases the chance one of these sources overlap with an 
+      non-X-ray sources that are in the main list increases the chance one of these sources overlap with an
       erroneously-identified wavdetect source from dispersed events.
       </ITEM>  
 
       <ITEM>
-      Extract HETG spectra using standard ciao tools for every source whose spectrum you need assessed for confusion 
-      from other sources in the field of view (main_list). These sources will make up your sources in the 
+      Extract HETG spectra using standard ciao tools for every source whose spectrum needs to be assessed for confusion
+      from other sources in the field of view (main_list). These sources will make up the sources in the
       'subset_src_list' file.
       </ITEM>  
 
@@ -174,11 +174,14 @@
       </ITEM>  
 
       <ITEM>
-      For each HETG spectra, run the CIAO contrib tool clean_spec using both the appropriate crisscross confusion table 
+      For each HETG spectrum, run the CIAO contrib tool clean_spec using both the appropriate crisscross confusion table
       and HETG PHA spectrum file as input. This will produce a set of 'cleaned' HETG spectra and associated ARF 
       response files for each source. These 'cleaned' spectra will have counts and response values zeroed-out 
-      (set to zero) where confusion was identified. It is important to note CrissCross removes ALL counts in the 
-      identified confused wavelength range and not just the counts from the confusing source.
+      (set to zero) where confusion was identified. It is important to note CrissCross cannot say which photon exactly
+      comes from which source, only which regions are likely to contain te sum of photons from more than one source.
+      clean_spec then removes ALL counts in the
+      wavelength ranges identified as confused; a "cleaned spectrum" will have set those regions to 0 (and the ARF is
+      modified accordingly to allow for spectral fitting as normal)
       </ITEM>              
   </LIST>
 
@@ -406,11 +409,12 @@
 
 	<DESC>
 	  <PARA>
-      This list should contain sources whose HETG spectra you want to extract and understand whether or not there is 
-      confusion. Every source in subset_src_list should also be present in main_list since even these sources can cause
-       confusion in other sources. Typically the sources in this list will be relatively bright otherwise the spectra 
-       may not be useful. If users wish to only calculate confusion for a single source (single_src_pos) then this field
-        can be left blank.
+      This list should contain sources for which HETG spectra will be used for scientific analysis later, so
+      these sources need to be assessed for confusion. Every source in subset_src_list should also be present in main_list
+      since even these sources can cause
+      confusion in other sources. Typically the sources in this list will be relatively bright otherwise the spectra
+      may not be useful. If users wish to only calculate confusion for a single source (single_src_pos) then this field
+     can be left blank.
 	  </PARA>
 
 	</DESC>
@@ -462,8 +466,8 @@
       These parameters are generally optimized for HETG observations to minimize the number of false (dispersed event) 
       detections. Users may wish to run wavdetect separately from crisscross with different parameters. In that case, 
       users should provide their choice of wavdetect source fits table to 'wavdetect_file'. Otherwise crisscross runs 
-      with these default parameters. Running wavdetect may take some time so users can 
-      reduce this by providing their own wavdect files.
+      with these default parameters. Running wavdetect may take some time providing wavdect files as input seeps up the
+      tool.
 	  </PARA>
 
 	</DESC>
@@ -487,18 +491,18 @@
 	</DESC>
       </PARAM>
 
-      <PARAM name="arf_ratios_dir" type="string" def="None">
+      <PARAM name="arf_ratios_dir" type="string" def="$ASCDS_CALIB/data">
 	<SYNOPSIS>
       Path to ARF ratio fits tables that are necessary to estimate the number of counts expected in the nth order based 
-      on the detected 0th order counts. 'None' value defaults to files installed with crisscross.
+      on the detected 0th order counts.
 	</SYNOPSIS>
     <DESC>
       <PARA>
-      The default parameter value of 'None' will used an arf ratios table designed for CrissCross and provided with CIAO. 
+      The default value will use arf ratios tables designed for and dsitributed with CrissCross.
       It is based on the expected response ratios of an HETG source located at the ACIS-S aimpoint. Based on the number 
       of 0th order counts detected in a particular energy range, this file is used to estimate the number of nth (1,2,3) 
       order events at locations where confusion can occur. If a directory is input it will look for arf ratio tables 
-      with a file format matching the default files.
+      with a file format and file name matching the default files.
 
       </PARA>
 	</DESC>
@@ -506,14 +510,14 @@
 
       <PARAM name="max_pntsrc_dist" type="real" def="8">
 	<SYNOPSIS>
-	  Maximum distance in pixels to be considered a potential (0th order) point source confuser.
+	  Maximum distance in ACIS pixels to be considered a potential (0th order) point source confuser.
 	</SYNOPSIS>
 
 	<DESC>
 	  <PARA>
       Field sources whose 0th order position is less than or equal to this distance, measured in ACIS pixels
         perpendicular from the dispersed spectrum of an extracted source, will be assessed as potential point source
-        confusion (default: 8).
+        confusion.
 	  </PARA>
 
 	</DESC>
@@ -543,7 +547,7 @@
 	<DESC>
 	  <PARA>
       Minimum number of 0th order counts for a source in subset_src_list or single_src_pos to be considered bright enough 
-      to warrant confusion assessment from field sources.This parameter can be used to save computation time by restricting
+      to warrant confusion assessment from field sources. This parameter can be used to save computation time by restricting
       the number of sources for which confusion is assessed.
 	  </PARA>
 	</DESC>
@@ -574,7 +578,7 @@
         confused source's OSIP window at the ACIS-chip intersection location is used to determine the liklihood that events
         from the confuser source would cause confusion. This parameter represents a fraction from 0 to 1 denoting the 
         portion of an OSIP (Order Sorting Integrated Probability) range to be used in the spectral intersection 
-        calculation. 1.0 means 100% of the OSIP window is used.
+        calculation. 1.0 means 100% of the OSIP window (which is less than 100% of the total flux) is used.
 	  </PARA>
 
 	</DESC>
@@ -587,12 +591,12 @@
 
 	<DESC>
 	  <PARA>
-	   The fraction of dispersed events allowed in a spectral confusion region before deciding the region is
-        contaminated (and thus later removed with clean_spec). A value of 0.1 means if confuser 'Src B' contributes
+	   The fraction of dispersed events allowed in a potential confusion region before deciding the region is
+        confused (and thus later removed with clean_spec). A value of 0.1 means if confuser 'Src B' contributes
         more than 10% of counts in the confused portion of the spectrum of 'Src A' then the spectral region of Src A is
         flagged as confused. Note: The number of counts from each source in the affected spectral intersection region
         (wavelength range) is estimated using the HETG instrument effeciency (ARF) and the number of 0th order counts
-        from each source within the wavelength range.
+        from each source within the wavelength range and is suspect to Poisson errors for low count rates.
 	  </PARA>
 	</DESC>
       </PARAM>
@@ -638,7 +642,7 @@
 	    This fraction is based on 0th order counts ratio of each arm-confusion pair. For example, if the position and minimum
         brightness of two sources are sufficient to cause arm confusion with each other, this ratio allows some confusion 
         in the subset_src_list spectrum without flagging it as confused. Arm confusion can result in the flagging of 
-        significant portions of an extract sources spectrum so users may wish to tolerate some fraction of erroneous events.
+        significant portions of extracted spectra so users may wish to tolerate some fraction of erroneous events.
 	  </PARA>
 
 	</DESC>
@@ -661,7 +665,7 @@
 
       <PARAM name="meg_cutoff_low" type="real" def="1.0">
 	<SYNOPSIS>
-	  MEG wavelength low boundary in Angstroms for all confusion calculations.  Confusion is not assessed outside bounds.
+	  MEG wavelength lower boundary in Angstroms for all confusion calculations.  Confusion is not assessed outside bounds.
 	</SYNOPSIS>
 
 	<DESC>
@@ -670,7 +674,7 @@
 
       <PARAM name="meg_cutoff_high" type="real" def="32.0">
 	<SYNOPSIS>
-	  MEG wavelength high boundary in Angstroms for all confusion calculations.  Confusion is not assessed outside bounds.
+	  MEG wavelength upper boundary in Angstroms for all confusion calculations.  Confusion is not assessed outside bounds.
 	</SYNOPSIS>
 
 	<DESC>
@@ -679,7 +683,7 @@
 
       <PARAM name="heg_cutoff_low" type="real" def="1.0">
 	<SYNOPSIS>
-	  HEG wavelength low boundary in Angstroms for all confusion calculations.  Confusion is not assessed outside bounds.
+	  HEG wavelength lower boundary in Angstroms for all confusion calculations.  Confusion is not assessed outside bounds.
 	</SYNOPSIS>
 
 	<DESC>
@@ -688,7 +692,7 @@
 
       <PARAM name="meg_cutoff_low" type="real" def="16.0">
 	<SYNOPSIS>
-	  HEG wavelength high boundary in Angstroms for all confusion calculations.  Confusion is not assessed outside bounds.
+	  HEG wavelength upper boundary in Angstroms for all confusion calculations.  Confusion is not assessed outside bounds.
 	</SYNOPSIS>
 
 	<DESC>
@@ -698,7 +702,7 @@
 
       <PARAM name="highest_order" type="integer" def="3">
 	<SYNOPSIS>
-      Determines which orders are included in the confusion calculations. '3' includes all orders.
+      Determines which orders are included in the confusion calculations. '3' includes orders -3, -2, -1, +1, +2, +3.
 	</SYNOPSIS>
 
 	<DESC>
@@ -739,7 +743,7 @@
 	</SYNOPSIS>
       </PARAM>
 
-      <PARAM name="verbose" type="integer"  def="0">
+      <PARAM name="verbose" type="integer"  def="1">
 	<SYNOPSIS>
 	  Specifies the level of verbosity (0-5) in displaying
 	  diagnostic messages.
@@ -747,10 +751,24 @@
       </PARAM>
     </PARAMLIST>
 
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
 
 
     <BUGS>
- 
+       <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/crisscross.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
     </BUGS>
 
     <LASTMODIFIED>June 2026</LASTMODIFIED>
