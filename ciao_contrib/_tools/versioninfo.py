@@ -444,7 +444,9 @@ def check_conda_versions(ciao: str) -> bool:
     # filter the names list to only show the CIAO packages
     #
     names = []
-    for name, version in get_names(fetch):
+    all_names = get_names(fetch)
+    all_names.extend(get_names(link))
+    for name, version in all_names:
         if name not in packages:
             v3(f" - skipping {name} {version} from FETCH list")
             continue
