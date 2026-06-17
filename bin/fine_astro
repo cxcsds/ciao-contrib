@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2024,2025 Smithsonian Astrophysical Observatory
+# Copyright (C) 2024-2026 Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ from pycrates import read_file
 
 
 __toolname__ = "fine_astro"
-__revision__ = "02 June 2025"
+__revision__ = "07 May 2026"
 
 WARN_LARGE_SHIFT = 3.0
 WARN_LARGE_OFFSET = 4.0
@@ -202,7 +202,7 @@ def _warning(msg):
     verb1(msg)
 
 
-def summarize_xmatch(verbose, infile, outfile):
+def summarize_xmatch(verbose, infile, reffile, outfile):
     'Summarize cross match results'
 
     def parse_verbose():
@@ -278,8 +278,13 @@ def cross_match(ref_srclist, refevt, srclists, obis, outroot):
         wcs_match.radius = 4
         wcs_match.method = "trans"
         wcs_match.verbose = 1
+        wcs_match.logfile = f"{outroot}_{obi}.log"
         try:
             vv = wcs_match(clobber=True)
+            verb2(vv)
+            with open(wcs_match.logfile, "r", encoding="ascii") as fp:
+                vv = fp.read()
+
         except IOError as failed:
             ss = str(failed)
             if 'Cannot find at least 1 source match' in ss:
@@ -289,7 +294,24 @@ def cross_match(ref_srclist, refevt, srclists, obis, outroot):
             else:
                 raise failed
 
-        summarize_xmatch(vv, src, wcs_match.outfile)
+        summarize_xmatch(vv, src, wcs_match.refsrcfile, wcs_match.outfile)
+
+        log_parse = make_tool("parse_wcs_match_log")
+        log_parse.infile = wcs_match.infile
+        log_parse.refsrcfile = wcs_match.refsrcfile
+        log_parse.logfile = wcs_match.logfile
+        log_parse.outfile = f"{outroot}_{obi}.tbl"
+        vv = log_parse(clobber=True)
+        verb2(vv)
+
+        xmatch_viz = make_tool("xmatch_viz")
+        xmatch_viz.infile = log_parse.outfile
+        xmatch_viz.refsrcfile = log_parse.refsrcfile
+        xmatch_viz.outfile = f"{outroot}_{obi}.reg"
+        xmatch_viz.legend = f"{outroot}_{obi}.seg"
+        vv = xmatch_viz(clobber=True)
+        verb2(vv)
+
         xmatches.append(wcs_match.outfile)
 
     return xmatches
@@ -452,7 +474,7 @@ def detect_sources(obis, pars, out_dirs):
         # We have sorted the infile by obsid so that means we need to also
         # source the input src list or else thet may not match any more.
         from ciao_contrib._tools.fileio import get_obsid_object
-        src_list_obi = [(str(get_obsid_object(src).obsid),src) for src in src_lists]
+        src_list_obi = [(str(get_obsid_object(src).obsid), src) for src in src_lists]
         src_lists = [x[1] for x in sorted(src_list_obi)]
 
         for src, oo in zip(src_lists, obis):
@@ -546,7 +568,6 @@ def main():
 
     verb1("Gathering source lists")
     src_lists = detect_sources(obis, pars, out_dirs)
-
 
     # ------------ Cross match -------------
     verb1("Running cross matches using wcs_match")

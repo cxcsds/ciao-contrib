@@ -1,0 +1,551 @@
+#!/usr/bin/env python
+
+# Copyright (C) 2026 Smithsonian Astrophysical Observatory
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+'''
+Parse the output from wcs_match tool
+
+Extract the cross match table and summary statistics from the verbose
+output from wcs_match.
+
+'''
+
+
+__toolname__ = "parse_wcs_match_log"
+__revision__ = "09 May 2026"
+
+import sys
+from math import nan, isfinite
+
+import ciao_contrib.logger_wrapper as lw
+from pycrates import read_file
+
+
+def log_wrapper(func):
+    'wrapper around logger to check for None'
+    def wrapped(msg):
+        if msg:
+            func(msg)
+    return wrapped
+
+
+lw.initialize_logger(__toolname__)
+verb0 = log_wrapper(lw.get_logger(__toolname__).verbose0)
+verb1 = log_wrapper(lw.get_logger(__toolname__).verbose1)
+verb2 = log_wrapper(lw.get_logger(__toolname__).verbose2)
+
+
+class ParseWcsMatchVerbosity():
+    'Parse the verbose output from wcs_match into a table'
+
+    example = """
+    Source Residuals
+    ----------------
+     Match Ref# Dup#    Ref RA      Ref Dec.    Prior Resid           Transfm Resid         Resid  Incl
+     Index              (deg.)      (deg.)      RSS (x,y)             RSS (x,y)             Ratio
+                                                (arcsec)              (arcsec)
+       0    0     0    151.19409    41.24728    2.82 ( 1.78,-2.19)    0.42 ( 0.40, 0.15)    4.50    Y
+       1    5     4    151.14583    41.21164    1.07 ( 0.67, 0.83)    3.25 (-0.71, 3.17)  149.77    N
+       2    7     7    151.14241    41.21432    2.83 ( 1.14,-2.59)    0.35 (-0.24,-0.26)   12.13    Y
+       3   10    10    151.12798    41.23552    2.54 ( 1.22,-2.23)    0.19 (-0.16, 0.11)    1.29    Y
+
+    Source Residuals, before/after transform (arcsec), and percentage improvement:
+
+       Average Residuals:         2.729282   0.323143   88.16%
+       Maximum Residuals:         2.834052   0.424523   85.02%
+       RMS Residuals:             1.932289   0.238326   87.67%
+
+    Source Residual Ratios, before/after transform, and percentage improvement:
+
+       Average Residual Ratios:   48.269081   5.973321   87.62%
+       Maximum Residual Ratios:   98.152332   12.131290   87.64%
+       RMS Ratios:                42.441137   5.308480   87.49%
+    """
+
+    def __init__(self, infile):
+        """Initialize the parser with input file and set up output columns.
+
+        Initializes all data storage lists for source residuals, reference
+        coordinates, and transformation metrics. Loads the input file and
+        populates the data structures with parsed values.
+
+        Parameters
+        ----------
+        infile : str
+            Path to the wcs_match verbose output log file to parse.
+        """
+
+        self.infile = infile
+        self.ra = None
+        self.dec = None
+        self.ra_err = None
+        self.dec_err = None
+        self.src_idx = None
+        self.nvals = 0
+        self._load_infile()
+
+        self.ref_idx = [-999] * self.nvals
+        self.ra_ref = [nan] * self.nvals
+        self.dec_ref = [nan] * self.nvals
+        self.ra_ref_err = [nan] * self.nvals
+        self.dec_ref_err = [nan] * self.nvals
+        self.prior_resid_rss = [nan] * self.nvals
+        self.prior_resid_x = [nan] * self.nvals
+        self.prior_resid_y = [nan] * self.nvals
+        self.xform_resid_rss = [nan] * self.nvals
+        self.xform_resid_x = [nan] * self.nvals
+        self.xform_resid_y = [nan] * self.nvals
+        self.resid_ratio = [nan] * self.nvals
+        self.keys = {}
+        self.include = [False] * self.nvals
+        self.multi_match_warning = True
+
+    def _load_infile(self):
+        """Load input table data and initialize member arrays.
+
+        Reads the input file into an internal table object, extracts the
+        right ascension and declination columns, and records the number of
+        rows. It also initializes the source index list and loads the
+        positional uncertainty columns ra_err and dec_err if they exist.
+        Otherwise, the error arrays are filled with NaN values.
+        """
+
+        self.__tab = read_file(self.infile)
+
+        self.ra = list(self.__tab.get_column("ra").values)
+        self.dec = list(self.__tab.get_column("dec").values)
+        self.nvals = self.__tab.get_nrows()
+
+        self.src_idx = list(range(self.nvals))
+        if self.__tab.column_exists("ra_err") and self.__tab.column_exists("dec_err"):
+            self.ra_err = list(self.__tab.get_column("ra_err").values)
+            self.dec_err = list(self.__tab.get_column("dec_err").values)
+        else:
+            self.ra_err = [nan] * self.nvals
+            self.dec_err = [nan] * self.nvals
+
+    def write_output(self, pars):
+        """Write crossmatch results to output file.
+
+        Creates a FITS table with all crossmatch data including source positions,
+        reference positions, residuals before and after transformation, residual
+        ratios, and inclusion flags. Also adds summary statistics as keywords.
+
+        Args:
+            pars (dict): Parameter dictionary containing:
+                - outfile: Output file path
+                - clobber: Boolean to overwrite existing file
+        """
+
+        from crates_contrib.utils import add_colvals
+        from pycrates import set_key, TABLECrate
+        from ciao_contrib.runtool import add_tool_history
+
+        cr = TABLECrate()
+
+        cr.name = "CROSSMATCH"
+
+        for keyname in self.__tab.get_keynames():
+            cr.add_key(self.__tab.get_key(keyname))
+
+        set_key(cr, "AVG_R_B", self.keys["avg_resid_before"], unit="arcsec",
+                desc="Average residuals before xform")
+        set_key(cr, "AVG_R_A", self.keys["avg_resid_after"], unit="arcsec",
+                desc="Average residuals after xform")
+        set_key(cr, "AVG_F_R", self.keys["avg_resid_perc"], unit=None,
+                desc="Average residuals fractional improvement")
+
+        set_key(cr, "MAX_R_B", self.keys["max_resid_before"], unit="arcsec",
+                desc="Maximum residuals before xform")
+        set_key(cr, "MAX_R_A", self.keys["max_resid_after"], unit="arcsec",
+                desc="Maximum residuals after xform")
+        set_key(cr, "MAX_F_R", self.keys["max_resid_perc"], unit=None,
+                desc="Maximum residuals fractional improvement")
+
+        set_key(cr, "RMS_R_B", self.keys["rms_resid_before"], unit="arcsec",
+                desc="RMS residuals before xform")
+        set_key(cr, "RMS_R_A", self.keys["rms_resid_after"], unit="arcsec",
+                desc="RMS residuals after xform")
+        set_key(cr, "RMS_F_R", self.keys["rms_resid_perc"], unit=None,
+                desc="RMS residuals fractional improvement")
+
+        set_key(cr, "AVG_RR_B", self.keys["avg_resid_ratio_before"], unit="arcsec",
+                desc="Average residual ratios before xform")
+        set_key(cr, "AVG_RR_A", self.keys["avg_resid_ratio_after"], unit="arcsec",
+                desc="Average residual ratios after xform")
+        set_key(cr, "AVG_FR_R", self.keys["avg_resid_ratio_perc"], unit=None,
+                desc="Average residual ratios fractional improvement")
+
+        set_key(cr, "MAX_RR_B", self.keys["max_resid_ratio_before"], unit="arcsec",
+                desc="Maximum residual ratios before xform")
+        set_key(cr, "MAX_RR_A", self.keys["max_resid_ratio_after"], unit="arcsec",
+                desc="Maximum residual ratios after xform")
+        set_key(cr, "MAX_FR_R", self.keys["max_resid_ratio_perc"], unit=None,
+                desc="Maximum residual ratios fractional improvement")
+
+        set_key(cr, "RMS_RR_B", self.keys["rms_resid_ratio_before"], unit="arcsec",
+                desc="RMS residual ratios before xform")
+        set_key(cr, "RMS_RR_A", self.keys["rms_resid_ratio_after"], unit="arcsec",
+                desc="RMS residual ratios after xform")
+        set_key(cr, "RMS_FR_R", self.keys["rms_resid_ratio_perc"], unit=None,
+                desc="RMS residual ratios fractional improvement")
+
+        # Now add columns
+
+        self.src_idx = [x + 1 for x in self.src_idx]
+        add_colvals(cr, "SRC_INDEX", self.src_idx, unit=None,
+                    desc="Input source list row number")
+
+        add_colvals(cr, "RA", self.ra, unit="deg",
+                    desc="Input source list RA")
+        add_colvals(cr, "DEC", self.dec, unit="deg",
+                    desc="Input source list Dec")
+        add_colvals(cr, "RA_ERR", self.ra_err, unit="deg",
+                    desc="Input source list RA error")
+        add_colvals(cr, "DEC_ERR", self.dec_err, unit="deg",
+                    desc="Input source list Dec error")
+
+        self.ref_idx = [x + 1 for x in self.ref_idx]
+        add_colvals(cr, "REF_INDEX", self.ref_idx, unit=None,
+                    desc="Reference source list row number")
+
+        add_colvals(cr, "RA_REF", self.ra_ref, unit="deg",
+                    desc="Reference source list RA")
+        add_colvals(cr, "DEC_REF", self.dec_ref, unit="deg",
+                    desc="Reference source list Dec")
+        add_colvals(cr, "RA_REF_ERR", self.ra_ref_err, unit="deg",
+                    desc="Reference source list RA error")
+        add_colvals(cr, "DEC_REF_ERR", self.dec_ref_err, unit="deg",
+                    desc="Reference source list Dec error")
+
+        add_colvals(cr, "PRIOR_RESIDUAL_RSS", self.prior_resid_rss, unit="arcsec",
+                    desc="RMS residuals before xform")
+        add_colvals(cr, "PRIOR_RESIDUAL_X", self.prior_resid_x, unit="arcsec",
+                    desc="X residuals before xform")
+        add_colvals(cr, "PRIOR_RESIDUAL_Y", self.prior_resid_y, unit="arcsec",
+                    desc="Y residuals before xform")
+
+        add_colvals(cr, "XFORM_RESIDUAL_RSS", self.xform_resid_rss, unit="arcsec",
+                    desc="RMS residuals after xform")
+        add_colvals(cr, "XFORM_RESIDUAL_X", self.xform_resid_x, unit="arcsec",
+                    desc="X residuals after xform")
+        add_colvals(cr, "XFORM_RESIDUAL_Y", self.xform_resid_y, unit="arcsec",
+                    desc="Y residuals after xform")
+
+        add_colvals(cr, "RESIDUAL_RATIO", self.resid_ratio, unit=None,
+                    desc="ratio of residuals before/after xform")
+
+        add_colvals(cr, "INCLUDE", self.include, unit=None,
+                    desc="Source included in final transform solution")
+
+        cr.write(pars["outfile"], clobber=pars["clobber"])
+        add_tool_history(pars["outfile"], __toolname__,
+                         pars, toolversion=__revision__)
+
+    @staticmethod
+    def parse_line(verbose_line):
+        """
+        Parse a line from the cross-match table in the verbose output.
+
+        This method uses a regular expression to extract various fields from a
+        line of the cross-match table, including match numbers, reference and
+        input numbers, coordinates, residuals, and inclusion status.
+
+        Parameters
+        ----------
+        verbose_line : str
+            A string representing a line from the verbose output log file.
+
+        Returns
+        -------
+        dict or None
+            A dictionary containing the parsed fields if the line matches the
+            expected pattern, otherwise None. The dictionary keys include:
+            - match_num: Match number (int)
+            - ref_num: Reference number (int)
+            - input_num: Input number (int)
+            - ra_ref: Reference RA (float)
+            - dec_ref: Reference Dec (float)
+            - prior_resid_rss: Prior residual RSS (float)
+            - prior_resid_x: Prior residual X (float)
+            - prior_resid_y: Prior residual Y (float)
+            - xform_resid_rss: Transform residual RSS (float)
+            - xform_resid_x: Transform residual X (float)
+            - xform_resid_y: Transform residual Y (float)
+            - resid_ratio: Residual ratio (float)
+            - include: Inclusion status (str)
+        """
+
+        # Regular expression created with Gemini
+        # Using Named Groups for readability
+        import re
+        pattern = r"""
+            \s* # Leading whitespace
+            (?P<match_num>\d+)\s+          # First integer
+            (?P<ref_num>\d+)\s+            # Second integer
+            (?P<input_num>\d+)\s+          # Third integer
+            (?P<ra_ref>[\d.-]+)\s+         # First float (151.19409)
+            (?P<dec_ref>[\d.-]+)\s+        # Second float (41.24728)
+            (?P<prior_resid_rss>[\d.-]+)\s+      # Third float (2.82)
+            \(\s*(?P<prior_resid_x>[\d.-]+),\s*  # First paren X (1.78)
+            (?P<prior_resid_y>[\d.-]+)\)\s+      # First paren Y (-2.19)
+            (?P<xform_resid_rss>[\d.-]+)\s+      # Fourth float (0.42)
+            \(\s*(?P<xform_resid_x>[\d.-]+),\s*  # Second paren X (0.40)
+            (?P<xform_resid_y>[\d.-]+)\)\s+      # Second paren Y (0.15)
+            (?P<resid_ratio>[\d.-]+)\s+    # Fifth float (4.50)
+            (?P<include>\w+)               # Final character (Y)
+        """
+
+        match = re.search(pattern, verbose_line, re.VERBOSE)
+
+        if match:
+            data = match.groupdict()
+        else:
+            return None
+
+        return data
+
+    def parse_xmatch_table(self, logfile, ref_file):
+        """
+        Locate and parse the crossmatch table in the verbose log output.
+
+        This method finds the last 'Source Residuals' block in the logfile,
+        parses the crossmatch table lines, and populates the object's attributes
+        with reference coordinates, residuals, and other data from the ref_file.
+
+        Args:
+            logfile (str): The full log output as a string.
+            ref_file: An object with methods get_column and column_exists,
+                      likely a FITS file or similar, containing reference data.
+
+        Returns:
+            list: The remaining log lines after the parsed crossmatch table.
+        """
+
+        log_lines = logfile.split("\n")
+
+        # Find last block of lines that starts with 'Source Residuals'
+        indexes = [i for i, l in enumerate(log_lines) if l.strip() == 'Source Residuals']
+        last_info_block_start = indexes[-1]
+
+        __gap__ = 5  # Hard code for now
+        num_matches = 0
+
+        while vals := self.parse_line(log_lines[last_info_block_start+__gap__+num_matches]):
+            num_matches += 1
+
+            # If index already has value then we are in a mutli-match
+            # case. Need to append a new row to src list
+            idx = int(vals['input_num'])
+            if self.ref_idx[idx] < 0:
+                self.update(vals, ref_file)
+            else:
+                self.append(vals, ref_file)
+
+        return log_lines[last_info_block_start+__gap__+num_matches:]
+
+    def update(self, vals, ref_file):
+        """
+        Update output list values in-place based on source index.
+
+        Parameters
+        ----------
+        vals : dict
+            Dictionary containing 'input_num' (the list index to update),
+            'ref_num' (the catalog reference index), and updated residual
+            and inclusion data.
+        ref_file : object
+            Reference file handler used to fetch RA/Dec and error values.
+
+        Raises
+        ------
+        AssertionError
+            Raised if the source index at the target position does not match
+            the 'input_num' provided in the vals dictionary.
+
+        Notes
+        -----
+        Unlike `append()`, this method requires that the lists have already
+        been initialized to a sufficient length. It performs an in-place
+        assignment using the index derived from 'input_num'.
+        """
+
+        idx = int(vals['input_num'])
+        assert idx == self.src_idx[idx], f"Mismatch source numbers {idx} {self.src_idx[idx]}"
+
+        self.ref_idx[idx] = int(vals['ref_num'])
+        self.ra_ref[idx] = ref_file.get_column("ra").values[self.ref_idx[idx]]
+        self.dec_ref[idx] = ref_file.get_column("dec").values[self.ref_idx[idx]]
+
+        if ref_file.column_exists("ra_err") and ref_file.column_exists("dec_err"):
+            self.ra_ref_err[idx] = ref_file.get_column("ra_err").values[self.ref_idx[idx]]
+            self.dec_ref_err[idx] = ref_file.get_column("dec_err").values[self.ref_idx[idx]]
+
+        self.prior_resid_rss[idx] = float(vals['prior_resid_rss'])
+        self.prior_resid_x[idx] = float(vals['prior_resid_x'])
+        self.prior_resid_y[idx] = float(vals['prior_resid_y'])
+        self.xform_resid_rss[idx] = float(vals['xform_resid_rss'])
+        self.xform_resid_x[idx] = float(vals['xform_resid_x'])
+        self.xform_resid_y[idx] = float(vals['xform_resid_y'])
+        self.resid_ratio[idx] = float(vals['resid_ratio'])
+        self.include[idx] = vals['include'] == 'Y'
+
+    def append(self, vals, ref_file):
+        """
+        Append values to internal coordinate and residual lists.
+
+        Parameters
+        ----------
+        vals : dict
+            Collection of input parameters containing 'input_num', 'ref_num',
+            various residual values (RSS, X, Y), and the 'include' status.
+        ref_file : object
+            Reference catalog object used to retrieve RA/Dec coordinates and
+            optional error values via `get_column` calls.
+
+        Notes
+        -----
+        The method converts 'input_num' and 'ref_num' to integers and various
+        residual metrics to floats. The 'include' flag is converted to a boolean
+        based on the string value 'Y'.
+        """
+
+        if self.multi_match_warning is True:
+            self.multi_match_warning = False
+            verb0("Warning: multiple matches found. Duplicated sources will be found at the end of the output table.")
+
+        idx = int(vals['input_num'])
+        self.ra.append(self.ra[idx])
+        self.dec.append(self.dec[idx])
+        self.ra_err.append(self.ra_err[idx])
+        self.dec_err.append(self.dec_err[idx])
+        self.src_idx.append(idx)
+
+        self.ref_idx.append(int(vals['ref_num']))
+        self.ra_ref.append(ref_file.get_column("ra").values[self.ref_idx[idx]])
+        self.dec_ref.append(ref_file.get_column("dec").values[self.ref_idx[idx]])
+
+        if ref_file.column_exists("ra_err") and ref_file.column_exists("dec_err"):
+            self.ra_ref_err.append(ref_file.get_column("ra_err").values[self.ref_idx[idx]])
+            self.dec_ref_err.append(ref_file.get_column("dec_err").values[self.ref_idx[idx]])
+
+        self.prior_resid_rss.append(float(vals['prior_resid_rss']))
+        self.prior_resid_x.append(float(vals['prior_resid_x']))
+        self.prior_resid_y.append(float(vals['prior_resid_y']))
+        self.xform_resid_rss.append(float(vals['xform_resid_rss']))
+        self.xform_resid_x.append(float(vals['xform_resid_x']))
+        self.xform_resid_y.append(float(vals['xform_resid_y']))
+        self.resid_ratio.append(float(vals['resid_ratio']))
+        self.include.append(vals['include'] == 'Y')
+
+    def parse_summary_stats(self, lines):
+        """Locate and parse the summary statistics block.
+
+        Parameters
+        ----------
+        lines : list of str
+            The lines from a WCS match log file to search for summary statistic
+            entries.
+
+        Side effects
+        ------------
+        Updates the object's keys dictionary with parsed summary statistic values
+        for average, maximum, and RMS residuals and residual ratios.
+        """
+
+        self.split_stats_line(lines, 'Average Residuals:', 'avg_resid')
+        self.split_stats_line(lines, 'Maximum Residuals:', 'max_resid')
+        self.split_stats_line(lines, 'RMS Residuals:', 'rms_resid')
+
+        self.split_stats_line(lines, 'Average Residual Ratios:', 'avg_resid_ratio')
+        self.split_stats_line(lines, 'Maximum Residual Ratios:', 'max_resid_ratio')
+        self.split_stats_line(lines, 'RMS Ratios:', 'rms_resid_ratio')
+
+    def split_stats_line(self, lines, str2look4, attname):
+        """Parse a statistics line from the WCS match log.
+
+        Searches for a line starting with str2look4, extracts three values
+        (before, after, percentage), and stores them in self.keys with the
+        given attname prefix. Handles NaN values by converting to string.
+
+        Parameters
+        ----------
+        lines : list of str
+            The lines from the log file to search.
+        str2look4 : str
+            The string that the target line starts with.
+        attname : str
+            The prefix for the keys in self.keys (e.g., 'avg_resid').
+
+        Side effects
+        ------------
+        Updates self.keys with attname+"_before", attname+"_after", and
+        attname+"_perc" keys.
+        """
+
+        line = [x for x in lines if x.strip().startswith(str2look4)]
+        assert len(line) == 1, f"There should be one line with {str2look4}"
+
+        parts = line[0].split()
+        assert len(parts) in [5, 6], "Wrong number of elements in line"
+
+        # go backward, right to left
+        self.keys[attname+"_perc"] = float(parts[-1].strip('%'))/100.0
+        self.keys[attname+"_after"] = float(parts[-2])
+        self.keys[attname+"_before"] = float(parts[-3])
+
+        # FITS does not support floating point NaN in keywords, so
+        # we write it as a string.
+        for suffix in ["_perc", "_after", "_before"]:
+            if not isfinite(self.keys[attname+suffix]):
+                self.keys[attname+suffix] = 'NaN'
+
+
+def read_logfile(logfile):
+    'Read log file. If "-" or "stdin" then read from stdin'
+
+    if logfile.lower() in ['-', 'stdin']:
+        verbose = sys.stdin.read()
+    else:
+        with open(logfile, encoding="ascii") as fp:
+            verbose = fp.read()
+    return verbose
+
+
+@lw.handle_ciao_errors(__toolname__, __revision__)
+def main():
+    'Main routine'
+    # Load parameters
+    from ciao_contrib.param_soaker import get_params
+    pars = get_params(__toolname__, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": verb1},
+                      revision=__revision__)
+
+    from ciao_contrib._tools.fileio import outfile_clobber_checks
+    outfile_clobber_checks(pars["outfile"], pars["clobber"])
+
+    xform_tab = ParseWcsMatchVerbosity(pars["infile"])
+    ref = read_file(pars["refsrcfile"])
+    verbose = read_logfile(pars["logfile"])
+    remaining_lines = xform_tab.parse_xmatch_table(verbose, ref)
+    xform_tab.parse_summary_stats(remaining_lines)
+    xform_tab.write_output(pars)
+
+
+if __name__ == '__main__':
+    main()

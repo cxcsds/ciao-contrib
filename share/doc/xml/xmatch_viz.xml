@@ -1,0 +1,164 @@
+<?xml version="1.0"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" >
+<cxchelptopics>
+  <ENTRY key="xmatch_viz"
+         context="Tools::Coordinates"
+         refkeywords="wcs match visualize region ds9 crossmatch wcs_match"
+         seealsogroups="reproject">
+    <SYNOPSIS>Create a region file to visualize cross match results</SYNOPSIS>
+    <DESC>
+      <PARA>
+        'xmatch_viz' creates a DS9 region file to help users visually inspect
+        astrometric cross-match results.
+      </PARA>
+      <PARA>
+        In the resulting output region file:
+        Input sources are green colored circles and reference sources
+        are magenta colored squares. A line is drawn between matching pairs to
+        show the astrometric shift. Sources included in the final transformation
+        solution are shown as filled, while unused sources are hollow.
+      </PARA>
+      <PARA>
+        The tool also generates a legend in the format of a DS9 illustrate mode save file
+        that can be loaded into DS9 to identify the different symbols used in the visualization.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+        <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+$ wcs_match infile=src.fits refsrc=ref_src.fits wcsfile=acis.img outfile=out.xform logfile=out.log verbose=1 clob+
+          </LINE>
+
+          <LINE>
+$ parse_wcs_match_log infile=src.fits refsrc=ref_src.fits logfile=out.log outfile=out.stats
+          </LINE>
+
+          <LINE>
+$ xmatch_viz infile=out.stats refsrc=ref_src.fits outfile=ds9.reg legend=ds9.seg
+          </LINE>
+
+          <LINE>
+$ ds9 acis.img -region format ds9 -region ds9.reg -illustrate load ds9.seg -catalog import fits out.stats
+          </LINE>
+
+        </SYNTAX>
+        <DESC>
+          <PARA>
+    This example shows the 4 commands to run wcs_match, parse the log output,
+    generate the crossmatch regions, and display the results.
+          </PARA>
+        </DESC>
+        </QEXAMPLE>
+    </QEXAMPLELIST>
+
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>Input crossmatch table</SYNOPSIS>
+        <DESC>
+          <PARA>The table containing match results (e.g., from parse_wcs_match_log).</PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="refsrcfile" type="file" filetype="input" reqd="yes">
+        <SYNOPSIS>Input reference source list</SYNOPSIS>
+      </PARAM>
+      <PARAM name="outfile" type="file" filetype="output" reqd="yes">
+        <SYNOPSIS>Output DS9 region file name</SYNOPSIS>
+      </PARAM>
+      <PARAM name="legend" type="file" filetype="output" reqd="yes">
+        <SYNOPSIS>Output legend illustration</SYNOPSIS>
+        <DESC>
+            <PARA>
+                The legend file is a DS9 illustrate mode save file.
+                It must be loaded using the
+            <SYNTAX><LINE>-illustrate load&#160;</LINE></SYNTAX>  command.
+            </PARA>
+        </DESC>
+      </PARAM>
+      <PARAM name="radius" type="real" def="0.5" units="arcsec" min="0">
+        <SYNOPSIS>The radius for the output regions</SYNOPSIS>
+      </PARAM>
+      <PARAM name="clobber" type="boolean" def="no">
+        <SYNOPSIS>Overwrite existing files?</SYNOPSIS>
+      </PARAM>
+      <PARAM name="verbose" type="integer" def="1" min="0" max="5">
+        <SYNOPSIS>Tool verbosity.</SYNOPSIS>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Helpful Hints">
+        <PARA title="Regions are Locked">
+            The region file has been setup so that the regions cannot be
+            resized, repositioned, nor rotated. This is to prevent accidental
+            edits. Regions can still be deleted.
+        </PARA>
+        <PARA title="Legend">
+            The legend is provided in Illustrate mode and will remain
+            fixed in the upper left corner of the display. To disable the
+            legend, go to Edit → Illustrate. Then uncheck Illustrate → Show.
+        </PARA>
+        <PARA title="Groups">
+            The regions have had "tags" applied to them to group them together
+            into the following categories:
+        </PARA>
+        <LIST>
+          <ITEM>All_Input: This group includes all the input sources.</ITEM>
+          <ITEM>All_Reference: This group include all the reference sources.</ITEM>
+          <ITEM>Input_Matched: This group includes all the input sources that are matched to a reference source but were not included in the final transform solution. </ITEM>
+          <ITEM>Input_Unmatched: This group includes all the input sources that were not matched to reference sources.</ITEM>
+          <ITEM>Input_Used: This group includes all the input sources that are matched to a reference source and were included in the final transform solution. </ITEM>
+
+          <ITEM>Reference_Matched: This group includes all the reference sources that are matched to an input source but were not included in the final transform solution. </ITEM>
+          <ITEM>Reference_Unmatched: This group includes all the reference sources that were not matched to input sources.</ITEM>
+          <ITEM>Reference_Used: This group includes all the references sources that are matched to an input source and were included in the final transform solution. </ITEM>
+        </LIST>
+
+        <PARA>
+        Users can access the list of region groups by going to
+        Region → Groups. Selecting a group from the list will select all the
+        sources with that tag applied.  This can be especially helpful to do something like
+        delete all the unmatched reference sources. Simply select the "Reference_Unmatch" group and press the Delete key.
+        </PARA>
+
+        <PARA title="Changing source Properties">
+            Region groups also make it easy to adjust the properties of regions. For example to change the font size simply select the region group (e.g. All_Input) and then go to Region → Font and select the desired font size/properties. The same technique can be use to change the color of the regions (Region → Color)
+        </PARA>
+
+        <PARA title="Multimatch">
+            If wcs_match was run with multimatch=yes, there may be multiple matches between
+            input sources and reference sources.
+        </PARA>
+
+        <PARA title="Catalog">
+            Loading the cross match table (i.e. the output from the
+            parse_wcs_match_log tool) into ds9 together with the regions makes it easier to
+            inspect the cross matches. Clicking on the sources in the Catalog table will pan the image
+            display to the location of the source.
+        </PARA>
+
+    </ADESC>
+
+
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions.
+      </PARA>
+    </ADESC>
+    <BUGS>
+      <PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/xmatch_viz.html">bug
+        pages</HREF>
+        on the CIAO website for an up-to-date listing of known bugs.
+      </PARA>
+    </BUGS>
+
+    <LASTMODIFIED>May 2026</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>
