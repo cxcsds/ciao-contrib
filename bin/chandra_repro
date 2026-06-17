@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "06 March 2026"
+version = "27 April 2026"
 
 # import standard python modules as required
 #
@@ -1721,7 +1721,7 @@ def patch_hrc_ssc(params):
         Correct HRC DTF values for Secondary Science Corruption (SSC)
     '''
 
-    v3("Checking HRC for secondary science corruption")
+    v1("Checking HRC for secondary science corruption")
 
     if params["dtf1_file"].lower() in ["", "none"]:
         v0("Warning: No DTF file found; cannot evaluate Secondary Science Corruption")
@@ -1729,6 +1729,7 @@ def patch_hrc_ssc(params):
 
     if params["mtl1_file"].lower() in ["", "none"]:
         v0("Warning: No MTL file found; cannot evaluate Secondary Science Corruption")
+        return
 
     root = os.path.join(params["outdir"], params["root"])
 
@@ -1739,7 +1740,7 @@ def patch_hrc_ssc(params):
     patch_ssc.mtl_infile = params["mtl1_file"]
     patch_ssc.evt_infile = params["evt1_file"]
     patch_ssc.evt_outfile = f"{root}_dtffix_evt1.fits"
-    patch_ssc.gti_outfile = f"{root}_repro_flt1.fits"
+    patch_ssc.gti_outfile = f"{root}_patch_flt1.fits"
     patch_ssc.dtf_outfile = f"{root}_repro_dtf1.fits"
     patch_ssc.clobber = params["clobber"]
 
@@ -1754,6 +1755,7 @@ def patch_hrc_ssc(params):
     params["dtf1_file"] = patch_ssc.dtf_outfile
     params["evt1_file"] = patch_ssc.evt_outfile
     params["cleanup_files"].append(patch_ssc.evt_outfile)
+    params["cleanup_files"].append(patch_ssc.gti_outfile)
 
 
 def process_hrc_events(params):
