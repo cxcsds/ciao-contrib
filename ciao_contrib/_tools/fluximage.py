@@ -2101,8 +2101,40 @@ def make_fluxed_images(taskrunner, labelconv, preconditions,
     return etask
 
 
-def read_first_row(filename, colname):
+def read_first_row(filename, colname, patch_ssc=False):
     "Return the value of the first row of the given column."
+
+    ##############################
+
+    # for colorized build, the 4.18 dmhistory output is terminated
+    # by a new line at the end of each parameter causing erroneous
+    # interpretation by pycrates; parse and clean up this syntax
+    # before passing on to pycrates, for regular dmhistory, the
+    # returned string array is not altered.
+    with open(filename, mode="r", encoding="utf-8") as hist:
+        c = hist.readlines()
+
+    if any("\\\n" in _c for _c in c):
+        cc = []
+        ii = 0
+
+        for i,s in enumerate(c):
+            if i == ii:
+                _ = s
+            if _.endswith("\\\n"):
+                _ = _.replace("\\\n", c[i+1].lstrip(" "))
+            else:
+                cc.append(_)
+                ii = i+1
+
+        if patch_ssc:
+            cc = [_c for _c in cc if _c != "\n"]
+            cc = cc[-2:]
+
+        with open(filename, mode="w", encoding="utf-8") as hist:
+            hist.write(" ".join(cc))
+
+    ##############################
 
     cr = pcr.read_file(filename + "[#row=1]")
     return pcr.copy_colvals(cr, colname)[0]
@@ -2258,35 +2290,45 @@ def find_status_filter(infile, obsid, tmpdir="/tmp"):
     status filter it returns the empty string.
     """
 
-    status = tempfile.NamedTemporaryFile(dir=tmpdir,
-                                         suffix=".status")
-    args = ["infile=" + infile,
-            "outfile=" + status.name,
-            "tool=dmcopy",
-            "action=get",
-            "clobber=yes"]
-    run.run("dmhistory", args)
+    kw = fileio.get_keys_from_file(f"{infile}[#row=0]")
+    statfilt = kw.get("STATFILT") # keyword added by chandra_repro in contrib 4.6.6
 
-    # Need to convert from np.string_ to Python string
-    statbits = str(read_first_row(status.name, "col2"))
-    status.close()
-    v2(f"Finding status bit filter for ObsId {obsid} from: {statbits}")
+    if statfilt is None:
+        with tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".status") as status:
+            args = [f"infile={infile}",
+                    f"outfile={status.name}",
+                    "tool=dmcopy",
+                    "action=get",
+                    "clobber=yes"]
+            run.run("dmhistory", args)
 
-    # I had planned to report this at verbose=2 but that is
-    # *very* noisy, so adding it to the verbose=1 level,
-    # since it's important to know.
-    spos = statbits.find("[status=")
-    if spos == -1:
-        v1(f"WARNING: no STATUS filter found in {infile} so unable to filter background for obsid {obsid}!")
-        return ""
+            if kw.get("SSC") is not None and kw.get("SSCFIX") is not None:
+                statbits = str(read_first_row(status.name, "col2", patch_ssc=True))
+            else:
+                statbits = str(read_first_row(status.name, "col2"))
 
-    epos = statbits.find("]", spos)
-    if epos == -1:
-        v1(f"WARNING: illegal STATUS filter found in {infile} so unable to filter background for obsid {obsid}!")
-        return ""
+        v2(f"Finding status bit filter for ObsId {obsid} from: {statbits}")
 
-    statbits = statbits[spos:epos + 1]
+        # I had planned to report this at verbose=2 but that is
+        # *very* noisy, so adding it to the verbose=1 level,
+        # since it's important to know.
+        spos = statbits.find("[status=")
+        if spos == -1:
+            v1(f"WARNING: no STATUS filter found in {infile} so unable to filter background for obsid {obsid}!")
+            return ""
+
+        epos = statbits.find("]", spos)
+        if epos == -1:
+            v1(f"WARNING: illegal STATUS filter found in {infile} so unable to filter background for obsid {obsid}!")
+            return ""
+
+        statbits = statbits[spos:epos + 1]
+
+    else:
+        statbits = f"[status={statfilt}]"
+
     v1(f"Background filter (obsid {obsid}): {statbits}")
+
     return statbits
 
 
