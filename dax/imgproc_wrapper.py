@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  Copyright (C) 2019-2023  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2019-2023, 2026 Smithsonian Astrophysical Observatory
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -1005,6 +1005,7 @@ class Dmstat(ImageProcTaskTextOut):
         print("{:>20s} : {}".format("Average", self.tool.out_mean))
         print("{:>20s} : {}".format("Sum", self.tool.out_sum))
         print("{:>20s} : {}".format("Median", self.tool.out_median))
+        print("{:>20s} : {}".format("Std. Dev.", self.tool.out_sigma))
         print("{:>20s} : {}".format("Area (pixels)", self.tool.out_good))
         print("{:>20s} : {}".format("NULL pixels", self.tool.out_null))
         print("{:>20s} : {}".format("Coords min pix", self.tool.out_min_loc))
@@ -1960,7 +1961,7 @@ class Srcextent(ImageProcTaskTextOut):
                          if scale_name in x.get_name().lower()]
             if len(sky_delta) == 0:
                 raise ValueError(f"Cannot get {coord} pixel size")
-            
+
             sky_delta = sky_delta[0]
             if abs(sky_delta[0]) != abs(sky_delta[1]):
                 raise ValueError(f"{coord} pixels must be square")
@@ -1969,9 +1970,9 @@ class Srcextent(ImageProcTaskTextOut):
 
         from pycrates import read_file
         img = read_file(self.infile)
-        
+
         coord_names = [x.lower() for x in img.get_axisnames()]
-                
+
         sky_delta = get_delta(["sky", "pos", "(x,y)"], "scale", "physical")
         cel_delta = get_delta(['eqpos', 'eqsrc', 'cel'], "delt", "celestial")
 
@@ -1984,23 +1985,23 @@ class Srcextent(ImageProcTaskTextOut):
 
         regions = self.get_regions()
         imgmom = make_tool("imgmoment")
-        
+
         imgmom.infile = f"{self.infile}[(x,y)={regions}]"
         imgmom()
-        
+
         xpos = float(imgmom.x_mu)
         ypos = float(imgmom.y_mu)
-        
+
         mjr = float(imgmom.xsig)
         mnr = float(imgmom.ysig)
-        
+
         from math import sqrt
         logical_size = sqrt(mjr*mjr+mnr*mnr)/sqrt(2.0)
 
         delta = self._get_pixel_size_in_arcsec()
 
         logical_size *= delta
-        
+
         return xpos, ypos, logical_size
 
 
@@ -2013,7 +2014,7 @@ class Srcextent(ImageProcTaskTextOut):
             self.tool.psffile = ""
 
         regions = self.get_regions()
-        
+
         regfile = self.outfile.name.removesuffix(".fits")+".reg"
         from region import CXCRegion
         CXCRegion(regions).write(regfile, fits=True, clobber=True)
@@ -2030,6 +2031,6 @@ class Srcextent(ImageProcTaskTextOut):
 
     def send_output(self):
         'report results, just using verbose=3 output for this tool'
-        
+
         pass
-        
+
