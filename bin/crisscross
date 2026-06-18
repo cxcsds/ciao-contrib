@@ -44,28 +44,32 @@ def run_crisscross():
 
     from ciao_contrib.param_soaker import get_params
 
-    pars = get_params(TOOLNAME, "rw", sys.argv,
-                      verbose={"set": lw.set_verbosity, "cmd": v1})
-
+    pars = get_params(
+        TOOLNAME, "rw", sys.argv, verbose={"set": lw.set_verbosity, "cmd": v1}
+    )
     #if infile(evt2_file) or wavdetect_files are stacks then load them into python as lists.
-    for k, v in list(pars.items()):
-        if (k == 'infile' or k == 'wavdetect_file') and pars[k].startswith("@"):
-            with open(pars[k][1:], 'r', encoding='utf-8') as f:
+    for k in ["infile", "wavdetect_file"]:
+        v = pars[k]
+        if not v or v == "" or v.lower() == "none":  # empty string
+            pars[k] = None
+        elif v.startswith("@"):
+            with open(v[1:], "r", encoding="utf-8") as f:
                 pars[k] = [line.strip() for line in f if line.strip()]
                 f.close()
-                v1(f'\nIdentified {k} as stack file. Will attempt to run using all files.\n')        
+                v1(
+                    f"\nIdentified {k} as stack file. Will attempt to run using all files.\n"
+                )
+        else:
+            pars[k] = v.split(",")
 
-    #sanitize ciao values for python
-    #convert 'none' to python none type, 'yes' to True and 'no' to False
-    for k, v in list(pars.items()):  
-        if isinstance(v, str) and v.lower() == 'none':
-            pars[k] = None
-        if isinstance(v, str) and v.lower() == 'yes':
+    # Sanitize ciao values for python
+    for k, v in list(pars.items()):
+        if isinstance(v, str) and v.lower() == "yes":
             pars[k] = True
-        if isinstance(v, str) and v.lower() == 'no':
+        if isinstance(v, str) and v.lower() == "no":
             pars[k] = False
 
-    #send ciao input to crisscross
+    # Send ciao input to crisscross
     cc.run_crisscross(
         evt2_file=pars["infile"],  # named diff in par file
         cc_outdir=pars["outdir"],  # named diff in par file

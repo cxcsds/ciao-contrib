@@ -1,11 +1,24 @@
-# See README.me for general info about CrissCross
+# Copyright (C) 2022-2026 MIT
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
 
 # List of things I still need to do:
 # - add back in ds9 figure generation so users can see where confusion occurs on the evt2 fits image.
 # - add functionality for user to calculate confusion between two selected sources in a field of view and print results to screen.
-# - width_of_exclusion_region has hardcoded parameters for the extraction. Should be read from file.
 # - Write parameters values used to run into header (either as history or as keywords)
-# - output "0th_order_confused_counts" is really CONFUSER counts in the original version. What do we want? Also doesn't take OSIP into account. Do we want that?
 ##########################################################################################
 ##########################################################################################
 ##########################################################################################
@@ -1891,7 +1904,7 @@ def run_crisscross(
     subset_src_list=None,
     single_src_pos=None,
     single_src_root=None,
-    wavdetect_file=None,
+    wavdetect_file: None | str | list[str] = None,
     conf_table_level="confused",
     arf_ratios_dir=".",
     clobber_par=False,
@@ -2034,7 +2047,7 @@ def run_crisscross(
             "Unknown type of input for evt2_files. Please include a single file or a list of files"
         )
 
-    if wavdetect_file is not None:
+    if wavdetect_file:
         if type(wavdetect_file) is str:
             wavdetect_file = [wavdetect_file]
         elif type(wavdetect_file) is not list:
@@ -2042,15 +2055,14 @@ def run_crisscross(
                 "Unknown type of input for wavdetect_file. Please include a single file or a list of files"
             )
 
-    # check to make sure the number of evt2 files match the number of wavdetect source lists
-    if wavdetect_file is not None and len(wavdetect_file) != len(evt2_file):
-        raise ValueError(
-            "The number of input evt2_files and wavdetect source fits table files do not match. Please include a wavdetect table for each evt2 file."
-        )
+        # check to make sure the number of evt2 files match the number of wavdetect source lists
+        if len(wavdetect_file) != len(evt2_file):
+            raise ValueError(
+                "The number of input evt2_files and wavdetect source fits table files do not match. Please include a wavdetect table for each evt2 file."
+            )
 
-    # run wavedetect_match_obsid before the loop starts to ensure input files are in correct order. Make wavdetect_file
-    # a list of [None]s so it can work per obsID in CrissCross loop below.
-    if wavdetect_file is not None:
+        # run wavedetect_match_obsid before the loop starts to ensure input files are in correct order. Make wavdetect_file
+        # a list of [None]s so it can work per obsID in CrissCross loop below.
         wavdetect_file = wavedetect_match_obsid(
             fits_list_par=evt2_file, wavdetect_list_par=wavdetect_file
         )

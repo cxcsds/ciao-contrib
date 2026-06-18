@@ -1,4 +1,4 @@
-# Copyright (C) 2022,2025 MIT
+# Copyright (C) 2022-2026 MIT
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -35,8 +35,8 @@ from pycrates import (
     update_crate_checksum,
 )
 
-TOOLNAME = 'clean_spec'
-__revision__  = '28 May 2026'
+TOOLNAME = "clean_spec"
+__revision__ = "28 May 2026"
 
 lw.initialize_logger(TOOLNAME)
 v0 = lw.make_verbose_level(TOOLNAME, 0)
@@ -44,7 +44,124 @@ v1 = lw.make_verbose_level(TOOLNAME, 1)
 v2 = lw.make_verbose_level(TOOLNAME, 2)
 v3 = lw.make_verbose_level(TOOLNAME, 3)
 
-def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None, clobber=False):
+
+def clean_data(
+    cc_table,
+    pha_crate,
+    arf_file_var,
+    pha_element,
+    conf_flag_var="confused",
+):
+    """
+    Creates copies of the relevant PHA1/PHA2 and ARF columns and modifies them (sets to zero) using a CrissCross
+    confusion table.
+
+    Parameters
+    ----------
+
+    cc_table: fits table
+        CrissCross produced confusion table for a single source and single obsID.
+    pha_crate: Crate object
+        The Crate data for a single spectrum (e.g., HEG+1)
+    arf_file_var: string
+        A file path to an ARF matching the input pha file.
+    pha_element: integer
+        The element of the PHA2 file associated with the spectrum 'pha_crate'. If standard HETG PHA2 file
+        [order,element] = HEG: -3,0; -2,1; -1,2; +1,3; +2,4; +3,5 MEG: -3,6; -2,7; -1,8; +1,9; +2,10; +3,11)
+    conf_flag_var: string 'confused'
+        The string associated with spectral confusion. If 'confused', spectra will be cleaned by setting all
+        'confused' values to zero. A future update will allow 'confused' and/or 'warn' to be zeroed out.
+
+
+    Returns
+    ----------
+
+    cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var: arrays
+        Returns a copy of the SPEC, STAT_ERR, SPECRESP, and FRACEXPO arrays with values associated with the
+        identified wavelengths of confusion set to zero (or 1.86603 for STAT_ERR).
+    """
+
+    # reads in the confusion and PHA data
+    cc_data = read_file(cc_table)
+    pha_data_var = pha_crate.get_crate(2)
+    arf_data_var = read_file(arf_file_var)
+
+    # identifies ARF tg_m, tg_order, and tg_part
+    arf_tg_part = get_keyval(arf_data_var, "TG_PART")
+    arf_tg_m = get_keyval(arf_data_var, "TG_M")
+
+    # PHA1 and PHA2 files have to be treated slightly differently because of how crates stores values. This is to
+    # avoid having to slice off each crate spectrum from the PHA2 file.
+    if is_pha_type1(pha_crate):
+        counts_arr = pha_data_var.COUNTS.values
+        stat_err_arr = pha_data_var.STAT_ERR.values
+        specresp_arr = arf_data_var.SPECRESP.values
+        fracexpo_arr = arf_data_var.FRACEXPO.values
+        bin_low_arr = pha_data_var.BIN_LO.values
+        bin_high_arr = pha_data_var.BIN_HI.values
+
+    elif is_pha_type2(pha_crate):
+        counts_arr = pha_data_var.COUNTS.values[pha_element]
+        stat_err_arr = pha_data_var.STAT_ERR.values[pha_element]
+        specresp_arr = (
+            arf_data_var.SPECRESP.values
+        )  # ARFs are not in PHA2 (array) format and thus don't need a pha_element
+        fracexpo_arr = (
+            arf_data_var.FRACEXPO.values
+        )  # ARFs are not in PHA2 (array) format and thus don't need a pha_element
+        bin_low_arr = pha_data_var.BIN_LO.values[pha_element]
+        bin_high_arr = pha_data_var.BIN_HI.values[pha_element]
+
+    else:
+        raise ValueError("PHA datatype must be 1 or 2")
+
+    # copies the counts and stat_err column of the PHA file for modification
+    cleaned_spec_var = counts_arr.copy()
+    cleaned_staterr_var = stat_err_arr.copy()
+
+    # copies the SPECRESP and fracexpo columns from the arf
+    cleaned_specresp_var = specresp_arr.copy()
+    cleaned_fracexpo_var = fracexpo_arr.copy()
+
+    # for every row of the confusion table that match the input PHA spectrum order and tg_part, identify the
+    # elements (rows) associated with wavelengths (bin_low and bin_hi) that need to be cleaned. Note, this assumes
+    # the PHA bin_lo and bin_hi values are identical to the ARF file (which should be the case).
+    for i in range(0, len(cc_data.wave_low.values)):
+        if (
+            cc_data.flag.values[i] == conf_flag_var
+            and cc_data.grating_type.values[i] == tg_part_name[arf_tg_part]
+            and cc_data.order.values[i] == arf_tg_m
+        ):
+            elements_to_clean = np.where(
+                (bin_low_arr >= cc_data.wave_low.values[i])
+                & (bin_high_arr <= cc_data.wave_high.values[i])
+            )  # identify elements
+
+            # clean PHA (spectrum)
+            cleaned_spec_var[elements_to_clean] = (
+                0.0  # set elements that overlap to zero
+            )
+            cleaned_staterr_var[elements_to_clean] = (
+                1.86603  # double check that this makes sense and the stat_err is always this value for zero counts.
+                # I suspect instead I should take min of this column and set it to that.
+            )
+
+            # clean ARF (response)
+            cleaned_specresp_var[elements_to_clean] = 0.0
+            cleaned_fracexpo_var[elements_to_clean] = 0.0
+
+    # return the cleaned array values.
+    return (
+        cleaned_spec_var,
+        cleaned_staterr_var,
+        cleaned_specresp_var,
+        cleaned_fracexpo_var,
+    )
+
+
+def clean_spec(
+    cc_table, pha_file, spec_root, arf_file=None, resp_dir=None, clobber=False
+):
     """
     Uses confusion tables produced by CrissCross to create 'cleaned' PHA1 or PHA2 spectra and ARF response files. The
     confusion tables identify portions of a source's spectrum that may have erroneous events that should not be
@@ -62,127 +179,14 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None, clob
         HETG PHA1 or PHA2 spectral file of the source that needs cleaning.
     spec_root: string
         A root for file naming purposes.
-    arf_file: string or list
+    arf_file: string or list or None
         A file path or list of file paths to ARFs matching the input pha file.
-    resp_dir: directory
+    resp_dir: directory or None
         The directory where the ARFs associated with the pha_file is stored.
     clobber: Bool
         If clobber=True then output file will be over-written.
 
     """
-
-    def clean_data(
-        cc_table,
-        pha_crate,
-        arf_file_var,
-        pha_element,
-        conf_flag_var="confused",
-    ):
-        """
-        Creates copies of the relevant PHA1/PHA2 and ARF columns and modifies them (sets to zero) using a CrissCross
-        confusion table.
-
-        Parameters
-        ----------
-
-        cc_table: fits table
-            CrissCross produced confusion table for a single source and single obsID.
-        pha_crate: Crate object
-            The Crate data for a single spectrum (e.g., HEG+1)
-        arf_file_var: string
-            A file path to an ARF matching the input pha file.
-        pha_element: integer
-            The element of the PHA2 file assocaited with the spectrum 'pha_crate'. If standard HETG PHA2 file
-            [order,element] = HEG: -3,0; -2,1; -1,2; +1,3; +2,4; +3,5 MEG: -3,6; -2,7; -1,8; +1,9; +2,10; +3,11)
-        conf_flag_var: string 'confused'
-            The string associated with spectral confusion. If 'confused', spectra will be cleaned by setting all
-            'confused' values to zero. A future update will allow 'confused' and/or 'warn' to be zeroed out.
-
-
-        Returns
-        ----------
-
-        cleaned_spec_var, cleaned_staterr_var, cleaned_specresp_var, cleaned_fracexpo_var: arrays
-            Returns a copy of the SPEC, STAT_ERR, SPECRESP, and FRACEXPO arrays with values associated with the
-            identified wavelengths of confusion set to zero (or 1.86603 for STAT_ERR).
-        """
-
-        # reads in the confusion and PHA data
-        cc_data = read_file(cc_table)
-        pha_data_var = pha_crate.get_crate(2)
-        arf_data_var = read_file(arf_file_var)
-
-        # identifies ARF tg_m, tg_order, and tg_part 
-        arf_tg_part = get_keyval(arf_data, "TG_PART")
-        arf_tg_m = get_keyval(arf_data, "TG_M")
-
-        # PHA1 and PHA2 files have to be treated slightly differently because of how crates stores values. This is to
-        # avoid having to slice off each crate spectrum from the PHA2 file.
-        if is_pha_type1(pha_crate):
-            counts_arr = pha_data_var.COUNTS.values
-            stat_err_arr = pha_data_var.STAT_ERR.values
-            specresp_arr = arf_data_var.SPECRESP.values
-            fracexpo_arr = arf_data_var.FRACEXPO.values
-            bin_low_arr = pha_data_var.BIN_LO.values
-            bin_high_arr = pha_data_var.BIN_HI.values
-
-        elif is_pha_type2(pha_crate):
-            counts_arr = pha_data_var.COUNTS.values[pha_element]
-            stat_err_arr = pha_data_var.STAT_ERR.values[pha_element]
-            specresp_arr = (
-                arf_data_var.SPECRESP.values
-            )  # ARFs are not in PHA2 (array) format and thus don't need a pha_element
-            fracexpo_arr = (
-                arf_data_var.FRACEXPO.values
-            )  # ARFs are not in PHA2 (array) format and thus don't need a pha_element
-            bin_low_arr = pha_data_var.BIN_LO.values[pha_element]
-            bin_high_arr = pha_data_var.BIN_HI.values[pha_element]
-
-        else:
-            raise ValueError("PHA datatype must be 1 or 2")
-
-        # copies the counts and stat_err column of the PHA file for modification
-        cleaned_spec_var = counts_arr.copy()
-        cleaned_staterr_var = stat_err_arr.copy()
-
-        # copies the SPECRESP and fracexpo columns from the arf
-        cleaned_specresp_var = specresp_arr.copy()
-        cleaned_fracexpo_var = fracexpo_arr.copy()
-
-        # for every row of the confusion table that match the input PHA spectrum order and tg_part, identify the
-        # elements (rows) associated with wavelengths (bin_low and bin_hi) that need to be cleaned. Note, this assumes
-        # the PHA bin_lo and bin_hi values are identical to the ARF file (which should be the case).
-        for i in range(0, len(cc_data.wave_low.values)):
-            if (
-                cc_data.flag.values[i] == conf_flag_var
-                and cc_data.grating_type.values[i] == tg_part_name[arf_tg_part]
-                and cc_data.order.values[i] == arf_tg_m
-            ):
-                elements_to_clean = np.where(
-                    (bin_low_arr >= cc_data.wave_low.values[i])
-                    & (bin_high_arr <= cc_data.wave_high.values[i])
-                )  # identify elements
-
-                # clean PHA (spectrum)
-                cleaned_spec_var[elements_to_clean] = (
-                    0.0  # set elements that overlap to zero
-                )
-                cleaned_staterr_var[elements_to_clean] = (
-                    1.86603  # double check that this makes sense and the stat_err is always this value for zero counts.
-                    # I suspect instead I should take min of this column and set it to that.
-                )
-
-                # clean ARF (response)
-                cleaned_specresp_var[elements_to_clean] = 0.0
-                cleaned_fracexpo_var[elements_to_clean] = 0.0
-
-        # return the cleaned arrays values.
-        return (
-            cleaned_spec_var,
-            cleaned_staterr_var,
-            cleaned_specresp_var,
-            cleaned_fracexpo_var,
-        )
 
     # Read the PHA file and determine if PHA1 or PHA2. Uses read_pha() to bring along the necessary PHA extensions.
     pha_crate_dataset = read_pha(pha_file)
@@ -259,9 +263,8 @@ def clean_spec(cc_table, pha_file, spec_root, arf_file=None, resp_dir=None, clob
         # has to be same array element as arf meg+1)
         if arf_file is not None:
             if type(arf_file) is str:
-                arf_file = list(
-                    [arf_file]
-                )  # make sure arf_file variable is a list just in case user enters a single file as 'file1' instead of ['file1'].
+                # make sure arf_file variable is a list just in case user enters a single file as 'file1' instead of ['file1'].
+                arf_file = [arf_file]
 
             # check and arrange that the user input arf file(s) are in the correct order of the PHA2 spectra.
             # matched_resp_list will create an array that matches the PHA2 format.
