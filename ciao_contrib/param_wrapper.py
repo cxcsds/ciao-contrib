@@ -93,10 +93,17 @@ def open_param_file(argv, toolname=None):
     #
     #  --paramdebug      sets verbosity of this module's logger to 5
     #  --tracebackdebug  turns on traceback in error reporting by lw.handle_ciao_error
+    #  --regtestonly     provide flag to allow chunks of code to only be used when invoked
     #
     if "--paramdebug" in args:
         logger.verbose = 5
         args.remove("--paramdebug")
+
+    if "--regtestonly" in args:
+        args.remove("--regtestonly")
+        regtest = True
+    else:
+        regtest = False
 
     args = lw.preprocess_arglist(args)
 
@@ -136,4 +143,4 @@ def open_param_file(argv, toolname=None):
     except Exception:
         raise IOError("There was a problem with the command-line parameter settings.")
 
-    return {"progname": progname, "parname": parname, "fp": fp, "mode": mode}
+    return {"progname": progname, "parname": parname, "fp": fp, "mode": mode, "regtest_short-circuit" : regtest}
