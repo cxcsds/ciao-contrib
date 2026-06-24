@@ -55,7 +55,7 @@ from ciao_contrib._tools.aspsol import AspectSolution
 from ciao_contrib._tools.taskrunner import TaskRunner
 
 toolname = 'flux_obs'
-__revision__ = '12 May 2026'
+__revision__ = '27 May 2026'
 
 lw.initialize_logger(toolname)
 lgr = lw.get_logger(toolname)
@@ -67,7 +67,9 @@ v3 = lgr.verbose3
 def get_par(argv):
     """ Get the parameters from parameter file """
 
-    pfile = open_param_file(argv, toolname=toolname)["fp"]
+    pinfo = open_param_file(argv, toolname=toolname)
+    pfile = pinfo["fp"]
+    regtest = pinfo["regtest_short-circuit"]
 
     def is_set(name):
         return paramio.pgetb(pfile, name) == 1
@@ -100,7 +102,8 @@ def get_par(argv):
     instrume = obsinfos[0].instrument
 
     if pars['background'] != "none" and instrume == 'HRC' and \
-       obsinfos[0].detector == 'HRC-I':
+        obsinfos[0].detector == 'HRC-I':
+
         bgfiles = merging.find_hrci_backgrounds(obsinfos,
                                                 tmpdir=params['tmpdir'])
         if bgfiles is None:
@@ -148,7 +151,7 @@ def get_par(argv):
         #
         params['psfecf'] = paramio.pgetd(pfile, 'psfecf')
         if params['psfecf'] <= 0 or params['psfecf'] > 1:
-            raise ValueError("psfecf={} is not valid, it must be > 0 and <= 1".format(params['psfecf']))
+            raise ValueError(f"psfecf={params['psfecf']} is not valid, it must be > 0 and <= 1")
 
         params['psfmerge'] = pars['psfmerge']
 
@@ -183,7 +186,7 @@ def get_par(argv):
     elif instrume == 'HRC':
         pars['dtffiles'] = paramio.pgetstr(pfile, 'dtffiles')
     else:
-        raise ValueError("Internal error: unrecognized INSTRUME keyword {}".format(instrume))
+        raise ValueError(f"Internal error: unrecognized INSTRUME keyword {instrume}")
 
     pars['units'] = params['units'] = paramio.pgetstr(pfile, 'units')
 
@@ -211,7 +214,7 @@ def get_par(argv):
 
     paramio.paramclose(pfile)
 
-    return (params, pars)
+    return params, pars, regtest
 
 
 # CAN THIS BE COMBINED WITH THE VERSION IN merge_obs?
@@ -451,7 +454,7 @@ def project_mem_use(obsinfos, xygrid, ncore) -> tuple[int,int]:
     nchunk_default = 100
 
     with fi.Project_Memory_Use(evtfiles=_evts, filesize=img_filesize, ncore=ncore) as memcheck:
-        _ = memcheck.project_parallel_memory()
+        memcheck.project_parallel_memory()
         cnts_nchunk = memcheck.check_stk_counts_memory()
         psf_nchunk = memcheck.check_stk_psfmap_memory()
 
@@ -472,7 +475,7 @@ def fluxobs():
     "Run the tool."
 
     args = lw.preprocess_arglist(sys.argv)
-    (params, pars) = get_par(args)
+    params, pars, regtest = get_par(args)
 
     obsinfos = params['obsinfos']
     instrume = params['instrume']
@@ -523,7 +526,17 @@ def fluxobs():
 
     cnts_nchunk, psf_nchunk = project_mem_use(obsinfos, xygrid=xygrids[0], ncore=params["nproc"])
 
-    merging._check_open_file_limits(len(obsinfos))
+    _open_file_lim = merging._check_open_file_limits( len(obsinfos) )
+
+    ### support regression tests ###
+    if regtest and len(obsinfos) == 520:
+        if params["outroot"] == f"{os.environ['PWD']}/too-many-open-files":
+            assert not _open_file_lim, "The system open file limit was increased for this instance, as expected for this test."
+            assert _open_file_lim, "The system open file limit was not increased for this instance, which is not expected for this test!"
+
+        if params["outroot"] == f"{os.environ['PWD']}/too-many-open-files_chunk-20-10":
+            cnts_nchunk = 20
+            psf_nchunk = 10
 
     ############################
 
@@ -567,6 +580,35 @@ def fluxobs():
                   tmpdir=tmpdir,
                   counts_nchunk=cnts_nchunk,
                   psfmap_nchunk=psf_nchunk)
+
+    ### support more regression tests ###
+    if regtest and len(obsinfos) == 520 and params["outroot"] == f"{os.environ['PWD']}/too-many-open-files_chunk-20-10":
+        _cnts = cnts_nchunk
+        _psf = psf_nchunk
+
+        for ncnts,npsf in ((50,25),(2,2)):
+            for kw in ("out_thresh_images", "out_thresh_expmaps", "out_fluxmaps", "out_psfmaps"):
+                outfiles[kw] = [ outfiles[kw][0].replace(f"chunk-{_cnts}-{_psf}",f"chunk-{ncnts}-{npsf}") ]
+
+            merging.merge(process,
+                          enbands,
+                          pars,
+                          outfiles,
+                          obsinfos,
+                          toolname,
+                          __revision__,
+                          verbose=verbose,
+                          psfmerge=params['psfmerge'],
+                          threshold=is_thresh,
+                          clobber=clobber,
+                          pathfrom=__file__,
+                          tmpdir=tmpdir,
+                          counts_nchunk=ncnts,
+                          psfmap_nchunk=npsf)
+
+            _cnts = ncnts
+            _psf = npsf
+
 
 
 # doit

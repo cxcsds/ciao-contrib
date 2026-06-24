@@ -52,6 +52,9 @@ import tempfile
 import shutil
 import subprocess as sbp
 
+from itertools import islice
+from psutil import virtual_memory, cpu_count
+
 import numpy as np
 
 import paramio
@@ -62,14 +65,15 @@ import ciao_contrib.logger_wrapper as lw
 from ciao_contrib.runtool import new_pfiles_environment
 from ciao_contrib.runtool import add_tool_history
 
-import ciao_contrib._tools.fileio as fileio
+from ciao_contrib._tools import fileio
 from ciao_contrib._tools.obsinfo import ObsInfo
-import ciao_contrib._tools.utils as utils
+from ciao_contrib._tools import utils
 
-import ciao_contrib._tools.run as run
+from ciao_contrib._tools import run
 from ciao_contrib._tools.run import \
     punlearn, dmcopy, dmimgcalc, dmimgcalc2, dmimgcalc_add, \
     dmhedit_key, dmhedit_file
+
 
 # for now, export nothing
 __all__ = ()
@@ -79,10 +83,205 @@ __all__ = ()
 HRCI_BG_EVTS = "HRC-I_bkg.fits"
 
 lgr = lw.initialize_module_logger('_tools.fluximage')
+v0 = lgr.verbose0
 v1 = lgr.verbose1
 v2 = lgr.verbose2
 v3 = lgr.verbose3
 v4 = lgr.verbose4
+
+#################################################################################
+class Project_Memory_Use:
+    """
+    Estimate memory usage to generate exposure maps and PSF maps and when
+    stacking counts maps and PSF maps, which are the most memory intensive
+    steps in fluximage and flux_obs, which may lead the exhausting system
+    memory.  Return a chunk size for stacking purposes that hopefully avoids
+    using too much memory or error message with a suggestion on limiting the
+    number of logical cores used for parallel proceses to avoid memory exhaustion.
+    """
+
+    def __init__(self, evtfiles:list|tuple, filesize:int, ncore:int|str|None):
+        #self.evts = evtfiles
+        self.filesize = filesize
+        self._nchips_arr = sorted( ( len(fileio.get_ccds(e)) for e in evtfiles ), reverse=True )
+        self.nstk = len(self._nchips_arr)
+
+        if ncore is None:
+            self.ncore = cpu_count(logical=True)
+        else:
+            self.ncore = int(ncore)
+
+
+    def __enter__(self):
+        return self
+
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        return exc_traceback is None
+
+
+    def _get_system_memory(self) -> tuple[int,int]: # in bytes
+        """
+        return total memory on the system and available memory
+        for use at the time
+        """
+
+        _mem = virtual_memory()
+        total = _mem.total # total physical memory #
+        available = _mem.available # available physical memory (not being used by system processes) #
+
+        return total, available
+
+
+    def _expmap_memory(self, nchips:int) -> int:
+        file_buffer = 27_262_976 # buffer of 26 Mb in bytes
+
+        ## mosaicking an observation's per-CCD exposure maps (parallelized) ##
+        expmap_limit = 6
+        if nchips > 1:
+            expmap_limit += nchips
+
+        img_mem_use = (expmap_limit * self.filesize) + file_buffer
+
+        return img_mem_use
+
+
+    def _psfmap_memory(self, nchips:int) -> int:
+        """
+        regardless of number of CCDs, memory used to generate an observation's
+        PSF map is a little less than 7*filesize
+        """
+
+        psfmap_limit = 7.285 + (0.03 * nchips)
+
+        psfmap_mem = psfmap_limit * self.filesize
+
+        return psfmap_mem
+
+
+    def project_parallel_memory(self):
+        _, mem_available = self._get_system_memory()
+
+        nchips_arr = self._nchips_arr
+
+        if self.nstk > self.ncore:
+            def _sublists(lst:list|tuple, step:int) -> list[list]:
+                sublists = []
+
+                match lst:
+                    case list():
+                        len_lst = len(lst)
+                    case tuple():
+                        len_lst = lst.__len__()
+
+                for i in range(0, len_lst, step):
+                    sublists.append(list(islice(lst, i, i+step)))
+
+                return sublists
+
+            _nchips_grp = _sublists(nchips_arr, self.ncore)[0]
+
+        else:
+            _nchips_grp = nchips_arr
+
+        expmap_mem = [self._expmap_memory(n) for n in _nchips_grp]
+        expmap_mem_limit = sum(expmap_mem)
+
+        psfmap_mem = [self._psfmap_memory(n) for n in _nchips_grp]
+        psfmap_mem_limit = sum(psfmap_mem)
+
+        if psfmap_mem_limit > expmap_mem_limit:
+            mem_limit = psfmap_mem_limit
+            mem = psfmap_mem
+        else:
+            mem_limit = expmap_mem_limit
+            mem = expmap_mem
+
+        if mem_limit > mem_available:
+            while sum(mem) > mem_available:
+                _ = mem.pop()
+
+            ncore_mem_lim = len(mem)
+
+            if ncore_mem_lim == 0:
+                raise MemoryError("There is insufficient system memory available to run processes to completion on a single core.")
+
+            if ncore_mem_lim == 1:
+                ncore_str = f"{ncore_mem_lim}"
+            else:
+                ncore_str = f"{ncore_mem_lim} or less"
+
+            raise MemoryError(f"There is insufficient system memory available to run processes in parallel, consider reducing the number of cores used to {ncore_str}.")
+
+
+    def check_stk_counts_memory(self):
+        file_buffer = 27_262_976 # buffer of 26 Mb in bytes
+        _, mem_available = self._get_system_memory()
+        chunk = self.nstk
+        _chunk_floor = 10
+
+        ## stacking counts maps (serialized) ##
+        counts_map_limit = 12
+        if self.nstk > 1:
+            counts_map_limit += (2 * self.nstk)
+
+        expected_size = (counts_map_limit * self.filesize) + file_buffer
+        # available_chunks = (mem_available - file_buffer)/self.filesize
+        # memchunks = expected_size/mem_available
+
+        if expected_size < mem_available:
+            return
+
+        ## size needed to stack two images ##
+        if (16 * self.filesize) + file_buffer > mem_available:
+            raise MemoryError("There is insufficient system memory available to co-add counts images!")
+
+        while chunk > 1:
+            _countslim = (12 + 2*chunk) * self.filesize + file_buffer
+
+            if _countslim < mem_available and chunk > _chunk_floor:
+                chunk = 10 * (chunk//10)
+
+                return chunk
+
+            chunk -= 1
+
+        v0("There may be insufficient system memory availble to co-add counts images!")
+
+
+    def check_stk_psfmap_memory(self):
+        _, mem_available = self._get_system_memory()
+        chunk = self.nstk
+        _chunk_floor = 10
+
+        def _memuse_fit(nstk:int):
+            return 1.69863 + 1.37718 * nstk**0.990286
+
+        ## stacking counts maps (serialized) ##
+        psfmap_limit = _memuse_fit(self.nstk)
+
+        expected_size = psfmap_limit * self.filesize
+
+        if expected_size < mem_available:
+            return
+
+        ## size needed to stack two images ##
+        if _memuse_fit(nstk=2) > mem_available:
+            raise MemoryError("There is insufficient system memory available to co-add PSF maps!")
+
+        while chunk > 1:
+            _countslim = _memuse_fit(nstk=chunk) * self.filesize
+
+            if _countslim < mem_available and chunk > _chunk_floor:
+                chunk = 10 * (chunk//10)
+
+                return chunk
+
+            chunk -= 1
+
+        v0("There may be insufficient system memory availble to co-add PSF maps!")
+
+#################################################################################
 
 
 def add_defargs(args, clobber, verbose):
@@ -105,9 +304,7 @@ def add_band_keywords(infile, enband, tmpdir="/tmp"):
     if enband.loval is None and enband.hival is None:
         return
 
-    tfile = tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+',
-                                        suffix=".band.keys")
-    try:
+    with tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+', suffix=".band.keys") as tfile:
         tfile.write("#add\n")
         tfile.write(f"COMMENT =Adding keywords for band={enband.bandlabel}\n")
         if enband.colname == "energy":
@@ -125,8 +322,6 @@ def add_band_keywords(infile, enband, tmpdir="/tmp"):
         tfile.flush()
 
         dmhedit_file(infile, tfile.name, verbose=0)
-    finally:
-        tfile.close()
 
 
 def add_dmh_keyword(fh, keyval):
@@ -184,9 +379,7 @@ def copy_keywords(infile, outfile, keynames, tmpdir="/tmp"):
     if vals == []:
         return
 
-    tfile = tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+',
-                                        suffix=".copy.keys")
-    try:
+    with tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+', suffix=".copy.keys") as tfile:
         tfile.write("#add\n")
         tfile.write("COMMENT = Copying over keywords from " + infile)
         tfile.write("\n")
@@ -196,8 +389,6 @@ def copy_keywords(infile, outfile, keynames, tmpdir="/tmp"):
 
         tfile.flush()
         dmhedit_file(outfile, tfile.name, verbose=0)
-    finally:
-        tfile.close()
 
 
 def cleanup_files_task(filenames, msg=None):
@@ -441,7 +632,7 @@ def fluximage_output(outdir, outhead, obsinfos, enbands,
     # TODO: SHOULD THIS BE SENT IN THE CLEANUP STATUS?
 
     def start():
-        return dict([(enband.bandlabel, []) for enband in enbands])
+        return { enband.bandlabel : [] for enband in enbands }
 
     # keys are energy band (as a string) and values are the list
     # of files in obsid order.
@@ -865,9 +1056,7 @@ def scale_hrci_background(enband,
     # Keywords to copy across to the output image
     okeys = _get_keywords(rawimg, ["ONTIME", "LIVETIME", "EXPOSURE"])
 
-    tfile = tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+',
-                                        suffix=".hrci.keys")
-    try:
+    with tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+', suffix=".hrci.keys") as tfile:
         tfile.write("#add\n")
 
         for okey in okeys:
@@ -898,9 +1087,6 @@ def scale_hrci_background(enband,
 
         tfile.flush()
         dmhedit_file(img, tfile.name, verbose=0)
-
-    finally:
-        tfile.close()
 
 
 def make_images_hrci(enbands,
@@ -986,14 +1172,13 @@ def create_event_image(infile, outfile,
     """
 
     v4(f"Binning up {infile} to {outfile}")
-    tmpfile = tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.img')
-
-    # As we want to exclude the GTI blocks we do not want to
-    # use option=all here (probably could still use it, but
-    # have not tested it and this code works, so do not change it).
-    dmcopy(infile, tmpfile.name, clobber=True, verbose=verbose)
-    dmcopy(tmpfile.name + "[subspace - time]", outfile,
-           clobber=clobber, verbose=verbose)
+    with tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.img') as tmpfile:
+        # As we want to exclude the GTI blocks we do not want to
+        # use option=all here (probably could still use it, but
+        # have not tested it and this code works, so do not change it).
+        dmcopy(infile, tmpfile.name, clobber=True, verbose=verbose)
+        dmcopy(tmpfile.name + "[subspace - time]", outfile,
+               clobber=clobber, verbose=verbose)
 
 
 # TODO:
@@ -1176,8 +1361,7 @@ def background_subtract_hrci(taskrunner, labelconv, preconditions,
                             "HRC-I background events file")
         return etask2
 
-    else:
-        return etask
+    return etask
 
 
 def get_imap_nbins(maxsize, npixels):
@@ -1839,9 +2023,8 @@ def run_mkpsfmap(outfile, matchfile, energy, wgtfile, ecf,
     else:
         infile = f"{matchfile}[sky=MASK({maskfile})]"
 
-    mapfile = tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.psfmap')
 
-    with new_pfiles_environment(ardlib=False, copyuser=False, tmpdir=tmpdir):
+    with new_pfiles_environment(ardlib=False, copyuser=False, tmpdir=tmpdir), tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.psfmap') as mapfile:
         punlearn("mkpsfmap")
         args = [f"infile={infile}",
                 f"outfile={mapfile.name}[PSFMAP]",
@@ -2136,7 +2319,11 @@ def read_first_row(filename, colname, patch_ssc=False):
 
     ##############################
 
+<<<<<<< HEAD
     cr = pcr.read_file(filename + "[#row=1]")
+=======
+    cr = pcr.read_file(f"{filename}[#row=1]")
+>>>>>>> e171659 (ahelp updated; string linting to make use of f-string in some lower-level scripts for readability)
     return pcr.copy_colvals(cr, colname)[0]
 
 
@@ -2189,12 +2376,11 @@ def _find_blanksky_hrci_caldb(evtfile, verbose=True, tmpdir=None):
         # below.
         #
         # punlearn("hrc_bkgrnd_lookup")
-        devnull = open('/dev/null', 'w')
-        hbl_status = sbp.call(["hrc_bkgrnd_lookup",
-                               evtfile,
-                               "event"],
-                              stdout=devnull, stderr=devnull)
-        devnull.close()
+        with open('/dev/null', 'w') as devnull:
+            hbl_status = sbp.call(["hrc_bkgrnd_lookup",
+                                   evtfile,
+                                   "event"],
+                                  stdout=devnull, stderr=devnull)
 
         if hbl_status != 0:
             v3(" . hrc_bkgrnd_lookup call failed")
@@ -2349,30 +2535,31 @@ def blanksky_hrci(caldbfile, infile, tmpdir, obsid, verbose):
 
     v1(f"Setting up the HRC-I background for obsid {obsid}")
 
-    bkg_stat = tempfile.NamedTemporaryFile(dir=tmpdir,
-                                           suffix='.bkgevt')
-    dmfilt = fileio.get_filter(caldbfile)
-    if dmfilt == "":
-        v2("Background file contains no DM filter, so can copy it")
-        shutil.copyfile(caldbfile, bkg_stat.name)
+    ofile = tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.bkgevt')
 
-    else:
-        v2(f"Background file contains a DM filter ({dmfilt})" +
-           " so need to dmcopy it")
-        # Only expect a single block in the background files, so
-        # do not need to add in option="all" here
-        dmcopy(caldbfile, bkg_stat.name, clobber=True, verbose="0")
+    with new_pfiles_environment(ardlib=False, copyuser=False, tmpdir=tmpdir), \
+        tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.bkgevt') as bkg_stat, \
+        tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.hdr') as header, \
+        tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+', suffix='.par') as pnt:
 
-    ofile = tempfile.NamedTemporaryFile(dir=tmpdir,
-                                        suffix='.bkgevt')
+        dmfilt = fileio.get_filter(caldbfile)
 
-    with new_pfiles_environment(ardlib=False, copyuser=False, tmpdir=tmpdir):
+        if dmfilt == "":
+            v2("Background file contains no DM filter, so can copy it")
+            shutil.copyfile(caldbfile, bkg_stat.name)
+
+        else:
+            v2(f"Background file contains a DM filter ({dmfilt})" +
+               " so need to dmcopy it")
+            # Only expect a single block in the background files, so
+            # do not need to add in option="all" here
+            dmcopy(caldbfile, bkg_stat.name, clobber=True, verbose="0")
 
         # Find the status filter used to create infile
         statfilter = find_status_filter(infile, obsid, tmpdir=tmpdir)
 
         # punlearn("dmmakepar")
-        header = tempfile.NamedTemporaryFile(dir=tmpdir, suffix='.hdr')
+
         args = ["input=" + infile,
                 "output=" + header.name,
                 "verbose=0",
@@ -2411,24 +2598,18 @@ def blanksky_hrci(caldbfile, infile, tmpdir, obsid, verbose):
             + ["btimdrft", "btimnull", "btimrate"] \
             + ["obi_num"]
 
-        pnt = tempfile.NamedTemporaryFile(dir=tmpdir, mode='w+',
-                                          suffix='.par')
-        h = open(header.name)
-        p = open(pnt.name, "w")
-        has_obi_num = False
-        for line in h:
-            term = line.split(",", 1)[0]
-            if term in wanted_terms:
-                p.write(line)
-            if not has_obi_num and (term == "obi_num"):
-                has_obi_num = True
+        with open(header.name) as h, open(pnt.name, "w") as p:
+            has_obi_num = False
+            for line in h:
+                term = line.split(",", 1)[0]
+                if term in wanted_terms:
+                    p.write(line)
+                if not has_obi_num and (term == "obi_num"):
+                    has_obi_num = True
 
-        # add in the STATFILT keyword
-        p.write(f'statfilt,s,h,"{statfilter}",,,"STATUS filter"\n')
+            # add in the STATFILT keyword
+            p.write(f'statfilt,s,h,"{statfilter}",,,"STATUS filter"\n')
 
-        h.close()
-        p.close()
-        header.close()
 
         # update background header
         # punlearn("dmreadpar")
@@ -2438,8 +2619,6 @@ def blanksky_hrci(caldbfile, infile, tmpdir, obsid, verbose):
                 "clobber=yes",
                 "mode=h"]
         run.run("dmreadpar", args)
-
-        pnt.close()
 
         if not has_obi_num:
             try:
@@ -2460,7 +2639,6 @@ def blanksky_hrci(caldbfile, infile, tmpdir, obsid, verbose):
                ofile.name,
                verbose=verbose, clobber=True)
 
-    bkg_stat.close()
     return ofile
 
 
