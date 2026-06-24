@@ -1,0 +1,107 @@
+#!/usr/bin/env python
+
+# Copyright (C) 2022,2025 MIT
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+crisscross executable - Run crisscross which creates a table indicating the portions of a HETG spectrum
+that are confused by other sources in the field of view.
+"""
+
+import sys
+import os
+import ciao_contrib.logger_wrapper as lw
+
+#import ciao_contrib._tools.crisscross as cc
+import ciao_contrib.criss_cross.criss_cross as cc
+
+TOOLNAME = 'crisscross'
+__revision__  = '28 May 2026'
+
+lw.initialize_logger(TOOLNAME)
+v0 = lw.make_verbose_level(TOOLNAME, 0)
+v1 = lw.make_verbose_level(TOOLNAME, 1)
+v2 = lw.make_verbose_level(TOOLNAME, 2)
+v3 = lw.make_verbose_level(TOOLNAME, 3)
+
+
+@lw.handle_ciao_errors(TOOLNAME, __revision__)
+def run_crisscross():
+
+    from ciao_contrib.param_soaker import get_params
+
+    pars = get_params(
+        TOOLNAME, "rw", sys.argv, verbose={"set": lw.set_verbosity, "cmd": v1}
+    )
+    #if infile(evt2_file) or wavdetect_files are stacks then load them into python as lists.
+    for k in ["infile", "wavdetect_file"]:
+        v = pars[k]
+        if not v or v == "" or v.lower() == "none":  # empty string
+            pars[k] = None
+        elif v.startswith("@"):
+            with open(v[1:], "r", encoding="utf-8") as f:
+                pars[k] = [line.strip() for line in f if line.strip()]
+                f.close()
+                v1(
+                    f"\nIdentified {k} as stack file. Will attempt to run using all files.\n"
+                )
+        else:
+            pars[k] = v.split(",")
+
+    # Sanitize ciao values for python
+    for k, v in list(pars.items()):
+        if isinstance(v, str) and v.lower() == "yes":
+            pars[k] = True
+        if isinstance(v, str) and v.lower() == "no":
+            pars[k] = False
+
+    # Send ciao input to crisscross
+    cc.run_crisscross(
+        evt2_file=pars["infile"],  # named diff in par file
+        cc_outdir=pars["outdir"],  # named diff in par file
+        main_list=pars["main_list"],
+        subset_src_list=pars["subset_src_list"],
+        single_src_pos=pars["single_src_pos"],
+        single_src_root=pars["single_src_root"],
+        wavdetect_file=pars["wavdetect_file"],
+        conf_table_level=pars["conf_table_level"],
+        arf_ratios_dir=os.path.expandvars(pars["arf_ratios_dir"]),
+        clobber_par=pars["clobber"],
+        max_pntsrc_dist=float(pars["max_pntsrc_dist"]),
+        min_pntsrc_counts=float(pars["min_pntsrc_counts"]),
+        min_spec_counts=float(pars["min_spec_counts"]),
+        min_spec_confuser_counts=float(pars["min_spec_confuser_counts"]),
+        osip_frac=float(pars["osip_frac"]),
+        spec_confuse_limit=float(pars["spec_confuse_limit"]),
+        max_arm_dist=float(pars["max_arm_dist"]),
+        min_arm_counts=float(pars["min_arm_counts"]),
+        arm_nsig=float(pars["arm_nsig"]),
+        arm_confuse_limit=float(pars["arm_confuse_limit"]),
+        meg_cutoff_low=float(pars["meg_cutoff_low"]),
+        meg_cutoff_high=float(pars["meg_cutoff_high"]),
+        heg_cutoff_low=float(pars["heg_cutoff_low"]),
+        heg_cutoff_high=float(pars["heg_cutoff_high"]),
+        highest_order=int(pars["highest_order"]),
+        min_tg_d=float(pars["min_tg_d"]),
+        max_tg_d=float(pars["max_tg_d"]),
+    )
+
+
+
+#run cleanspec
+if __name__ == "__main__":
+    run_crisscross()

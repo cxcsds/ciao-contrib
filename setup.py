@@ -44,14 +44,16 @@ scripts = list_files("bin/*")
 
 # etc = list_files("etc/conda/activate.d/*")
 
-data_files = [("param", list_files("param/*.par")),
-              ("share/doc/xml", list_files("share/doc/xml/*.xml")),
-              ("share/xspec/install", list_files("share/xspec/install/*cxx")),
-              ("share/sherpa/notebooks", list_files("share/sherpa/notebooks/*ipynb")),
-              ("config", list_files("config/*")),
-              ("data", list_files("data/*")),
-              ("data/ebounds-lut", list_files("data/ebounds-lut/*")),
-              (".", ["Changes.CIAO_scripts"])
+data_files = [
+    ("param", list_files("param/*.par")),
+    ("share/doc/xml", list_files("share/doc/xml/*.xml")),
+    ("share/xspec/install", list_files("share/xspec/install/*cxx")),
+    ("share/sherpa/notebooks", list_files("share/sherpa/notebooks/*ipynb")),
+    ("config", list_files("config/*")),
+    ("data", list_files("data/*")),
+    ("data", list_files("ciao_contrib/criss_cross/input_files/*fits")),
+    ("data/ebounds-lut", list_files("data/ebounds-lut/*")),
+    (".", ["Changes.CIAO_scripts"]),
 ]
 
 setup(version=VERSION,

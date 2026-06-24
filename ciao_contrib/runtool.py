@@ -193,7 +193,7 @@ type - e.g. for a boolean parameter you can use one either
 - True, 1, "yes", "true", "on", "1"
 - False, 0, "no", "false", "off", "0"
 
-bit it is **strongly suggested** that you use the correct Python type
+but it is **strongly suggested** that you use the correct Python type
 (in this case either True or False) as the conversion of other types
 is not guaranteed to work reliably or match the rules used by the CXC
 parameter library.
@@ -213,7 +213,7 @@ comma-separated string.
 There is no support for converting a parameter value from a stack into
 an array; the stk.build() routine can be used for this.
 
-It is planned to handle stacks that exceed the maximimum parameter
+It is planned to handle stacks that exceed the maximum parameter
 length by using a temporary file to contain the values when the tool
 is run; the current behavior in this case should be to throw an error
 that the expected and stored parameter values do not match.
@@ -2716,6 +2716,13 @@ parinfo['chandra_repro'] = {
     }
 
 
+parinfo['clean_spec'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","HETG PHA1 or PHA2 fits file for cleaning",None),ParValue("conf_file","f","Confusion fits table produced by CrissCross",None),ParValue("spec_root","f","Root for naming output files.",None),ParValue("arf_file","f","HETG ARF response fits file associated with pha_file. Can be pha2 matching stack. Leave empty for autdetection.",None),ParValue("resp_dir","f","Directory holding PHA-associated ARFs for auto-lookup. Leave empty for autodetection.",None)],
+    'opt': [ParRange("verbose","i","Verbosity level",1,0,5),ParValue("clobber","b","OK to overwrite existing output file?",False)],
+    }
+
+
 parinfo['color_color'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input ARF file",None),ParValue("outfile","f","Output file name",None),ParValue("model","s","Sherpa model expression",'xsphabs.abs1*xspowerlaw.pwrlaw'),ParValue("param1","s","Model parameter for 1st axis",'pwrlaw.PhoIndex'),ParValue("grid1","s","Model parameter grid for 1st axis",'1,2,3,4'),ParValue("param2","s","Model parameter for 2nd axis",'abs1.nH'),ParValue("grid2","s","Model grid for 2nd axis",'0.01,0.1,0.2,0.5,1,10'),ParValue("soft","s","Soft energy band LO:HI or csc (0.5:1.2)",'csc'),ParValue("medium","s","Medium energy band LO:HI or csc (1.2:2.0)",'csc'),ParValue("hard","s","Hard energy band LO:HI or csc (2.0:7.0)",'csc')],
@@ -2762,6 +2769,13 @@ parinfo['create_bkg_map'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input event file",None),ParValue("fovfile","f","Input fov file",None),ParValue("expmap","f","Input exposure map",None),ParValue("outfile","f","Output background image",None),ParValue("xygrid","s","Exposure map grid syntax x0:x1:#nx,x0:x1:ny",None)],
     'opt': [ParValue("outimgfile","f","Output image file",None),ParValue("outstreakmap","f","Output streak map file",None),ParValue("outlowfreqmap","f","Output low frequency map file",None),ParValue("tmpdir","s","Directory for temp. files",'${ASCDS_WORK_PATH}'),ParValue("expcorr","b","Is final background exposure corrected?",True),ParRange("scale","i","scale in pixels for dmimgpm",64,0,None),ParValue("smoothing_kernel","s","Smoothing kernel for HRC data",'lib:tophat(2,1,3,3)'),ParValue("clobber","b","Clobber existing output?",False),ParRange("verbose","i","Debug level",0,0,5)],
+    }
+
+
+parinfo['crisscross'] = {
+    'istool': True,
+    'req': [ParValue("infile","f","An evt2 file (or stack) which includes the sources in main_list and subset_src_list.",None),ParValue("outdir","f","Output directory that will be created to hold confusion table output.",None),ParValue("main_list","f","A fits/ascii/tsv file which includes columns RA, DEC, and ID of all X-ray sources in evt2 file.",None),ParValue("subset_src_list","f","A fits/ascii/tsv file with columns RA, DEC for sources to calculate confusion. Leave empty when calculating single source with single_src_pos",None),ParValue("wavdetect_file","f","wavdetect output source list. If None, CrissCross will create one.",'None'),ParRange("verbose","i","Verbosity level",1,0,5),ParValue("clobber","b","OK to overwrite existing output file?",False)],
+    'opt': [ParValue("single_src_pos","s","To calc confusion for only a single source include RA,DEC in deg, e.g. (83.818,-5.389).",'None'),ParValue("single_src_root","s","Root name for output confusion table of single_src_pos",'None'),ParValue("conf_table_level","s","Output to be saved to confusion table. Can be 'confused', 'warn', or 'clean'.",'confused'),ParValue("arf_ratios_dir","s","Path to ARF ratio fits tables.",'$ASCDS_CALIB'),ParRange("max_pntsrc_dist","r","Max distance in pixels perpendicular to confused spectra to be considered potential confuser",8,0,1024),ParRange("min_pntsrc_counts","r","0th order counts limit for field source to be considered as point source confuser.",5,0,None),ParRange("min_spec_counts","r","Min 0th order counts required to calculate confusion for subset/single src.",3,0,None),ParRange("min_spec_confuser_counts","r","0th order counts limit for field source to be considered as spectral confuser.",50,0,None),ParRange("osip_frac","r","Fraction of the OSIP window to use in spectral intersection calculation.",1.0,0.001,1.0),ParRange("spec_confuse_limit","r","Fraction of dispersed counts allowed in a spectral confusion region before flagging as confused.", 0.1,0,None),ParRange("max_arm_dist","r","Max distance in pixels perpendicular to confused spectra to be considered potential arm confuser.",8,0,1024),ParRange("min_arm_counts","r","Min number of 0th order counts before a field source is considered a potential arm confuser.",50,0,None),ParRange("arm_nsig","r","Approx for OSIP range for arm confusion. Higher values will ignore more of spectrum for arm confusion.",6.0,0,None),ParRange("arm_confuse_limit","r","Fraction of events allowed in arm confusion regions before flagging as confusion.",0.1,0,None),ParRange("meg_cutoff_low","r","MEG wavelength boundaries for all confusion calculations in Ang. Confusion not calc outside bounds.",1.0,0,40),ParRange("meg_cutoff_high","r","MEG wavelength boundaries for all confusion calculations in Ang. Confusion not calc outside bounds.",32.0,0,40),ParRange("heg_cutoff_low","r","MEG wavelength boundaries for all confusion calculations in Ang. Confusion not calc outside bounds.",1.0,0,40),ParRange("heg_cutoff_high","r","MEG wavelength boundaries for all confusion calculations in Ang. Confusion not calc outside bounds.",16.0,0,40),ParRange("highest_order","i","Determines which orders are included in the confusion calculations. '3' includes all orders.",3,1,3),ParValue("min_tg_d","r","Lower bound of spectral extraction in cross-dispersion direction in degrees.",-6.6e-04),ParValue("max_tg_d","r","Upper bound of spectral extraction in cross-dispersion direction in degrees.",6.6e-04)],
     }
 
 

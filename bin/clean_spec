@@ -1,0 +1,70 @@
+#!/usr/bin/env python
+
+# Copyright (C) 2022,2025 MIT
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+clean_spec executable - Run clean_spec which cleans a spectrum using a CrissCross produced cleaning table.
+"""
+
+import sys
+import ciao_contrib.logger_wrapper as lw
+
+#import ciao_contrib._tools.clean_spec as cs
+import ciao_contrib.criss_cross.clean_spec as cs
+
+TOOLNAME = 'clean_spec'
+__revision__  = '28 May 2026'
+
+lw.initialize_logger(TOOLNAME)
+v1 = lw.make_verbose_level(TOOLNAME, 1)
+v2 = lw.make_verbose_level(TOOLNAME, 2)
+v3 = lw.make_verbose_level(TOOLNAME, 3)
+
+
+@lw.handle_ciao_errors(TOOLNAME, __revision__)
+def run_clean_spec():
+
+    from ciao_contrib.param_soaker import get_params
+
+    pars = get_params(TOOLNAME, "rw", sys.argv,
+                      verbose={"set": lw.set_verbosity, "cmd": v1})
+
+    #catch stack file for ARFs and create a list of files before sanitizing.
+    if pars['arf_file'].startswith("@"):
+        with open(pars['arf_file'][1:], 'r', encoding='utf-8') as f:
+            pars['arf_file'] = [line.strip() for line in f if line.strip()]
+            f.close()
+        v2(f'\nIdentified ARF stack file. Will attempt to clean the following ARFS: {pars['arf_file']} and the input PHA file.\n')
+
+    #sanitize ciao values. Make sure arf_file is not a list (stack) first
+    #convert 'none' to python none type, 'yes' to True and 'no' to False
+    for k, v in list(pars.items()):
+        if not v or (isinstance(v, str) and v.lower() in ["none", ""]):
+            pars[k] = None
+        if isinstance(v, str) and v.lower() == 'yes':
+            pars[k] = True
+        if isinstance(v, str) and v.lower() == 'no':
+            pars[k] = False
+
+    #send ciao input to clean_spec
+    cs.clean_spec(pha_file=pars['infile'], cc_table=pars['conf_file'], spec_root=pars['spec_root'], arf_file=pars['arf_file'], resp_dir=pars['resp_dir'], clobber=pars['clobber'])
+
+
+#run cleanspec
+if __name__ == "__main__":
+    run_clean_spec()
