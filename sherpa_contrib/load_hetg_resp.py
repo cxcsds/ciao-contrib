@@ -127,7 +127,7 @@ def find_resp_files(pha2_file, resp_type, resp_dir=None):
             # TGCAT does not come with a tg directory so check in the pha_dir for response files.
             if len(resp_list) == 0:
                 resp_list = glob.glob(
-                    f"{pha_dir}/{pha_root}*.{resp_type}"  
+                    f"{pha_dir}/{pha_root}*.{resp_type}"
                 )
             if len(resp_list) == 0:
                 resp_list = glob.glob(
@@ -212,22 +212,22 @@ def match_resp_order(pha2_file, resp_list, resp_type, verbose=False):
     # start a counter to determine how many response files are missing an OBS_ID header value
     obsid_missing_count = 0
 
-    #NOTE -- The various try and excepts below are due to TGCat provided RMFs not having standard ciao header keywords as 
-    # of 3/23/26. TGCat ACIS HETG RMFs do not have OBS_ID and TGCat HRC LETG RMFs do not have tg_part or tg_m keywords. 
+    #NOTE -- The various try and excepts below are due to TGCat provided RMFs not having standard ciao header keywords as
+    # of 3/23/26. TGCat ACIS HETG RMFs do not have OBS_ID and TGCat HRC LETG RMFs do not have tg_part or tg_m keywords.
     # The archive and repro RMFs do not have this problem.
-    
+
     # read each response file and append appropriate header values
     for i in resp_list:
 
         #load the response file
         resp_data = read_file(i)
-        
+
         #identify the gratings order
         try:
             resp_m_arr.append(get_keyval(resp_data, "TG_M"))
         except:
             resp_m_arr.append(get_keyval(resp_data, "ORDER"))
-        
+
         #identify the gratings type (HEG, MEG or LEG).
         try:
             resp_pha2_tg_part_arr.append(get_keyval(resp_data, "TG_PART"))
@@ -237,8 +237,8 @@ def match_resp_order(pha2_file, resp_list, resp_type, verbose=False):
                resp_pha2_tg_part_arr.append(3) #note LEG --> tg_part = 3
             else:
                 raise ValueError(
-                    f"ERROR-- Could not identify grating type and/or order. Please load responses manually.")           
-        
+                    f"ERROR-- Could not identify grating type and/or order. Please load responses manually.")
+
         #identify the obsID
         try:
             resp_obsid_arr.append(get_keyval(resp_data, "OBS_ID"))
@@ -307,7 +307,7 @@ def match_resp_order(pha2_file, resp_list, resp_type, verbose=False):
 def load_gratings_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_start=1, use_errors=False, verbose=False):
     """
     Loads the HETG/LETG PHA2 spectrum and responses into the sherpa session.
-    
+
     This function loads a Chandra HETG/LETG PHA2 file and any associated ARF and RMF response files. If matching responses are
     found only for a subset of HETG/LETG orders (e.g., orders +1 and -1) then only those order's responses will be loaded.
     This works only for PHA2 files and not PHA files. If arf_dir or rmf_dir are not provided then this tool will
@@ -317,7 +317,7 @@ def load_gratings_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_st
     Example
     -------
     >>> load_gratings_pha2(pha2_file="16370/repro/acisf16370_repro_pha2.fits", dataset_id_start=1)
-    >>> load_gratings_pha2("pha2_file=16371/repro/acisf16371_repro_pha2.fits", dataset_id_start=13)
+    >>> load_gratings_pha2(pha2_file="16371/repro/acisf16371_repro_pha2.fits", dataset_id_start=13)
 
     Parameters
     ----------
@@ -333,10 +333,10 @@ def load_gratings_pha2(pha2_file=None, arf_dir=None, rmf_dir=None, dataset_id_st
         A sherpa dataset id into which PHA2 spectra will begin loading. A typical HETG/LETG PHA2 spectral file contains
         12 individual spectra so choosing a value 1 (default) will load dataset ids 1-12.
     use_errors: bool, optional
-        If 'True' then the statistical errors are taken from the input data, rather than calculated by Sherpa from 
-        the count values. The default is 'False'. 
+        If 'True' then the statistical errors are taken from the input data, rather than calculated by Sherpa from
+        the count values. The default is 'False'.
     verbose: bool, optional
-        If 'True' then the matched response files to each spectrum will be printed to the screen. The default is 'False'.         
+        If 'True' then the matched response files to each spectrum will be printed to the screen. The default is 'False'.
 
     Related Sherpa functions
     ------------------------
