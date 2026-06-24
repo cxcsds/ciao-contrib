@@ -2319,11 +2319,7 @@ def read_first_row(filename, colname, patch_ssc=False):
 
     ##############################
 
-<<<<<<< HEAD
-    cr = pcr.read_file(filename + "[#row=1]")
-=======
     cr = pcr.read_file(f"{filename}[#row=1]")
->>>>>>> e171659 (ahelp updated; string linting to make use of f-string in some lower-level scripts for readability)
     return pcr.copy_colvals(cr, colname)[0]
 
 
