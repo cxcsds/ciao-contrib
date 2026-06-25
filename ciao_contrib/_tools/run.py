@@ -52,7 +52,7 @@ import ciao_contrib.logger_wrapper as lw
 
 from ciao_contrib.stacklib import make_stackfile
 import ciao_contrib.runtool as rt
-import ciao_contrib._tools.fileio as fileio
+from ciao_contrib._tools import fileio
 
 
 __all__ = (
@@ -81,15 +81,15 @@ def run(tname, targs):
     IOError on failure. Logs the command and arguments at the DEBUG level.
     """
 
-    v2(">> Running {}".format(tname))
-    v2(">>   args: {}".format(targs))
+    v2(f">> Running {tname}")
+    v2(f">>   args: {targs}")
 
     args = [tname]
     args.extend(targs)
     rval = sbp.call(args)
     if rval != 0:
         argstr = " ".join(targs)
-        raise IOError("Unable to run {} with arguments: {}".format(tname, argstr))
+        raise IOError(f"Unable to run {tname} with arguments: {argstr}")
 
 
 def add_defargs(args, clobber, verbose):
@@ -143,13 +143,13 @@ def dmcopy(infile, outfile,
         print(f"*** Internal warning: dmcopy clobber={clobber}")
         clobber = clobber == "yes"
 
-    v3("Copying <{}> to <{}>".format(infile, outfile))
+    v3(f"Copying <{infile}> to <{outfile}>")
     punlearn("dmcopy")
-    args = ["infile=" + infile,
-            "outfile=" + outfile,
+    args = [f"infile={infile}",
+            f"outfile={outfile}",
             "mode=h"]
     if option is not None:
-        args.append("option=" + option)
+        args.append(f"option={option}")
     add_defargs(args, clobber, verbose)
     run("dmcopy", args)
 
@@ -279,7 +279,8 @@ def dmimgcalc_add(infiles, outfile,
                   clobber=False,
                   lookupTab=None,
                   tmpdir="/tmp/",
-                  nchunk=100):
+                  nchunk=100,
+                  bigN_smallNchunk_bypass=False):
     """Add up all the images in infiles (an array) to create outfile,
     using dmimgcalc.
 
@@ -321,11 +322,12 @@ def dmimgcalc_add(infiles, outfile,
 
     # We could recurse, but let's error out if we have too-many
     # files.
-    if chunking >= nchunk:
+    if chunking >= nchunk and not bigN_smallNchunk_bypass:
         raise ValueError(f"Sent too many images to add: {nfiles}")
 
     start = 0
     tmpfiles = []
+
     while start < nfiles:
         filelist = infiles[start:start + nchunk]
         v3(f" - summing chunk of {len(filelist)} files")
@@ -335,7 +337,8 @@ def dmimgcalc_add(infiles, outfile,
         dmimgcalc_add(filelist, tmpfile.name,
                       verbose=verbose, clobber=True,
                       lookupTab=lookupTab, tmpdir=tmpdir,
-                      nchunk=nchunk)
+                      nchunk=nchunk,
+                      bigN_smallNchunk_bypass=bigN_smallNchunk_bypass)
 
         start += nchunk
 
@@ -344,7 +347,12 @@ def dmimgcalc_add(infiles, outfile,
     dmimgcalc_add([t.name for t in tmpfiles], outfile,
                   verbose=verbose, clobber=clobber,
                   lookupTab=lookupTab, tmpdir=tmpdir,
-                  nchunk=nchunk)
+                  nchunk=nchunk,
+                  bigN_smallNchunk_bypass=bigN_smallNchunk_bypass)
+
+    if not tmpfiles:
+        for t in tmpfiles:
+            t.close()
 
 
 def dmkeypar(infile, key, rtype='string'):
@@ -366,7 +374,7 @@ def dmkeypar(infile, key, rtype='string'):
     try:
         func = funcs[rtype]
     except KeyError:
-        raise ValueError("Invalid rtype argument '{}'".format(rtype))
+        raise ValueError(f"Invalid rtype argument '{rtype}'")
 
     run('dmkeypar', ["infile=" + infile,
                      "keyword=" + key,
@@ -375,8 +383,8 @@ def dmkeypar(infile, key, rtype='string'):
     rval = func('dmkeypar', 'value')
     if rtype == 'bool':
         return (rval == 1)
-    else:
-        return rval
+
+    return rval
 
 
 def dmhedit_key(infile, key, value, comment=None, unit=None, verbose=0):
@@ -396,8 +404,8 @@ def dmhedit_key(infile, key, value, comment=None, unit=None, verbose=0):
         v = str(v)
         if v.find('/') == -1:
             return v
-        else:
-            return "'{}'".format(v)
+
+        return f"'{v}'"
 
     dmh = rt.make_tool("dmhedit")
     if comment is not None:
@@ -566,10 +574,9 @@ def make_fov(evtfile, asolfiles, msk, outfile):
     """
 
     afiles = stk.build(asolfiles)
-    contents = set([get_content(f) for f in afiles])
+    contents = { get_content(f) for f in afiles }
     if len(contents) != 1:
-        emsg = f"Multiple types of aspect solution found: " + \
-            f"{', '.join(contents)}\n  {asolfiles}"
+        emsg = f"Multiple types of aspect solution found: {', '.join(contents)}\n  {asolfiles}"
         raise OSError(emsg)
 
     content = contents.pop()
