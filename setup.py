@@ -32,7 +32,7 @@ def list_files(pattern):
     return sorted(files)
 
 
-VERSION = "4.17.2"
+VERSION = "4.18.2"
 for val in sys.argv:
     if val.startswith("--version="):
         VERSION = val.split("=")[1]
@@ -51,7 +51,8 @@ data_files = [
     ("share/sherpa/notebooks", list_files("share/sherpa/notebooks/*ipynb")),
     ("config", list_files("config/*")),
     ("data", list_files("data/*")),
-    ("data", list_files("ciao_contrib/criss_cross/input_files/*fits")),
+    ("data", list_files("ciao_contrib/criss_cross/input_files/*")),
+    ("criss_cross", list_files("ciao_contrib/criss_cross/*tutorial*")),
     ("data/ebounds-lut", list_files("data/ebounds-lut/*")),
     (".", ["Changes.CIAO_scripts"]),
 ]
