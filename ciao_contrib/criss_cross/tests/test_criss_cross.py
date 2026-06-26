@@ -151,25 +151,25 @@ def test_line_line_example():
 
 
 def test_match_all():
-    """Different combiations of subsect sources that all have a match in the main list."""
+    """Different combinations of subset sources that all have a match in the main list."""
     ra_main = np.array([23.23, 89.2, 123.2])
     dec_main = np.array([12.12, 89.9, 89.8])
 
-    RA_sub_1 = ra_main + 1 / 3600
+    RA_sub_1 = ra_main + 0.5 / 3600
     DEC_sub_1 = dec_main
 
     assert match_subset_to_main(
         ra_main, dec_main, RA_sub_1, DEC_sub_1
     ) == pytest.approx([0, 1, 2])
 
-    RA_sub_2 = np.array([23.23, 123.2, 89.2]) + 1 / 3600
+    RA_sub_2 = np.array([23.23, 123.2, 89.2]) + 0.5 / 3600
     DEC_sub_2 = np.array([12.12, 89.8, 89.9])
 
     assert match_subset_to_main(
         ra_main, dec_main, RA_sub_2, DEC_sub_2
     ) == pytest.approx([0, 2, 1])
 
-    RA_sub_3 = np.array([123.2, 89.2]) + 1 / 3600
+    RA_sub_3 = np.array([123.2, 89.2]) + 0.5 / 3600
     DEC_sub_3 = np.array([89.8, 89.9])
 
     assert match_subset_to_main(
