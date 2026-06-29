@@ -34,7 +34,7 @@ Aim:
 """
 
 toolname = "chandra_repro"
-version = "27 April 2026"
+version = "29 June 2026"
 
 # import standard python modules as required
 #
@@ -2430,6 +2430,10 @@ def l2_acis_events(params):
             value="ACCEPTED", datatype="string", unit="",
             comment="")
 
+    dmhedit(evt2_file, file="", operation="add", key="FLTFILE",
+            value=os.path.basename(flt1), datatype="string", unit="",
+            comment="")
+
     #!## run dmappend to copy the REGION block from evt1a to evt2
     if grating != 'NONE':
         dmappend.punlearn()
@@ -2559,6 +2563,10 @@ def l2_hrc_events(params):
             comment="What data product")
     dmhedit(evt2_file, file="", operation="add", key="HDUCLAS2",
             value="ACCEPTED", datatype="string", unit="",
+            comment="")
+
+    dmhedit(evt2_file, file="", operation="add", key="FLTFILE",
+            value=os.path.basename(flt1), datatype="string", unit="",
             comment="")
 
     #!## run dmappend to copy the REGION block from evt1a to evt2
@@ -2740,9 +2748,10 @@ def add_history(params):
     outdir  = params["outdir"]
 
     from ciao_contrib.runtool import add_tool_history
-    phist = { x : params[x] for x in [ 'indir', 'outdir', 'root', 'verbose' ] }
+    phist = { x : params[x] for x in [ 'indir', 'outdir', 'root', 'verbose'  ] }
+    phist["tg_orders"] = params["tg_order"]
 
-    for x in ['badpixel', 'process_events', 'set_ardlib', 'check_vf_pha', 'cleanup', 'clobber' ]:
+    for x in ['badpixel', 'process_events', 'set_ardlib', 'check_vf_pha', 'cleanup', 'clobber', 'patch_hrc_ssc' ]:
         phist[x] = "yes" if params[x] else "no"
 
     phist["destreak"] = "yes" if params["run_destreak"] else "no"
