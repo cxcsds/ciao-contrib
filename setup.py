@@ -51,8 +51,7 @@ data_files = [
     ("share/sherpa/notebooks", list_files("share/sherpa/notebooks/*ipynb")),
     ("config", list_files("config/*")),
     ("data", list_files("data/*")),
-    ("data", list_files("ciao_contrib/criss_cross/input_files/*")),
-    ("criss_cross", list_files("ciao_contrib/criss_cross/*tutorial*")),
+    ("data", list_files("ciao_contrib/criss_cross/input_files/*.fits")),
     ("data/ebounds-lut", list_files("data/ebounds-lut/*")),
     (".", ["Changes.CIAO_scripts"]),
 ]
