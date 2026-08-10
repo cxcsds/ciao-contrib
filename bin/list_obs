@@ -1,0 +1,95 @@
+#!/usr/bin/env python
+
+#
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017, 2019, 2020, 2021
+#           Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+r"""
+List basic information about the observations.
+
+It is part of the *_obs family of commands.
+
+At the moment it has no parameter interface.
+
+"""
+
+import os
+import sys
+import shutil
+import tempfile
+
+import paramio
+
+import ciao_contrib.logger_wrapper as lw
+
+import ciao_contrib._tools.fileio as fileio
+import ciao_contrib._tools.merging as merging
+import ciao_contrib._tools.run as run
+import ciao_contrib._tools.utils as utils
+
+toolname = 'list_obs'
+__revision__ = '10 December 2021'
+
+lgr = lw.initialize_logger(toolname)
+v1 = lgr.verbose1
+v3 = lgr.verbose3
+v4 = lgr.verbose4
+
+
+@lw.handle_ciao_errors(toolname, __revision__)
+def list_obs():
+
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="List basic details about the ObsIds.",
+                                     prog=toolname)
+
+    parser.add_argument("infiles",
+                        help="Input events files")
+
+    parser.add_argument("--verbose", "-v", type=int, default=1,
+                        choices=[0, 1, 2, 3, 4, 5],
+                        help="Verbose level [default: %(default)s]")
+
+    args = lw.preprocess_arglist(sys.argv)
+    parsed = parser.parse_args(args[1:])
+
+    lw.set_verbosity(parsed.verbose)
+    utils.print_version(toolname, __revision__)
+
+    obsinfos = merging.validate_obsinfo(parsed.infiles, colcheck=False)
+    warns = merging.obsinfo_checks(obsinfos)
+    if warns != []:
+        for warn in warns:
+            v1(warn)
+
+    # Generate a "reference" location as we need this for the output;
+    # technically here we don't but leave it in.
+    #
+    # Note that we ignore the return value here as we don't need to
+    # report them (although it might be interesting).
+    #
+    instrume = obsinfos[0].instrument
+    (match, ra, dec) = merging.process_reference_position("", obsinfos)
+    warns = merging.list_observations(instrume, ra, dec, obsinfos)
+
+if __name__ == "__main__":
+    list_obs()

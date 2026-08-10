@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY pr "unix&#37;">
+  <!ENTITY mname "merge_obs">
+  <!ENTITY rname "reproject_obs">
+  <!ENTITY fname "flux_obs">
+  <!ENTITY lname "list_obs">
+]>
+
+<cxchelptopics>
+  <ENTRY key="&lname;" context="tools"
+	 refkeywords="list show display help event file files observation
+		      observations obsid obsids obi obi_num
+		      multi coadd coadded merge merging 
+		      basic
+		      "
+	 seealsogroups="mergescripts"
+	 displayseealsogroups="reproject">
+
+    <SYNOPSIS>
+      List basic information about a set of observations.
+    </SYNOPSIS>
+
+    <DESC>
+      <PARA>
+	The &lname; tool displays information about the observations
+	it finds. It is expected to be used with observations used
+	with &rname;, &fname;, and &mname;.
+      </PARA>
+    </DESC>
+
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+	<SYNTAX>
+          <LINE>&pr; &lname; 5826/,5827/</LINE>
+	</SYNTAX>
+	<DESC>
+	  <PARA>
+	    List information about the observations found in the
+	    two directories. It uses the same scheme to find
+	    files as &rname; and &mname;.
+	  </PARA>
+	  <PARA>
+	    For the example above, the output will look like:
+	  </PARA>
+<VERBATIM>
+  Running list_obs
+  Version: 10 December 2021
+
+  Found 5826/primary/acisf05826N004_evt2.fits.gz
+  Found 5827/primary/acisf05827N004_evt2.fits.gz
+  Verifying 2 observations.
+  Calculating new tangent point.
+  New tangent point: RA=12h 30m 48.495s Dec=12d 23' 39.92"
+
+  Observations to be reprojected:
+
+  Obsid  Obs Date   Exp    DETNAM     SIM_Z    FP   Sepn   PA
+  (ks)                (mm)    (K)   (')  (deg)
+  ---------------------------------------------------------------
+  1 5826  2005-03-03 126.8 ACIS-0123   -231.596 154.1   0.6   +36
+  2 5827  2005-05-05 156.2 ACIS-0123   -231.596 153.6   0.6  -144
+  
+</VERBATIM>
+	</DESC>
+      </QEXAMPLE>
+
+
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infiles" type="file" reqd="yes" stacks="yes">
+	<SYNOPSIS>
+	  Input event files
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    Multiple event files may be
+            provided as a comma-separated list or as a stack; see <HREF
+            link="https://cxc.harvard.edu/ciao/ahelp/stack.html">"ahelp
+            stack"</HREF> for more information.
+	    The event files do not need to be given in time order.
+	  </PARA>
+
+	  <PARA title="Listing just a directory name">
+	    Rather than list the full path to an event file, you can
+	    just give a directory name; in such a case the script
+	    searches for any files that match the pattern
+	  </PARA>
+
+	  <LIST>
+	    <ITEM>dirname/repro/*evt*</ITEM>
+	    <ITEM>dirname/primary/*evt*</ITEM>
+	    <ITEM>dirname/*evt*</ITEM>
+	  </LIST>
+
+	  <PARA>
+	    where the search is done in the order given above, and stops
+	    as soon as a match (or matches) is found.
+	  </PARA>
+
+	  <PARA title="Skipping files">
+	    Any observations that do not match the instrument of the
+	    first observation are skipped, as are CC mode observations
+	    or those with no data (e.g. because of a ccd_id filter).
+	    For HRC data, the first observation determines whether
+	    HRC-I or HRC-S are being combined, with observations from
+	    the other instrument being skipped.
+	    Any file with an OBS_ID keyword of "Merged" is skipped.
+	  </PARA>
+
+	  <PARA>
+	    If multiple files with the same OBS_ID keyword are found,
+	    then all but the first are skipped, unless they are
+	    part of an ACIS interleaved-mode observation (i.e. they
+	    have CYCLE=P or CYCLE=S).
+	  </PARA>
+
+	  <PARA>
+	    The input files must contain at least the following columns.
+	    otherwise they are skipped:
+	  </PARA>
+
+	  <TABLE>
+	    <ROW>
+	      <DATA>Instrument</DATA>
+	      <DATA>Columns</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>ACIS</DATA>
+	      <DATA>TIME, CCD_ID, ENERGY, CHIP, DET, SKY</DATA>
+	    </ROW>
+	    <ROW>
+	      <DATA>HRC</DATA>
+	      <DATA>TIME, CHIP_ID, CHIP, DET, SKY</DATA>
+	    </ROW>
+	  </TABLE>
+
+	</DESC>
+      </PARAM>
+
+      <PARAM name="verbose" type="integer" def="1">
+	<SYNOPSIS>
+	  Output verbosity.
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    The default verbosity value of 1 prints status
+	    messages as the script runs.  Higher verbosity
+	    settings print the commands that are being run.
+	    Setting verbose=0 turns off the screen output.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+    </PARAMLIST>
+
+    <ADESC title="Changes in the scripts 4.14.1 (2022) release">
+      <PARA>
+	This is the first release of the script.
+      </PARA>
+    </ADESC>
+
+
+    <LASTMODIFIED>December 2021</LASTMODIFIED>
+
+  </ENTRY>
+</cxchelptopics>
