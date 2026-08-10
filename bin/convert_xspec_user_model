@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012 - 2016, 2020 - 2024
+# Copyright (C) 2012 - 2016, 2020 - 2025
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -66,7 +66,7 @@ for a description of the model.dat format.
 """
 
 toolname = "convert_xspec_user_model"
-toolver  = "25 November 2024"
+toolver  = "31 March 2025"
 
 import sys
 import os
@@ -182,10 +182,15 @@ CXX_HEADER = """//
 """
 
 
-# The assumption is that by this point we know ASCDS_INSTALL must exist.
+# # The assumption is that by this point we know ASCDS_INSTALL must exist.
+# #
+# ASCDS_INSTALL = os.getenv("ASCDS_INSTALL")
+# if ASCDS_INSTALL is None:
+#     # _ = os.getenv("HEADAS")
+#     # ASCDS_INSTALL = f"{_}/../Xspec/{_.strip('/').split('/')[-1]}"
+#     ASCDS_INSTALL = os.getenv("HEADAS")
 #
-ASCDS_INSTALL = os.getenv("ASCDS_INSTALL")
-ASCDS_INSTALL_PATH = Path(ASCDS_INSTALL)
+# ASCDS_INSTALL_PATH = Path(ASCDS_INSTALL)
 
 
 def check_clobber(fname: Path) -> None:
@@ -943,7 +948,8 @@ def build_module_init(modname: str,
                       infiles,
                       extrafiles,
                       version,
-                      clobber: bool = False) -> None:
+                      clobber: bool = False,
+                      standalone: bool = False) -> None:
     """Create the module initalization code.
 
     Parameters
@@ -1021,6 +1027,12 @@ def build_module_init(modname: str,
     use_warnings = pycode.find("warnings.warn") > -1
     warning_str = "import warnings" if use_warnings else ""
 
+    if standalone:
+        ascdsstr = "HEADAS"
+    else:
+        ascdsstr = "ASCDS_INSTALL"
+
+
     out = PYTHON_HEADER
     out += f'''
 """Sherpa interfaces to XSPEC models."""
@@ -1045,7 +1057,7 @@ __all__ = ({mdlnames})
                       f"  , 'buildinfo': {{ 'tool': '{toolname}', ",
                       f"'version': '{toolver}', ",
                       f"'sherpaversion': '{sherpa.__version__}', ",
-                      f"'ASCDS_INSTALL': '{ASCDS_INSTALL}', ",
+                      f"'{ascdsstr}': '{ASCDS_INSTALL}', ",
                       f"'machine': '{os.uname()[1]}' }}",
                       f"  , 'modulename': '{modname}'",
                       f"  , 'moduleversion': '{version}'",
@@ -1208,7 +1220,8 @@ def convert_xspec_user_model(modulename, modelfile,
                              version='1.0',
                              outdir='build_xspec_user_model',
                              namefunc=add_xsum_prefix,
-                             verbose=False):
+                             verbose=False,
+                             standalone=False):
     """Create a Python module called modulename that allows the
     XSPEC user model - defined by the model file (e.g.
     modelfile='lmodel.dat') - using the code found in the following
@@ -1577,6 +1590,9 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", dest="verbose", type=int,
                         choices=range(0, 6), default=1,
                         help="Verbose level; higher for more screen output")
+    parser.add_argument("--standalone", dest="standalone", action="store_true",
+                        default=False,
+                        help="Run from standalone Sherpa build")
 
     parser.add_argument("--version", action="version",
                         version=toolver,
@@ -1610,6 +1626,25 @@ if __name__ == "__main__":
         def mkname(inval):
             return add_prefix(args.prefix, inval)
 
+
+    # The assumption is that ASCDS_INSTALL must exist; however, for a standalone Sherpa
+    # build this is not true and we will be dependent on the existence of the
+    # 'ciao_contrib' (can be installed via pip in a standalone build) directory and the
+    # HEADAS variable is set by the user.
+    #
+    ASCDS_INSTALL = os.getenv("ASCDS_INSTALL")
+    if args.standalone and ASCDS_INSTALL is None:
+        # _ = os.getenv("HEADAS")
+        # ASCDS_INSTALL = f"{_}/../Xspec/{_.strip('/').split('/')[-1]}"
+        ASCDS_INSTALL = os.getenv("HEADAS")
+
+        if ASCDS_INSTALL is None:
+            raise OSError(f"'HEADAS' environment variable should be set for use with standalone Sherpa.")
+
+
+    ASCDS_INSTALL_PATH = Path(ASCDS_INSTALL)
+
+
     # for some reason sys.tracebacklimit is 0, meaning no backtraces
     # when using --tracebackdebug/--debug
     sys.tracebacklimit = None
@@ -1637,6 +1672,7 @@ if __name__ == "__main__":
                              clobber=args.clobber,
                              version=args.pyver,
                              namefunc=mkname,
-                             verbose=verbose)
+                             verbose=verbose,
+                             standalone=args.standalone)
 
 # End
