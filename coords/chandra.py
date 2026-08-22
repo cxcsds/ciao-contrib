@@ -288,7 +288,8 @@ def get_coord_keywords(arg):
 
     out = {}
     for name in ["TELESCOP", "INSTRUME", "DETNAM",
-                 "RA_NOM", "DEC_NOM", "ROLL_NOM",
+                 "RA_NOM", "DEC_NOM",
+                 "RA_PNT", "DEC_PNT", "ROLL_PNT",
                  "SIM_X", "SIM_Y", "SIM_Z",
                  "DY_AVG", "DZ_AVG", "DTH_AVG"]:
         val = cr.get_key_value(name)
