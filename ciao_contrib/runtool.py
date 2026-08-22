@@ -1,11 +1,11 @@
 #
-# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2022, 2023
+# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2022, 2023, 2026
 # Smithsonian Astrophysical Observatory
 #
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -474,13 +474,10 @@ import re
 
 from collections import namedtuple
 from contextlib import contextmanager
-
-# only used to check for floating-point equality
-import numpy as np
+import math
 
 import paramio as pio
 import stk
-import cxcdm
 
 from ciao_contrib.logger_wrapper import initialize_module_logger
 
@@ -599,8 +596,16 @@ def _values_equal(ptype, val1, val2):
     if ptype != "r" or (val1 is None and val2 is None):
         return val1 == val2
 
+    # Match the semantics of numpy.allclose(rtol=1e-5, atol=1e-8)
+    # without requiring numpy just for this one scalar comparison
+    # (numpy is a surprisingly-expensive import for such a small
+    # check, and this module is imported by every CIAO script).
+    #
+    elif math.isfinite(val1) and math.isfinite(val2):
+        return abs(val1 - val2) <= 1.0e-8 + 1.0e-5 * abs(val2)
+
     else:
-        return np.allclose([val1], [val2])
+        return val1 == val2
 
 
 def _partial_match(matches, query, qtype="s"):
@@ -2356,6 +2361,10 @@ def add_comment_lines(infile, comments):
     if cs == []:
         return
 
+    # cxcdm pulls in numpy, so only pay for that import when a
+    # tool actually needs to write history/comment records.
+    import cxcdm
+
     v4(f"Adding comments to {infile}")
     bl = cxcdm.dmBlockOpen(infile, update=True)
     try:
@@ -3916,7 +3925,7 @@ parinfo['ximage_lut'] = {
 parinfo['xmatch_viz'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input crossmatch table",None),ParValue("refsrcfile","f","Input reference source list",None),ParValue("outfile","f","Output region file name",None),ParValue("legend","f","Output legend illustration",None)],
-    'opt': [ParValue("clobber","b","Overwrite existing output dataset with same name?",False),ParRange("verbose","i","Tool verbosity",1,0,5)],
+    'opt': [ParRange("radius","r","Radius of regions [arcsec]",0.5,0,None),ParValue("clobber","b","Overwrite existing output dataset with same name?",False),ParRange("verbose","i","Tool verbosity",1,0,5)],
     }
 
 

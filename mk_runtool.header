@@ -1,11 +1,11 @@
 #
-# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2022, 2023
+# Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2022, 2023, 2026
 # Smithsonian Astrophysical Observatory
 #
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -193,7 +193,7 @@ type - e.g. for a boolean parameter you can use one either
 - True, 1, "yes", "true", "on", "1"
 - False, 0, "no", "false", "off", "0"
 
-bit it is **strongly suggested** that you use the correct Python type
+but it is **strongly suggested** that you use the correct Python type
 (in this case either True or False) as the conversion of other types
 is not guaranteed to work reliably or match the rules used by the CXC
 parameter library.
@@ -213,7 +213,7 @@ comma-separated string.
 There is no support for converting a parameter value from a stack into
 an array; the stk.build() routine can be used for this.
 
-It is planned to handle stacks that exceed the maximimum parameter
+It is planned to handle stacks that exceed the maximum parameter
 length by using a temporary file to contain the values when the tool
 is run; the current behavior in this case should be to throw an error
 that the expected and stored parameter values do not match.
@@ -474,13 +474,10 @@ import re
 
 from collections import namedtuple
 from contextlib import contextmanager
-
-# only used to check for floating-point equality
-import numpy as np
+import math
 
 import paramio as pio
 import stk
-import cxcdm
 
 from ciao_contrib.logger_wrapper import initialize_module_logger
 
@@ -599,8 +596,16 @@ def _values_equal(ptype, val1, val2):
     if ptype != "r" or (val1 is None and val2 is None):
         return val1 == val2
 
+    # Match the semantics of numpy.allclose(rtol=1e-5, atol=1e-8)
+    # without requiring numpy just for this one scalar comparison
+    # (numpy is a surprisingly-expensive import for such a small
+    # check, and this module is imported by every CIAO script).
+    #
+    elif math.isfinite(val1) and math.isfinite(val2):
+        return abs(val1 - val2) <= 1.0e-8 + 1.0e-5 * abs(val2)
+
     else:
-        return np.allclose([val1], [val2])
+        return val1 == val2
 
 
 def _partial_match(matches, query, qtype="s"):
@@ -2355,6 +2360,10 @@ def add_comment_lines(infile, comments):
 
     if cs == []:
         return
+
+    # cxcdm pulls in numpy, so only pay for that import when a
+    # tool actually needs to write history/comment records.
+    import cxcdm
 
     v4(f"Adding comments to {infile}")
     bl = cxcdm.dmBlockOpen(infile, update=True)
