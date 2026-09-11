@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2013, 2018, 2019, 2022, 2023, 2024, 2025, 2026
+# Copyright (C) 2013, 2018, 2019, 2022, 2023, 2024, 2025
 # Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 #
 
 toolname = "search_csc"
-__revision__ = "11 September 2026"
+__revision__ = "03 June 2025"
 
 import sys
 import os
@@ -45,13 +45,13 @@ def parse_inputs( pars ):
     import coords.resolver as resolver
     retval = {}
 
-    if not ',' in pars["pos"]:
+    if not ',' in pars["pos"]:        
         (ra_deg,dec_deg,csys) = resolver.identify_name( pars["pos"] )
         if not 'ICRS' == csys:
             raise ValueError("Unsupported format '{}' returned by the name resolver. Please contact the CXC HelpDesk.".format(csys))
         verb2("Resolved {} to ra={} dec={}".format(pars["pos"],ra_deg, dec_deg))
     else:
-        ra_deg,dec_deg = pars["pos"].split(',') #map(float, pars["pos"].split(","))
+        ra_deg,dec_deg = pars["pos"].split(',') #map(float, pars["pos"].split(",")) 
     retval["ra_deg"] = str(ra_deg).strip()
     retval["dec_deg"] = str(dec_deg).strip()
 
@@ -69,7 +69,7 @@ def parse_inputs( pars ):
         import stk as stk
         retval["columns"] = stk.build( pars["columns"] )
         retval["columns"] = csc.check_required_names( retval["columns"], pars["catalog"] )
-
+    
     if 'none' == pars["outfile"].lower():
         retval["outfile"] = None
     else:
@@ -101,27 +101,27 @@ def parse_inputs( pars ):
 
         #-- Check file types
         if len(pars["filetypes"] ) == 0:
-            # if filetypes is blank, use all of them
+            # if filetypes is blank, use all of them 
             retval["myfiles"] = ",".join( csc.fileTypes[pars["catalog"]].keys() )
         else:
             retval["myfiles"] = csc.check_filetypes( pars["filetypes"], pars["catalog"] )
             if len(retval["myfiles"]) == 0:
                 raise ValueError("No recognized file types supplied")
-
+    
     retval["clobber"] = ( pars["clobber"] == "yes" )
     retval["catalog"] = pars["catalog"]
-
+    
     return retval
 
 def summarize_sensitivity( ra, dec, bands ):
     """
-
+    
     """
     from coords.format import sex2deg
-    ra_deg,dec_deg = sex2deg(ra, dec )
-
+    ra_deg,dec_deg = sex2deg(ra, dec ) 
+    
     page = csc.query_csc1_limsens( ra_deg, dec_deg )
-
+    
     try:
         vals, units = csc.parse_limsens( page )
     except RuntimeError as rte:
@@ -132,17 +132,17 @@ def summarize_sensitivity( ra, dec, bands ):
     for b in bands.split(","):
         if b in vals:
             verb0("  "+b+' band : {} [{}]'.format( vals[b], units ))
-
-
+    
+    
 def summarize_sensitivity_2( ra, dec, release, bands ):
     """
-
+    
     """
     from coords.format import sex2deg
-    ra_deg,dec_deg = sex2deg(ra, dec )
-
+    ra_deg,dec_deg = sex2deg(ra, dec ) 
+    
     page = csc.query_csc2_limsens( ra_deg, dec_deg, release )
-
+    
     try:
         vals = csc.parse_limsens_2( page )
     except RuntimeError as rte:
@@ -155,7 +155,7 @@ def summarize_sensitivity_2( ra, dec, release, bands ):
         for key in vals:
             if key.endswith(_b):
                 verb0(f"  {key} : {vals[key][0]}")
-
+    
 
 #
 # Main Routine
@@ -165,7 +165,7 @@ def main():
     """
     """
     # get parameters
-    pars = get_params(toolname, "rw", sys.argv,
+    pars = get_params(toolname, "rw", sys.argv, 
       verbose={"set":lw.set_verbosity, "cmd":verb1} )
     pp = parse_inputs( pars )
 
@@ -176,9 +176,9 @@ def main():
     #
     # Query catalog by position
     #
-    mypage = csc.search_src_by_ra_dec( pp["ra_deg"], pp["dec_deg"],
+    mypage = csc.search_src_by_ra_dec( pp["ra_deg"], pp["dec_deg"], 
         pp["radius_arcmin"], pp["columns"], pp["catalog"] )
-    csc.save_results( mypage, pp["outfile"], pp["clobber"] )
+    csc.save_results( mypage, pp["outfile"], pp["clobber"] )    
 
     #
     # Print results
@@ -196,7 +196,7 @@ def main():
 
     #
     # Retrieve the files if asked
-    #
+    # 
     if pp["getfiles"]:
         csc.retrieve_files( mysrcs, pp["root"], pp["myfiles"], pp["mybands"], pp["getfiles"], pp["catalog"] )
 
@@ -208,4 +208,4 @@ if __name__ == "__main__":
         print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
-
+    
