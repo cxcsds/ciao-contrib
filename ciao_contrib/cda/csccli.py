@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013, 2016, 2019, 2023, 2024, 2025
+# Copyright (C) 2013, 2016, 2019, 2023, 2024, 2025, 2026
 #               Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
@@ -56,7 +56,7 @@ __all__ = (
 
 # Confirm, need rel1.1 to get HRC data for csc1
 __csc_version = {'csc1' : 'rel1.1', 'csc2' : 'rel2.0', 'csc2.1': 'rel2.1',
-                 'current': 'cur', 'latest': None}
+                 'csc2.2': 'rel2.2', 'current': 'cur', 'latest': None}
 
 
 fileTypes_csc1 = {
@@ -137,6 +137,7 @@ fileTypes = {
     "csc1" : fileTypes_csc1,
     "csc2"  : fileTypes_cur,
     "csc2.1" : fileTypes_cur,
+    "csc2.2" : fileTypes_cur,
     "current" : fileTypes_cur,
     "latest" : fileTypes_cur,
 }
@@ -312,7 +313,7 @@ csc1_columns = {
 
 
 csc2_columns = {
-  'master_source_basic_summary' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w'.split(","),                                   
+  'master_source_basic_summary' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w'.split(","),
   'master_source_summary' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,m.extent_flag,m.hard_hm,m.hard_hm_lolim,m.hard_hm_hilim,m.hard_ms,m.hard_ms_lolim,m.hard_ms_hilim,m.var_intra_index_b,m.var_inter_index_b,m.var_intra_index_w,m.var_inter_index_w'.split(","),
   'master_source_photometry' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,m.flux_aper_s,m.flux_aper_lolim_s,m.flux_aper_hilim_s,m.flux_aper_m,m.flux_aper_lolim_m,m.flux_aper_hilim_m,m.flux_aper_h,m.flux_aper_lolim_h,m.flux_aper_hilim_h,m.flux_powlaw_aper_b,m.flux_powlaw_aper_lolim_b,m.flux_powlaw_aper_hilim_b,m.flux_powlaw_aper_w,m.flux_powlaw_aper_lolim_w,m.flux_powlaw_aper_hilim_w,m.flux_bb_aper_b,m.flux_bb_aper_lolim_b,m.flux_bb_aper_hilim_b,m.flux_bb_aper_w,m.flux_bb_aper_lolim_w,m.flux_bb_aper_hilim_w'.split(","),
   'master_source_variability' : 'm.name,m.ra,m.dec,m.err_ellipse_r0,m.conf_flag,m.sat_src_flag,m.significance,m.flux_aper_b,m.flux_aper_lolim_b,m.flux_aper_hilim_b,m.flux_aper_w,m.flux_aper_lolim_w,m.flux_aper_hilim_w,m.var_intra_prob_b,m.var_intra_index_b,m.var_inter_prob_b,m.var_inter_index_b,m.var_intra_prob_w,m.var_intra_index_w,m.var_inter_prob_w,m.var_inter_index_w,m.var_intra_prob_s,m.var_intra_index_s,m.var_inter_prob_s,m.var_inter_index_s,m.var_intra_prob_m,m.var_intra_index_m,m.var_inter_prob_m,m.var_inter_index_m,m.var_intra_prob_h,m.var_intra_index_h,m.var_inter_prob_h,m.var_inter_index_h'.split(","),
@@ -886,7 +887,7 @@ def search_src_by_ra_dec( ra, dec, radius_arcmin, columns, cat_ver ):
 
     if "csc1" == cat_ver:
         page = cone_query_cli_cscview( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns)
-    elif cat_ver in ["csc2", "csc2.1", "current", "latest"]:
+    elif cat_ver in ["csc2", "csc2.1", "csc2.2", "current", "latest"]:
         page = cone_query_cli_cscview_ver2( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns, cat_ver)
     else:
         raise ValueError("Unknown catalog version")
@@ -901,7 +902,7 @@ def search_src_by_obsid( obsid, columns, cat_ver ):
 
     if 'csc1' == cat_ver :
         page = obsid_query_cli_cscview( obsid, columns )
-    elif cat_ver in ["csc2", "csc2.1", "current", "latest"] :
+    elif cat_ver in ["csc2", "csc2.1", "csc2.2", "current", "latest"] :
         page = obsid_query_cli_cscview_ver2( obsid, columns, cat_ver )
     else:
         raise ValueError("Unknown catalog version")
@@ -1329,7 +1330,7 @@ def get_default_columns(cat_version=None):
     """
     retval = default_cols
 
-    if cat_version in ["csc2", "csc2.1", "current", "latest"]:
+    if cat_version in ["csc2", "csc2.1", "csc2.2", "current", "latest"]:
         default_cols.append("s.detect_stack_id")
         retval = default_cols # may be diff for ver2
 
@@ -1394,7 +1395,7 @@ def expand_standard_cols( cols, cat_version=None ):
                        "SSS"  : csc2_columns["stack_source_summary"],
                        "SSP"  : csc2_columns["stack_source_photometry"]
                        }
-    elif cat_version in ["csc2.1", "current", "latest"]:
+    elif cat_version in ["csc2.1", "csc2.2", "current", "latest"]:
         check_list = { "MSBS" : csc21_columns["master_source_basic_summary"] ,
                        "MSS"  : csc21_columns["master_source_summary"],
                        "MSP"  : csc21_columns["master_source_photometry"],
@@ -1435,7 +1436,7 @@ def check_required_names( cols, cat_version=None ):
     """
     c2 = expand_standard_cols( cols, cat_version )
 
-    if cat_version in ['latest','current','csc2', 'csc2.1'] and 's.detect_stack_id' not in required_cols:
+    if cat_version in ['latest','current','csc2', 'csc2.1', 'csc2.2'] and 's.detect_stack_id' not in required_cols:
         required_cols.append( 's.detect_stack_id' )
 
     required_cols.reverse()
