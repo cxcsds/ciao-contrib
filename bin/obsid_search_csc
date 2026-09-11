@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2013,2016,2018-2019,2022-2025
+# Copyright (C) 2013,2016,2018-2019,2022-2026
 # Smithsonian Astrophysical Observatory
 #
 # This program is free software; you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 #
 
 toolname = "obsid_search_csc"
-__revision__ = "03 June 2025"
+__revision__ = "11 September 2026"
 
 import sys
 import os
@@ -48,7 +48,7 @@ def parse_inputs( pars ):
 
     if not all( [x.isdigit() for x in retval["obsid"].split(",")]):
         raise ValueError("obsid must be a list of individual integers")
-    
+
     if "INDEF" == pars["columns"] or len(pars["columns"]) == 0:
         retval["columns"] = csc.get_default_columns(pars["catalog"])
     else:
@@ -66,7 +66,7 @@ def parse_inputs( pars ):
     #~ if "csc2" == pars["catalog"] and "none" != pars["download"]:
         #~ pars["download"] = "none"
         #~ verb0("WARNING: files cannot yet be retrieved using the current catalog release")
-    
+
     if "none" == pars["download"]:
         retval["getfiles"] = False
         retval["myfiles"] = None
@@ -77,13 +77,13 @@ def parse_inputs( pars ):
         retval["root"] = pars["root"]
 
         if len(pars["filetypes"] ) == 0:
-            # if filetypes is blank, use all of them 
+            # if filetypes is blank, use all of them
             retval["myfiles"] = ",".join( csc.fileTypes[pars["catalog"]].keys() )
         else:
             retval["myfiles"] = csc.check_filetypes( pars["filetypes"], pars["catalog"] )
             if len(retval["myfiles"]) == 0:
                 raise ValueError("No recognized file types supplied")
-        
+
         if len(pars["bands"]) == 0:
             # if bands is blank, use all of them
             retval["mybands"] = ",".join(csc.all_bands())
@@ -92,10 +92,10 @@ def parse_inputs( pars ):
             if len(retval["mybands"]) == 0:
                 raise ValueError("No recognized energy band supplied")
 
-    
+
     retval["clobber"] = ( pars["clobber"] == "yes" )
     retval["catalog"] = pars["catalog"]
-    
+
     return retval
 
 
@@ -107,7 +107,7 @@ def main():
     """
     """
     # get parameters
-    pars = get_params(toolname, "rw", sys.argv, 
+    pars = get_params(toolname, "rw", sys.argv,
       verbose={"set":lw.set_verbosity, "cmd":verb1} )
     pp = parse_inputs( pars )
 
@@ -119,7 +119,7 @@ def main():
     # Query catalog by position
     #
     mypage = csc.search_src_by_obsid( pp["obsid"], pp["columns"], pp["catalog"] )
-    csc.save_results( mypage, pp["outfile"], pp["clobber"] )    
+    csc.save_results( mypage, pp["outfile"], pp["clobber"] )
 
     #
     # Print results
@@ -127,10 +127,10 @@ def main():
     mysrcs = csc.parse_csc_result( mypage )
     xtra = csc.extra_cols_to_summarize( mysrcs, pars["columns"], pp["catalog"])
     csc.summarize_results( mysrcs, extracols=xtra )
-    
+
     #
     # Retrieve the files if asked
-    # 
+    #
     if pp["getfiles"]:
         csc.retrieve_files( mysrcs, pp["root"], pp["myfiles"], pp["mybands"], pp["getfiles"], pp["catalog"], byObi=True )
 
@@ -142,4 +142,4 @@ if __name__ == "__main__":
         print("\n# "+toolname+" ("+__revision__+"): ERROR "+str(E)+"\n", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
-    
+
