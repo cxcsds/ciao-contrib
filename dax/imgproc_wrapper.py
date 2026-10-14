@@ -185,12 +185,14 @@ class ImageProcTask():
         # BUT -- dax is using all DM tools so it's going to
         # get broken at some point anyways.
 
-        from pycrates import read_file
-        from pytransform import LINEARTransform, LINEAR2DTransform
-
         block = float(self.xpaget("block"))
         if block == 1.0:
             return
+
+        # pycrates drags in numpy/cxcdm, which is a noticeably slow
+        # import, so only pay for it once we know it's actually needed.
+        from pycrates import read_file
+        from pytransform import LINEARTransform, LINEAR2DTransform
 
         img = read_file(infile, mode="rw")
         for axis in img.get_axisnames():
