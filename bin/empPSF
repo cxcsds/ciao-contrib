@@ -1,65 +1,41 @@
 #!/usr/bin/env python
 
-#
-# Copyright (C) 2026
-#        Smithsonian Astrophysical Observatory
-#
-#
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along
-# with this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-#
 
-"""
-Script:
-
-  Rotate empirical PSF file to match an observation and bin reference
-  event file to match the spatial scale of the PSF image.  Optionally,
-  a deconvolved image (via 'arestore') may also be generated.
-"""
-
-
-__version__ = "CIAO 4.18"
+__version__ = "CIAO 4.19"
 __toolname__ = "empPSF"
-__revision__ = "XX May 2026"
+__revision__ = "28 October 2026"
 
 
 import os
 import sys
 import tempfile
-import math
+
+import numpy
 
 from decimal import Decimal
 from collections import namedtuple
+from operator import itemgetter
 from datetime import datetime
 
-import paramio
-from ciao_contrib.param_wrapper import open_param_file
+import pycrates as pcr
+import region
+from ciao_contrib.proptools import dates
+from crates_contrib.utils import make_image_crate, smooth_image_crate, make_table_crate
 
+import paramio as pio
+from ciao_contrib.param_wrapper import open_param_file
 from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors, preprocess_arglist
 
-#from pycrates import read_file
 from ciao_contrib.runtool import make_tool, new_pfiles_environment, add_tool_history
 from ciao_contrib._tools import fileio, utils
 
 
-#############################################################################
+#################################################################################
 
-# Set up the logging/verbose code
+## Set up the logging/verbose code ##
 initialize_logger(__toolname__)
 
-# Use v<n> to display messages at the given verbose level.
+## Use v<n> to display messages at the given verbose level. ##
 v0 = make_verbose_level(__toolname__, 0)
 v1 = make_verbose_level(__toolname__, 1)
 v2 = make_verbose_level(__toolname__, 2)
@@ -77,7 +53,370 @@ class ScriptError(RuntimeError):
     """
     pass
 
-#############################################################################
+
+
+#################################################################################
+
+
+class EmpiricalPSF:
+    """
+    This class is intended to return an image crate
+    """
+    def __init__(self, evtfile: str, write_table: bool = False,
+                 binsize: float|int = 1,
+                 #empPSFout: str = "",
+                 tbl_fn: str = "empPSF_hrci_tsxyo_2026aug.fits",
+                 bkgsubtract: bool = True, seed: None|int = None):
+
+        self.evtfile = evtfile
+        self.write_table = write_table
+        self.binsize = binsize
+        #self.empPSFout = empPSFout
+        self.tbl_fn = f"{os.getenv('ASCDS_INSTALL')}/data/empPSF/{tbl_fn}"
+        self.bkgsubtract = bkgsubtract
+        self.seed = seed
+
+
+    def __enter__(self):
+        return self
+
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        return exc_traceback is None
+
+
+    def _timedef(self, dT: bool = False, epochs: bool = False) -> tuple[dict,dict,dict]:
+        epoch1 = { "start" : "1999-07-23T00:00:00", "stop" : "2005-12-31T00:00:00" }
+        epoch2 = { "start" : "2006-01-01T00:00:00", "stop" : "2016-12-31T00:00:00" }
+        epoch3 = { "start" : "2017-01-01T00:00:00", "stop" : None }
+        # epoch3 = { "start" : "2017-01-01T00:00:00", "stop" : "2025-12-31T00:00:00" }
+
+        t1 = { "start" : dates(epoch1["start"], fromcal="GREG", tocal="MJD"),
+               "stop" : dates(epoch1["stop"], fromcal="GREG", tocal="MJD") }
+        t2 = { "start" : dates(epoch2["start"], fromcal="GREG", tocal="MJD"),
+               "stop" : dates(epoch2["stop"], fromcal="GREG", tocal="MJD") }
+        t3 = { "start" : dates(epoch3["start"], fromcal="GREG", tocal="MJD"),
+               "stop" : None }
+
+        if dT:
+            return t1, t2, t3
+
+        if epochs:
+            return epoch1, epoch2, epoch3
+
+        return None
+
+
+    def tbounds(self, time: float):
+        """
+        'time' is in MJD
+
+        returns the PSF 'epoch'
+        """
+
+        # if year <= 2005:
+        #     epoch1 = { "start" : "1999-07-23T00:00:00", "stop" : "2005-12-31T00:00:00" }
+        # elif year >= 2017:
+        #     epoch3 = { "start" : "2017-01-01T00:00:00", "stop" : "2025-12-31T00:00:00" }
+        # else:
+        #     epoch2 = { "start" : "2006-01-01T00:00:00", "stop" : "2016-12-31T00:00:00" }
+
+        dT1, dT2, dT3 = self._timedef(dT=True)
+
+        if dT1["start"] <= time < dT1["stop"]:
+            return "epoch1"
+
+        if time >= dT3["start"]:
+            return "epoch3"
+
+        return "epoch2"
+
+
+    def empPSF_time( self, timeobs: float ):
+        """
+        return indicies (used for background spectra), ObsIDs for the epoch and exposure
+        time of each ObsID of interest.
+        """
+
+        cr = pcr.read_file( f"{self.tbl_fn}[3]" )
+
+        obsid = numpy.squeeze(cr.get_column("OBSID").values)
+        #tstart = numpy.squeeze(cr.get_column("TSTART").values)
+        dateobs = numpy.squeeze(cr.get_column("DATEOBS").values)
+        #yearobs = numpy.squeeze(cr.get_column("YEAROBS").values)
+        exposure = numpy.squeeze(cr.get_column("EXPOSURE").values)
+        #exp_cumulative = numpy.squeeze( cr.get_column("CUMULATIVE_EXPOSURE").values)
+
+        del(cr)
+
+        dT1, dT2, dT3 = self._timedef(dT=True) # in MJD; time = MJD-OBS keyword
+
+        dateobs_mjd = ( dates(d, fromcal="GREG", tocal="MJD") for d in dateobs )
+
+        match self.tbounds(timeobs):
+            case "epoch1":
+                ind = [ n for n,t in enumerate(dateobs_mjd) if dT1["start"] <= t < dT1["stop"] ]
+            case "epoch2":
+                ind = [ n for n,t in enumerate(dateobs_mjd) if dT2["start"] <= t < dT2["stop"] ]
+            case "epoch3":
+                ind = [ n for n,t in enumerate(dateobs_mjd) if t >= dT3["start"] ]
+            case _:
+                raise IOError("Observation is outside valid available time range of observations.")
+
+        return ind, obsid[ind], exposure[ind]
+
+
+    def bgspec(self, indicies: list|tuple, obsids: list|tuple):
+        """
+        note that the background spectrum are in units of counts/pixel
+        """
+
+        cr_bkg = pcr.read_file( f"{self.tbl_fn}[4]" )
+        bkgspec = cr_bkg.get_image().values.T
+
+        bgspec = { str(obs) : zip( *[(samp,spec) for samp,spec in enumerate( bkgspec[ind] )] )
+                   for ind,obs in zip(indicies,obsids) }
+
+        return bgspec
+
+
+    def bkg_subtract(self, info: namedtuple,
+                     bgcts: list|tuple, bgsamp: list|tuple,
+                     npix: int = 512**2, seed : int|None = None):
+
+        samp = info.samp
+
+        ## get distribution of SAMP values from the observed data sets ##
+        src_cts, _ = numpy.histogram( samp, bins=range(len(bgsamp) + 1) )
+
+        bg_cts = numpy.ceil(npix * numpy.array(bgcts)).astype(int)
+
+        cts = src_cts - bg_cts
+        cts[ cts<0 ] = 0
+
+
+        if isinstance(seed,int) and seed <= 0:
+            seed = None
+
+        rng = numpy.random.default_rng(seed)
+
+        #evt = zip( *[info.ux, info.vy, samp, info.time] )
+        #evt = [(x,y,s,t) for x,y,s,t in evt]
+        evt = list( zip( *[info.ux, info.vy, samp, info.time] ) )
+
+        evt_bkgsub = []
+
+        for samp_edge,n in zip(bgsamp, cts):
+            e = [ (x,y,s,t) for x,y,s,t in evt if samp_edge <= s < samp_edge + 1 ]
+
+            if n > 0:
+                evt_bkgsub.extend( rng.choice(e, size=n) )
+
+        ux, vy, samp, time = zip(*sorted(evt_bkgsub, key=itemgetter(-1)))
+
+        return ux, vy, samp, time
+
+
+    def empPSF_tab(self, tobs: float, instrument: str = "HRC-I"):
+
+        cr = pcr.read_file( f"{self.tbl_fn}[2][samp<300]" )
+
+        obsid = numpy.squeeze( cr.get_column("OBSID").values )
+        samp = numpy.squeeze( cr.get_column("SAMP").values )
+        time = numpy.squeeze( cr.get_column("TIME").values )
+        u = numpy.squeeze( cr.get_column("XRU").values )
+        v = numpy.squeeze( cr.get_column("YRV").values )
+        #defocus = numpy.squeeze( cr.get_column("DEFOCUS").values )
+
+        del(cr)
+
+        tab = list( zip(time,samp,u,v,obsid) )
+
+        emppsf_info = namedtuple( "emppsf_config", ["time","samp","ux","vy","obsid"] )
+        emppsf_evt = namedtuple( "emppsf_evt", ["time","ux","vy","samp"] )
+
+        info_list = [ emppsf_info(*t) for t in tab ]
+
+        bgspec_ind, ObsIDs, exptime = self.empPSF_time(tobs)
+
+
+        info_dict = { str(o) : (emppsf_evt(*zip(*[ (info.time, info.ux, info.vy, info.samp)
+                                                  for info in info_list if info.obsid == o ])),
+                                exposure)
+                     for o,exposure in zip(ObsIDs,exptime) }
+
+
+        if self.bkgsubtract:
+            bg_samp_spec_dict = self.bgspec(bgspec_ind, ObsIDs)
+
+            for o in ObsIDs:
+                bgsamp, bgcts = bg_samp_spec_dict[str(o)]
+                info, exposure = info_dict[str(o)]
+                ux, vy, samp, time = self.bkg_subtract(info, bgcts, bgsamp, seed=self.seed)
+
+                info_dict[str(o)] = ( emppsf_evt(*zip( [time, ux, vy, samp] )), exposure )
+
+        return info_dict
+
+
+    def build_multi_emppsf_table(self, instrument: str, info_dict: dict):
+
+        ds = pcr.CrateDataset()
+
+        for obsid,(info,exposure) in info_dict.items():
+            time = info.time
+            u = info.ux
+            v = info.vy
+            samp = info.samp
+
+            blkname = f"ObsID-{obsid}"
+            cr_tab = pcr.TABLECrate()
+            cr_tab.name = blkname
+
+            cr_time = pcr.CrateData()
+            cr_u = pcr.CrateData()
+            cr_v = pcr.CrateData()
+            cr_samp = pcr.CrateData()
+
+            cr_time.values = time
+            cr_time.name = "time"
+            cr_time.unit = "s"
+            # cr_time._set_tlmin(min(time))
+            # cr_time._set_tlmax(max(time))
+
+            cr_u.values = u
+            cr_u.name = "XRU"
+            cr_u._set_tlmin(-256)
+            cr_u._set_tlmax(256)
+
+            cr_v.values = v
+            cr_v.name = "YRV"
+            cr_v._set_tlmin(-256)
+            cr_v._set_tlmax(256)
+
+            cr_samp.values = samp
+            cr_samp.name = "samp"
+            # cr_samp._set_tlmin(0)
+
+            cr_tab.add_column(cr_time)
+            cr_tab.add_column(cr_u)
+            cr_tab.add_column(cr_v)
+            cr_tab.add_column(cr_samp)
+
+            # crkey_tmin = pcr.CrateKey()
+            # crkey_tmax = pcr.CrateKey()
+
+            # crkey_tmin.name = "TSTART"
+            # crkey_tmax.name = "TSTOP"
+            # crkey_tmin.value = min(time)
+            # crkey_tmax.value = max(time)
+
+            # cr_tab.add_key(crkey_tmin)
+            # cr_tab.add_key(crkey_tmax)
+
+            crkey_exposure = pcr.CrateKey()
+            crkey_exposure.name = "EXPOSURE"
+            crkey_exposure.value = exposure
+            cr_tab.add_key(crkey_exposure)
+
+            crkey_bkgsub = pcr.CrateKey()
+            crkey_bkgsub.name = "BKGSUB"
+            crkey_bkgsub.value = self.bkgsubtract
+            cr_tab.add_key(crkey_bkgsub)
+
+            ds.add_crate(cr_tab)
+
+        pcr.write_dataset(ds, f"{instrument}_empPSF.fits", clobber=True, history=False)
+
+
+    def empPSF_cr(self, imgcrate: bool=True) -> pcr.imagecrate.IMAGECrate|pcr.tablecrate.TABLECrate:
+        """
+        return either a table crate or binned image crate of the PSF
+        """
+
+        cr = pcr.read_file(f"{self.evtfile}[#row=0]")
+
+        tobs = cr.get_key("MJD-OBS").value
+        instrument = cr.get_key("DETNAM").value
+
+        InfoDict = self.empPSF_tab(tobs, instrument)
+
+        if self.write_table:
+            self.build_multi_emppsf_table(instrument, InfoDict, self.bkgsubtract)
+
+        ux = numpy.concatenate( [ inf.ux for inf,_ in InfoDict.values() ], axis=None )
+        vy = numpy.concatenate( [ inf.vy for inf,_ in InfoDict.values() ], axis=None )
+
+        if not imgcrate:
+            samp = numpy.concatenate( [ inf.samp for inf,_ in InfoDict.values() ], axis=None )
+            time = numpy.concatenate( [ inf.time for inf,_ in InfoDict.values() ], axis=None )
+
+            return make_table_crate({ "pos" : numpy.array(list(zip(ux,vy))), "samp" : samp, "time" : time})
+
+        ### take the image array and turn it to an image Crate, to be written ###
+        ### out as a FITS image 'imgout'                                      ###
+
+        if instrument.upper().startswith("HRC"):
+            dn = 128
+            pixsize = 0.13175
+            ctr_x = 16384.0
+            ctr_y = 16384.0
+        else:
+            dn = 32
+            pixsize = 0.492
+            ctr_x = 4096.0
+            ctr_y = 4096.0
+
+        dn += 1
+
+        nx = numpy.ceil(dn / self.binsize)#.astype(int)
+        ny = numpy.ceil(dn / self.binsize)#.astype(int)
+        dn_lo = numpy.floor( -dn/2 ) + 0.5
+        dn_hi = numpy.ceil( dn/2 ) - 0.5
+
+        psfimg = numpy.histogram2d( vy, ux,
+                                    bins=[nx,ny],
+                                    range=[[dn_lo,dn_hi],[dn_lo,dn_hi]] )[0]
+
+        # psfimg = numpy.histogram2d( vy, ux,
+        #                             bins=[int(512/self.binsize),int(512/self.binsize)],
+        #                             range=[[-256,256],[-256,256]])[0]
+
+        imcr = make_image_crate(psfimg)
+
+        axes_kw = { "CTYPE1" : "PSFX",
+                    "CTYPE2" : "PSFY",
+                    "CUNIT1" : "deg",
+                    "CUNIT2" : "deg",
+                    "CRVAL1" : 0,
+                    "CRVAL2" : 0,
+                    "CRPIX1" : 0,
+                    "CRPIX2" : 0,
+                    "CDELT1" : Decimal(pixsize) * Decimal(180/206265/numpy.pi) * self.binsize,
+                    "CDELT2" : Decimal(pixsize) * Decimal(180/206265/numpy.pi) * self.binsize,
+                    "CTYPE1P" : "ROTSKYX",
+                    "CTYPE2P" : "ROTSKYY",
+                    "CRPIX1P" : ctr_x,
+                    "CRPIX2P" : ctr_y,
+                    "CDELT1P" : self.binsize,
+                    "CDELT2P" : self.binsize
+                   }
+
+        for key,val in axes_kw.items():
+            crkey = pcr.CrateKey()
+            crkey.name = key
+
+            if isinstance(val,Decimal):
+                crkey.value = val.__float__()
+            else:
+                crkey.value = val
+
+            imcr.add_key(crkey)
+
+        return imcr
+
+
+#################################################################################
 
 
 
@@ -86,89 +425,11 @@ def _get_roll(kwdict : dict) -> float:
     detector = kwdict["DETNAM"]
     roll = kwdict["ROLL_NOM"]
 
-    if inst == "HRC":
-        if detector == "HRC-I":
-            return roll - 45.0
-        return roll
-
-    raise IOError("HRC observations are only supported presently!")
-
-
-
-# def _get_samp_range(evt : str) -> tuple[int,int]:
-#     cr = read_file(f"{evt}[cols SAMP]")
-#     samp = cr.SAMP.values
-#     del cr
-#
-#     return min(samp), max(samp)
-
-
-
-def _get_samp_range(evt : str) -> tuple[Decimal,Decimal]:
-    stats = make_tool("dmstat")
-
-    stats.punlearn()
-    stats.infile = f"{evt}[cols SAMP]"
-    stats.centroid = False
-    stats.sigma = False
-    stats.verbose = 0
-    stats()
-
-    return Decimal(stats.out_min), Decimal(stats.out_max)
-
-
-
-def _find_emp_PSF_file(evt : str, kwdict : dict) -> str:
-
-    hrc_config  = namedtuple("hrcconfig",["hrcs","hrci"])
-    samp_config = namedtuple("sampconfig",["samp16_300","samp300"])
-
-    samp_dict = { "2000-2005" : hrc_config(samp_config("empPSF_sARLac_v2025_2000-2005_s15.fits",
-                                                       "empPSF_sARLac_v2025_2000-2016.fits"),
-                                           samp_config("empPSF_iARLac_v2025_2000-2005_s15.fits",
-                                                       "empPSF_iARLac_v2025_2000-2005.fits")
-                                           ),
-                  "2006-2016" : hrc_config(samp_config("empPSF_sARLac_v2025_2006-2016_s15.fits",
-                                                       "empPSF_sARLac_v2025_2006-2016.fits"),
-                                           samp_config("empPSF_iARLac_v2025_2006-2016_s15.fits",
-                                                       "empPSF_iARLac_v2025_2006-2016.fits")
-                                           ),
-                  "2017-2025" : hrc_config(samp_config("empPSF_sARLac_v2025_2017-2025_s15.fits",
-                                                       "empPSF_sARLac_v2025_2017-2025.fits"),
-                                           samp_config("empPSF_iARLac_v2025_2017-2025_s15.fits",
-                                                       "empPSF_iARLac_v2025_2017-2025.fits")
-                                           )
-                }
-
-    inst = kwdict["INSTRUME"]
-    detector = kwdict["DETNAM"]
-
-    date_obs = datetime.strptime(kwdict["DATE-OBS"], "%Y-%m-%dT%H:%M:%S")
-    year = date_obs.year
+    dtheta = { "HRC-I" : 45.0,
+               "HRC-S" : 0 }
 
     if inst == "HRC":
-        if year <= 2005:
-            D = samp_dict["2000-2005"]
-        elif year >= 2017:
-            D = samp_dict["2017-2025"]
-        else:
-            D = samp_dict["2006-2016"]
-
-        if detector == "HRC-I":
-            d = D.hrci
-        else:
-            d = D.hrcs
-            raise IOError("Only HRC-I observations are presently supported!")
-
-        samp_min, samp_max = _get_samp_range(evt)
-
-        if samp_max <= 300:
-            if samp_min < 16:
-                return d.samp300
-
-            return d.samp16_300
-
-        raise IOError("Empirical PSFs do not support SAMP values >300.  Please apply a SAMP filter.")
+        return roll - dtheta[detector]
 
     raise IOError("HRC observations are only supported presently!")
 
@@ -192,8 +453,10 @@ def check_offaxis_angle(evt : str, skyx : float, skyy : float):
 
     offaxis = coords.theta
 
-    if offaxis > (offaxis_limit := 0.5):
-        raise IOError(f"The empirical PSFs are usable for point sources with an off-axis angle less than {offaxis_limit} arcmin from the aimpoint.  The source position provided is {offaxis} arcmin off-axis.")
+    if offaxis > ( offaxis_limit := 0.5 ):
+        raise IOError(f"The empirical PSFs are usable for point sources with an off-axis \
+ angle less than {offaxis_limit} arcmin from the aimpoint.  The source position provided \
+ is {offaxis} arcmin off-axis.")
 
 
 
@@ -302,19 +565,22 @@ def get_par(argv) -> tuple[dict,dict]:
     pars: dict = {}
     orig_pars: dict = {}
 
-    pars["evt"] = orig_pars["evtfile"] = paramio.pgetstr(pfile, "evtfile")
-    pars["outpsf"] = orig_pars["outpsf"] =  paramio.pgetstr(pfile, "outpsf")
-    pars["outimg"] = orig_pars["outimg"] =  paramio.pgetstr(pfile, "outimg")
-    pars["outdeconv"] = orig_pars["outdeconv"] = paramio.pgetstr(pfile, "outdeconv")
-    pars["src_skyx"] = orig_pars["src_x"] = paramio.pgetd(pfile, "src_x")
-    pars["src_skyy"] = orig_pars["src_y"] = paramio.pgetd(pfile, "src_y")
-    pars["samp_range"] = orig_pars["samp"] = paramio.pgetstr(pfile, "samp")
-    pars["arestore_niter"] = orig_pars["deconv_niter"] = paramio.pgetd(pfile, "deconv_niter")
-    pars["tmpdir"] = orig_pars["tmpdir"] = paramio.pgetstr(pfile,"tmpdir")
-    pars["verbose"] = orig_pars["verbose"] = paramio.pgeti(pfile, "verbose")
-    pars["clobber"] = orig_pars["clobber"] = paramio.pgetstr(pfile, "clobber")
+    pars["evt"] = orig_pars["evtfile"] = pio.pgetstr(pfile, "evtfile")
+    pars["outpsf"] = orig_pars["outpsf"] =  pio.pgetstr(pfile, "outpsf")
+    pars["outimg"] = orig_pars["outimg"] =  pio.pgetstr(pfile, "outimg")
+    pars["outdeconv"] = orig_pars["outdeconv"] = pio.pgetstr(pfile, "outdeconv")
+    pars["src_skyx"] = orig_pars["src_x"] = pio.pgetd(pfile, "src_x")
+    pars["src_skyy"] = orig_pars["src_y"] = pio.pgetd(pfile, "src_y")
+    pars["samp_range"] = orig_pars["samp"] = pio.pgetstr(pfile, "samp")
+    pars["arestore_niter"] = orig_pars["deconv_niter"] = pio.pgetd(pfile, "deconv_niter")
+    pars["binsize"] = orig_pars["binsize"] = pio.pgetd(pfile, "binsize")
+    pars["bkgsubtract"] = orig_pars["bkgsubtract"] = pio.pgetstr(pfile, "bkgsubtract")
+    pars["random_seed"] = orig_pars["random_seed"] = pio.pgeti(pfile, "random_seed")
+    pars["tmpdir"] = orig_pars["tmpdir"] = pio.pgetstr(pfile,"tmpdir")
+    pars["verbose"] = orig_pars["verbose"] = pio.pgeti(pfile, "verbose")
+    pars["clobber"] = orig_pars["clobber"] = pio.pgetstr(pfile, "clobber")
 
-    paramio.paramclose(pfile)
+    pio.paramclose(pfile)
 
     ################################
     ##
@@ -345,6 +611,12 @@ def get_par(argv) -> tuple[dict,dict]:
         # check if output directory is writable
         fileio.validate_outdir(outdir)
 
+    for arg in ("bkgsubtract", "clobber"):
+        if pars[arg].lower() == "yes":
+            pars[arg] = True
+        else:
+            pars[arg] = False
+
     # print script info #
     set_verbosity(pars["verbose"])
     utils.print_version(__toolname__, __revision__)
@@ -357,28 +629,44 @@ def get_par(argv) -> tuple[dict,dict]:
 
 @handle_ciao_errors(__toolname__, __revision__)
 def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
-         src_skyx : float|int, src_skyy : float|int, samp_range : str="16:300", arestore_niter : int=50,
+         src_skyx : float|int, src_skyy : float|int,
+         binsize : int|float=1,
+         samp_range : str="16:300",
+         bkgsubtract : bool=True, random_seed: None|int=None,
+         arestore_niter : int=50,
          tmpdir : str=os.getenv("ASCDS_WORK_PATH"), clobber : bool=True, verbose : int=0):
 
-    with new_pfiles_environment(ardlib=False):
+    with new_pfiles_environment(ardlib=False), \
+         tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".psf") as psf:
+
         check_offaxis_angle(evt, src_skyx, src_skyy)
 
         evt_kw = fileio.get_keys_from_file(f"{evt}[#row=0]")
-        psf = _find_emp_PSF_file(f"{evt}[samp={samp_range}]", evt_kw)
 
-        psf = f"{os.getenv('ASCDS_INSTALL')}/data/empPSF/{psf}"
+        binsize = round(Decimal(binsize), 3)
 
-        _grid, binval, _xrng, _yrng, (nx,ny) = utils.parse_xygrid(psf)
+        # psf = _find_emp_PSF_file(f"{evt}[samp={samp_range}]", evt_kw)
+        # psf = f"{os.getenv('ASCDS_INSTALL')}/data/empPSF/{psf}"
 
-        binsize = round(Decimal(binval), 3)
+        #imcr = EmpiricalPSF(evtfile=evt, write_table=False, binsize=0.2, bkgsubtract=True).empPSF_img(imgcrate=True)
+        #tabcr = EmpiricalPSF(evtfile=evt, write_table=False, binsize=0.2, bkgsubtract=True).empPSF_img(imgcrate=False)
+
+        psf_imcr = EmpiricalPSF(evtfile=evt, write_table=False,
+                                binsize=binsize, bkgsubtract=True).empPSF_cr(imgcrate=True)
+
+        pcr.write_file(psf_imcr, psf.name, clobber=True)
+
+
+        _grid, binval, _xrng, _yrng, (nx,ny) = utils.parse_xygrid(psf.name)
+        #binsize = round(Decimal(binval), 3)
 
         if nx % 2. != 0:
-            ximg = math.ceil(nx/2.) + 0.5
+            ximg = numpy.ceil(nx/2.) - 0.5
         else:
             ximg = nx/2.
 
         if ny % 2. != 0:
-            yimg = math.ceil(ny/2.) + 0.5
+            yimg = numpy.ceil(ny/2.) - 0.5
         else:
             yimg = ny/2.
 
@@ -386,7 +674,7 @@ def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
 
         cut_img(evt, outimg, src_skyx, src_skyy, binsize, nx, ny, samp_range, tmpdir)
 
-        roll_psf(psf, outpsf, outimg, roll=psfroll, ximg_center=ximg, yimg_center=yimg,
+        roll_psf(psf.name, outpsf, outimg, roll=psfroll, ximg_center=ximg, yimg_center=yimg,
                  tmpdir=tmpdir, clobber=clobber, verbose=verbose)
 
         if outdeconv != "":
@@ -404,4 +692,3 @@ if __name__ == "__main__":
 
         if fn != "":
             add_tool_history(fn, __toolname__, orig_pars)
-
