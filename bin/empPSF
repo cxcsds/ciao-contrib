@@ -9,23 +9,21 @@ __revision__ = "28 October 2026"
 import os
 import sys
 import tempfile
-
-import numpy
-
 from decimal import Decimal
 from collections import namedtuple
 from operator import itemgetter
-from datetime import datetime
+
+import numpy
 
 import pycrates as pcr
-import region
-from ciao_contrib.proptools import dates
-from crates_contrib.utils import make_image_crate, smooth_image_crate, make_table_crate
+from crates_contrib.utils import make_image_crate, make_table_crate, smooth_image_crate
 
 import paramio as pio
-from ciao_contrib.param_wrapper import open_param_file
-from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, handle_ciao_errors, preprocess_arglist
 
+from ciao_contrib.param_wrapper import open_param_file
+from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, \
+     handle_ciao_errors, preprocess_arglist
+from ciao_contrib.proptools import dates
 from ciao_contrib.runtool import make_tool, new_pfiles_environment, add_tool_history
 from ciao_contrib._tools import fileio, utils
 
@@ -42,6 +40,14 @@ v2 = make_verbose_level(__toolname__, 2)
 v3 = make_verbose_level(__toolname__, 3)
 v4 = make_verbose_level(__toolname__, 4)
 v5 = make_verbose_level(__toolname__, 5)
+
+
+
+def _ceildiv(a, b):
+    if isinstance(c := -(a // -b), Decimal):
+        return int(c)
+
+    return c
 
 
 
@@ -64,14 +70,17 @@ class EmpiricalPSF:
     """
     def __init__(self, evtfile: str, write_table: bool = False,
                  binsize: float|int = 1,
+                 samp_range: str=":300",
                  #empPSFout: str = "",
                  tbl_fn: str = "empPSF_hrci_tsxyo_2026aug.fits",
-                 bkgsubtract: bool = True, seed: None|int = None):
+                 bkgsubtract: bool = True,
+                 seed: None|int = None):
 
         self.evtfile = evtfile
         self.write_table = write_table
         self.binsize = binsize
         #self.empPSFout = empPSFout
+        self.samp = samp_range
         self.tbl_fn = f"{os.getenv('ASCDS_INSTALL')}/data/empPSF/{tbl_fn}"
         self.bkgsubtract = bkgsubtract
         self.seed = seed
@@ -107,7 +116,7 @@ class EmpiricalPSF:
         return None
 
 
-    def tbounds(self, time: float):
+    def _tbounds(self, time: float):
         """
         'time' is in MJD
 
@@ -121,7 +130,7 @@ class EmpiricalPSF:
         # else:
         #     epoch2 = { "start" : "2006-01-01T00:00:00", "stop" : "2016-12-31T00:00:00" }
 
-        dT1, dT2, dT3 = self._timedef(dT=True)
+        dT1, _dT2, dT3 = self._timedef(dT=True)
 
         if dT1["start"] <= time < dT1["stop"]:
             return "epoch1"
@@ -132,7 +141,7 @@ class EmpiricalPSF:
         return "epoch2"
 
 
-    def empPSF_time( self, timeobs: float ):
+    def _empPSF_time( self, timeobs: float ):
         """
         return indicies (used for background spectra), ObsIDs for the epoch and exposure
         time of each ObsID of interest.
@@ -141,19 +150,17 @@ class EmpiricalPSF:
         cr = pcr.read_file( f"{self.tbl_fn}[3]" )
 
         obsid = numpy.squeeze(cr.get_column("OBSID").values)
-        #tstart = numpy.squeeze(cr.get_column("TSTART").values)
         dateobs = numpy.squeeze(cr.get_column("DATEOBS").values)
-        #yearobs = numpy.squeeze(cr.get_column("YEAROBS").values)
         exposure = numpy.squeeze(cr.get_column("EXPOSURE").values)
-        #exp_cumulative = numpy.squeeze( cr.get_column("CUMULATIVE_EXPOSURE").values)
 
-        del(cr)
+        del cr
+
 
         dT1, dT2, dT3 = self._timedef(dT=True) # in MJD; time = MJD-OBS keyword
 
         dateobs_mjd = ( dates(d, fromcal="GREG", tocal="MJD") for d in dateobs )
 
-        match self.tbounds(timeobs):
+        match self._tbounds(timeobs):
             case "epoch1":
                 ind = [ n for n,t in enumerate(dateobs_mjd) if dT1["start"] <= t < dT1["stop"] ]
             case "epoch2":
@@ -171,78 +178,86 @@ class EmpiricalPSF:
         note that the background spectrum are in units of counts/pixel
         """
 
+        samp_lo, samp_hi = self.samp.split(":")
+
+        if samp_lo == "":
+            samp_lo = 0
+
         cr_bkg = pcr.read_file( f"{self.tbl_fn}[4]" )
         bkgspec = cr_bkg.get_image().values.T
 
-        bgspec = { str(obs) : zip( *[(samp,spec) for samp,spec in enumerate( bkgspec[ind] )] )
-                   for ind,obs in zip(indicies,obsids) }
+        bgspec = { str(obs) : zip( *[(samp,spec) for samp,spec in enumerate( bkgspec[ind] )
+                                     if int(samp_lo) <= samp < int(samp_hi) ] )
+                  for ind,obs in zip(indicies,obsids)
+                  }
 
         return bgspec
 
 
     def bkg_subtract(self, info: namedtuple,
-                     bgcts: list|tuple, bgsamp: list|tuple,
+                     bgcts: list|tuple, bgsamp_arr: list|tuple,
                      npix: int = 512**2, seed : int|None = None):
 
-        samp = info.samp
+        if isinstance(seed, int) and seed <= 0:
+            seed = None
+
+        rng = numpy.random.default_rng(seed)
 
         ## get distribution of SAMP values from the observed data sets ##
-        src_cts, _ = numpy.histogram( samp, bins=range(len(bgsamp) + 1) )
+        samp_edge_lower = set(bgsamp_arr)
+        samp_edge_upper = set(numpy.array(bgsamp_arr) + 1)
+        samp_edges = samp_edge_lower.union(samp_edge_upper)
+
+        src_cts, _ = numpy.histogram( info.samp, bins=tuple(samp_edges), #bins=len(bgsamp_arr),
+                                      range=( min(samp_edge_lower), max(samp_edge_upper) ) )
 
         bg_cts = numpy.ceil(npix * numpy.array(bgcts)).astype(int)
 
         cts = src_cts - bg_cts
         cts[ cts<0 ] = 0
 
-
-        if isinstance(seed,int) and seed <= 0:
-            seed = None
-
-        rng = numpy.random.default_rng(seed)
-
-        #evt = zip( *[info.ux, info.vy, samp, info.time] )
-        #evt = [(x,y,s,t) for x,y,s,t in evt]
-        evt = list( zip( *[info.ux, info.vy, samp, info.time] ) )
+        evt = list( zip( *[info.ux, info.vy, info.samp, info.time] ) )
 
         evt_bkgsub = []
 
-        for samp_edge,n in zip(bgsamp, cts):
+        for samp_edge,n in zip(bgsamp_arr, cts):
             e = [ (x,y,s,t) for x,y,s,t in evt if samp_edge <= s < samp_edge + 1 ]
 
             if n > 0:
                 evt_bkgsub.extend( rng.choice(e, size=n) )
 
-        ux, vy, samp, time = zip(*sorted(evt_bkgsub, key=itemgetter(-1)))
+        ux, vy, samp, time = zip( *sorted(evt_bkgsub, key=itemgetter(-1)) ) # sort by time, the last column
 
         return ux, vy, samp, time
 
 
-    def empPSF_tab(self, tobs: float, instrument: str = "HRC-I"):
+    def empPSF_tab(self, tobs: float, instrument: str = "HRC-I", samp_range : str=":300"):
 
-        cr = pcr.read_file( f"{self.tbl_fn}[2][samp<300]" )
+        emppsf_info = namedtuple( "emppsf_config", ["time","samp","ux","vy","obsid"] )
+        emppsf_evt = namedtuple( "emppsf_evt", ["time","ux","vy","samp"] )
+
+        bgspec_ind, ObsIDs, exptime = self._empPSF_time(tobs)
+
+        cr = pcr.read_file( f"{self.tbl_fn}[2][samp={samp_range}]" )
 
         obsid = numpy.squeeze( cr.get_column("OBSID").values )
         samp = numpy.squeeze( cr.get_column("SAMP").values )
         time = numpy.squeeze( cr.get_column("TIME").values )
         u = numpy.squeeze( cr.get_column("XRU").values )
         v = numpy.squeeze( cr.get_column("YRV").values )
-        #defocus = numpy.squeeze( cr.get_column("DEFOCUS").values )
 
-        del(cr)
+        del cr
+
 
         tab = list( zip(time,samp,u,v,obsid) )
-
-        emppsf_info = namedtuple( "emppsf_config", ["time","samp","ux","vy","obsid"] )
-        emppsf_evt = namedtuple( "emppsf_evt", ["time","ux","vy","samp"] )
-
         info_list = [ emppsf_info(*t) for t in tab ]
 
-        bgspec_ind, ObsIDs, exptime = self.empPSF_time(tobs)
 
-
-        info_dict = { str(o) : (emppsf_evt(*zip(*[ (info.time, info.ux, info.vy, info.samp)
-                                                  for info in info_list if info.obsid == o ])),
-                                exposure)
+        info_dict = { str(o) : ( emppsf_evt(*zip(*[ (info.time, info.ux, info.vy, info.samp)
+                                                   for info in info_list if info.obsid == o ]
+                                                 )
+                                           ),
+                                 exposure )
                      for o,exposure in zip(ObsIDs,exptime) }
 
 
@@ -339,7 +354,7 @@ class EmpiricalPSF:
         tobs = cr.get_key("MJD-OBS").value
         instrument = cr.get_key("DETNAM").value
 
-        InfoDict = self.empPSF_tab(tobs, instrument)
+        InfoDict = self.empPSF_tab(tobs, instrument, self.samp)
 
         if self.write_table:
             self.build_multi_emppsf_table(instrument, InfoDict, self.bkgsubtract)
@@ -367,14 +382,15 @@ class EmpiricalPSF:
             ctr_x = 4096.0
             ctr_y = 4096.0
 
-        dn += 1
+        if dn % 2 == 0:
+            dn += 1
 
-        nx = numpy.ceil(dn / self.binsize)#.astype(int)
-        ny = numpy.ceil(dn / self.binsize)#.astype(int)
-        dn_lo = numpy.floor( -dn/2 ) + 0.5
-        dn_hi = numpy.ceil( dn/2 ) - 0.5
+        nx = _ceildiv(dn, self.binsize) #int(numpy.ceil(dn / self.binsize))
+        ny = _ceildiv(dn, self.binsize) #int(numpy.ceil(dn / self.binsize))
+        dn_lo = -dn//2 + float( self.binsize/2 ) #numpy.floor( -dn/2 ) + float( self.binsize/2 )
+        dn_hi = _ceildiv(dn, 2) - float( self.binsize/2 ) #numpy.ceil( dn/2 ) - float( self.binsize/2 )
 
-        psfimg = numpy.histogram2d( vy, ux,
+        psfimg = numpy.histogram2d( ux, vy,
                                     bins=[nx,ny],
                                     range=[[dn_lo,dn_hi],[dn_lo,dn_hi]] )[0]
 
@@ -382,7 +398,7 @@ class EmpiricalPSF:
         #                             bins=[int(512/self.binsize),int(512/self.binsize)],
         #                             range=[[-256,256],[-256,256]])[0]
 
-        imcr = make_image_crate(psfimg)
+        imcr = make_image_crate( psfimg.T )
 
         axes_kw = { "CTYPE1" : "PSFX",
                     "CTYPE2" : "PSFY",
@@ -406,7 +422,7 @@ class EmpiricalPSF:
             crkey = pcr.CrateKey()
             crkey.name = key
 
-            if isinstance(val,Decimal):
+            if isinstance(val, Decimal):
                 crkey.value = val.__float__()
             else:
                 crkey.value = val
@@ -416,7 +432,12 @@ class EmpiricalPSF:
         return imcr
 
 
-#################################################################################
+
+#########################################################################
+#
+#  match roll and apply coordinates of the observation
+#
+##########################################################################
 
 
 
@@ -544,7 +565,6 @@ def image_deconvolve(imgfile : str, psfimg : str, deconvimg : str,
 
 
 
-
 ##########################################################################
 #
 #  Parameter related tasks
@@ -592,30 +612,45 @@ def get_par(argv) -> tuple[dict,dict]:
     if pars["evt"] == "":
         raise ScriptError("Input event file must be specified.")
 
+
     # output file name
     if pars["outpsf"] == "":
         raise ScriptError("Please specify an output PSF image file name.")
 
+
     if pars["outimg"] == "":
         raise ScriptError("Please specify an output counts image file name.")
 
-    for arg in ("outpsf", "outimg", "outdeconv"):
 
-        path = pars[arg]
+    for par in ("outpsf", "outimg", "outdeconv"):
+
+        path = pars[par]
 
         outdir,outfile = utils.split_outroot(path)
 
         if outdir != "" and outfile == "":
-            raise ScriptError(f"An output file name must be specified by the '{arg}' path!")
+            raise ScriptError(f"An output file name must be specified by the '{par}' path!")
 
         # check if output directory is writable
         fileio.validate_outdir(outdir)
 
-    for arg in ("bkgsubtract", "clobber"):
-        if pars[arg].lower() == "yes":
-            pars[arg] = True
+
+    for par in ("bkgsubtract", "clobber"):
+        if pars[par].lower() == "yes":
+            pars[par] = True
         else:
-            pars[arg] = False
+            pars[par] = False
+
+
+    if ":" not in pars["samp_range"]:
+        raise IOError("'samp' parameter requires specifying a range using colon-separation, ':'")
+
+    _samp_lo, _samp_hi = pars["samp_range"].split(":")
+    if _samp_lo != "" and Decimal(_samp_lo) < 0:
+        raise IOError("The 'samp' lower-bound cannot be a negative value.")
+    if Decimal(_samp_hi) > 300:
+        raise IOError("The 'samp' upper-bound value cannot be greater than 300.")
+
 
     # print script info #
     set_verbosity(pars["verbose"])
@@ -652,21 +687,22 @@ def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
         #tabcr = EmpiricalPSF(evtfile=evt, write_table=False, binsize=0.2, bkgsubtract=True).empPSF_img(imgcrate=False)
 
         psf_imcr = EmpiricalPSF(evtfile=evt, write_table=False,
-                                binsize=binsize, bkgsubtract=True).empPSF_cr(imgcrate=True)
+                                binsize=binsize, samp_range = samp_range,
+                                bkgsubtract=bkgsubtract, seed=random_seed).empPSF_cr(imgcrate=True)
 
         pcr.write_file(psf_imcr, psf.name, clobber=True)
 
 
-        _grid, binval, _xrng, _yrng, (nx,ny) = utils.parse_xygrid(psf.name)
-        #binsize = round(Decimal(binval), 3)
+        _grid, _binval, _xrng, _yrng, (nx,ny) = utils.parse_xygrid(psf.name)
+        #binsize = round(Decimal(_binval), 3)
 
         if nx % 2. != 0:
-            ximg = numpy.ceil(nx/2.) - 0.5
+            ximg = _ceildiv(nx, 2) - 0.5
         else:
             ximg = nx/2.
 
         if ny % 2. != 0:
-            yimg = numpy.ceil(ny/2.) - 0.5
+            yimg = _ceildiv(ny, 2) - 0.5
         else:
             yimg = ny/2.
 
@@ -684,11 +720,11 @@ def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
 
 
 if __name__ == "__main__":
-    params,orig_pars = get_par( preprocess_arglist(sys.argv) )
+    params,orig_params = get_par( preprocess_arglist(sys.argv) )
     doit(**params)
 
     for arg in ("outpsf", "outimg", "outdeconv"):
         fn = params[arg]
 
         if fn != "":
-            add_tool_history(fn, __toolname__, orig_pars)
+            add_tool_history(fn, __toolname__, orig_params)
