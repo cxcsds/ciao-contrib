@@ -16,7 +16,7 @@ from operator import itemgetter
 import numpy
 
 import pycrates as pcr
-from crates_contrib.utils import make_image_crate, make_table_crate, smooth_image_crate
+from crates_contrib.utils import make_image_crate, make_table_crate #, smooth_image_crate
 
 import paramio as pio
 
@@ -44,10 +44,7 @@ v5 = make_verbose_level(__toolname__, 5)
 
 
 def _ceildiv(a, b):
-    if isinstance(c := -(a // -b), Decimal):
-        return int(c)
-
-    return c
+    return int( -(a // -b) )
 
 
 
@@ -71,7 +68,7 @@ class EmpiricalPSF:
     def __init__(self, evtfile: str, write_table: bool = False,
                  binsize: float|int = 1,
                  samp_range: str=":300",
-                 #empPSFout: str = "",
+                 empPSFout: str|None = None,
                  tbl_fn: str = "empPSF_hrci_tsxyo_2026aug.fits",
                  bkgsubtract: bool = True,
                  seed: None|int = None):
@@ -79,7 +76,7 @@ class EmpiricalPSF:
         self.evtfile = evtfile
         self.write_table = write_table
         self.binsize = binsize
-        #self.empPSFout = empPSFout
+        self.empPSFout = empPSFout
         self.samp = samp_range
         self.tbl_fn = f"{os.getenv('ASCDS_INSTALL')}/data/empPSF/{tbl_fn}"
         self.bkgsubtract = bkgsubtract
@@ -197,6 +194,9 @@ class EmpiricalPSF:
     def bkg_subtract(self, info: namedtuple,
                      bgcts: list|tuple, bgsamp_arr: list|tuple,
                      npix: int = 512**2, seed : int|None = None):
+        """
+        return event attributes after a set of events has been sampled
+        """
 
         if isinstance(seed, int) and seed <= 0:
             seed = None
@@ -226,12 +226,16 @@ class EmpiricalPSF:
             if n > 0:
                 evt_bkgsub.extend( rng.choice(e, size=n) )
 
-        ux, vy, samp, time = zip( *sorted(evt_bkgsub, key=itemgetter(-1)) ) # sort by time, the last column
+        ux, vy, samp, time = zip( *sorted(evt_bkgsub, key=itemgetter(-1)) ) ## sort by time, the last column ##
 
         return ux, vy, samp, time
 
 
     def empPSF_tab(self, tobs: float, instrument: str = "HRC-I", samp_range : str=":300"):
+        """
+        return a dictionary of tuples with events defined by a named tuple and
+        the exposure time for a given ObsID
+        """
 
         emppsf_info = namedtuple( "emppsf_config", ["time","samp","ux","vy","obsid"] )
         emppsf_evt = namedtuple( "emppsf_evt", ["time","ux","vy","samp"] )
@@ -275,6 +279,18 @@ class EmpiricalPSF:
 
 
     def build_multi_emppsf_table(self, instrument: str, info_dict: dict):
+        """
+        write out FITS table of filtered events in detector coordinates,
+        a separate ObsID per block/HDU.
+        """
+
+        if self.empPSFout is None:
+            _empPSFout = ""
+        elif isinstance(self.empPSFout, str) and not self.empPSFout.endswith("_"):
+            _empPSFout = f"{self.empPSFout}_"
+        else:
+            _empPSFout = self.empPSFout
+
 
         ds = pcr.CrateDataset()
 
@@ -341,12 +357,12 @@ class EmpiricalPSF:
 
             ds.add_crate(cr_tab)
 
-        pcr.write_dataset(ds, f"{instrument}_empPSF.fits", clobber=True, history=False)
+        pcr.write_dataset(ds, f"{_empPSFout}{instrument}_empPSF.fits", clobber=True, history=False)
 
 
     def empPSF_cr(self, imgcrate: bool=True) -> pcr.imagecrate.IMAGECrate|pcr.tablecrate.TABLECrate:
         """
-        return either a table crate or binned image crate of the PSF
+        return either a binned image crate or table crate of the PSF
         """
 
         cr = pcr.read_file(f"{self.evtfile}[#row=0]")
@@ -442,6 +458,10 @@ class EmpiricalPSF:
 
 
 def _get_roll(kwdict : dict) -> float:
+    """
+    get observation roll angle and determine rotation
+    angle for detector PSF in degrees
+    """
     inst = kwdict["INSTRUME"]
     detector = kwdict["DETNAM"]
     roll = kwdict["ROLL_NOM"]
@@ -481,10 +501,41 @@ def check_offaxis_angle(evt : str, skyx : float, skyy : float):
 
 
 
+def cut_img(evt : str, outimg : str,
+            skyx_ctr : float, skyy_ctr : float, binsize : float,
+            nx : int, ny : int, samp : str=":300", tmpdir : str=os.getenv("ASCDS_WORK_PATH")):
+    """
+    bin image from observed event file to match the corresponding binned PSF image.
+    """
+
+    dmcp = make_tool("dmcopy")
+
+    x = binsize * round( Decimal(skyx_ctr)/binsize )
+    y = binsize * round( Decimal(skyy_ctr)/binsize )
+
+    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp:
+        dmcp.punlearn()
+
+        dmcp.verbose = 0
+        dmcp.clobber = True
+
+        dmcp.infile = f"{evt}[sky=box({x},{y},{nx},{ny}),samp={samp}][bin sky={binsize}]"
+        dmcp.outfile = tmp.name
+        dmcp()
+
+        dmcp.infile = f"{tmp.name}[sky=box({x},{y},{binsize*nx},{binsize*ny})]"
+        dmcp.outfile = outimg
+        dmcp()
+
+
+
 def roll_psf(psf : str, outpsf : str, wcsimg : str, roll : float,
              ximg_center : float|int, yimg_center : float|int,
              regrid_res: int = 10, tmpdir : str=os.getenv("ASCDS_WORK_PATH"),
              clobber : bool = True, verbose : int=0):
+    """
+    rotate PSF image and match coordinates with the observed data set.
+    """
 
     regrid2 = make_tool("dmregrid2")
     imgcalc = make_tool("dmimgcalc")
@@ -519,34 +570,13 @@ def roll_psf(psf : str, outpsf : str, wcsimg : str, roll : float,
 
 
 
-def cut_img(evt : str, outimg : str,
-            skyx_ctr : float, skyy_ctr : float, binsize : float,
-            nx : int, ny : int, samp : str=":300", tmpdir : str=os.getenv("ASCDS_WORK_PATH")):
-
-    dmcp = make_tool("dmcopy")
-
-    x = binsize * round( Decimal(skyx_ctr)/binsize )
-    y = binsize * round( Decimal(skyy_ctr)/binsize )
-
-    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp:
-        dmcp.punlearn()
-
-        dmcp.verbose = 0
-        dmcp.clobber = True
-
-        dmcp.infile = f"{evt}[sky=box({x},{y},{nx},{ny}),samp={samp}][bin sky={binsize}]"
-        dmcp.outfile = tmp.name
-        dmcp()
-
-        dmcp.infile = f"{tmp.name}[sky=box({x},{y},{binsize*nx},{binsize*ny})]"
-        dmcp.outfile = outimg
-        dmcp()
-
-
-
 def image_deconvolve(imgfile : str, psfimg : str, deconvimg : str,
                      x_img : int|float, y_img : int|float, niter : int=10,
                      verbose : int=0, clobber : bool=True):
+    """
+    deconvolve observed image with the PSF using Richardson-Lucy
+    algorithm via 'arestore'
+    """
 
     arestore = make_tool("arestore")
 
@@ -646,6 +676,7 @@ def get_par(argv) -> tuple[dict,dict]:
         raise IOError("'samp' parameter requires specifying a range using colon-separation, ':'")
 
     _samp_lo, _samp_hi = pars["samp_range"].split(":")
+
     if _samp_lo != "" and Decimal(_samp_lo) < 0:
         raise IOError("The 'samp' lower-bound cannot be a negative value.")
     if Decimal(_samp_hi) > 300:
@@ -680,11 +711,6 @@ def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
 
         binsize = round(Decimal(binsize), 3)
 
-        # psf = _find_emp_PSF_file(f"{evt}[samp={samp_range}]", evt_kw)
-        # psf = f"{os.getenv('ASCDS_INSTALL')}/data/empPSF/{psf}"
-
-        #imcr = EmpiricalPSF(evtfile=evt, write_table=False, binsize=0.2, bkgsubtract=True).empPSF_img(imgcrate=True)
-        #tabcr = EmpiricalPSF(evtfile=evt, write_table=False, binsize=0.2, bkgsubtract=True).empPSF_img(imgcrate=False)
 
         psf_imcr = EmpiricalPSF(evtfile=evt, write_table=False,
                                 binsize=binsize, samp_range = samp_range,
