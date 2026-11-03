@@ -155,7 +155,8 @@ Warm pixel at CCD (row,col) = (-9,18)	 Dark current (e-) = 215.0
         <DESC>
           <PARA>
 	    This parameter affects the way in which warm pixels are
-	    detected.  
+	    detected: a pixel must have at least min_dark_meas
+	    dark current measurements for it to be checked.
           </PARA>
         </DESC>
       </PARAM>
@@ -190,6 +191,14 @@ Warm pixel at CCD (row,col) = (-9,18)	 Dark current (e-) = 215.0
         <SYNOPSIS>
 	  Maximum possible dither motion (pixels)
         </SYNOPSIS>
+        <DESC>
+          <PARA>
+	    The maximum distance, in ACA pixels, that the monitor
+	    window moves from its initial position. The tool exits
+	    with an error, giving the value to use, if the window
+	    moves further than this.
+          </PARA>
+        </DESC>
       </PARAM>
 
       <PARAM name="verbose" type="integer" def="0" min="0" max="5">
@@ -273,6 +282,20 @@ Warm pixel at CCD (row,col) = (-9,18)	 Dark current (e-) = 215.0
 
     </ADESC>
 
+    <ADESC title="Changes in the scripts 4.19.0 release">
+      <PARA>
+        The count_rate column is no longer clipped to a minimum of
+        10 e-/s; this limit now only applies when calculating the mag
+        column. Warm pixels now need at least min_dark_meas
+        measurements, rather than more than min_dark_meas, to be
+        checked. The tool now exits with an error if the monitor
+        window moves further than max_dither_motion pixels, rather
+        than using incorrect dark current values. The script has
+        also been updated to use NumPy array operations, which
+        makes it significantly faster.
+      </PARA>
+    </ADESC>
+
     <ADESC title="Changes in 4.8.4 (September 2016)">
       <PARA>
         Internal changes only to support future changes in NumPy array
@@ -290,7 +313,7 @@ Warm pixel at CCD (row,col) = (-9,18)	 Dark current (e-) = 215.0
       </PARA>
     </BUGS>
 
-    <LASTMODIFIED>December 2023</LASTMODIFIED>
+    <LASTMODIFIED>October 2026</LASTMODIFIED>
   </ENTRY>
 </cxchelptopics>
 
