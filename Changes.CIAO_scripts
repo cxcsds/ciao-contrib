@@ -1,151 +1,49 @@
-## 4.18.2 Juy 2026
+## 4.19.0 December 2026
+
+CIAO 4.18 only supports Python 3.13.
 
 New Scripts
 
-  crisscross and clean_spec
-
-    Greatly simplify the analysis of HETG data with multiple sources
-    present in an observation by identifying regions of each spectrum
-    that may be contaminated with data from other sources. The output
-    of crisscross is used by clean_spec to create spectra free of these
-    regions. See the notebook tutorial at
-    https://cxc.cfa.harvard.edu/ciao/threads/crisscross/crisscross.html
-
-  parse_wcs_match_log and xmatch_viz
-
-    These scripts are used by fine_astro to create diagnostic files
-    showing what sources were matched.
-
 Updated Scripts
-
-  chandra_repro
-
-    Avoids an error when using patch_hrc_ssc=yes along with
-    clobber=yes.
-
-  check_ciao_version
-
-    Improve the behaviour when CIAO is installed into multiple conda
-    environments.
-
-  convert_xspec_script
-
-    Improve behaviour when run using ciao-install rather than a conda
-    installation.
 
   dax
 
-    The standard deviation, as reported by dmstat, is now included in
-    the output of the "Statistics (dmstat)" task.
+    Added the "Toggle Live Contour" task which works with polygon regions.
+    When a polygon is moved, edited, or rotated it is replaced by a
+    contour created by the dmimglasso tool - and controlled by the
+    new lasso_low and lasso_high parameters in the dax parameter file.
 
-  fine_astro
+    The dax system is now faster to load as the time-intensive imports
+    are now only made when needed.
 
-    The output now includes files per observation in the "xmatch"
-    sub-directory: a ".tbl" file that contains the cross-match table,
-    a ".reg" file that is a DS9 region file identifying the cross matches,
-    and a ".seg" file that provides a legend for these matches using the
-    DS9 illustrate mode legend.
+  monitor_photom
 
-  flux_obs
+    The script has been sped up and several minor issues have been
+    addressed: the count_rate column is no-longer clipped to a minumum
+    of 10 e-/s as the clipping is now only applied to the mag column;
+    warm pixels now need at least min_dark_meas measurements (previously
+    it needed more than this limit); and it will now error out if the
+    monitor window moves further than max_dither_motion_pixels rather
+    than the previous behaviour of using incorrect dark-current values.
 
-    Better handle the combination of a large number of observations and 
-    performs checks on the usable memory limits that may result in the  
-    script terminating prematurely or crashing/locking up the runtime system.
+  search_csc, obsid_search_csc
 
-  specextract
+    The scripts now default to using version 2.2 of the Chandra Source
+    Catalog (the catalog parameter can now be set to "csc2.2" rather than
+    relying on using "current" to search CSC 2.2).
 
-    Reworked the handling of large stacks of sources to avoid system
-    errors from opening too many files at once, improve the support for
-    regions with no counts (calculation of weighted responses when
-    resp_pos=REGION), and change how header keywords are written to the
-    output files.
 
 New modules
 
-  sherpa_contrib.load_hetg_resp
-
-    Provides the load_gratings_pha2 routine to simplify loading Chandra
-    grating data in PHA2 form, along with responses, into Sherpa.
 
 Updated modules
 
-  ciao_contrib.cda.search
+  ciao_contrib.runtool
 
-    The search_chandra_archive routine has been updated to use the
-    latest version of the Chandra footprint service. There is no change
-    in behaviour or output.
+    Reduced the time needed to import the module.
 
+  coords.chandra
 
-## 4.18.1 April 2026
+    The RA_PNT, DEC_PNT, and ROLL_PNT keyword values are now included in
+    the output of the get_coord_keywords routine.
 
-Updated Scripts
-
-  acis_clear_status_bits
-
-    Added check that input file is writeable.
-
-  acis_split_evt_by_fptemp
-
-    The script will now warn if the observation includes temperatures
-    outside the calibrated range for more than 5% of the time.
-
-  chandra_repro
-
-    Added a new tg_orders parameter that allows the user to choose
-    which grating orders, if any, to create responses (ARF and RMF) for.
-
-  dax
-
-    Fix the Coords -> Interactive Grating Coordinates Vector option
-    due to changes in the ds9 8.7b2 release, and remove some non-fatal
-    warnings with the new interactive region tasks.
-
-  mkrprm
-
-    The script can now use MARX version 6 by setting psfmethod=marx
-    and using the marxroot parameter (if marx and marx2fits are not
-    in the path).
-
-  patch_hrc_ssc
-
-    Fix a corner case that could have resulted in including several
-    hundred seconds of corrupted data at the start of the observation.
-
-  simulate_psf
-
-    Updated to support SAOTrace 2.1.0.
-
-
-A number of scripts have seen some internal changes that do not affect
-their behaviour or output.
-
-
-## 4.18.0
-
-CIAO 4.18 only supports Python 3.12.
-
-
-New Scripts
-
-  acis_split_evt_by_fptemp
-
-    Split an event file by the focal-plane temperature to take
-    advantage of the temperature-dependent response of the ACIS
-    detectors.
-
-
-Updated scripts
-
-  dax
-
-    Added the "Interactive Regions" set of tasks that update the
-    display as regions are moved, rotated, or otherwise changed.
-
-
-New modules
-
-  sherpa_contrib.stats.kaastra17
-
-    Use the approximation from Kaastra 2017 to identify whether the
-    best-fit model found with the CStat statistic is a good
-    description of the data.
