@@ -190,15 +190,6 @@ proc get_ciao_filename {tag_token id} {
     global current
 
     set frm [set current(frame)]
-    set filename [$frm get fits file name full base]
-
-    # Get column/axis names
-    set cols [$frm get bin cols]
-    if {$cols eq ""} {
-        set cols {x y}
-    }
-    set xcol [lindex $cols 0]
-    set ycol [lindex $cols 1]
 
     # Get CIAO region string, requires only 1 region
     # We filter on tag to get individual shape
@@ -213,13 +204,47 @@ proc get_ciao_filename {tag_token id} {
     }
     set ciao [string trim $ciaoreg "\n"]
 
+    return [build_ciao_filename $frm $ciao]
+}
+
+
+proc get_ciao_image_filename {} {
+
+    # Create CIAO compatible filename for the whole (cropped) image:
+    # the on disk file, binning+filtering, blocking, cropping
+
+    global current
+
+    return [build_ciao_filename [set current(frame)] ""]
+}
+
+
+proc build_ciao_filename {frm ciao} {
+
+    # Construct CIAO filename w/ filters, bin, block, and crop.
+    # If ciao region is blank then only crop is applied.
+
+    set filename [$frm get fits file name full base]
+
+    # Get column/axis names
+    set cols [$frm get bin cols]
+    if {$cols eq ""} {
+        set cols {x y}
+    }
+    set xcol [lindex $cols 0]
+    set ycol [lindex $cols 1]
+
     # Get image crop
     set crpfilt [$frm get crop physical]
     set crp [regsub -all " " $crpfilt ","];   # xlo, ylo, xhi, yhi
     set crop_ rectangle($crp)
 
     # We need to AND shape and the crop rectangle
-    set shape_ ($xcol,$ycol)=$ciao*$crop_
+    if {$ciao eq ""} {
+        set shape_ ($xcol,$ycol)=$crop_
+    } else {
+        set shape_ ($xcol,$ycol)=$ciao*$crop_
+    }
 
     # If event list, get any filter. Will be blank for images
     set binfilt [$frm get bin filter]
@@ -434,54 +459,254 @@ proc get_ellipse_CB {tag_token id} {
     $frm marker $id move to physical $xx $yy
 }
 
-proc add_adaptive_callback {frm id} {
+proc add_adaptive_callback {frm id tag_token cb color} {
     # Since the CB "moves", "edits", and "rotates" the shape,
     # we need to specify that this should only be run at the END
     # action.  Otherwise the callback goes into an infinite loop
     # and ds9 crashes.
 
-    set tag_token AdaptiveShape
-    $frm marker $id callback end move get_ellipse_CB $tag_token
-    $frm marker $id callback end edit get_ellipse_CB $tag_token
-    $frm marker $id callback end rotate get_ellipse_CB $tag_token
+    $frm marker $id callback end move $cb $tag_token
+    $frm marker $id callback end edit $cb $tag_token
+    $frm marker $id callback end rotate $cb $tag_token
     $frm marker $id tag $tag_token$id
     $frm marker $id highlite
-    $frm marker $id color violet
+    $frm marker $id color $color
 
 }
 
-proc del_adaptive_callback {frm id} {
-    set tag_token AdaptiveShape
+proc del_adaptive_callback {frm id tag_token cb} {
     $frm marker $id delete tag $tag_token$id
-    $frm marker $id delete callback end move get_ellipse_CB
-    $frm marker $id delete callback end edit get_ellipse_CB
-    $frm marker $id delete callback end rotate get_ellipse_CB
+    $frm marker $id delete callback end move $cb
+    $frm marker $id delete callback end edit $cb
+    $frm marker $id delete callback end rotate $cb
     $frm marker $id unhighlite
     $frm marker $id color green
 }
 
-proc toggle_adaptive_ellipse {} {
+proc toggle_adaptive_callback {tag_token cb color shapes} {
+    # Toggle the adaptive callback on the selected regions
+    # whose shape is in the list of shapes
+
     global current
 
     set frm [set current(frame)]
     set slct [$frm get marker select]
-    set tag_token AdaptiveShape
 
     foreach id $slct {
         set shp [$frm get marker $id type]
-        switch $shp {
-            ellipse -
-            box {
-                set tgs [$frm get marker $id tag]
-                if {[lsearch $tgs $tag_token$id] >= 0} {
-                    del_adaptive_callback $frm $id
-                } else {
-                    add_adaptive_callback $frm $id
-                    get_ellipse_CB $tag_token $id
-                }
-            }
+        if {[lsearch -exact $shapes $shp] < 0} {
+            continue
+        }
+        set tgs [$frm get marker $id tag]
+        if {[lsearch $tgs $tag_token$id] >= 0} {
+            del_adaptive_callback $frm $id $tag_token $cb
+        } else {
+            add_adaptive_callback $frm $id $tag_token $cb $color
+            $cb $tag_token $id
         }
     }
+}
+
+proc toggle_adaptive_ellipse {} {
+    toggle_adaptive_callback AdaptiveShape get_ellipse_CB violet {ellipse box}
+}
+
+
+# --------------------
+# These routines will create a live contour polygon that will snap
+# to the dmimglasso contour that surrounds the polygon center.
+
+proc simplify_polyline {pts tol} {
+    # Douglas-Peucker simplification of an open polyline given as a
+    # flat list {x1 y1 x2 y2 ...}. Uses a stack instead of recursion
+    # since polylines can have many thousands of vertices.
+
+    set npts [expr {[llength $pts] / 2}]
+    if {$npts < 3} {
+        return $pts
+    }
+
+    set keep [lrepeat $npts 0]
+    lset keep 0 1
+    lset keep end 1
+
+    set stack [list [list 0 [expr {$npts - 1}]]]
+    while {[llength $stack] > 0} {
+        lassign [lindex $stack end] i0 i1
+        set stack [lrange $stack 0 end-1]
+
+        set x0 [lindex $pts [expr {2*$i0}]]
+        set y0 [lindex $pts [expr {2*$i0+1}]]
+        set dx [expr {[lindex $pts [expr {2*$i1}]] - $x0}]
+        set dy [expr {[lindex $pts [expr {2*$i1+1}]] - $y0}]
+        set len [expr {hypot($dx,$dy)}]
+
+        # Find the vertex furthest from the line segment
+        set dmax -1
+        set imax -1
+        for {set i [expr {$i0 + 1}]} {$i < $i1} {incr i} {
+            set px [expr {[lindex $pts [expr {2*$i}]] - $x0}]
+            set py [expr {[lindex $pts [expr {2*$i+1}]] - $y0}]
+            if {$len > 0} {
+                set dd [expr {abs($dx*$py - $dy*$px) / $len}]
+            } else {
+                set dd [expr {hypot($px,$py)}]
+            }
+            if {$dd > $dmax} {
+                set dmax $dd
+                set imax $i
+            }
+        }
+
+        if {$dmax > $tol} {
+            lset keep $imax 1
+            lappend stack [list $i0 $imax] [list $imax $i1]
+        }
+    }
+
+    set retval {}
+    for {set i 0} {$i < $npts} {incr i} {
+        if {[lindex $keep $i]} {
+            lappend retval [lindex $pts [expr {2*$i}]] [lindex $pts [expr {2*$i+1}]]
+        }
+    }
+    return $retval
+}
+
+proc is_colinear {x0 y0 x1 y1 x2 y2 frac} {
+    # Is (x1,y1) on the line from (x0,y0) to (x2,y2)?  dmimglasso
+    # vertices along an edge are not exactly colinear so the distance
+    # from the line only needs to be < frac of the segment length.
+
+    set dx [expr {$x2 - $x0}]
+    set dy [expr {$y2 - $y0}]
+    set len [expr {hypot($dx,$dy)}]
+    if {$len == 0} {
+        return 1
+    }
+    set dd [expr {abs($dx*($y1-$y0) - $dy*($x1-$x0)) / $len}]
+    return [expr {$dd < $frac * $len}]
+}
+
+proc remove_colinear {pts frac} {
+    # Remove the intermediate colinear vertices from a closed polygon
+    # given as a flat list {x1 y1 x2 y2 ...}. dmimglasso makes "city
+    # block" contours with many vertices along each straight edge.
+
+    set npts [expr {[llength $pts] / 2}]
+    if {$npts < 4} {
+        return $pts
+    }
+
+    # Compare each vertex to the last one kept and the next one
+    set retval [lrange $pts 0 1]
+    for {set i 1} {$i < $npts} {incr i} {
+        set j [expr {($i + 1) % $npts}]
+        lassign [lrange $retval end-1 end] x0 y0
+        lassign [lrange $pts [expr {2*$i}] [expr {2*$i+1}]] x1 y1
+        lassign [lrange $pts [expr {2*$j}] [expr {2*$j+1}]] x2 y2
+        if {![is_colinear $x0 $y0 $x1 $y1 $x2 $y2 $frac]} {
+            lappend retval $x1 $y1
+        }
+    }
+
+    # The 1st vertex may also be in the middle of an edge
+    if {[llength $retval] >= 8} {
+        lassign [lrange $retval end-1 end] x0 y0
+        lassign [lrange $retval 0 1] x1 y1
+        lassign [lrange $retval 2 3] x2 y2
+        if {[is_colinear $x0 $y0 $x1 $y1 $x2 $y2 $frac]} {
+            set retval [lrange $retval 2 end]
+        }
+    }
+
+    return $retval
+}
+
+proc format_polygon {pts} {
+    set retval {}
+    foreach {xx yy} $pts {
+        lappend retval [format "%.2f" $xx] [format "%.2f" $yy]
+    }
+    return $retval
+}
+
+proc simplify_polygon {pts maxlen} {
+    # The ds9 polygon point parser corrupts the vertices if the list
+    # is longer than ~4096 characters.  First remove colinear vertices
+    # which keeps the "city block" shape; if still too long, then
+    # simplify the closed polygon with increasing tolerance until it
+    # fits in maxlen characters.
+
+    set pts [remove_colinear $pts 0.05]
+    set retval [format_polygon $pts]
+    if {[string length $retval] <= $maxlen} {
+        return $retval
+    }
+
+    set tol 0.1
+    while {1} {
+        # The 1st vertex is repeated at the end so it is kept
+        set ring [simplify_polyline [concat $pts [lrange $pts 0 1]] $tol]
+        set retval [format_polygon [lrange $ring 0 end-2]]
+        if {[string length $retval] <= $maxlen} {
+            return $retval
+        }
+        set tol [expr {$tol * 2}]
+    }
+}
+
+proc get_lasso_CB {tag_token id} {
+    # The live contour callback
+
+    global current
+    set frm [set current(frame)]
+
+    # The lasso needs the whole image (or cropped part), not just the
+    # pixels inside the polygon.
+    set infile [get_ciao_image_filename]
+
+    set lo [exec -ignorestderr pget dax lasso_low]
+    set hi [exec -ignorestderr pget dax lasso_high]
+
+    set cen [$frm get marker $id center physical fk5 degrees]
+    set xx [lindex $cen 0]
+    set yy [lindex $cen 1]
+
+    # Run dmimglasso and get the vertices.  The 1st row is the
+    # outer contour; any other rows are excluded holes.
+    if {[catch {exec dmimglasso $infile - $xx $yy $lo $hi \
+                    coord=physical value=absolute verbose=0 mode=h | \
+                    dmlist "-\[region\]\[#row=1\]\[cols pos\]" data,clean,array \
+                    2> /dev/null \
+                } vals]} {
+        return
+    }
+
+    # Keep only the numbers; drops the header and the NaN padding.
+    set pts {}
+    foreach vv $vals {
+        if {[regexp {^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$} $vv]} {
+            lappend pts $vv
+        }
+    }
+
+    # If the center pixel is outside the thresholds the region is
+    # empty so leave the polygon where it is.
+    if {[llength $pts] < 6} {
+        return
+    }
+
+    set pts [simplify_polygon $pts 3900]
+    if {[llength $pts] < 6} {
+        return
+    }
+
+    $frm marker $id polygon point physical fk5 degrees \{$pts\}
+}
+
+proc toggle_live_contour {} {
+    toggle_adaptive_callback LassoShape get_lasso_CB cyan {polygon}
 }
 
 
