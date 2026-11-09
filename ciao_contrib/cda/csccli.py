@@ -55,7 +55,7 @@ __all__ = (
 )
 
 # Confirm, need rel1.1 to get HRC data for csc1
-__csc_version = {'csc1' : 'rel1.1', 'csc2' : 'rel2.0', 'csc2.1': 'rel2.1',
+__csc_version = {'csc1' : 'rel1.1', 'csc2.0' : 'rel2.0', 'csc2.1': 'rel2.1',
                  'csc2.2': 'rel2.2', 'current': 'cur', 'latest': None}
 
 
@@ -135,7 +135,7 @@ fileTypes_cur = {
 
 fileTypes = {
     "csc1" : fileTypes_csc1,
-    "csc2"  : fileTypes_cur,
+    "csc2.0"  : fileTypes_cur,
     "csc2.1" : fileTypes_cur,
     "csc2.2" : fileTypes_cur,
     "current" : fileTypes_cur,
@@ -887,7 +887,7 @@ def search_src_by_ra_dec( ra, dec, radius_arcmin, columns, cat_ver ):
 
     if "csc1" == cat_ver:
         page = cone_query_cli_cscview( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns)
-    elif cat_ver in ["csc2", "csc2.1", "csc2.2", "current", "latest"]:
+    elif cat_ver in ["csc2.0", "csc2.1", "csc2.2", "current", "latest"]:
         page = cone_query_cli_cscview_ver2( ra_deg, dec_deg, radius_arcmin, ra_condition, dec_condition, columns, cat_ver)
     else:
         raise ValueError("Unknown catalog version")
@@ -902,7 +902,7 @@ def search_src_by_obsid( obsid, columns, cat_ver ):
 
     if 'csc1' == cat_ver :
         page = obsid_query_cli_cscview( obsid, columns )
-    elif cat_ver in ["csc2", "csc2.1", "csc2.2", "current", "latest"] :
+    elif cat_ver in ["csc2.0", "csc2.1", "csc2.2", "current", "latest"] :
         page = obsid_query_cli_cscview_ver2( obsid, columns, cat_ver )
     else:
         raise ValueError("Unknown catalog version")
@@ -1330,7 +1330,7 @@ def get_default_columns(cat_version=None):
     """
     retval = default_cols
 
-    if cat_version in ["csc2", "csc2.1", "csc2.2", "current", "latest"]:
+    if cat_version in ["csc2.0", "csc2.1", "csc2.2", "current", "latest"]:
         default_cols.append("s.detect_stack_id")
         retval = default_cols # may be diff for ver2
 
@@ -1384,7 +1384,7 @@ def expand_standard_cols( cols, cat_version=None ):
     are avialable as tokens
     """
 
-    if cat_version in ["csc2"]:
+    if cat_version in ["csc2.0"]:
         check_list = { "MSBS" : csc2_columns["master_source_basic_summary"] ,
                        "MSS"  : csc2_columns["master_source_summary"],
                        "MSP"  : csc2_columns["master_source_photometry"],
@@ -1436,7 +1436,7 @@ def check_required_names( cols, cat_version=None ):
     """
     c2 = expand_standard_cols( cols, cat_version )
 
-    if cat_version in ['latest','current','csc2', 'csc2.1', 'csc2.2'] and 's.detect_stack_id' not in required_cols:
+    if cat_version in ['latest','current','csc2.0', 'csc2.1', 'csc2.2'] and 's.detect_stack_id' not in required_cols:
         required_cols.append( 's.detect_stack_id' )
 
     required_cols.reverse()
