@@ -2798,7 +2798,7 @@ parinfo['csmooth'] = {
 parinfo['dax'] = {
     'istool': False,
     'req': [],
-    'opt': [ParValue("outdir","f","Location of the output files for dax",'${ASCDS_WORK_PATH}/ds9_dax.${USER}'),ParValue("tile","b","Change ds9 into tile mode when adding new images?",False),ParValue("progress_bar","b","Show progress bar when tasks are running?",True),ParValue("random_seed","i","Random seed for any tasks the require one",-1),ParValue("prism","b","Launch prism to view output tables?",False),ParValue("lc_binsize","r","Interative lightcurve bin size (sec)",1000),ParSet("grptype","s","Grouping type",'NUM_CTS',["NONE","BIN","SNR","NUM_BINS","NUM_CTS","ADAPTIVE","ADAPTIVE_SNR","BIN_WIDTH","MIN_SLOPE","MAX_SLOPE","BIN_FILE"]),ParValue("grpval","r","Grouping type value",1),ParValue("grpbin","s","Binning specification",None)],
+    'opt': [ParValue("outdir","f","Location of the output files for dax",'${ASCDS_WORK_PATH}/ds9_dax.${USER}'),ParValue("tile","b","Change ds9 into tile mode when adding new images?",False),ParValue("progress_bar","b","Show progress bar when tasks are running?",True),ParValue("random_seed","i","Random seed for any tasks the require one",-1),ParValue("prism","b","Launch prism to view output tables?",False),ParValue("lc_binsize","r","Interative lightcurve bin size (sec)",1000),ParSet("grptype","s","Grouping type",'NUM_CTS',["NONE","BIN","SNR","NUM_BINS","NUM_CTS","ADAPTIVE","ADAPTIVE_SNR","BIN_WIDTH","MIN_SLOPE","MAX_SLOPE","BIN_FILE"]),ParValue("grpval","r","Grouping type value",1),ParValue("grpbin","s","Binning specification",None),ParValue("lasso_low","r","Interactive live contour minimum threshold",1),ParValue("lasso_high","r","Interactive live contour maximum threshold",None)],
     }
 
 
@@ -2924,7 +2924,7 @@ parinfo['dmgti'] = {
 parinfo['dmhedit'] = {
     'istool': True,
     'req': [ParValue("infile","f","Input dataset/block specification",None),ParValue("filelist","f","Edit list file name",None),ParValue("operation","s","Operation",None),ParValue("key","s","Keyword",None),ParValue("value","s","Value for keyword",None)],
-    'opt': [ParSet("datatype","s","Keyword data type",'indef',["string","double","float","long","short","ulong","ushort","boolean","indef"]),ParValue("unit","s","Unit for keyword",None),ParValue("comment","s","Comment for keyword",None),ParRange("verbose","i","Verbosity Level(0-5)",0,0,5)],
+    'opt': [ParSet("datatype","s","Keyword data type",'indef',["string","double","float","long","short","ulong","ushort","longlong","ulonglong","boolean","indef"]),ParValue("unit","s","Unit for keyword",None),ParValue("comment","s","Comment for keyword",None),ParRange("verbose","i","Verbosity Level(0-5)",0,0,5)],
     }
 
 
@@ -3400,7 +3400,7 @@ parinfo['merge_too_small'] = {
 parinfo['mkacisrmf'] = {
     'istool': True,
     'req': [ParValue("infile","f","scatter/rsp matrix file",' '),ParValue("outfile","f","RMF output file",' '),ParValue("wmap","f","WMAP file",' '),ParValue("energy","s","energy grid in keV (lo:hi:bin)",' '),ParValue("channel","s","channel grids in pixel (min:max:bin)",' '),ParSet("chantype","s","channel type",'PI',["PI","PHA"]),ParRange("ccd_id","i","filter CCD-ID",None,0,9),ParValue("chipx","i","filter chipx in pixel",None),ParValue("chipy","i","filter chipy in pixel",None),ParValue("gain","f","gain file",'CALDB')],
-    'opt': [ParValue("asolfile","f","aspect solution file or a stack of asol files",None),ParValue("obsfile","f","obs file",')wmap'),ParValue("logfile","f","log file",None),ParValue("contlvl","i","# contour level",100),ParValue("geompar","f","pixlib geometry parameter file",'geom'),ParRange("thresh","r","low threshold of energy cut-off probability",1e-06,0,None),ParValue("clobber","b","overwrite existing output file (yes|no)?",False),ParRange("verbose","i","verbosity level (0 = no display)",0,0,5)],
+    'opt': [ParValue("asolfile","f","aspect solution file or a stack of asol files",None),ParValue("obsfile","f","obs file",')wmap'),ParValue("logfile","f","log file",None),ParValue("contlvl","i","# contour level",100),ParValue("geompar","f","pixlib geometry parameter file",'geom'),ParRange("thresh","r","low threshold of energy cut-off probability",1e-06,0,None),ParRange("resp_temp","r","ACIS focal-plane temperature to calculate response",None,0,None),ParValue("clobber","b","overwrite existing output file (yes|no)?",False),ParRange("verbose","i","verbosity level (0 = no display)",0,0,5)],
     }
 
 
@@ -3442,7 +3442,7 @@ parinfo['mkinstmap'] = {
 parinfo['mkosip'] = {
     'istool': True,
     'req': [],
-    'opt': [ParValue("osip_mode","s","",'compute_limits'),ParValue("obspar","f","",None),ParValue("p2resp_file","f","",None),ParValue("gain_file","f","",None),ParValue("order_bounds_table","f","",None),ParValue("fracresp_goal","r","",0.985),ParValue("energy_grid","s","",'253:1740:20;1750:1890:10;1900:4990:20;5000:12000:10'),ParValue("ccdids","s","",'ACIS-456789'),ParValue("high_limit_clip","r","",1.3),ParValue("low_limit_clip","r","",0.8),ParValue("fracresp_high","r","",0.985),ParValue("resample_factor","i","",8),ParValue("moments_full_distribution","b","",False),ParValue("verbose","i","",0),ParValue("n_threads","i","",1)],
+    'opt': [ParValue("osip_mode","s","",'compute_limits'),ParValue("outfile","s","Output file name",None),ParValue("obsfile","f","",None),ParValue("p2resp_file","f","",None),ParValue("gain_file","f","",None),ParValue("order_bounds_table","f","",None),ParValue("fracresp_goal","r","",0.985),ParValue("energy_grid","s","",'253:1740:20;1750:1890:10;1900:4990:20;5000:12000:10'),ParValue("ccdids","s","",'ACIS-456789'),ParValue("high_limit_clip","r","",1.3),ParValue("low_limit_clip","r","",0.8),ParValue("resample_factor","i","",8),ParValue("moments_full_distribution","b","",False),ParValue("clobber","b","",False),ParValue("verbose","i","",0),ParValue("n_threads","i","",1)],
     }
 
 
@@ -3519,7 +3519,7 @@ parinfo['multi_chip_gti'] = {
 parinfo['obsid_search_csc'] = {
     'istool': True,
     'req': [ParValue("obsid","s","Chandra Observation ID",None),ParValue("outfile","f","Name of output table (TSV format)",None)],
-    'opt': [ParValue("columns","s","List of columns to include",'INDEF'),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2.1',["csc2.1","csc2","csc1","current","latest"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
+    'opt': [ParValue("columns","s","List of columns to include",'INDEF'),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2.2',["csc2.2","csc2.1","csc2.0","csc1","current","latest"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
     }
 
 
@@ -3666,7 +3666,7 @@ parinfo['roi'] = {
 parinfo['search_csc'] = {
     'istool': True,
     'req': [ParValue("pos","s","Input position.  RA, Dec, eg: 246.59955,-24.415158 or name, M81",None),ParRange("radius","r","Search radius [default: arcmin]",0,0,60),ParValue("outfile","f","Name of output table (TSV format)",None)],
-    'opt': [ParSet("radunit","s","Units of search radius",'arcmin',["arcmin","arcsec","deg"]),ParValue("columns","s","List of columns to return",'INDEF'),ParValue("sensitivity","b","Retrieve Limiting sensitivity for each energy band?",False),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2.1',["csc2.1","csc2","csc1","current","latest"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
+    'opt': [ParSet("radunit","s","Units of search radius",'arcmin',["arcmin","arcsec","deg"]),ParValue("columns","s","List of columns to return",'INDEF'),ParValue("sensitivity","b","Retrieve Limiting sensitivity for each energy band?",False),ParSet("download","s","Download data products for which sources?",'none',["none","ask","all"]),ParValue("root","f","Output root for data products",'./'),ParValue("bands","s","Comma separated list of CSC band names taken from broad, soft, medium, hard, ultrasoft, wide. Blank retrieves all",'broad,wide'),ParValue("filetypes","s","Comma separated list of CSC filetypes.  Blank retrieves all",'regevt,pha,arf,rmf,lc,psf,regexp'),ParSet("catalog","s","Version of catalog",'csc2.2',["csc2.2","csc2.1","csc2.0","csc1","current","latest"]),ParRange("verbose","i","Tool chatter level",1,0,5),ParValue("clobber","b","Remove existing outfile if it exists?",False)],
     }
 
 
