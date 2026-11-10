@@ -3,7 +3,7 @@
 
 __version__ = "CIAO 4.19"
 __toolname__ = "empPSF"
-__revision__ = "3 November 2026"
+__revision__ = "10 November 2026"
 
 
 import os
@@ -49,8 +49,20 @@ def _ceildiv(a, b):
 
 
 
+def _defocus_dict():
+    defocus_tup = namedtuple( "Defocus", ["defocus","period_prefix"] )
+
+    return { "HRC-I" : 0.00143,
+             "HRC-S" : { "pre-2006" : defocus_tup(0.10516, "prior to"),
+                         "since-2006" : defocus_tup(0.007, "since")
+                        }
+            }
+
+
+
 class ScriptError(RuntimeError):
-    """Error found during running the script. This class is introduced
+    """
+    Error found during running the script. This class is introduced
     in case there is a need to catch such an error and deal with it
     appropriately (e.g. recognize it as distinct from an error raised
     by the code).
@@ -61,23 +73,38 @@ class ScriptError(RuntimeError):
 
 #################################################################################
 
-
-
 class EmpiricalPSF:
     """
     This class is intended to return an image crate
     """
+
     def __init__(self, evtfile: str, write_table: bool = False,
                  binsize: float|int = 1,
                  samp_range: str=":300",
                  empPSFout: str|None = None,
-                 tbl_fn: str = "empPSF_hrci_tsxyo_2026aug.fits",
                  tbl_fn_basedir: str=f"{os.getenv('ASCDS_INSTALL')}/data/empPSF",
                  bkgsubtract: bool = True,
                  seed: None|int = None):
 
         if tbl_fn_basedir.endswith("/"):
             tbl_fn_basedir = tbl_fn_basedir[:-1] ## rstrip can be fussy ##
+
+        detector = fileio.get_keys_from_file(f"{evtfile}[#row=0]")["DETNAM"].upper()
+
+        match detector:
+            case "HRC-I":
+                tbl_fn = "empPSF_hrci_tsxyo_2026aug.fits"
+
+            case "HRC-S":
+                #tbl_fn = None
+                raise NotImplementedError("HRC-S observations are not supported presently.")
+
+            case "ACIS-I" | "ACIS-S":
+                #tbl_fn = None
+                raise NotImplementedError("ACIS observations are not supported presently.")
+
+            case _:
+                raise IOError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
 
         self.evtfile = evtfile
         self.write_table = write_table
@@ -144,6 +171,15 @@ class EmpiricalPSF:
         return "epoch2"
 
 
+    def _chk_defocus(self, defocus_evt: float, defocus_inst: float, tol: float=0.02):
+        """
+        check that the event is within the tolerance (in mm) of the detector's
+        best focus location defined by 'defocus_obs'
+        """
+
+        return numpy.isclose(defocus_evt, defocus_inst, atol=tol)
+
+
     def _empPSF_time( self, timeobs: float ):
         """
         return indicies (used for background spectra), ObsIDs for the epoch and exposure
@@ -159,7 +195,7 @@ class EmpiricalPSF:
         del cr
 
 
-        dT1, dT2, dT3 = self._timedef(dT=True) # in MJD; time = MJD-OBS keyword
+        dT1, dT2, dT3 = self._timedef(dT=True) # in MJD; time = MJD-OBS keyword #
 
         dateobs_mjd = ( dates(d, fromcal="GREG", tocal="MJD") for d in dateobs )
 
@@ -176,7 +212,7 @@ class EmpiricalPSF:
         return ind, obsid[ind], exposure[ind]
 
 
-    def bgspec(self, indicies: list|tuple, obsids: list|tuple):
+    def bgspec(self, indicies: list|tuple, obsids: list|tuple) -> dict:
         """
         note that the background spectrum are in units of counts/pixel
         """
@@ -189,12 +225,10 @@ class EmpiricalPSF:
         cr_bkg = pcr.read_file( f"{self.tbl_fn}[4]" )
         bkgspec = cr_bkg.get_image().values.T
 
-        bgspec = { str(obs) : zip( *[(samp,spec) for samp,spec in enumerate( bkgspec[ind] )
-                                     if int(samp_lo) <= samp < int(samp_hi) ] )
-                  for ind,obs in zip(indicies,obsids)
-                  }
-
-        return bgspec
+        return { str(obs) : zip( *[(samp,spec) for samp,spec in enumerate( bkgspec[ind] )
+                                   if int(samp_lo) <= samp < int(samp_hi) ] )
+                for ind,obs in zip(indicies,obsids)
+                }
 
 
     def bkg_subtract(self, info: namedtuple,
@@ -243,7 +277,7 @@ class EmpiricalPSF:
         the exposure time for a given ObsID
         """
 
-        emppsf_info = namedtuple( "emppsf_config", ["time","samp","ux","vy","obsid"] )
+        emppsf_info = namedtuple( "emppsf_config", ["time","samp","ux","vy","defocus","obsid"] )
         emppsf_evt = namedtuple( "emppsf_evt", ["time","ux","vy","samp"] )
 
         bgspec_ind, ObsIDs, exptime = self._empPSF_time(tobs)
@@ -255,15 +289,37 @@ class EmpiricalPSF:
         time = numpy.squeeze( cr.TIME.values )
         u = numpy.squeeze( cr.XRU.values )
         v = numpy.squeeze( cr.YRV.values )
+        defocus = numpy.squeeze( cr.DEFOCUS.values )
 
         del cr
 
 
-        tab = list( zip(time,samp,u,v,obsid) )
+        match detector:
+            case "HRC-I":
+                defocus_inst = _defocus_dict()[detector]
+
+            case "HRC-S":
+                if self._tbounds(tobs) == "epoch1":
+                    defocus_inst = _defocus_dict()[detector]["pre-2006"]
+                else:
+                    defocus_inst = _defocus_dict()[detector]["since-2006"]
+
+                raise NotImplementedError("HRC-S observations are not supported presently.")
+
+            case "ACIS-I" | "ACIS-S":
+                raise NotImplementedError("ACIS observations are not supported presently.")
+
+            case _:
+                raise IOError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
+
+
+
+        tab = list( zip(time,samp,u,v,defocus,obsid) )
         info_list = [ emppsf_info(*t) for t in tab ]
 
         info_dict = { str(o) : ( emppsf_evt(*zip(*[ (info.time, info.ux, info.vy, info.samp)
-                                                   for info in info_list if info.obsid == o
+                                                   for info in info_list
+                                                   if info.obsid == o and self._chk_defocus(info.defocus,defocus_inst)
                                                    ]
                                                  )
                                            ),
@@ -341,26 +397,14 @@ class EmpiricalPSF:
             cr_tab.add_column(cr_v)
             cr_tab.add_column(cr_samp)
 
-            # crkey_tmin = pcr.CrateKey()
-            # crkey_tmax = pcr.CrateKey()
+            for kw,val in { "EXPOSURE" : exposure,
+                            "BKGSUB" : self.bkgsubtract }:
 
-            # crkey_tmin.name = "TSTART"
-            # crkey_tmax.name = "TSTOP"
-            # crkey_tmin.value = min(time)
-            # crkey_tmax.value = max(time)
+                crkey = pcr.CrateKey()
+                crkey.name = kw
+                crkey.value = val
+                cr_tab.add_key(crkey)
 
-            # cr_tab.add_key(crkey_tmin)
-            # cr_tab.add_key(crkey_tmax)
-
-            crkey_exposure = pcr.CrateKey()
-            crkey_exposure.name = "EXPOSURE"
-            crkey_exposure.value = exposure
-            cr_tab.add_key(crkey_exposure)
-
-            crkey_bkgsub = pcr.CrateKey()
-            crkey_bkgsub.name = "BKGSUB"
-            crkey_bkgsub.value = self.bkgsubtract
-            cr_tab.add_key(crkey_bkgsub)
 
             ds.add_crate(cr_tab)
 
@@ -383,7 +427,7 @@ class EmpiricalPSF:
         InfoDict = self.empPSF_tab(tobs, detector, self.samp)
 
         if self.write_table:
-            self.build_multi_emppsf_table(detector, InfoDict, self.bkgsubtract)
+            self.build_multi_emppsf_table(detector, InfoDict)
 
         ux = numpy.concatenate( [ inf.ux for inf,_ in InfoDict.values() ], axis=None )
         vy = numpy.concatenate( [ inf.vy for inf,_ in InfoDict.values() ], axis=None )
@@ -394,8 +438,8 @@ class EmpiricalPSF:
 
             return make_table_crate({ "pos" : numpy.array(list(zip(ux,vy))), "samp" : samp, "time" : time})
 
-        ### take the image array and turn it to an image Crate,  ###
-        ### to be written out as a FITS image 'imgout'           ###
+        ### take the image array and turn it to an image Crate, ###
+        ### to be written out as a FITS image 'imgout'          ###
 
         if instrument.upper() == "HRC":
             dn = 128
@@ -423,10 +467,6 @@ class EmpiricalPSF:
         psfimg = numpy.histogram2d( ux, vy,
                                     bins=[nx,ny],
                                     range=[[dn_lo,dn_hi],[dn_lo,dn_hi]] )[0]
-
-        # psfimg = numpy.histogram2d( vy, ux,
-        #                             bins=[int(512/self.binsize),int(512/self.binsize)],
-        #                             range=[[-256,256],[-256,256]])[0]
 
         ### normalize PSF image to sum to 1 ###
         psfimg /= psfimg.sum()
@@ -458,7 +498,7 @@ class EmpiricalPSF:
             crkey.name = key
 
             if isinstance(val, Decimal):
-                crkey.value = val.__float__()
+                crkey.value = float(val)
             else:
                 crkey.value = val
 
@@ -534,7 +574,7 @@ is {offaxis} arcmin off-axis.")
 
 
 
-def _chk_defocus(kwdict: dict, tol: float=0.02):
+def _check_defocus(kwdict: dict, tol: float=0.02):
     """
     check that the observation defocus are within the tolerance (of 0.02 mm)
     of the defocus of the empirical events
@@ -543,27 +583,38 @@ def _chk_defocus(kwdict: dict, tol: float=0.02):
     defocus_obs = kwdict["DEFOCUS"]
     detector = kwdict["DETNAM"].upper()
 
+    defocus_dict = _defocus_dict()
 
     match detector:
         case "HRC-I":
-            defocus = 0.00143
+            defocus = defocus_dict[detector]
+
+            msg = f"which is {defocus} [mm] for {detector}"
 
         case "HRC-S":
             date_obs = datetime.strptime( kwdict["DATE-OBS"], "%Y-%m-%dT%H:%M:%S" )
             year = date_obs.year
 
             if year < 2006:
-                defocus = 0.10516
+                defocus = defocus_dict[detector]["pre-2006"]
+
             else:
-                defocus = 0.007
+                defocus = defocus_dict[detector]["since-2006"]
+
+            msg = f"which is {defocus.defocus} [mm] for {detector} {defocus.period_prefix} January 2006"
+
+            raise NotImplementedError("HRC-S observations are not supported presently.")
+
+        case "ACIS-I" | "ACIS-S":
+            raise NotImplementedError("ACIS observations are not supported presently.")
 
         case _:
-            raise IOError("ACIS observations are not supported presently!")
+            raise IOError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
 
 
     if not numpy.isclose(defocus_obs, defocus, atol=tol):
         raise IOError(f"The observations must have a defocus within {tol} [mm] \
-from the best focus position of the empirical PSF.")
+from the best focus position of the empirical PSF, {msg}.")
 
 
 
@@ -777,7 +828,7 @@ def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
          tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".psf") as psf:
 
         _check_offaxis_angle(evt, src_skyx, src_skyy)
-        _chk_defocus(evt_kw)
+        _check_defocus(evt_kw)
 
         binsize = round(Decimal(binsize), 3)
 
