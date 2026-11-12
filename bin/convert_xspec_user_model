@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2012 - 2016, 2020 - 2024
+# Copyright (C) 2012-2016, 2020-2024, 2026
 # Smithsonian Astrophysical Observatory
 #
 #
@@ -65,30 +65,31 @@ for a description of the model.dat format.
 
 """
 
-toolname = "convert_xspec_user_model"
-toolver  = "25 November 2024"
-
-import sys
+import argparse
+import glob
+import importlib
 import os
+import shutil
 import string
 import subprocess as sbp
-import time
-import glob
-import argparse
-import importlib
-import shutil
-from pathlib import Path
+import sys
 import sysconfig
 import tempfile
+import time
+
+from pathlib import Path
 
 import numpy
 
 import sherpa
-import sherpa.astro.ui as ui
+from sherpa.astro import ui
 from sherpa.astro.utils import xspec
 from sherpa.astro.xspec import get_xsversion
 
 import ciao_contrib.logger_wrapper as lw
+
+toolname = "convert_xspec_user_model"
+toolver  = "12 November 2026"
 
 lgr = lw.initialize_logger(toolname)
 v0 = lgr.verbose0
@@ -147,7 +148,7 @@ running with '--verbose 2' (or higher).
 """
 
 copyright_str = """
-Copyright (C) 2012 - 2016, 2020 - 2024
+Copyright (C) 2012-2016, 2020-2024, 2026
 Smithsonian Astrophysical Observatory
 
 This program is free software; you can redistribute it and/or modify
@@ -194,7 +195,7 @@ def check_clobber(fname: Path) -> None:
     if not fname.exists():
         return
 
-    raise IOError(f"The file {fname} exists and --clobber is not set.")
+    raise OSError(f"The file {fname} exists and --clobber is not set.")
 
 
 def save(outpath: Path, txt: str) -> None:
@@ -230,7 +231,7 @@ def find_share_xspecpath() -> Path:
     thispath = Path(os.path.dirname(__file__))
     for dname in ["../share/xspec"]:
         path = (thispath / dname).resolve()
-        v3("  - {}".format(path))
+        v3(f"  - {path}")
         if path.is_dir():
             return path
 
@@ -238,7 +239,7 @@ def find_share_xspecpath() -> Path:
     # but leave for now.
     #
     path = (ASCDS_INSTALL_PATH / "contrib/share/xspec").resolve()
-    v3("  - {}".format(path))
+    v3(f"  - {path}")
     if path.is_dir():
         return path
 
@@ -509,7 +510,7 @@ def create_xspec_init(outdir: Path, clobber: bool) -> None:
     if not clobber:
         check_clobber(outpath)
 
-    save(outname, """
+    save(outpath, """
 
 c Taken from XSPEC 12.13.0
 c Common block for dynamic memory using udmget
@@ -538,7 +539,7 @@ def create_xspec_udmget(inpath: Path,
     """
 
     udmfile = inpath / "install" / name
-    if not udm.is_file():
+    if not udmfile.is_file():
         raise OSError(f"Internal error - unable to find {udmfile}")
 
     out = outpath / name
@@ -556,7 +557,7 @@ def build_meson(modname,
                 outpath: Path,
                 udmget=False, udmget64=False,
                 clobber=False,
-                license='License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication'):
+                license_str: str = 'License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication'):
     """Create the Python/meson build files.
 
     Create: pyproject.toml, meson.build, and <outdir>/meson.build.
@@ -585,7 +586,7 @@ def build_meson(modname,
         be set (FORTRAN only).
     clobber : bool, optional
         Do we over-write existing files or error out if they exist.
-    license : str, optional
+    license_str : str, optional
         The license for the module.
 
     Notes
@@ -682,6 +683,7 @@ def build_meson(modname,
         else:
             name = "xsudmget64.cxx"
 
+        # Why do we not use the udmpath variable?
         udmpath = create_xspec_udmget(xpath, basepath, name, clobber)
         # srcnames.append(udmpath)
         srcnames.append(name)
@@ -736,17 +738,24 @@ def build_meson(modname,
         out = matches[0].stem
         return out[3:]  # drop the "lib" prefix
 
-    hdsp_version = find_libname("hdsp")
-    ccfits_version = find_libname("CCfits")
-
     largs = [f'-L{xspec_basedir}/lib',
              '-lXSFunctions',
              '-lXSUtil',
              '-lXS',
-             f'-l{hdsp_version}',
-             f'-l{ccfits_version}',
-             '-lcfitsio',
-            ]
+             ]
+
+    hdsp_version = find_libname("hdsp")
+    largs.append(f'-l{hdsp_version}')
+
+    # For now (CIAO 4.19) allow CCfits to be missing
+    try:
+        ccfits_version = find_libname("CCfits")
+        largs.append(f'-l{ccfits_version}')
+    except OSError as exc:
+        v2(f"Unable to find libCCfits: {exc}")
+        ccfits_version = None
+
+    largs.append('-lcfitsio')
 
     # Is this still needed?
     #
@@ -761,9 +770,6 @@ def build_meson(modname,
     # depend on numpy and sherpa, but for now we hard-code that
     # knowledge into the meson.file and assume they are both present.
     #
-    # Note that CIAO 4.17 is only provided with Python 3.11 so the
-    # list of supported Pythons can be short (for the classifier).
-    #
     out = f'''[build-system]
 requires = ["meson-python"]
 build-backend = "mesonpy"
@@ -777,16 +783,16 @@ authors = [
 ]
 
 classifiers = [
-  '{license}',
+  '{license_str}',
   'Intended Audience :: Science/Research',
-  'Programming Language :: Python :: 3.11',
+  'Programming Language :: Python :: 3.13',
   'Programming Language :: Python :: Implementation :: CPython',
   'Topic :: Scientific/Engineering :: Astronomy',
   'Topic :: Scientific/Engineering :: Physics',
   'Development Status :: 3 - Alpha'
 ]
 
-requires_python = ">= 3.10"
+requires_python = ">= 3.13"
 dependencies = [
   "numpy",
   "sherpa"
@@ -1071,7 +1077,9 @@ __all__ = ({mdlnames})
 
 def build_module_cxx(modname,
                      outpath: Path,
-                     cxxcode, mdls, clobber=False):
+                     cxxcode,
+                     mdls,
+                     clobber=False):
     """Create the C++ module code.
 
     Parameters
@@ -1145,7 +1153,7 @@ def build_module(modname: str,
                      xdata.compiled, mdls, clobber=clobber)
 
 
-def compile_module(verbose=False):
+def compile_module(verbose: bool = False) -> None:
     """Build the module via pyproject.toml.
 
     Parameters
@@ -1201,14 +1209,17 @@ def check_unique_name(modulename):
 
 
 @lw.handle_ciao_errors(toolname, toolver)
-def convert_xspec_user_model(modulename, modelfile,
-                             udmget=False, udmget64=False,
+def convert_xspec_user_model(modulename,
+                             modelfile,
+                             udmget: bool = False,
+                             udmget64: bool = False,
                              extrafiles=None,
-                             clobber=False,
-                             version='1.0',
-                             outdir='build_xspec_user_model',
+                             clobber: bool = False,
+                             version: str = '1.0',
+                             outdir: str = 'build_xspec_user_model',
                              namefunc=add_xsum_prefix,
-                             verbose=False):
+                             verbose: bool = False
+                             ) -> None:
     """Create a Python module called modulename that allows the
     XSPEC user model - defined by the model file (e.g.
     modelfile='lmodel.dat') - using the code found in the following
@@ -1293,7 +1304,7 @@ def convert_xspec_user_model(modulename, modelfile,
     n_cpp = count_nfiles("C++", cpp_files)
 
     if sum([n_fortran, n_c, n_cpp]) == 0:
-        raise IOError(f"No Fortran/C/C++ files found in {os.getcwd()}")
+        raise OSError(f"No Fortran/C/C++ files found in {os.getcwd()}")
 
     # for now do not treat the different types differently; this may change
     allfiles = []
@@ -1310,7 +1321,7 @@ def convert_xspec_user_model(modulename, modelfile,
 
     for f in extrafiles:
         if not os.path.exists(f):
-            raise IOError(f"Unable to find file {f}")
+            raise OSError(f"Unable to find file {f}")
 
     validate_namefunc(namefunc)
 
@@ -1426,7 +1437,7 @@ def convert_xspec_user_model(modulename, modelfile,
     else:
         v1(f"Processing {nmdl} models.")
 
-    langs = sorted(list(langs))
+    langs = sorted(langs)
     if len(langs) == 1:
         v1(f"Using language interface: {langs[0]}")
     else:
@@ -1575,7 +1586,7 @@ if __name__ == "__main__":
                         default=False,
                         help="Set to overwrite output files, otherwise script exits")
     parser.add_argument("--verbose", "-v", dest="verbose", type=int,
-                        choices=range(0, 6), default=1,
+                        choices=range(6), default=1,
                         help="Verbose level; higher for more screen output")
 
     parser.add_argument("--version", action="version",
