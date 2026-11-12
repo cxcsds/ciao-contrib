@@ -611,35 +611,10 @@ def build_meson(modname,
     if extrafiles != []:
         raise ValueError("Unable to support extrafiles at this time")
 
-    languages = set()
-    for lang in langs:
-        if lang == 'C style':
-            languages.add('c')
-        elif lang == 'C++ style':
-            languages.add('cpp')
-        elif lang.startswith('Fortran '):
-            languages.add('fortran')
-        else:
-            raise ValueError(f"Unsupported language: {lang}")
-
-    if len(languages) == 0:
-        raise ValueError("No languages set!")
-
+    # What languages do we need to tell meson about?
     # The interface code requires C++.
     #
-    languages.add("cpp")
-    languages_arg = ", ".join(f"'{l}'" for l in languages)
-
-    modname_slashes = modname.replace('.', '/')
-
-    basepath = outpath
-    pyproject = Path("pyproject.toml")
-    buildname1 = Path("meson.build")
-    buildname2 = basepath / "meson.build"
-    if not clobber:
-        check_clobber(pyproject)
-        check_clobber(buildname1)
-        check_clobber(buildname2)
+    languages = set(['cpp'])
 
     # Copy over the source files. The srcnames values are relative
     # to basepath.
@@ -653,6 +628,10 @@ def build_meson(modname,
 
         srcnames.append(f"../{f.name}")
 
+        # Fortunately we only look for .c for C files
+        if f.name.endswith(".c"):
+            languages.add('c')
+
     for f in fortransources:
         f = Path(f)
         v3(f" - checking FORTRAN file {f}")
@@ -663,6 +642,38 @@ def build_meson(modname,
 
     if len(srcnames) == 0:
         raise ValueError("Should not have got here as no source/FORTRAN files to process")
+
+    if fortransources:
+        languages.add('fortran')
+
+    # It is likely that languages has already been set, but just
+    # make sure.
+    #
+    for lang in langs:
+        if lang == 'C style':
+            languages.add('c')
+        elif lang == 'C++ style':
+            languages.add('cpp')
+        elif lang.startswith('Fortran '):
+            languages.add('fortran')
+        else:
+            raise ValueError(f"Unsupported language: {lang}")
+
+    if len(languages) == 0:
+        raise ValueError("No languages set!")
+
+    languages_arg = ", ".join(f"'{l}'" for l in languages)
+
+    modname_slashes = modname.replace('.', '/')
+
+    basepath = outpath
+    pyproject = Path("pyproject.toml")
+    buildname1 = Path("meson.build")
+    buildname2 = basepath / "meson.build"
+    if not clobber:
+        check_clobber(pyproject)
+        check_clobber(buildname1)
+        check_clobber(buildname2)
 
     # Copy over the udmget code, if needed.
     #
