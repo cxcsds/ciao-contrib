@@ -2,8 +2,8 @@
 
 
 __version__ = "CIAO 4.19"
-__toolname__ = "empPSF"
-__revision__ = "10 November 2026"
+__toolname__ = "format_empirical_psf"
+__revision__ = "12 November 2026"
 
 
 import os
@@ -13,6 +13,7 @@ from decimal import Decimal
 from collections import namedtuple
 from operator import itemgetter
 from datetime import datetime
+from importlib.resources import files, as_file
 
 import numpy
 
@@ -82,12 +83,8 @@ class EmpiricalPSF:
                  binsize: float|int = 1,
                  samp_range: str=":300",
                  empPSFout: str|None = None,
-                 tbl_fn_basedir: str=f"{os.getenv('ASCDS_INSTALL')}/data/empPSF",
                  bkgsubtract: bool = True,
                  seed: None|int = None):
-
-        if tbl_fn_basedir.endswith("/"):
-            tbl_fn_basedir = tbl_fn_basedir[:-1] ## rstrip can be fussy ##
 
         detector = fileio.get_keys_from_file(f"{evtfile}[#row=0]")["DETNAM"].upper()
 
@@ -104,16 +101,19 @@ class EmpiricalPSF:
                 raise NotImplementedError("ACIS observations are not supported presently.")
 
             case _:
-                raise IOError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
+                raise OSError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
 
-        self.evtfile = evtfile
-        self.write_table = write_table
-        self.binsize = binsize
-        self.empPSFout = empPSFout
-        self.samp = samp_range
-        self.tbl_fn = f"{tbl_fn_basedir}/{tbl_fn}"
-        self.bkgsubtract = bkgsubtract
-        self.seed = seed
+        tbl_fn_basedir = files("ciao_contrib").joinpath("..", "..", "..", "..", "data", "empPSF")
+
+        with as_file(tbl_fn_basedir / tbl_fn) as tbl:
+            self.evtfile = evtfile
+            self.write_table = write_table
+            self.binsize = binsize
+            self.empPSFout = empPSFout
+            self.samp = samp_range
+            self.tbl_fn = tbl
+            self.bkgsubtract = bkgsubtract
+            self.seed = seed
 
 
     def __enter__(self):
@@ -207,7 +207,7 @@ class EmpiricalPSF:
             case "epoch3":
                 ind = [ n for n,t in enumerate(dateobs_mjd) if t >= dT3["start"] ]
             case _:
-                raise IOError("Observation is outside valid available time range of observations.")
+                raise OSError("Observation is outside valid available time range of observations.")
 
         return ind, obsid[ind], exposure[ind]
 
@@ -310,7 +310,7 @@ class EmpiricalPSF:
                 raise NotImplementedError("ACIS observations are not supported presently.")
 
             case _:
-                raise IOError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
+                raise OSError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
 
 
 
@@ -544,7 +544,7 @@ def _get_roll(kwdict : dict) -> float:
     if inst == "HRC":
         return roll - dtheta[detector]
 
-    raise IOError("HRC observations are only supported presently!")
+    raise OSError("HRC observations are only supported presently!")
 
 
 
@@ -568,7 +568,7 @@ def _check_offaxis_angle(evt : str, skyx : float, skyy : float,
     offaxis = coords.theta
 
     if offaxis > offaxis_limit:
-        raise IOError(f"The empirical PSFs are usable for point sources with an off-axis \
+        raise OSError(f"The empirical PSFs are usable for point sources with an off-axis \
 angle less than {offaxis_limit} arcmin from the aimpoint.  The source position provided \
 is {offaxis} arcmin off-axis.")
 
@@ -609,11 +609,11 @@ def _check_defocus(kwdict: dict, tol: float=0.02):
             raise NotImplementedError("ACIS observations are not supported presently.")
 
         case _:
-            raise IOError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
+            raise OSError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
 
 
     if not numpy.isclose(defocus_obs, defocus, atol=tol):
-        raise IOError(f"The observations must have a defocus within {tol} [mm] \
+        raise OSError(f"The observations must have a defocus within {tol} [mm] \
 from the best focus position of the empirical PSF, {msg}.")
 
 
@@ -650,7 +650,6 @@ def cut_img(evt : str, outimg : str,
 def roll_psf(psf : str, outpsf : str, wcsimg : str, roll : float,
              ximg_center : float|int, yimg_center : float|int,
              regrid_res: int = 10, tmpdir : str=os.getenv("ASCDS_WORK_PATH"),
-             lut: str=f"{os.getenv('ASCDS_INSTALL')}/data/empPSF-merge_header_lookup.txt",
              verbose : int=0, clobber : bool = True):
     """
     rotate PSF image and match coordinates with the observed data set.
@@ -662,7 +661,10 @@ def roll_psf(psf : str, outpsf : str, wcsimg : str, roll : float,
     regrid2.punlearn()
     imgcalc.punlearn()
 
-    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp:
+    lut_basedir = files("ciao_contrib").joinpath("..", ".." ,".." ,".." ,"data")
+
+    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp, \
+        as_file( lut_basedir / "empPSF-merge_header_lookup.txt" ) as lut:
         regrid2.infile = psf
         regrid2.outfile = tmp.name
         regrid2.resolution = regrid_res
@@ -792,14 +794,14 @@ def get_par(argv) -> tuple[dict,dict]:
 
 
     if ":" not in pars["samp_range"]:
-        raise IOError("'samp' parameter requires specifying a range using colon-separation, ':'")
+        raise OSError("'samp' parameter requires specifying a range using colon-separation, ':'")
 
     _samp_lo, _samp_hi = pars["samp_range"].split(":")
 
     if _samp_lo != "" and Decimal(_samp_lo) < 0:
-        raise IOError("The 'samp' lower-bound cannot be a negative value.")
+        raise OSError("The 'samp' lower-bound cannot be a negative value.")
     if Decimal(_samp_hi) > 300:
-        raise IOError("The 'samp' upper-bound value cannot be greater than 300.")
+        raise OSError("The 'samp' upper-bound value cannot be greater than 300.")
 
 
     # print script info #
