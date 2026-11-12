@@ -1,0 +1,878 @@
+#!/usr/bin/env python
+
+
+__version__ = "CIAO 4.19"
+__toolname__ = "format_empirical_psf"
+__revision__ = "12 November 2026"
+
+
+import os
+import sys
+import tempfile
+from decimal import Decimal
+from collections import namedtuple
+from operator import itemgetter
+from datetime import datetime
+from importlib.resources import files, as_file
+
+import numpy
+
+import pycrates as pcr
+from crates_contrib.utils import make_image_crate, make_table_crate #, smooth_image_crate
+
+import paramio as pio
+
+from ciao_contrib.param_wrapper import open_param_file
+from ciao_contrib.logger_wrapper import initialize_logger, make_verbose_level, set_verbosity, \
+     handle_ciao_errors, preprocess_arglist
+from ciao_contrib.proptools import dates
+from ciao_contrib.runtool import make_tool, new_pfiles_environment, add_tool_history
+from ciao_contrib._tools import fileio, utils
+
+
+#################################################################################
+
+## Set up the logging/verbose code ##
+initialize_logger(__toolname__)
+
+## Use v<n> to display messages at the given verbose level. ##
+v0 = make_verbose_level(__toolname__, 0)
+v1 = make_verbose_level(__toolname__, 1)
+v2 = make_verbose_level(__toolname__, 2)
+v3 = make_verbose_level(__toolname__, 3)
+v4 = make_verbose_level(__toolname__, 4)
+v5 = make_verbose_level(__toolname__, 5)
+
+
+
+def _ceildiv(a, b):
+    return int( -(a // -b) )
+
+
+
+def _defocus_dict():
+    defocus_tup = namedtuple( "Defocus", ["defocus","period_prefix"] )
+
+    return { "HRC-I" : 0.00143,
+             "HRC-S" : { "pre-2006" : defocus_tup(0.10516, "prior to"),
+                         "since-2006" : defocus_tup(0.007, "since")
+                        }
+            }
+
+
+
+class ScriptError(RuntimeError):
+    """
+    Error found during running the script. This class is introduced
+    in case there is a need to catch such an error and deal with it
+    appropriately (e.g. recognize it as distinct from an error raised
+    by the code).
+    """
+    pass
+
+
+
+#################################################################################
+
+class EmpiricalPSF:
+    """
+    This class is intended to return an image crate
+    """
+
+    def __init__(self, evtfile: str, write_table: bool = False,
+                 binsize: float|int = 1,
+                 samp_range: str=":300",
+                 empPSFout: str|None = None,
+                 bkgsubtract: bool = True,
+                 seed: None|int = None):
+
+        detector = fileio.get_keys_from_file(f"{evtfile}[#row=0]")["DETNAM"].upper()
+
+        match detector:
+            case "HRC-I":
+                tbl_fn = "empPSF_hrci_tsxyo_2026aug.fits"
+
+            case "HRC-S":
+                #tbl_fn = None
+                raise NotImplementedError("HRC-S observations are not supported presently.")
+
+            case "ACIS-I" | "ACIS-S":
+                #tbl_fn = None
+                raise NotImplementedError("ACIS observations are not supported presently.")
+
+            case _:
+                raise OSError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
+
+        tbl_fn_basedir = files("ciao_contrib").joinpath("..", "..", "..", "..", "data", "empPSF")
+
+        with as_file(tbl_fn_basedir / tbl_fn) as tbl:
+            self.evtfile = evtfile
+            self.write_table = write_table
+            self.binsize = binsize
+            self.empPSFout = empPSFout
+            self.samp = samp_range
+            self.tbl_fn = tbl
+            self.bkgsubtract = bkgsubtract
+            self.seed = seed
+
+
+    def __enter__(self):
+        return self
+
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        return exc_traceback is None
+
+
+    def _timedef(self, dT: bool = False, epochs: bool = False) -> tuple[dict,dict,dict]:
+        epoch1 = { "start" : "1999-07-23T00:00:00", "stop" : "2005-12-31T00:00:00" }
+        epoch2 = { "start" : "2006-01-01T00:00:00", "stop" : "2016-12-31T00:00:00" }
+        epoch3 = { "start" : "2017-01-01T00:00:00", "stop" : None }
+        # epoch3 = { "start" : "2017-01-01T00:00:00", "stop" : "2025-12-31T00:00:00" }
+
+        t1 = { "start" : dates(epoch1["start"], fromcal="GREG", tocal="MJD"),
+               "stop" : dates(epoch1["stop"], fromcal="GREG", tocal="MJD") }
+        t2 = { "start" : dates(epoch2["start"], fromcal="GREG", tocal="MJD"),
+               "stop" : dates(epoch2["stop"], fromcal="GREG", tocal="MJD") }
+        t3 = { "start" : dates(epoch3["start"], fromcal="GREG", tocal="MJD"),
+               "stop" : None }
+
+        if dT:
+            return t1, t2, t3
+
+        if epochs:
+            return epoch1, epoch2, epoch3
+
+        return None
+
+
+    def _tbounds(self, time: float):
+        """
+        'time' is in MJD
+
+        returns the PSF 'epoch'
+        """
+
+        # if year <= 2005:
+        #     epoch1 = { "start" : "1999-07-23T00:00:00", "stop" : "2005-12-31T00:00:00" }
+        # elif year >= 2017:
+        #     epoch3 = { "start" : "2017-01-01T00:00:00", "stop" : "2025-12-31T00:00:00" }
+        # else:
+        #     epoch2 = { "start" : "2006-01-01T00:00:00", "stop" : "2016-12-31T00:00:00" }
+
+        dT1, _dT2, dT3 = self._timedef(dT=True)
+
+        if dT1["start"] <= time < dT1["stop"]:
+            return "epoch1"
+
+        if time >= dT3["start"]:
+            return "epoch3"
+
+        return "epoch2"
+
+
+    def _chk_defocus(self, defocus_evt: float, defocus_inst: float, tol: float=0.02):
+        """
+        check that the event is within the tolerance (in mm) of the detector's
+        best focus location defined by 'defocus_obs'
+        """
+
+        return numpy.isclose(defocus_evt, defocus_inst, atol=tol)
+
+
+    def _empPSF_time( self, timeobs: float ):
+        """
+        return indicies (used for background spectra), ObsIDs for the epoch and exposure
+        time of each ObsID of interest.
+        """
+
+        cr = pcr.read_file( f"{self.tbl_fn}[3]" )
+
+        obsid = numpy.squeeze(cr.get_column("OBSID").values)
+        dateobs = numpy.squeeze(cr.get_column("DATEOBS").values)
+        exposure = numpy.squeeze(cr.get_column("EXPOSURE").values)
+
+        del cr
+
+
+        dT1, dT2, dT3 = self._timedef(dT=True) # in MJD; time = MJD-OBS keyword #
+
+        dateobs_mjd = ( dates(d, fromcal="GREG", tocal="MJD") for d in dateobs )
+
+        match self._tbounds(timeobs):
+            case "epoch1":
+                ind = [ n for n,t in enumerate(dateobs_mjd) if dT1["start"] <= t < dT1["stop"] ]
+            case "epoch2":
+                ind = [ n for n,t in enumerate(dateobs_mjd) if dT2["start"] <= t < dT2["stop"] ]
+            case "epoch3":
+                ind = [ n for n,t in enumerate(dateobs_mjd) if t >= dT3["start"] ]
+            case _:
+                raise OSError("Observation is outside valid available time range of observations.")
+
+        return ind, obsid[ind], exposure[ind]
+
+
+    def bgspec(self, indicies: list|tuple, obsids: list|tuple) -> dict:
+        """
+        note that the background spectrum are in units of counts/pixel
+        """
+
+        samp_lo, samp_hi = self.samp.split(":")
+
+        if samp_lo == "":
+            samp_lo = 0
+
+        cr_bkg = pcr.read_file( f"{self.tbl_fn}[4]" )
+        bkgspec = cr_bkg.get_image().values.T
+
+        return { str(obs) : zip( *[(samp,spec) for samp,spec in enumerate( bkgspec[ind] )
+                                   if int(samp_lo) <= samp < int(samp_hi) ] )
+                for ind,obs in zip(indicies,obsids)
+                }
+
+
+    def bkg_subtract(self, info: namedtuple,
+                     bgcts: list|tuple, bgsamp_arr: list|tuple,
+                     npix: int = 512**2, seed : int|None = None):
+        """
+        return event attributes after a set of events has been sampled
+        """
+
+        if isinstance(seed, int) and seed <= 0:
+            seed = None
+
+        rng = numpy.random.default_rng(seed)
+
+        ## get distribution of SAMP values from the observed data sets ##
+        samp_edge_lower = set(bgsamp_arr)
+        samp_edge_upper = set(numpy.array(bgsamp_arr) + 1)
+        samp_edges = samp_edge_lower.union(samp_edge_upper)
+
+        src_cts, _ = numpy.histogram( info.samp, bins=tuple(samp_edges), #bins=len(bgsamp_arr),
+                                      range=( min(samp_edge_lower), max(samp_edge_upper) ) )
+
+        bg_cts = numpy.ceil(npix * numpy.array(bgcts)).astype(int)
+
+        cts = src_cts - bg_cts
+        cts[ cts<0 ] = 0
+
+        evt = list( zip( *[info.ux, info.vy, info.samp, info.time] ) )
+
+        evt_bkgsub = []
+
+        for samp_edge,n in zip(bgsamp_arr, cts):
+            e = [ (x,y,s,t) for x,y,s,t in evt if samp_edge <= s < samp_edge + 1 ]
+
+            if n > 0:
+                evt_bkgsub.extend( rng.choice(e, size=n) )
+
+        ux, vy, samp, time = zip( *sorted(evt_bkgsub, key=itemgetter(-1)) ) ## sort by time, the last column ##
+
+        return ux, vy, samp, time
+
+
+    def empPSF_tab(self, tobs: float, detector: str = "HRC-I", samp_range : str=":300"):
+        """
+        return a dictionary of tuples with events defined by a named tuple and
+        the exposure time for a given ObsID
+        """
+
+        emppsf_info = namedtuple( "emppsf_config", ["time","samp","ux","vy","defocus","obsid"] )
+        emppsf_evt = namedtuple( "emppsf_evt", ["time","ux","vy","samp"] )
+
+        bgspec_ind, ObsIDs, exptime = self._empPSF_time(tobs)
+
+        cr = pcr.read_file( f"{self.tbl_fn}[2][samp={samp_range}]" )
+
+        obsid = numpy.squeeze( cr.OBSID.values )
+        samp = numpy.squeeze( cr.SAMP.values )
+        time = numpy.squeeze( cr.TIME.values )
+        u = numpy.squeeze( cr.XRU.values )
+        v = numpy.squeeze( cr.YRV.values )
+        defocus = numpy.squeeze( cr.DEFOCUS.values )
+
+        del cr
+
+
+        match detector:
+            case "HRC-I":
+                defocus_inst = _defocus_dict()[detector]
+
+            case "HRC-S":
+                if self._tbounds(tobs) == "epoch1":
+                    defocus_inst = _defocus_dict()[detector]["pre-2006"]
+                else:
+                    defocus_inst = _defocus_dict()[detector]["since-2006"]
+
+                raise NotImplementedError("HRC-S observations are not supported presently.")
+
+            case "ACIS-I" | "ACIS-S":
+                raise NotImplementedError("ACIS observations are not supported presently.")
+
+            case _:
+                raise OSError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
+
+
+
+        tab = list( zip(time,samp,u,v,defocus,obsid) )
+        info_list = [ emppsf_info(*t) for t in tab ]
+
+        info_dict = { str(o) : ( emppsf_evt(*zip(*[ (info.time, info.ux, info.vy, info.samp)
+                                                   for info in info_list
+                                                   if info.obsid == o and self._chk_defocus(info.defocus,defocus_inst)
+                                                   ]
+                                                 )
+                                           ),
+                                 exposure
+                                )
+                     for o,exposure in zip(ObsIDs,exptime) }
+
+
+        if self.bkgsubtract:
+            bg_samp_spec_dict = self.bgspec(bgspec_ind, ObsIDs)
+
+            for o in ObsIDs:
+                bgsamp, bgcts = bg_samp_spec_dict[str(o)]
+                info, exposure = info_dict[str(o)]
+                ux, vy, samp, time = self.bkg_subtract(info, bgcts, bgsamp, seed=self.seed)
+
+                info_dict[str(o)] = ( emppsf_evt(*zip( [time, ux, vy, samp] )), exposure )
+
+        return info_dict
+
+
+    def build_multi_emppsf_table(self, detector: str, info_dict: dict):
+        """
+        write out FITS table of filtered events in detector coordinates,
+        a separate ObsID per block/HDU.
+        """
+
+        if self.empPSFout is None:
+            _empPSFout = ""
+        elif isinstance(self.empPSFout, str) and not self.empPSFout.endswith("_"):
+            _empPSFout = f"{self.empPSFout}_"
+        else:
+            _empPSFout = self.empPSFout
+
+
+        ds = pcr.CrateDataset()
+
+        for obsid,(info,exposure) in info_dict.items():
+            time = info.time
+            u = info.ux
+            v = info.vy
+            samp = info.samp
+
+            blkname = f"ObsID-{obsid}"
+            cr_tab = pcr.TABLECrate()
+            cr_tab.name = blkname
+
+            cr_time = pcr.CrateData()
+            cr_u = pcr.CrateData()
+            cr_v = pcr.CrateData()
+            cr_samp = pcr.CrateData()
+
+            cr_time.values = time
+            cr_time.name = "time"
+            cr_time.unit = "s"
+            # cr_time._set_tlmin(min(time))
+            # cr_time._set_tlmax(max(time))
+
+            cr_u.values = u
+            cr_u.name = "XRU"
+            cr_u._set_tlmin(-256)
+            cr_u._set_tlmax(256)
+
+            cr_v.values = v
+            cr_v.name = "YRV"
+            cr_v._set_tlmin(-256)
+            cr_v._set_tlmax(256)
+
+            cr_samp.values = samp
+            cr_samp.name = "samp"
+            # cr_samp._set_tlmin(0)
+
+            cr_tab.add_column(cr_time)
+            cr_tab.add_column(cr_u)
+            cr_tab.add_column(cr_v)
+            cr_tab.add_column(cr_samp)
+
+            for kw,val in { "EXPOSURE" : exposure,
+                            "BKGSUB" : self.bkgsubtract }:
+
+                crkey = pcr.CrateKey()
+                crkey.name = kw
+                crkey.value = val
+                cr_tab.add_key(crkey)
+
+
+            ds.add_crate(cr_tab)
+
+        pcr.write_dataset(ds, f"{_empPSFout}{detector}_empPSF.fits", clobber=True, history=False)
+
+
+    def empPSF_cr(self, imgcrate: bool=True) -> pcr.imagecrate.IMAGECrate|pcr.tablecrate.TABLECrate:
+        """
+        return either a binned image crate or table crate of the PSF
+        """
+
+        cr = pcr.read_file(f"{self.evtfile}[#row=0]")
+
+        tobs = cr.get_key("MJD-OBS").value
+        detector = cr.get_key("DETNAM").value
+        instrument = cr.get_key("INSTRUME").value
+
+        del cr
+
+        InfoDict = self.empPSF_tab(tobs, detector, self.samp)
+
+        if self.write_table:
+            self.build_multi_emppsf_table(detector, InfoDict)
+
+        ux = numpy.concatenate( [ inf.ux for inf,_ in InfoDict.values() ], axis=None )
+        vy = numpy.concatenate( [ inf.vy for inf,_ in InfoDict.values() ], axis=None )
+
+        if not imgcrate:
+            samp = numpy.concatenate( [ inf.samp for inf,_ in InfoDict.values() ], axis=None )
+            time = numpy.concatenate( [ inf.time for inf,_ in InfoDict.values() ], axis=None )
+
+            return make_table_crate({ "pos" : numpy.array(list(zip(ux,vy))), "samp" : samp, "time" : time})
+
+        ### take the image array and turn it to an image Crate, ###
+        ### to be written out as a FITS image 'imgout'          ###
+
+        if instrument.upper() == "HRC":
+            dn = 128
+            pixsize = 0.13175
+            ctr_x = 16384.0
+            ctr_y = 16384.0
+        else:
+            dn = 32
+            pixsize = 0.492
+            ctr_x = 4096.0
+            ctr_y = 4096.0
+
+        if dn % 2 == 0:
+            dn += 1
+
+        ## x- and y-axis dimensions ##
+        nx = _ceildiv(dn, self.binsize)
+        ny = _ceildiv(dn, self.binsize)
+
+        ## x- and y-axis coordinate range boundaries ##
+        dn_lo = -dn//2 + float( self.binsize/2 )
+        dn_hi = _ceildiv(dn, 2) - float( self.binsize/2 )
+
+        ## bin events onto a 2D histogram with evenly binned grid ##
+        psfimg = numpy.histogram2d( ux, vy,
+                                    bins=[nx,ny],
+                                    range=[[dn_lo,dn_hi],[dn_lo,dn_hi]] )[0]
+
+        ### normalize PSF image to sum to 1 ###
+        psfimg /= psfimg.sum()
+
+
+        ### make image crate and add pseudo-axes ###
+        imcr = make_image_crate( psfimg.T )
+
+        axes_kw = { "CTYPE1" : "PSFX",
+                    "CTYPE2" : "PSFY",
+                    "CUNIT1" : "deg",
+                    "CUNIT2" : "deg",
+                    "CRVAL1" : 0,
+                    "CRVAL2" : 0,
+                    "CRPIX1" : 0,
+                    "CRPIX2" : 0,
+                    "CDELT1" : Decimal(pixsize) * Decimal(180/206265/numpy.pi) * self.binsize,
+                    "CDELT2" : Decimal(pixsize) * Decimal(180/206265/numpy.pi) * self.binsize,
+                    "CTYPE1P" : "ROTSKYX",
+                    "CTYPE2P" : "ROTSKYY",
+                    "CRPIX1P" : ctr_x,
+                    "CRPIX2P" : ctr_y,
+                    "CDELT1P" : self.binsize,
+                    "CDELT2P" : self.binsize
+                   }
+
+        for key,val in axes_kw.items():
+            crkey = pcr.CrateKey()
+            crkey.name = key
+
+            if isinstance(val, Decimal):
+                crkey.value = float(val)
+            else:
+                crkey.value = val
+
+            imcr.add_key(crkey)
+
+
+        CRkey = namedtuple( "CRkey", ["key","val","desc"] )
+
+        for _crkey in ( CRkey(key="BKGSUB", val=self.bkgsubtract, desc="Sample of background events removed from PSF?"),
+                        CRkey(key="SUMRCTS", val=1.0, desc="Data is normalized to integrate to 1") ):
+
+            crkey = pcr.CrateKey()
+            crkey.name = _crkey.key
+            crkey.value = _crkey.val
+            crkey.desc = _crkey.desc
+            imcr.add_key(crkey)
+
+
+        return imcr
+
+
+
+#########################################################################
+#
+#  match roll and apply coordinates of the observation
+#
+##########################################################################
+
+
+
+def _get_roll(kwdict : dict) -> float:
+    """
+    get observation roll angle and determine rotation
+    angle for detector PSF in degrees
+    """
+    inst = kwdict["INSTRUME"]
+    detector = kwdict["DETNAM"]
+    roll = kwdict["ROLL_NOM"]
+
+    dtheta = { "HRC-I" : 45.0,
+               "HRC-S" : 0 }
+
+    if inst == "HRC":
+        return roll - dtheta[detector]
+
+    raise OSError("HRC observations are only supported presently!")
+
+
+
+def _check_offaxis_angle(evt : str, skyx : float, skyy : float,
+                         offaxis_limit: int|float=0.5):
+    """
+    return off-axis angle in arcmin
+    """
+
+    coords = make_tool("dmcoords")
+
+    coords.punlearn()
+
+    coords.infile = evt
+    coords.x = skyx
+    coords.y = skyy
+    coords.option = "sky"
+    coords.verbose = 0
+    coords()
+
+    offaxis = coords.theta
+
+    if offaxis > offaxis_limit:
+        raise OSError(f"The empirical PSFs are usable for point sources with an off-axis \
+angle less than {offaxis_limit} arcmin from the aimpoint.  The source position provided \
+is {offaxis} arcmin off-axis.")
+
+
+
+def _check_defocus(kwdict: dict, tol: float=0.02):
+    """
+    check that the observation defocus are within the tolerance (of 0.02 mm)
+    of the defocus of the empirical events
+    """
+
+    defocus_obs = kwdict["DEFOCUS"]
+    detector = kwdict["DETNAM"].upper()
+
+    defocus_dict = _defocus_dict()
+
+    match detector:
+        case "HRC-I":
+            defocus = defocus_dict[detector]
+
+            msg = f"which is {defocus} [mm] for {detector}"
+
+        case "HRC-S":
+            date_obs = datetime.strptime( kwdict["DATE-OBS"], "%Y-%m-%dT%H:%M:%S" )
+            year = date_obs.year
+
+            if year < 2006:
+                defocus = defocus_dict[detector]["pre-2006"]
+
+            else:
+                defocus = defocus_dict[detector]["since-2006"]
+
+            msg = f"which is {defocus.defocus} [mm] for {detector} {defocus.period_prefix} January 2006"
+
+            raise NotImplementedError("HRC-S observations are not supported presently.")
+
+        case "ACIS-I" | "ACIS-S":
+            raise NotImplementedError("ACIS observations are not supported presently.")
+
+        case _:
+            raise OSError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
+
+
+    if not numpy.isclose(defocus_obs, defocus, atol=tol):
+        raise OSError(f"The observations must have a defocus within {tol} [mm] \
+from the best focus position of the empirical PSF, {msg}.")
+
+
+
+def cut_img(evt : str, outimg : str,
+            skyx_ctr : float, skyy_ctr : float, binsize : float,
+            nx : int, ny : int, samp : str=":300",
+            tmpdir : str=os.getenv("ASCDS_WORK_PATH")):
+    """
+    bin image from observed event file to match the corresponding binned PSF image.
+    """
+
+    dmcp = make_tool("dmcopy")
+
+    x = binsize * round( Decimal(skyx_ctr)/binsize )
+    y = binsize * round( Decimal(skyy_ctr)/binsize )
+
+    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp:
+        dmcp.punlearn()
+
+        dmcp.verbose = 0
+        dmcp.clobber = True
+
+        dmcp.infile = f"{evt}[sky=box({x},{y},{nx},{ny}),samp={samp}][bin sky={binsize}]"
+        dmcp.outfile = tmp.name
+        dmcp()
+
+        dmcp.infile = f"{tmp.name}[sky=box({x},{y},{binsize*nx},{binsize*ny})]"
+        dmcp.outfile = outimg
+        dmcp()
+
+
+
+def roll_psf(psf : str, outpsf : str, wcsimg : str, roll : float,
+             ximg_center : float|int, yimg_center : float|int,
+             regrid_res: int = 10, tmpdir : str=os.getenv("ASCDS_WORK_PATH"),
+             verbose : int=0, clobber : bool = True):
+    """
+    rotate PSF image and match coordinates with the observed data set.
+    """
+
+    regrid2 = make_tool("dmregrid2")
+    imgcalc = make_tool("dmimgcalc")
+
+    regrid2.punlearn()
+    imgcalc.punlearn()
+
+    lut_basedir = files("ciao_contrib").joinpath("..", ".." ,".." ,".." ,"data")
+
+    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp, \
+        as_file( lut_basedir / "empPSF-merge_header_lookup.txt" ) as lut:
+        regrid2.infile = psf
+        regrid2.outfile = tmp.name
+        regrid2.resolution = regrid_res
+        regrid2.theta = roll
+        regrid2.rotxcenter = ximg_center
+        regrid2.rotycenter = yimg_center
+        regrid2.method = "average"
+        #regrid2.coord_sys = "logical"
+        regrid2.verbose = verbose
+        regrid2.clobber = clobber
+
+        imgcalc.infile = wcsimg
+        imgcalc.infile2 = tmp.name
+        imgcalc.outfile = outpsf
+        imgcalc.operation = "add"
+        imgcalc.weight = 0
+        imgcalc.weight2 = 1
+        imgcalc.lookupTab = lut
+        imgcalc.verbose = verbose
+        imgcalc.clobber = clobber
+
+        regrid2()
+        imgcalc()
+
+
+
+def image_deconvolve(imgfile : str, psfimg : str, deconvimg : str,
+                     x_img : int|float, y_img : int|float, niter : int=10,
+                     verbose : int=0, clobber : bool=True):
+    """
+    deconvolve observed image with the PSF using Richardson-Lucy
+    algorithm via 'arestore'
+    """
+
+    arestore = make_tool("arestore")
+
+    arestore.punlearn()
+
+    arestore.infile = imgfile
+    arestore.psffile = psfimg
+    arestore.outfile = deconvimg
+    arestore.numiter = niter
+    arestore.psf_x_center = x_img
+    arestore.psf_y_center = y_img
+    arestore.verbose = verbose
+    arestore.clobber = clobber
+
+    arestore()
+
+
+
+##########################################################################
+#
+#  Parameter related tasks
+#
+#  Retrieve parameter values set in the referenced parameter file
+#  and create a dictionary matching parameter name to parameter value.
+#
+##########################################################################
+
+def get_par(argv) -> tuple[dict,dict]:
+    """
+    Get data_products parameters from parameter file
+    """
+
+    pfile = open_param_file(argv, toolname=__toolname__)["fp"]
+
+    # Parameters:
+    pars: dict = {}
+    orig_pars: dict = {}
+
+    pars["evt"] = orig_pars["evtfile"] = pio.pgetstr(pfile, "evtfile")
+    pars["outpsf"] = orig_pars["outpsf"] =  pio.pgetstr(pfile, "outpsf")
+    pars["outimg"] = orig_pars["outimg"] =  pio.pgetstr(pfile, "outimg")
+    pars["outdeconv"] = orig_pars["outdeconv"] = pio.pgetstr(pfile, "outdeconv")
+    pars["src_skyx"] = orig_pars["src_x"] = pio.pgetd(pfile, "src_x")
+    pars["src_skyy"] = orig_pars["src_y"] = pio.pgetd(pfile, "src_y")
+    pars["samp_range"] = orig_pars["samp"] = pio.pgetstr(pfile, "samp")
+    pars["arestore_niter"] = orig_pars["deconv_niter"] = pio.pgetd(pfile, "deconv_niter")
+    pars["binsize"] = orig_pars["binsize"] = pio.pgetd(pfile, "binsize")
+    pars["bkgsubtract"] = orig_pars["bkgsubtract"] = pio.pgetstr(pfile, "bkgsubtract")
+    pars["random_seed"] = orig_pars["random_seed"] = pio.pgeti(pfile, "random_seed")
+    pars["tmpdir"] = orig_pars["tmpdir"] = pio.pgetstr(pfile,"tmpdir")
+    pars["verbose"] = orig_pars["verbose"] = pio.pgeti(pfile, "verbose")
+    pars["clobber"] = orig_pars["clobber"] = pio.pgetstr(pfile, "clobber")
+
+    pio.paramclose(pfile)
+
+    ################################
+    ##
+    ## check and modify parameters
+    ##
+    ################################
+
+    # files with information to reproject
+    if pars["evt"] == "":
+        raise ScriptError("Input event file must be specified.")
+
+
+    # output file name
+    if pars["outpsf"] == "":
+        raise ScriptError("Please specify an output PSF image file name.")
+
+
+    if pars["outimg"] == "":
+        raise ScriptError("Please specify an output counts image file name.")
+
+
+    for par in ("outpsf", "outimg", "outdeconv"):
+
+        path = pars[par]
+
+        outdir,outfile = utils.split_outroot(path)
+
+        if outdir != "" and outfile == "":
+            raise ScriptError(f"An output file name must be specified by the '{par}' path!")
+
+        # check if output directory is writable
+        fileio.validate_outdir(outdir)
+
+
+    for par in ("bkgsubtract", "clobber"):
+        if pars[par].lower() == "yes":
+            pars[par] = True
+        else:
+            pars[par] = False
+
+
+    if ":" not in pars["samp_range"]:
+        raise OSError("'samp' parameter requires specifying a range using colon-separation, ':'")
+
+    _samp_lo, _samp_hi = pars["samp_range"].split(":")
+
+    if _samp_lo != "" and Decimal(_samp_lo) < 0:
+        raise OSError("The 'samp' lower-bound cannot be a negative value.")
+    if Decimal(_samp_hi) > 300:
+        raise OSError("The 'samp' upper-bound value cannot be greater than 300.")
+
+
+    # print script info #
+    set_verbosity(pars["verbose"])
+    utils.print_version(__toolname__, __revision__)
+
+    v3(f"  Parameters: {pars}")
+
+    return pars, orig_pars
+
+
+
+@handle_ciao_errors(__toolname__, __revision__)
+def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
+         src_skyx : float|int, src_skyy : float|int,
+         binsize : int|float=1,
+         samp_range : str="16:300",
+         bkgsubtract : bool=True, random_seed: None|int=None,
+         arestore_niter : int=50,
+         tmpdir : str=os.getenv("ASCDS_WORK_PATH"),
+         clobber : bool=True, verbose : int=0):
+
+    evt_kw = fileio.get_keys_from_file(f"{evt}[#row=0]")
+
+    with new_pfiles_environment(ardlib=False), \
+         tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".psf") as psf:
+
+        _check_offaxis_angle(evt, src_skyx, src_skyy)
+        _check_defocus(evt_kw)
+
+        binsize = round(Decimal(binsize), 3)
+
+        psf_imcr = EmpiricalPSF(evtfile=evt, write_table=False,
+                                binsize=binsize, samp_range = samp_range,
+                                bkgsubtract=bkgsubtract, seed=random_seed).empPSF_cr(imgcrate=True)
+
+        pcr.write_file(psf_imcr, psf.name, clobber=True)
+
+
+        _grid, _binval, _xrng, _yrng, (nx,ny) = utils.parse_xygrid(psf.name)
+        #binsize = round(Decimal(_binval), 3)
+
+        if nx % 2. != 0:
+            ximg = _ceildiv(nx, 2) - 0.5
+        else:
+            ximg = nx/2.
+
+        if ny % 2. != 0:
+            yimg = _ceildiv(ny, 2) - 0.5
+        else:
+            yimg = ny/2.
+
+        psfroll = _get_roll(evt_kw)
+
+        cut_img(evt, outimg, src_skyx, src_skyy, binsize, nx, ny, samp_range, tmpdir)
+
+        roll_psf(psf.name, outpsf, outimg, roll=psfroll, ximg_center=ximg, yimg_center=yimg,
+                 tmpdir=tmpdir, clobber=clobber, verbose=verbose)
+
+        if outdeconv != "":
+            image_deconvolve(outimg, outpsf, outdeconv, x_img=ximg, y_img=yimg,
+                             niter=arestore_niter, clobber=clobber, verbose=verbose)
+
+
+
+if __name__ == "__main__":
+    params,orig_params = get_par( preprocess_arglist(sys.argv) )
+    doit(**params)
+
+    for arg in ("outpsf", "outimg", "outdeconv"):
+        fn = params[arg]
+
+        if fn != "":
+            add_tool_history(fn, __toolname__, orig_params)
