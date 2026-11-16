@@ -22,6 +22,7 @@
 
 import os
 import sys
+import numpy as np
 from pycrates import read_file
 from ciao_contrib.runtool import make_tool
 import ciao_contrib.logger_wrapper as lw
@@ -31,7 +32,7 @@ from ciao_contrib._tools.fileio import outfile_clobber_checks
 ONTIME_DIFF_THRESHOLD = 0.95
 
 __toolname__ = "acis_split_evt_by_fptemp"
-__revision__ = "02 March 2026"
+__revision__ = "16 November 2026"
 
 lw.initialize_logger(__toolname__)
 
@@ -71,16 +72,72 @@ def get_caldb_files(infile):
 
 
 def get_fp_temp_limits(pars):
+    '''Wrapper around routine to get limits from keys or '''
+
+    limits = get_fp_temp_limits_keywords(pars)
+    if len(limits) > 1:
+        return limits
+
+    limits = get_fp_temp_limits_columns(pars)
+    return limits
+
+
+def get_fp_temp_limits_columns(pars):
+    '''Get FP_TEMP limits from the CALDB files
+
+    Need to get from keywords in AXAF_CTI_SCATTER_L|G blocks
+    '''
+    p2resp = get_caldb_files(pars["infile"])
+
+    limits = None
+    for p2_resp_file in p2resp:
+        tab = read_file(p2_resp_file)
+        ds = tab.get_dataset()
+
+        n_crates = ds.get_ncrates()
+        for crate_no in range(1, n_crates+1):
+            # Skip image
+            cr = ds.get_crate(crate_no)
+            if cr.is_image():
+                del cr
+                continue
+
+            # Look for block with TEMP_LO and TEMP_HI columns
+            cols = [x.upper() for x in cr.get_colnames()]
+            if not {'TEMP_LO', 'TEMP_HI'}.issubset(cols):
+                del cr
+                continue
+
+            # Get unique set of lo/hi pairs
+            t_lo = cr.get_column('TEMP_LO').values.copy()
+            t_hi = cr.get_column('TEMP_HI').values.copy()
+            limits = set(zip(t_lo, t_hi))
+            limits = sorted(limits)
+            del cr
+            break
+
+        del ds
+        if limits is not None:
+            # Remove outer limits if they are present
+            arr = np.array(limits)
+            lo, hi = arr[:, 0], arr[:, 1]
+
+            # contains[i, j] is True if interval i strictly contains interval j
+            contains = ((lo[:, None] <= lo) & (hi <= hi[:, None]) &
+                        ((lo[:, None] < lo) | (hi < hi[:, None])))
+
+            keep = ~contains.any(axis=1)
+            inner = [limits[i] for i in np.flatnonzero(keep)]
+            return inner
+
+    # If we reached the end of list of files then no limits found to err
+    raise IOError("ERROR: Could not find FP_TEMP dependency in CALDB files for this event file.")
+
+
+def get_fp_temp_limits_keywords(pars):
     '''Get FP_TEMP limits from the CALDB files
 
     We have to parse the CBD* keywords'''
-
-    # ~ import stk
-    # ~ p2_resp_dir = os.path.join(os.environ["CALDB"], "data", "chandra",
-    # ~                            "acis", "p2_resp")
-    # ~ assert os.path.isdir(p2_resp_dir), "CALDB is not configured as expected"
-    # ~ p2resp = stk.build(os.path.join(p2_resp_dir,
-    # ~                                 pars['p2_resp_root'])+"*.fits")
 
     p2resp = get_caldb_files(pars["infile"])
 
@@ -126,15 +183,15 @@ def create_and_apply_gtis(pars, fp_limits):
 
         dmgti = make_tool("dmgti")
         dmgti.infile = pars['mtlfile']+"[cols time,fp_temp]"
-        dmgti.outfile = pars['outroot']+f"_{lo}-{hi}.gti"
-        dmgti.userlimit = f"((FP_TEMP>={lo})&&(FP_TEMP<{hi}))"
+        dmgti.outfile = pars['outroot']+f"_{lo:.2f}-{hi:.2f}.gti"
+        dmgti.userlimit = f"((FP_TEMP>={lo:.2f})&&(FP_TEMP<{hi:.2f}))"
         outfile_clobber_checks(pars["clobber"], dmgti.outfile)
         dmgti.verbose = pars["verbose"]
         verb2(dmgti(clobber=pars["clobber"]))
 
         tab = read_file(dmgti.outfile)
         ontime = tab.get_key_value("ONTIME")
-        verb1(f"FP_TEMP [K]: {lo} - {hi} : {ontime:10.2f} [sec]")
+        verb1(f"FP_TEMP [K]: {lo:.2f} - {hi:.2f} : {ontime:10.2f} [sec]")
         if ontime == 0:
             # No good time, so omit this temperature range
             os.unlink(dmgti.outfile)
@@ -147,7 +204,7 @@ def create_and_apply_gtis(pars, fp_limits):
 
         dmcopy = make_tool("dmcopy")
         dmcopy.infile = f"{pars['infile']}[@{gti}]"
-        dmcopy.outfile = pars['outroot']+f"_{lo}-{hi}.evt"
+        dmcopy.outfile = pars['outroot']+f"_{lo:.2f}-{hi:.2f}.evt"
         dmcopy.option = "all"
         dmcopy.verbose = pars["verbose"]
         outfile_clobber_checks(pars["clobber"], dmcopy.outfile)
@@ -167,7 +224,7 @@ def create_and_apply_gtis(pars, fp_limits):
         verb2(dmhedit(outfile, key="FP_TEMP", op="add", value=mid_temp))
 
         verb2(dmhedit(outfile, key="COMMENT", op="add",
-                      value=f"File has been filtered for {lo} <= FP_TEMP < {hi}"))
+                      value=f"File has been filtered for {lo:.2f} <= FP_TEMP < {hi:.2f}"))
 
         from ciao_contrib.runtool import add_tool_history
         add_tool_history(outfile, __toolname__,
