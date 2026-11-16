@@ -3,7 +3,7 @@
 
 __version__ = "CIAO 4.19"
 __toolname__ = "format_empirical_psf"
-__revision__ = "12 November 2026"
+__revision__ = "16 November 2026"
 
 
 import os
@@ -13,12 +13,13 @@ from decimal import Decimal
 from collections import namedtuple
 from operator import itemgetter
 from datetime import datetime
-from importlib.resources import files, as_file
+from importlib.resources import files
+from posixpath import normpath
 
 import numpy
 
 import pycrates as pcr
-from crates_contrib.utils import make_image_crate, make_table_crate #, smooth_image_crate
+from crates_contrib.utils import make_image_crate, make_table_crate
 
 import paramio as pio
 
@@ -105,15 +106,14 @@ class EmpiricalPSF:
 
         tbl_fn_basedir = files("ciao_contrib").joinpath("..", "..", "..", "..", "data", "empPSF")
 
-        with as_file(tbl_fn_basedir / tbl_fn) as tbl:
-            self.evtfile = evtfile
-            self.write_table = write_table
-            self.binsize = binsize
-            self.empPSFout = empPSFout
-            self.samp = samp_range
-            self.tbl_fn = tbl
-            self.bkgsubtract = bkgsubtract
-            self.seed = seed
+        self.evtfile = evtfile
+        self.write_table = write_table
+        self.binsize = binsize
+        self.empPSFout = empPSFout
+        self.samp = samp_range
+        self.tbl_fn = normpath( tbl_fn_basedir.joinpath(tbl_fn) )
+        self.bkgsubtract = bkgsubtract
+        self.seed = seed
 
 
     def __enter__(self):
@@ -661,10 +661,9 @@ def roll_psf(psf : str, outpsf : str, wcsimg : str, roll : float,
     regrid2.punlearn()
     imgcalc.punlearn()
 
-    lut_basedir = files("ciao_contrib").joinpath("..", ".." ,".." ,".." ,"data")
+    lut_basedir = files("ciao_contrib").joinpath("..", "..", "..", ".." , "data")
 
-    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp, \
-        as_file( lut_basedir / "empPSF-merge_header_lookup.txt" ) as lut:
+    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp:
         regrid2.infile = psf
         regrid2.outfile = tmp.name
         regrid2.resolution = regrid_res
@@ -682,7 +681,7 @@ def roll_psf(psf : str, outpsf : str, wcsimg : str, roll : float,
         imgcalc.operation = "add"
         imgcalc.weight = 0
         imgcalc.weight2 = 1
-        imgcalc.lookupTab = lut
+        imgcalc.lookupTab = normpath( lut_basedir.joinpath("empPSF-merge_header_lookup.txt") )
         imgcalc.verbose = verbose
         imgcalc.clobber = clobber
 
