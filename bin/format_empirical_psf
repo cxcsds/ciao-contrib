@@ -3,7 +3,7 @@
 
 __version__ = "CIAO 4.19"
 __toolname__ = "format_empirical_psf"
-__revision__ = "16 November 2026"
+__revision__ = "17 November 2026"
 
 
 import os
@@ -647,6 +647,52 @@ def cut_img(evt : str, outimg : str,
 
 
 
+def _roll_point_imcorr_offset(psfimg_raw, binsize: float|int|Decimal,
+                              instrument: str="HRC", verbose: int=0) -> tuple[Decimal,Decimal]:
+    """
+    PSF roll is suspected not to be at the image center of the empirical PSF.
+    Diab believes an auto-correlation may provide a better guess as to the
+    optical-axis location to rotate about.
+    """
+
+    acrosscorr = make_tool("acrosscorr")
+    dmstat = make_tool("dmstat")
+
+    acrosscorr.punlearn()
+    dmstat.punlearn()
+
+    with tempfile.NamedTemporaryFile() as autocorr:
+        acrosscorr.infile1 = psfimg_raw
+        acrosscorr.infile2 = "none"
+        acrosscorr.outfile = autocorr.name
+        acrosscorr.center = True
+        acrosscorr.clobber = True
+        acrosscorr.verbose = verbose
+
+        acrosscorr()
+
+        dmstat.infile = autocorr.name
+        dmstat.centroid = False
+        dmstat.sigma = False
+        dmstat.verbose = 0
+
+        dmstat()
+
+    rotskyx,rotskyy = dmstat.out_max_loc.split(",")
+
+    match instrument:
+        case "HRC":
+            center = Decimal("16384.0")
+        case "ACIS":
+            center = Decimal("4096.0")
+
+    ximg = (Decimal(rotskyx)/binsize) + center
+    yimg = (Decimal(rotskyy)/binsize) + center
+
+    return ximg, yimg
+
+
+
 def roll_psf(psf : str, outpsf : str, wcsimg : str, roll : float,
              ximg_center : float|int, yimg_center : float|int,
              regrid_res: int = 10, tmpdir : str=os.getenv("ASCDS_WORK_PATH"),
@@ -843,15 +889,17 @@ def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
         _grid, _binval, _xrng, _yrng, (nx,ny) = utils.parse_xygrid(psf.name)
         #binsize = round(Decimal(_binval), 3)
 
-        if nx % 2. != 0:
-            ximg = _ceildiv(nx, 2) - 0.5
-        else:
-            ximg = nx/2.
+        # if nx % 2. != 0:
+        #     ximg = _ceildiv(nx, 2) - 0.5
+        # else:
+        #     ximg = nx/2.
+        #
+        # if ny % 2. != 0:
+        #     yimg = _ceildiv(ny, 2) - 0.5
+        # else:
+        #     yimg = ny/2.
 
-        if ny % 2. != 0:
-            yimg = _ceildiv(ny, 2) - 0.5
-        else:
-            yimg = ny/2.
+        ximg, yimg = _roll_point_imcorr_offset(psf.name, binsize, instrument=evt_kw["INSTRUME"])
 
         psfroll = _get_roll(evt_kw)
 
