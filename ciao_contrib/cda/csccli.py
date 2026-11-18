@@ -803,7 +803,7 @@ def parse_csc_result( page_and_cols ):
     We parse this into a list of dictionaries.  Each item in the list
     is 1 row with a dictionary of columnname = value.
 
-    Currenly we only use the name, region_id, obsid, and obi but other values
+    currently we only use the name, region_id, obsid, and obi but other values
     are available for future expansion.
 
     """
