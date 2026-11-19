@@ -3,18 +3,20 @@
 
 __version__ = "CIAO 4.19"
 __toolname__ = "format_empirical_psf"
-__revision__ = "17 November 2026"
+__revision__ = "18 November 2026"
 
 
 import os
 import sys
 import tempfile
+import warnings
 from decimal import Decimal
 from collections import namedtuple
 from operator import itemgetter
 from datetime import datetime
 from importlib.resources import files
 from posixpath import normpath
+from functools import wraps
 
 import numpy
 
@@ -62,6 +64,32 @@ def _defocus_dict():
 
 
 
+def _reformat_wmsg(func):
+    """
+    Decorator:
+
+    Trim extraneous user-warning information showing path and line number.
+    """
+
+    @wraps(func)
+    def run_func(*args, **kwargs):
+        Yellow = "\033[93m"
+        Red = "\033[91m"
+        ResetColor = "\033[0m"
+
+        warnings_reset = warnings.formatwarning
+        warnings.formatwarning = lambda msg, *args_warn, **kwargs_warn: f'{Red}Warning: {Yellow}{msg}{ResetColor}\n'
+
+        func_out = func(*args,**kwargs)
+
+        warnings.formatwarning = warnings_reset
+
+        return func_out
+
+    return run_func
+
+
+
 class ScriptError(RuntimeError):
     """
     Error found during running the script. This class is introduced
@@ -97,12 +125,12 @@ class EmpiricalPSF:
                 #tbl_fn = None
                 raise NotImplementedError("HRC-S observations are not supported presently.")
 
-            case "ACIS-I" | "ACIS-S":
+            case det if det.startswith("ACIS"):
                 #tbl_fn = None
                 raise NotImplementedError("ACIS observations are not supported presently.")
 
             case _:
-                raise OSError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
+                raise OSError("Chandra data with 'DETNAM' keyword is expected.")
 
         tbl_fn_basedir = files("ciao_contrib").joinpath("..", "..", "..", "..", "data", "empPSF")
 
@@ -248,7 +276,7 @@ class EmpiricalPSF:
         samp_edge_upper = set(numpy.array(bgsamp_arr) + 1)
         samp_edges = samp_edge_lower.union(samp_edge_upper)
 
-        src_cts, _ = numpy.histogram( info.samp, bins=tuple(samp_edges), #bins=len(bgsamp_arr),
+        src_cts, _ = numpy.histogram( info.samp, bins=sorted(samp_edges), #bins=len(bgsamp_arr),
                                       range=( min(samp_edge_lower), max(samp_edge_upper) ) )
 
         bg_cts = numpy.ceil(npix * numpy.array(bgcts)).astype(int)
@@ -306,12 +334,8 @@ class EmpiricalPSF:
 
                 raise NotImplementedError("HRC-S observations are not supported presently.")
 
-            case "ACIS-I" | "ACIS-S":
+            case det if det.startswith("ACIS"):
                 raise NotImplementedError("ACIS observations are not supported presently.")
-
-            case _:
-                raise OSError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
-
 
 
         tab = list( zip(time,samp,u,v,defocus,obsid) )
@@ -548,6 +572,7 @@ def _get_roll(kwdict : dict) -> float:
 
 
 
+@_reformat_wmsg
 def _check_offaxis_angle(evt : str, skyx : float, skyy : float,
                          offaxis_limit: int|float=0.5):
     """
@@ -568,10 +593,11 @@ def _check_offaxis_angle(evt : str, skyx : float, skyy : float,
     offaxis = coords.theta
 
     if offaxis > offaxis_limit:
-        raise OSError(f"The empirical PSFs are usable for point sources with an off-axis \
-angle less than {offaxis_limit} arcmin from the aimpoint.  The source position provided \
-is {offaxis} arcmin off-axis.")
+        msg = f"The source position is intended to be within {offaxis_limit} arcmin \
+of the aim point: found {offaxis:.3f} arcmin off-axis."
 
+        warnings.warn(msg, RuntimeWarning)
+        # raise OSError(msg)
 
 
 def _check_defocus(kwdict: dict, tol: float=0.02):
@@ -605,11 +631,17 @@ def _check_defocus(kwdict: dict, tol: float=0.02):
 
             raise NotImplementedError("HRC-S observations are not supported presently.")
 
-        case "ACIS-I" | "ACIS-S":
+        case det if det.startswith("ACIS"):
+            # if kwdict.get("SIM_Z") is None:
+            #     raise OSError(f"{__toolname__} is dependent on the 'SIM_Z' header keyword for ACIS observations.")
+
             raise NotImplementedError("ACIS observations are not supported presently.")
 
         case _:
-            raise OSError("Chandra data with 'DETNAM' and 'INSTRUME' keywords are expected.")
+            if kwdict.get("INSTRUME") is None:
+                raise OSError("Chandra data with 'DETNAM' and 'INSTRUME' keywords is expected.")
+
+            raise OSError("Chandra data with 'DETNAM' keyword is expected.")
 
 
     if not numpy.isclose(defocus_obs, defocus, atol=tol):
@@ -719,7 +751,7 @@ def roll_psf(psf : str, outpsf : str, wcsimg : str, roll : float,
         regrid2.method = "average"
         #regrid2.coord_sys = "logical"
         regrid2.verbose = verbose
-        regrid2.clobber = clobber
+        regrid2.clobber = True
 
         imgcalc.infile = wcsimg
         imgcalc.infile2 = tmp.name
