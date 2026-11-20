@@ -1,9 +1,37 @@
 #!/usr/bin/env python
 
+#
+# Copyright (C) 2026
+#        Smithsonian Astrophysical Observatory
+#
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+"""
+Script:
+
+  format_empirical_psf
+
+	This script is an interpretation of the Chandra empirical PSF
+"""
 
 __version__ = "CIAO 4.19"
 __toolname__ = "format_empirical_psf"
-__revision__ = "18 November 2026"
+__revision__ = "20 November 2026"
 
 
 import os
@@ -16,11 +44,11 @@ from operator import itemgetter
 from datetime import datetime
 from importlib.resources import files
 from posixpath import normpath
-from functools import wraps
 
 import numpy
 
 import pycrates as pcr
+from region import CXCRegion
 from crates_contrib.utils import make_image_crate, make_table_crate
 
 import paramio as pio
@@ -61,32 +89,6 @@ def _defocus_dict():
                          "since-2006" : defocus_tup(0.007, "since")
                         }
             }
-
-
-
-def _reformat_wmsg(func):
-    """
-    Decorator:
-
-    Trim extraneous user-warning information showing path and line number.
-    """
-
-    @wraps(func)
-    def run_func(*args, **kwargs):
-        Yellow = "\033[93m"
-        Red = "\033[91m"
-        ResetColor = "\033[0m"
-
-        warnings_reset = warnings.formatwarning
-        warnings.formatwarning = lambda msg, *args_warn, **kwargs_warn: f'{Red}Warning: {Yellow}{msg}{ResetColor}\n'
-
-        func_out = func(*args,**kwargs)
-
-        warnings.formatwarning = warnings_reset
-
-        return func_out
-
-    return run_func
 
 
 
@@ -142,14 +144,6 @@ class EmpiricalPSF:
         self.tbl_fn = normpath( tbl_fn_basedir.joinpath(tbl_fn) )
         self.bkgsubtract = bkgsubtract
         self.seed = seed
-
-
-    def __enter__(self):
-        return self
-
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        return exc_traceback is None
 
 
     def _timedef(self, dT: bool = False, epochs: bool = False) -> tuple[dict,dict,dict]:
@@ -572,21 +566,23 @@ def _get_roll(kwdict : dict) -> float:
 
 
 
-@_reformat_wmsg
-def _check_offaxis_angle(evt : str, skyx : float, skyy : float,
-                         offaxis_limit: int|float=0.5):
+@utils.reformat_wmsg
+def _check_offaxis_angle(evt : str, srcpos : str,
+                         offaxis_limit: int|float=0.5) -> tuple[float,float,float,float]:
     """
     return off-axis angle in arcmin
     """
 
     coords = make_tool("dmcoords")
-
     coords.punlearn()
 
+    ra, dec, _fn = utils.parse_refpos(srcpos.replace(","," "))
+
     coords.infile = evt
-    coords.x = skyx
-    coords.y = skyy
-    coords.option = "sky"
+    coords.ra = ra
+    coords.dec = dec
+    coords.option = "cel"
+    coords.celfmt = "deg"
     coords.verbose = 0
     coords()
 
@@ -594,10 +590,12 @@ def _check_offaxis_angle(evt : str, skyx : float, skyy : float,
 
     if offaxis > offaxis_limit:
         msg = f"The source position is intended to be within {offaxis_limit} arcmin \
-of the aim point: found {offaxis:.3f} arcmin off-axis."
+of the aimpoint: found {offaxis:.3f} arcmin off-axis."
 
         warnings.warn(msg, RuntimeWarning)
         # raise OSError(msg)
+
+    return coords.x, coords.y, float(coords.ra), float(coords.dec)
 
 
 def _check_defocus(kwdict: dict, tol: float=0.02):
@@ -651,29 +649,51 @@ from the best focus position of the empirical PSF, {msg}.")
 
 
 def cut_img(evt : str, outimg : str,
-            skyx_ctr : float, skyy_ctr : float, binsize : float,
-            nx : int, ny : int, samp : str=":300",
-            tmpdir : str=os.getenv("ASCDS_WORK_PATH")):
+            skyx_ctr : float, skyy_ctr : float, binsize : float, nx : int, ny : int,
+            roi : str|None=None, samp : str=":300",
+            tmpdir : str=os.getenv("ASCDS_WORK_PATH"),
+            regioncut : bool=False):
     """
-    bin image from observed event file to match the corresponding binned PSF image.
+    bin image from observed event file to match the corresponding binned PSF image
+    if 'regioncut=False', otherwise cut image based on 'binsize' and the defined
+    region defined by the 'roi' argument.
     """
 
     dmcp = make_tool("dmcopy")
 
-    x = binsize * round( Decimal(skyx_ctr)/binsize )
-    y = binsize * round( Decimal(skyy_ctr)/binsize )
+    dmcp.punlearn()
 
-    with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp:
-        dmcp.punlearn()
+    dmcp.verbose = 0
+    dmcp.clobber = True
 
-        dmcp.verbose = 0
-        dmcp.clobber = True
+    if not regioncut:
+        x = binsize * round( Decimal(skyx_ctr)/binsize )
+        y = binsize * round( Decimal(skyy_ctr)/binsize )
 
-        dmcp.infile = f"{evt}[sky=box({x},{y},{nx},{ny}),samp={samp}][bin sky={binsize}]"
-        dmcp.outfile = tmp.name
-        dmcp()
+        with tempfile.NamedTemporaryFile(dir=tmpdir) as tmp:
+            dmcp.infile = f"{evt}[sky=box({x},{y},{nx},{ny}),samp={samp}][bin sky={binsize}]"
+            dmcp.outfile = tmp.name
+            dmcp()
 
-        dmcp.infile = f"{tmp.name}[sky=box({x},{y},{binsize*nx},{binsize*ny})]"
+            dmcp.infile = f"{tmp.name}[sky=box({x},{y},{binsize*nx},{binsize*ny})]"
+            dmcp.outfile = outimg
+            dmcp()
+
+    else:
+        if roi is None:
+            raise ScriptError("A 'region' is required to be defined if the parameter is not an empty string.")
+
+        try:
+            roiextent = CXCRegion(roi).extent()
+            xlo = roiextent["x0"]
+            xhi = roiextent["x1"]
+            ylo= roiextent["y0"]
+            yhi = roiextent["y1"]
+
+        except Exception as exc:
+            raise OSError("There is an issue with the region expression provided by the 'region' parameter.") from exc
+
+        dmcp.infile = f"{evt}[bin x={xlo}:{xhi}:{binsize},y={ylo}:{yhi}:{binsize}]"
         dmcp.outfile = outimg
         dmcp()
 
@@ -813,12 +833,12 @@ def get_par(argv) -> tuple[dict,dict]:
     pars: dict = {}
     orig_pars: dict = {}
 
-    pars["evt"] = orig_pars["evtfile"] = pio.pgetstr(pfile, "evtfile")
+    pars["evt"] = orig_pars["infile"] = pio.pgetstr(pfile, "infile")
+    pars["srcpos"] = orig_pars["srcpos"] = pio.pgetstr(pfile, "srcpos")
     pars["outpsf"] = orig_pars["outpsf"] =  pio.pgetstr(pfile, "outpsf")
     pars["outimg"] = orig_pars["outimg"] =  pio.pgetstr(pfile, "outimg")
     pars["outdeconv"] = orig_pars["outdeconv"] = pio.pgetstr(pfile, "outdeconv")
-    pars["src_skyx"] = orig_pars["src_x"] = pio.pgetd(pfile, "src_x")
-    pars["src_skyy"] = orig_pars["src_y"] = pio.pgetd(pfile, "src_y")
+    pars["roi"] = orig_pars["region"] = pio.pgetstr(pfile, "region")
     pars["samp_range"] = orig_pars["samp"] = pio.pgetstr(pfile, "samp")
     pars["arestore_niter"] = orig_pars["deconv_niter"] = pio.pgetd(pfile, "deconv_niter")
     pars["binsize"] = orig_pars["binsize"] = pio.pgetd(pfile, "binsize")
@@ -841,13 +861,21 @@ def get_par(argv) -> tuple[dict,dict]:
         raise ScriptError("Input event file must be specified.")
 
 
+    if pars["srcpos"] == "":
+        raise ScriptError("Reference source position 'srcpos' must be specified.")
+
+
     # output file name
     if pars["outpsf"] == "":
         raise ScriptError("Please specify an output PSF image file name.")
 
 
-    if pars["outimg"] == "":
-        raise ScriptError("Please specify an output counts image file name.")
+    if pars["outdeconv"] != "" and pars["outimg"] == "":
+        raise ScriptError("If 'outdeconv' is specified, 'outimg' must be also specified.")
+
+
+    if isinstance(_par := orig_pars["region"], str) and _par.lower() in ("","none"):
+        pars["roi"] = None
 
 
     for par in ("outpsf", "outimg", "outdeconv"):
@@ -868,6 +896,10 @@ def get_par(argv) -> tuple[dict,dict]:
             pars[par] = True
         else:
             pars[par] = False
+
+
+    if pars["binsize"] <= 0:
+        raise OSError("'binsize' must be a positive, non-zero value.")
 
 
     if ":" not in pars["samp_range"]:
@@ -893,8 +925,9 @@ def get_par(argv) -> tuple[dict,dict]:
 
 @handle_ciao_errors(__toolname__, __revision__)
 def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
-         src_skyx : float|int, src_skyy : float|int,
+         srcpos : str,
          binsize : int|float=1,
+         roi : None|str=None,
          samp_range : str="16:300",
          bkgsubtract : bool=True, random_seed: None|int=None,
          arestore_niter : int=50,
@@ -906,7 +939,7 @@ def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
     with new_pfiles_environment(ardlib=False), \
          tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".psf") as psf:
 
-        _check_offaxis_angle(evt, src_skyx, src_skyy)
+        src_skyx, src_skyy, _RA_deg, _Dec_deg = _check_offaxis_angle(evt, srcpos)
         _check_defocus(evt_kw)
 
         binsize = round(Decimal(binsize), 3)
@@ -935,10 +968,34 @@ def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
 
         psfroll = _get_roll(evt_kw)
 
-        cut_img(evt, outimg, src_skyx, src_skyy, binsize, nx, ny, samp_range, tmpdir)
+        img_args = { "skyx_ctr" : src_skyx,
+                     "skyy_ctr" : src_skyy,
+                     "binsize" : binsize,
+                     "nx" : nx,
+                     "ny" : ny,
+                     "samp" : samp_range,
+                     "tmpdir" : tmpdir }
 
-        roll_psf(psf.name, outpsf, outimg, roll=psfroll, ximg_center=ximg, yimg_center=yimg,
-                 tmpdir=tmpdir, clobber=clobber, verbose=verbose)
+        roll_args = { "roll" : psfroll,
+                      "ximg_center" : ximg,
+                      "yimg_center" : yimg,
+                      "tmpdir" : tmpdir,
+                      "clobber" : clobber,
+                      "verbose" : verbose }
+
+
+        if outimg != "" and roi is None:
+            cut_img(evt, outimg, **img_args)
+            roll_psf(psf.name, outpsf, outimg, **roll_args)
+
+        else:
+            with tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".img") as _outimg:
+                cut_img(evt, _outimg.name, **img_args)
+                roll_psf(psf.name, outpsf, _outimg.name, **roll_args)
+
+            if outimg != "" and roi is not None:
+                cut_img(evt, outimg, **img_args, roi=roi, regioncut=True)
+
 
         if outdeconv != "":
             image_deconvolve(outimg, outpsf, outdeconv, x_img=ximg, y_img=yimg,
@@ -947,7 +1004,7 @@ def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
 
 
 if __name__ == "__main__":
-    params,orig_params = get_par( preprocess_arglist(sys.argv) )
+    params, orig_params = get_par( preprocess_arglist(sys.argv) )
     doit(**params)
 
     for arg in ("outpsf", "outimg", "outdeconv"):
