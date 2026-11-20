@@ -31,9 +31,9 @@ Script:
 	command line, within the CIAO environment.
 """
 
-__version__ = "CIAO 4.18"
+__version__ = "CIAO 4.19"
 __toolname__ = "specextract"
-__revision__ = "8 June 2026"
+__revision__ = "9 November 2026"
 
 ##########################################################################
 #
@@ -52,6 +52,8 @@ import shutil
 import tempfile
 
 from multiprocessing import cpu_count
+from textwrap import indent
+
 import numpy
 
 import paramio
@@ -181,6 +183,7 @@ def readout_streak_spec(specfile,infile,src_x,src_y):
                     D = 2.0 * r.radii.max()
 
             except (AttributeError,TypeError) as exc:
+                _print_exception(exc)
                 raise IOError("There is an unexpected issue with the readout streak extraction region type.") from exc
 
             nrows.append(numpy.ceil(D) * include_reg)
@@ -398,6 +401,7 @@ def create_arf_ext(full_outroot, ebin, verbose, dafile, mskfile,
         edit_header(arffile, "FEFFILE", os.path.basename(fileio.get_keys_from_file(f"{arffile}[#row=0]")["FEFFILE"]))
 
     except Exception as exc:
+        _print_exception(exc)
         raise IOError(f"Failure to create weighted ARF.  Possible causes \
 include: zero counts in the input region; a memory allocation error; \
 or corrupt ARDLIB.  Try running {__toolname__} with weight=no, \
@@ -610,6 +614,7 @@ def build_rmf_ps(rmftool, evt_filename, ptype, full_outroot,
         return rmffile
 
     except OSError as exc:
+        _print_exception(exc)
         raise IOError(f"Failed to find an appropriate tool to generate a RMF for {specfile}.") from exc
 
 
@@ -1271,6 +1276,7 @@ assuming a uniformly weighted extraction region...")
                     clip_wmap(tdetwmap,wmap_thresh,tmpdir)
 
             except OSError as exc:
+                _print_exception(exc)
                 raise IOError("Error generating WMAP w/sky2tdet!") from exc
 
         else:
@@ -1356,6 +1362,7 @@ def build_acis_arf(args):
                                              ccd_id,skyx,skyy,infostr)
 
                 except Exception as exc:
+                    _print_exception(exc)
                     raise IOError(f"Failed to create ARF for {fullfile}") from exc
 
                 if correct == "yes":
@@ -1368,9 +1375,13 @@ def build_acis_arf(args):
                         ancrfile = correct_arf(full_outroot,fullfile,filename,
                                                ancrfile,skyx,skyy,binarfcorr)
                     except Exception as exc:
+                        _print_exception(exc)
+
                         raise IOError(f"Failed to PSF correct the ARF: {ancrfile}") from exc
 
         except Exception as exc:
+            _print_exception(exc)
+
             raise IOError(f"Failed to create ARF for {fullfile}") from exc
 
     if srcbkg == "bkg" and not dobkgresp:
@@ -1449,6 +1460,8 @@ def build_acis_rmf(args):
             return None # `if srcbkg == "bkg" and not dobkgresp`
 
         except Exception as exc:
+            _print_exception(exc)
+
             raise IOError(f"Failed to create RMF for {fullfile}") from exc
 
 
@@ -1563,6 +1576,7 @@ parameter of dmextract will be set to use DET coordinates instead.\n")
             phafile = extract_spectra(full_outroot,fullfile,ptype,channel,
                                       ewmap,binwmap,instrument,clobber,verbose)
         except OSError as exc:
+            _print_exception(exc)
             raise IOError(f"Failed to extract spectrum for {fullfile}") from exc
 
         ## update extracted readout streak spectrum effective exposure time ##
@@ -1683,6 +1697,7 @@ def _resps_preprocess_wrapper(args_dict):
 
                 except OSError as exc:
                     if dobkgresp:
+                        _print_exception(exc)
                         raise IOError(f"Failed to create aspect histogram file for {fullfile}") from exc
 
                     asphist = None
@@ -1797,6 +1812,7 @@ def _build_resps(args):
                                                   tdetwmap,infostr,weightfile=weightfile)
 
                     except OSError as exc:
+                        _print_exception(exc)
                         raise IOError(f"Failed to create ARF for {fullfile}") from exc
 
                     try:
@@ -1811,6 +1827,7 @@ def _build_resps(args):
                                                  tdetwmap,infostr)
 
                     except OSError as exc:
+                        _print_exception(exc)
                         raise IOError(f"Failed to create RMF for {fullfile}") from exc
 
             else:
@@ -1845,9 +1862,11 @@ def _build_resps(args):
                         ancrfile = correct_arf(full_outroot,fullfile,filename,
                                                ancrfile,skyx,skyy,binarfcorr)
                     except OSError as exc:
+                        _print_exception(exc)
                         raise IOError(f"Failed to PSF correct the ARF: {ancrfile}") from exc
 
             except OSError as exc:
+                _print_exception(exc)
                 raise IOError(f"Failed to create ARF for {fullfile}") from exc
 
     if srcbkg == "bkg" and not dobkgresp:
@@ -1974,6 +1993,7 @@ def groupspec(args):
                                          clobber,verbose,phafile)
 
     except OSError as exc:
+        _print_exception(exc)
         raise IOError(f"Failed to group spectrum for {phafile}") from exc
 
     return {key_id : {"grpfile" : grpfile}}
@@ -2061,7 +2081,7 @@ def add_header_keys(args):
                     edit_header_multi_keys(grpfile, hdr_items)
 
         except Exception as exc:
-            print(exc)
+            _print_exception(exc, verbose_level=0)
             v1(f"Failed to update the RESPFILE and ANCRFILE keywords in {fn}.\n")
 
         try:
@@ -2091,7 +2111,7 @@ def add_header_keys(args):
                     edit_header(grpfile, "BACKFILE", os.path.basename(backpha))
 
         except Exception as exc:
-            print(exc)
+            _print_exception(exc, verbose_level=0)
             v1(f"Failed to update the BACKFILE keyword in {fn}.\n")
 
 
@@ -2212,6 +2232,53 @@ already exist.
             '''.format("\n    ".join(fileclobber))
 
         raise IOError(outmsg)
+
+
+
+def _print_exception(exc, verbose_level: int=3):
+    try:
+        msg = f"""\n
+{'':\u00A7>60}
+{'':\u00A7>60}
+
+Triggering exception(s):
+
+{indent(exc, prefix=f"{'':>4}")}
+
+{'':*>60}
+{'':*>60}
+\n
+               """
+
+    except AttributeError:
+        msg = f"""\n
+{'':\u00A7>60}
+{'':\u00A7>60}
+
+Triggering exception(s):
+
+{exc}
+
+{'':*>60}
+{'':*>60}
+\n
+            """
+
+    match verbose_level:
+        case 0:
+            return v0(msg)
+        case 1:
+            return v1(msg)
+        case 2:
+            return v2(msg)
+        case 3:
+            return v3(msg)
+        case 4:
+            return v4(msg)
+        case 5:
+            return v5(msg)
+        case _:
+            raise NotImplementedError("Verbosity greater than 5 is not supported!")
 
 
 
