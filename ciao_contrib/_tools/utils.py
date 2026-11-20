@@ -25,6 +25,7 @@ Utility routines used by fluximage/merge_obs/...
 import os
 import functools
 import subprocess as sbp
+import warnings
 
 import paramio
 import stk
@@ -632,5 +633,32 @@ def process_tmpdir(tmpdir):
 
     os.environ["ASCDS_WORK_PATH"] = dname
     return dname
+
+
+def reformat_wmsg(func):
+    """
+    Decorator:
+
+    Trim extraneous user-warning information showing path and line number
+    when using the 'warnings' module.
+    """
+
+    @functools.wraps(func)
+    def run_func(*args, **kwargs):
+        Yellow = "\033[93m"
+        Red = "\033[91m"
+        ResetColor = "\033[0m"
+
+        warnings_reset = warnings.formatwarning
+        warnings.formatwarning = lambda msg, *args_warn, **kwargs_warn: f'{Red}Warning: {Yellow}{msg}{ResetColor}\n'
+
+        func_out = func(*args,**kwargs)
+
+        warnings.formatwarning = warnings_reset
+
+        return func_out
+
+    return run_func
+
 
 # End

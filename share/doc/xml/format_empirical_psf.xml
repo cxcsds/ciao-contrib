@@ -1,0 +1,429 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cxchelptopics SYSTEM "CXCHelp.dtd" [
+  <!ENTITY upr  "unix&#37;">
+  <!ENTITY cltool "format_empirical_psf">
+  <!ENTITY mdash "&#8212;">
+]>
+
+<cxchelptopics>
+  <ENTRY key="&cltool;" context="Tools::Background"
+         refkeywords="background caldb &cltool;"
+         seealsogroups="bkgtools"
+         displayseealsogroups="">   
+
+    <SYNOPSIS>
+      Create a binned image of the empirical PSF matched up to be
+      compatible with an image cut from a reference observed events
+      file using the same spatial binning.
+    </SYNOPSIS>
+
+    
+    <DESC>
+      <PARA>
+	This script will create a binned FITS image of the empirical
+	PSF compatible with an image binned from the input file.
+      </PARA>
+
+      <!-- <PARA> -->
+
+      <!-- </PARA> -->
+
+
+      <!-- <PARA> -->
+
+      <!-- </PARA> -->
+
+    </DESC>
+
+    
+    
+    <QEXAMPLELIST>
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+	    &upr; &cltool; 
+	    infile=hrcf13182_repro_evt2.fits
+	    srcpos="22:08:40.7931 +45:44:32.691"
+	    outpsf=13182.psf
+	    samp=":300"
+	    binsize=0.2
+	  </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+	    &upr; &cltool; 
+	    infile=hrcf13182_repro_evt2.fits
+	    srcpos="22:08:40.7931 +45:44:32.691"
+	    outpsf=13182.psf
+	    outimg=13182.img
+	    samp=":300"
+	    binsize=0.2
+	  </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+
+      
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+	    &upr; &cltool; 
+	    infile=hrcf18612_repro_evt2.fits 
+	    srcpos="12:30:49.4181,+12:23:28.082"
+	    outpsf=empirical/18612-5.psf
+	    outimg=empirical/18612-5.img
+	    region="box(16655,16515,190,130)"
+	    binsize=0.25
+	    bkgsubtract=no
+	  </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+	    &upr; &cltool; 
+	    infile=hrcf18612_repro_evt2.fits
+	    srcpos="12:30:49.4181 +12:23:28.082"
+	    outpsf=empirical/18612-5.psf
+	    outimg=empirical/18612-5.img
+	    region="box.reg"
+	    binsize=0.25
+	  </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+	    &upr; &cltool; 
+	    infile=hrcf18612_repro_evt2.fits
+	    srcpos="12:30:49.4181, +12:23:28.082"
+	    region="region(box.reg)"
+	    outpsf=empirical/18612-5.psf
+	    outimg=empirical/18612-5.img
+	    outdeconv=empirical/18612-5.deconv
+	    binsize=0.25
+	    bkgsubtract=yes
+	  </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      
+      <QEXAMPLE>
+        <SYNTAX>
+          <LINE>
+	    &upr; &cltool; 
+	    infile=hrcf18612_repro_evt2.fits srcpos="12:30:49.4181,+12:23:28.082" region="box.reg" outpsf=empirical/18612-5.psf outimg=empirical/18612-5.img outdeconv=empirical/18612-5.deconv binsize=0.25 verbose=1 clobber=yes mode=h bkgsubtract=no
+	  </LINE>
+        </SYNTAX>
+        <DESC>
+          <PARA>
+
+	  </PARA>
+	</DESC>
+      </QEXAMPLE>
+      
+      <!-- <QEXAMPLE> -->
+      <!--   <SYNTAX> -->
+      <!--     <LINE> -->
+      <!-- 	    &upr; &cltool;  -->
+
+      <!-- 	  </LINE> -->
+      <!--   </SYNTAX> -->
+      <!--   <DESC> -->
+      <!--     <PARA> -->
+
+      <!-- 	  </PARA> -->
+      <!-- 	</DESC> -->
+      <!-- </QEXAMPLE> -->
+    </QEXAMPLELIST>
+
+    <PARAMLIST>
+      <PARAM name="infile" type="file" filetype="input" reqd="yes" stacks="no">
+	<SYNOPSIS>
+	  The reference event file for which the empirical PSF will be
+	  tailored to, matching the detector orientation and the sky
+	  and WCS coordinate systems.  Presently only HRC-I data is
+	  supported in this initial release.
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    This reference event file is typically the observed events file
+	    used with the 'format_empirical_psf' script to generate the unscaled
+	    background events file.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="srcpos" type="string" reqd="yes" stacks="no" def="">
+	<SYNOPSIS>RA and DEC position of the source</SYNOPSIS>
+	<DESC>
+	  <PARA>
+	    This parameter defines the location of the source of
+	    interest that the PSF will be co-located in RA and Dec.
+	    The 'srcpos' should be within 0.5 arcmin of the detector aimpoint
+	    and within 0.02 mm of the best focus.
+	  </PARA>
+
+	  <PARA>
+	    The 'srcpos' parameter is set as a space- or
+	    comma-separated value taken to be the Right Ascension and Declination
+	    to use (ICRS) in decimal degrees or colon-separated
+	    sexagesimal formats and must contain the "+" or
+	    "-" part of the declination.  Examples include:
+	  </PARA>
+
+	  <LIST>
+	    <ITEM>srcpos="8:13:48 -12:20:24"</ITEM>
+	    <ITEM>srcpos="8:13:48,+12:20:24"</ITEM>
+	    <ITEM>srcpos="123.45, +12.34"</ITEM>
+	    <ITEM>srcpos="123.45 -12.34"</ITEM>
+	  </LIST>
+
+	  <PARA>
+	    All positions must be in J2000.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="outpsf" type="file" filetype="output" reqd="yes" stacks="no">
+	<SYNOPSIS>
+	  Output empirical PSF image file.
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    The filtered, binned, and rotated empirical PSF image with
+	    its coordinates matching the input file and co-located on
+	    the 'srcpos' location.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="outimg" type="file" filetype="output" reqd="no" stacks="no">
+	<SYNOPSIS>
+	  Output image file spatially binned &mdash; centered on the
+	  'srcpos' location or if the 'region' parameter is set, the
+	  bounding box subtending the &mdash; and filtered based on the
+	  'samp' range provided.
+	</SYNOPSIS>
+      </PARAM>
+
+      <PARAM name="outdeconv" type="file" filetype="output" reqd="no" stacks="no">
+	<SYNOPSIS>
+	  Output deconvolved image file using the specified 'outpsf' and
+	  'outimg' files with the number of iterations set by
+	  'deconv_niter' utilizing the Lucy-Richardson algorithm.
+	</SYNOPSIS>
+      </PARAM>
+
+      <PARAM name="region" type="string" filetype="input" reqd="no" stacks="no">
+	<SYNOPSIS>
+	  CIAO-formatted region expression or region file for the
+	  'outimg' image file bounds.  This should be in sky coordinates.
+	</SYNOPSIS>
+      </PARAM>
+
+      <PARAM name="binsize" type="float" def="1.0" min="0" reqd="yes">
+	<SYNOPSIS>
+	  Image binning factor.
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    The binning factor has units of pixels, where the value
+	    need not be an integer for an events file, and may be be
+	    less than 1. <!--// For image files, the binning factor
+	    must be integer-valued. //-->
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="samp" type="string" def="16:300" min="0" max="300">
+	<SYNOPSIS>
+	  HRC event scaled summed amplifier tap signals (SAMP) range.
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    For HRC data, the scaled summed amplifier tap signal
+	    (SAMP) is an event attribute where high values greater
+	    than 300 are excluded in order to minimize the effect of
+	    the background. 
+	  </PARA>
+
+	  <PARA>
+	    This parameter is expressed as a range using DM filter syntax.
+	  </PARA>
+
+	  <LIST>
+	    <ITEM>samp="16:300"</ITEM>
+	    <ITEM>samp=":300"</ITEM>
+	    <ITEM>samp="0:300"</ITEM>
+	  </LIST>
+	  
+	  <PARA>
+ 	    Events with low SAMP have larger uncertainties on the fine
+	    detector positions of events, and contribute to a small
+	    (&lt;15%) inflation of the size of the PSF.  However, due
+	    to the steady gain drop seen in the HRC, more events are
+	    now found with low values of SAMP, and this may have a
+	    proportionally larger effect on the observed size of point
+	    sources. In the event that higher sharpness is required,
+	    exclude SAMP values less than 16.
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="bkgsubtract" type="boolean" def="yes">
+	<SYNOPSIS>
+	  Remove putative background events for the empirical PSF data
+	  set?
+	</SYNOPSIS>
+      </PARAM>
+      
+      <PARAM name="random_seed" type="integer" def="0" min="0">
+	<SYNOPSIS>
+	  Random seed for randomization of background events to be
+	  removed if 'bkgsubtract=yes'.
+	</SYNOPSIS>
+      </PARAM>
+
+      <PARAM name="deconv_niter" type="integer" def="50" min="1">
+	<SYNOPSIS>
+	  Number of iterations using the Lucy-Richardson deconvolution
+	  algorithm via 'arestore'.
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    A few dozen to a hundred iterations should be used to avoid an 
+            overly grainy reconstruction with the Lucy-Richardson
+	    deconvolutuion algorithm.
+	  </PARA>
+
+	  <PARA>
+            There is no mathematically optimal number of
+	    iterations. Users should generally start with a generous
+	    number of iterations, 50 is a good starting point. Then
+	    increase the the number of iterations a few times in
+	    modest size increments, 10 is reasonable, to see how well
+	    the algorithm is converging. The increments can be
+	    increased or decreased based on scale of the total
+	    difference in the images.
+	  </PARA>
+	</DESC>
+      </PARAM>
+      
+      <PARAM name="tmpdir" type="string" def="${ASCDS_WORK_PATH}">
+	<SYNOPSIS>
+	  Directory for temporary files.
+	</SYNOPSIS>
+
+	<DESC>
+	  <PARA>
+	    Directory for storing temporary files that require further
+	    processing before becoming useful. If the directory does
+	    not exist then it will be created for use by the script,
+	    and then deleted. 
+	  </PARA>
+	</DESC>
+      </PARAM>
+
+      <PARAM name="clobber" type="boolean" def="no" reqd="no">
+	<SYNOPSIS>
+	  Specifies if an existing output file should be overwritten.
+	</SYNOPSIS>
+      </PARAM>
+
+      <PARAM name="verbose" type="integer" def="1">
+	<SYNOPSIS>
+	  Specifies the level of verbosity (0-5) in displaying
+	  diagnostic messages.
+	</SYNOPSIS>
+      </PARAM>
+    </PARAMLIST>
+
+    <ADESC title="Using the Empirical PSFs">
+      <PARA>
+	From the HRMA calibration group's <HREF
+	link="https://cxc.harvard.edu/cal/Hrc/PSF/empPSF.html">"Chandra
+	Empirical HRC PSF"</HREF> page, the empirical PSFs are stacked
+	from individual observations of a known point source where the
+	roll has been corrected for and the x- and y-axes are aligned
+	with the detector U and V coordinates.
+      </PARA>
+
+      <PARA>
+	Note that the process of generating the PSFs included
+	identifying and filtering out tailgated events. This was done
+	merely to use the best data from AR Lac, which flares
+	frequently and often reaches high count rates (&gt;5 ct/s)
+	where tailgated photons become a significant fraction of the
+	total. Most source brightnesses are well below this level and
+	tailgating may be ignored. If there are any intervals with
+	high count rates that occur due to flares or similar events,
+	tailgated events can be excluded simply by excluding such
+	intervals.
+      </PARA>
+    </ADESC>
+
+    <!--//
+	<ADESC title="Changes in the March 2027 revision (scripts 4.19.1)">
+	<PARA>
+
+	</PARA>
+      </ADESC>
+    //-->
+
+    <ADESC title="About Contributed Software">
+      <PARA>
+        This script is not an official part of the CIAO release but is
+        made available as "contributed" software via the
+        <HREF link="https://cxc.harvard.edu/ciao/download/scripts/">CIAO scripts page</HREF>.
+        Please see this page for installation instructions - such as how to
+        ensure that the parameter file is available.
+      </PARA>
+    </ADESC>
+
+    <!--//    
+	<BUGS>
+	<PARA>
+        See the
+        <HREF link="https://cxc.harvard.edu/ciao/bugs/&cltool;.html">bugs page
+        for this script</HREF> on the CIAO website for an up-to-date
+        listing of known bugs. 
+      </PARA>
+    </BUGS>
+    //-->    
+    <LASTMODIFIED>November 2026</LASTMODIFIED>
+  </ENTRY>
+</cxchelptopics>

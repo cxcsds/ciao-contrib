@@ -53,6 +53,7 @@ data_files = [
     ("data", list_files("data/*")),
     ("data", list_files("ciao_contrib/criss_cross/input_files/*.fits")),
     ("data/ebounds-lut", list_files("data/ebounds-lut/*")),
+    ("data/empPSF", list_files("data/empPSF/*")),
     (".", ["Changes.CIAO_scripts"]),
 ]
 

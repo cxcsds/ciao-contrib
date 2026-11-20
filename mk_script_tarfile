@@ -52,7 +52,7 @@ def build_dist(version, dirname, outdir, python="python3.11"):
 
     # Copy directories over to this directory
     #
-    for basedir in ["bin", "share/doc/xml", "share/xspec/install", "share/sherpa/notebooks", "data", "data/ebounds-lut", "config", "param"]:
+    for basedir in ["bin", "share/doc/xml", "share/xspec/install", "share/sherpa/notebooks", "data", "data/ebounds-lut", "data/empPSF", "config", "param"]:
         newdir = outdir / basedir
         newdir.mkdir(parents=True)
         nfiles = 0
@@ -60,7 +60,7 @@ def build_dist(version, dirname, outdir, python="python3.11"):
             if infile.endswith('~'):
                 continue
 
-            if infile == "data/ebounds-lut":
+            if infile in ["data/ebounds-lut", "data/empPSF"]:
                 continue
 
             bname = os.path.basename(infile)
@@ -86,7 +86,7 @@ def build_dist(version, dirname, outdir, python="python3.11"):
         for dirpath, dirnames, filenames in os.walk(basedir):
             newdir = libdir / dirpath
             newdir.mkdir()
-            
+
             # copy over the files
             nfiles = 0
             for infile in filenames:
@@ -101,8 +101,7 @@ def build_dist(version, dirname, outdir, python="python3.11"):
                 nfiles += 1
 
             print(f'Copy to lib/{python}/site-packages/{dirpath}: {nfiles} files')
-    
-            
+
     # Create the egg info file: is it needed?
     #
     if python == 'python':
@@ -186,7 +185,7 @@ def make_tarfile(tarfilegz, dname, pyver):
         args.append("--exclude={}".format(ename))
 
     tarfilegz = tarfilegz.rstrip(".gz")
-        
+
     args.extend(["-cf", tarfilegz, f"./{dname}"])
     sbp.check_call(args)
 
