@@ -31,7 +31,7 @@ Script:
 
 __version__ = "CIAO 4.19"
 __toolname__ = "format_empirical_psf"
-__revision__ = "20 November 2026"
+__revision__ = "23 November 2026"
 
 
 import os
@@ -140,7 +140,7 @@ class EmpiricalPSF:
         self.write_table = write_table
         self.binsize = binsize
         self.empPSFout = empPSFout
-        self.samp = samp_range
+        self.samp = samp_range if not samp_range.startswith(":") else f"0{samp_range}"
         self.tbl_fn = normpath( tbl_fn_basedir.joinpath(tbl_fn) )
         self.bkgsubtract = bkgsubtract
         self.seed = seed
@@ -241,9 +241,6 @@ class EmpiricalPSF:
 
         samp_lo, samp_hi = self.samp.split(":")
 
-        if samp_lo == "":
-            samp_lo = 0
-
         cr_bkg = pcr.read_file( f"{self.tbl_fn}[4]" )
         bkgspec = cr_bkg.get_image().values.T
 
@@ -293,7 +290,7 @@ class EmpiricalPSF:
         return ux, vy, samp, time
 
 
-    def empPSF_tab(self, tobs: float, detector: str = "HRC-I", samp_range : str=":300"):
+    def empPSF_tab(self, tobs: float, detector: str = "HRC-I"):
         """
         return a dictionary of tuples with events defined by a named tuple and
         the exposure time for a given ObsID
@@ -304,14 +301,29 @@ class EmpiricalPSF:
 
         bgspec_ind, ObsIDs, exptime = self._empPSF_time(tobs)
 
-        cr = pcr.read_file( f"{self.tbl_fn}[2][samp={samp_range}]" )
+        if detector.startswith("HRC"):
+            cr = pcr.read_file( f"{self.tbl_fn}[2]" )
 
-        obsid = numpy.squeeze( cr.OBSID.values )
-        samp = numpy.squeeze( cr.SAMP.values )
-        time = numpy.squeeze( cr.TIME.values )
-        u = numpy.squeeze( cr.XRU.values )
-        v = numpy.squeeze( cr.YRV.values )
-        defocus = numpy.squeeze( cr.DEFOCUS.values )
+            samp_lo, samp_hi = self.samp.split(":")
+
+            if cr.get_nrows() == 0:
+                raise OSError(f"There are zero counts in the SAMP range '{self.samp}' for the empirical PSF.")
+
+            samp = numpy.squeeze( cr.SAMP.values )
+            samp = samp[ ( ind := [i for i,s in enumerate(samp)
+                                   if int(samp_lo) <= s < int(samp_hi)] ) ]
+
+            obsid = numpy.squeeze( cr.OBSID.values )[ind]
+            time = numpy.squeeze( cr.TIME.values )[ind]
+            u = numpy.squeeze( cr.XRU.values )[ind]
+            v = numpy.squeeze( cr.YRV.values )[ind]
+            defocus = numpy.squeeze( cr.DEFOCUS.values )
+
+        # else:
+        #     cr = pcr.read_file( f"{self.tbl_fn}[2][energy={energy_range}]" )
+        #
+        #     if cr.get_nrows() == 0:
+        #         raise OSError(f"There are zero counts in the energy range '{energy_range}' eV for the empirical PSF.")
 
         del cr
 
@@ -332,29 +344,33 @@ class EmpiricalPSF:
                 raise NotImplementedError("ACIS observations are not supported presently.")
 
 
-        tab = list( zip(time,samp,u,v,defocus,obsid) )
-        info_list = [ emppsf_info(*t) for t in tab ]
+        if detector.startswith("HRC"):
+            tab = list( zip(time,samp,u,v,defocus,obsid) )
+            info_list = [ emppsf_info(*t) for t in tab ]
 
-        info_dict = { str(o) : ( emppsf_evt(*zip(*[ (info.time, info.ux, info.vy, info.samp)
-                                                   for info in info_list
-                                                   if info.obsid == o and self._chk_defocus(info.defocus,defocus_inst)
-                                                   ]
-                                                 )
-                                           ),
-                                 exposure
-                                )
-                     for o,exposure in zip(ObsIDs,exptime) }
+            info_dict = { str(o) : ( emppsf_evt(*zip(*[ (info.time, info.ux, info.vy, info.samp)
+                                                       for info in info_list
+                                                       if info.obsid == o and self._chk_defocus(info.defocus,defocus_inst)
+                                                       ]
+                                                     )
+                                               ),
+                                     exposure
+                                    )
+                         for o,exposure in zip(ObsIDs,exptime) }
 
 
-        if self.bkgsubtract:
-            bg_samp_spec_dict = self.bgspec(bgspec_ind, ObsIDs)
+            if self.bkgsubtract:
+                bg_samp_spec_dict = self.bgspec(bgspec_ind, ObsIDs)
 
-            for o in ObsIDs:
-                bgsamp, bgcts = bg_samp_spec_dict[str(o)]
-                info, exposure = info_dict[str(o)]
-                ux, vy, samp, time = self.bkg_subtract(info, bgcts, bgsamp, seed=self.seed)
+                for o in ObsIDs:
+                    bgsamp, bgcts = bg_samp_spec_dict[str(o)]
+                    info, exposure = info_dict[str(o)]
+                    ux, vy, samp, time = self.bkg_subtract(info, bgcts, bgsamp, seed=self.seed)
 
-                info_dict[str(o)] = ( emppsf_evt(*zip( [time, ux, vy, samp] )), exposure )
+                    info_dict[str(o)] = ( emppsf_evt(*zip( [time, ux, vy, samp] )), exposure )
+
+        # else:
+        #     raise NotImplementedError("ACIS observations are not supported presently.")
 
         return info_dict
 
@@ -442,7 +458,7 @@ class EmpiricalPSF:
 
         del cr
 
-        InfoDict = self.empPSF_tab(tobs, detector, self.samp)
+        InfoDict = self.empPSF_tab(tobs, detector)
 
         if self.write_table:
             self.build_multi_emppsf_table(detector, InfoDict)
@@ -945,7 +961,7 @@ def doit(evt : str, outpsf : str, outimg : str, outdeconv : str,
         binsize = round(Decimal(binsize), 3)
 
         psf_imcr = EmpiricalPSF(evtfile=evt, write_table=False,
-                                binsize=binsize, samp_range = samp_range,
+                                binsize=binsize, samp_range=samp_range,
                                 bkgsubtract=bkgsubtract, seed=random_seed).empPSF_cr(imgcrate=True)
 
         pcr.write_file(psf_imcr, psf.name, clobber=True)
