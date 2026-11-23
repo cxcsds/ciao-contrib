@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2011, 2014 - 2016, 2019 - 2021, 2023, 2024
+#  Copyright (C) 2011, 2014-2016, 2019-2021, 2023-2024, 2026
 #  Smithsonian Astrophysical Observatory
 #
 #
@@ -441,7 +441,7 @@ def check_conda_versions(ciao: str) -> bool:
         print("It looks like a CIAO package needs to be updated by CIAO but I can't find which.")
         return False
 
-    # filter the names list to only show the CIAO packages
+    # Filter the names list to only show the CIAO packages.
     #
     names = []
     all_names = get_names(fetch)
@@ -469,6 +469,9 @@ def check_conda_versions(ciao: str) -> bool:
     else:
         print(f"There are {nnames} packages that need updating:")
 
+    # This can report the same package multiple times but leave in in
+    # case the versions are different.
+    #
     for name, version in names:
         print(f"  {name} : {found[name]['version']} -> {version}")
 
@@ -482,7 +485,10 @@ def check_conda_versions(ciao: str) -> bool:
     print("")
     print("The update can be checked with:")
     print("")
-    tokens = " ".join([n[0] for n in names])
+
+    # Convert via a set to remove duplicate entries
+    update_names = set([n[0] for n in names])
+    tokens = " ".join(sorted(update_names))
     print(f"  {tool} update {tokens} --no-deps \\")
 
     # use a set to ensure we don't repeat the same channel
