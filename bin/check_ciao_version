@@ -49,7 +49,7 @@ import sys
 from optparse import OptionParser
 
 toolname = "check_ciao_version"
-version = "23 November 2026"
+version = "24 November 2026"
 
 try:
     from ciao_contrib import logger_wrapper as lw
@@ -96,7 +96,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 """
 
 
-def report_update_info_ciao_install():
+def report_update_info_ciao_install() -> None:
     "Write out generic 'how to install CIAO' info"
 
     print("\nPlease use the ciao-install script from")
@@ -104,7 +104,18 @@ def report_update_info_ciao_install():
     print("to update your CIAO installation.")
 
 
-def compare_versions(ciao, latest, installed):
+def report_update_info_ciao_dmg() -> None:
+    "Write out generic 'how to install CIAO' info"
+
+    print("\nPlease review the macOS DMG installation page")
+    print("    https://cxc.cfa.harvard.edu/ciao/download/ciao_dmg.html")
+    print("to update your CIAO installation.")
+
+
+def compare_versions(ciao: Path,
+                     latest: dict[str, str],
+                     installed: dict[str, str]
+                     ) -> bool:
     """Compare the versions, displaying all those packages that are
     out of date. ciao is the value of $ASCDS_INSTALL.
 
@@ -122,9 +133,12 @@ def compare_versions(ciao, latest, installed):
     vlatest = latest["CIAO"]
     vinstalled = installed["CIAO"]
 
-    # Automatically error out if this fails, as we do not
-    # need to do the package check. We return False so
-    # we can check the CALDB as that may be up to date.
+    # Automatically error out if this fails, as we do not need to do
+    # the package check. We return False so we can check the CALDB as
+    # that may be up to date.
+    #
+    # There is no check to see if vlatest is newer than vinstalled as
+    # this should only happen during CIAO development.
     #
     if vlatest != vinstalled:
         print(f"The CIAO installation at {ciao}")
@@ -205,6 +219,84 @@ def compare_caldb():
     return False
 
 
+def identify_ciao_install(ciao: Path) -> int:
+    """CIAO installed with ciao-install. Report versions"""
+
+    # Compare the versions on disk to those from the web.
+    #
+    installed = versioninfo.get_installed_versions(str(ciao))
+    if installed is None:
+        raise OSError("Unable to find any $ASCDS_INSTALL/VERSION* files")
+
+    latest = versioninfo.get_latest_versions()
+
+    # Check versions. Note that CALDB may not be set.
+    #
+    flag = compare_versions(ciao, latest, installed)
+    flag &= compare_caldb()
+    if not flag:
+        report_update_info_ciao_install()
+        return 1
+
+    return 0
+
+
+def identify_ciao_dmg(ciao: Path) -> int:
+    """CIAO installed as a macOS DMG. Report versions.
+
+    This is a "best-effort" as we do not have a way to identify
+    the DMG package and compare it to the latest, so if there is
+    a change that is not in the package versions this script will
+    not identify this (e.g. a packaging or internal change).
+    """
+
+    # For now this is based on the ciao-install approach, but the
+    # output is slightly different.
+    #
+    installed = versioninfo.get_installed_versions(str(ciao))
+    if installed is None:
+        raise OSError("Unable to find any $ASCDS_INSTALL/VERSION* files")
+
+    latest = versioninfo.get_latest_versions()
+
+    # Check versions. Note that CALDB may not be set.
+    #
+    flag = compare_versions(ciao, latest, installed)
+    flag &= compare_caldb()
+    if not flag:
+        report_update_info_ciao_dmg()
+        return 1
+
+    return 0
+
+
+def identify_ciao(ciao: Path) -> int:
+    """Identify the versions of CIAO installed and latest."""
+
+    # How was CIAO installed?
+    #  - ciao-install  has $ASCDS_INSTALL/binexe directory
+    #  - macOS dmg     has non-zero-length bin/ciao.sh
+    #  - conda         has zero-length bin/ciao.sh
+    #
+    canary = ciao / "binexe"
+    if canary.is_dir():
+        return identify_ciao_install(ciao)
+
+    setup = ciao / "bin" / "ciao.sh"
+    if not setup.is_file():
+        raise OSError("Unable to find $ASCDS_INSTALL/bin/ciao.sh")
+
+    size = setup.stat().st_size
+    if size > 0:
+        return identify_ciao_dmg(ciao)
+
+    # We rely on conda for all the checks so can exit here.
+    #
+    flag = versioninfo.check_conda_versions(str(ciao))
+    return 0 if flag else 1
+
+
+
 @lw.handle_ciao_errors(toolname, version)
 def doit():
     """Run the code."""
@@ -230,8 +322,13 @@ def doit():
         lw.set_verbosity(5)
         lw.set_handle_ciao_errors_debug(True)
 
+    # Prior to CIAO 4.19 this allowed sending through the location of
+    # the file to read the versions from (but this was only used in
+    # the ciao-instal case). This undocumented feature has now been
+    # removed.
+    #
     nargs = len(args)
-    if nargs > 1:
+    if nargs > 0:
         opts.print_help()
         return
 
@@ -250,37 +347,8 @@ def doit():
         # unlikely to get here since able to load ciao_contrib
         raise OSError("$ASCDS_INSTALL is not defined; has CIAO been started?")
 
-    ciao_path = Path(ciao)
-
-    # How was CIAO installed?
-    #  - ciao-install  has $ASCDS_INSTALL/binexe directory
-    #  - conda         does not have ...
-    #
-    # [although how long this will work as a discriminator is unknown]
-    #
-    canary = ciao_path / "binexe"
-    if not canary.is_dir():
-        # We rely on conda for all the checks so can exit here.
-        #
-        flag = versioninfo.check_conda_versions(ciao)
-        sys.exit(0 if flag else 1)
-
-    installed = versioninfo.get_installed_versions(ciao)
-    if installed is None:
-        raise OSError("Unable to find any $ASCDS_INSTALL/VERSION* files")
-
-    if nargs == 1:
-        latest = versioninfo.read_latest_versions(args[0])
-    else:
-        latest = versioninfo.get_latest_versions()
-
-    # Check versions. Note that CALDB not be set.
-    #
-    flag = compare_versions(ciao, latest, installed)
-    flag &= compare_caldb()
-    if not flag:
-        report_update_info_ciao_install()
-        sys.exit(1)
+    retval = identify_ciao(Path(ciao))
+    sys.exit(retval)
 
 
 if __name__ == "__main__":
