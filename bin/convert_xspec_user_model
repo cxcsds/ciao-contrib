@@ -89,7 +89,7 @@ from sherpa.astro.xspec import get_xsversion
 import ciao_contrib.logger_wrapper as lw
 
 toolname = "convert_xspec_user_model"
-toolver  = "12 November 2026"
+toolver  = "16 November 2026"
 
 lgr = lw.initialize_logger(toolname)
 v0 = lgr.verbose0
@@ -1224,6 +1224,7 @@ def convert_xspec_user_model(modulename,
                              modelfile,
                              udmget: bool = False,
                              udmget64: bool = False,
+                             nocompile: bool = False,
                              extrafiles=None,
                              clobber: bool = False,
                              version: str = '1.0',
@@ -1259,6 +1260,9 @@ def convert_xspec_user_model(modulename,
     udmget, udmget64 : bool, optional
         Should the udmget or udmget64 code be included. This is only
         used if FORTRAN models are included and only one can be set.
+    nocompile : bool, optional
+        Set to True to only produce the files and do not call pip to
+        install the code.
     extrafiles : list of str or None, optional
         At the moment this is unused. The idea is to be able to send in
         extra files, but for the moment we require them to be in the
@@ -1503,6 +1507,33 @@ def convert_xspec_user_model(modulename,
                  outpath=outpath,
                  clobber=clobber)
 
+    def report_models():
+
+        n = len(mnames)
+        if n == 1:
+            v1("The following model is available:")
+        else:
+            v1(f"The following {n} models are available:")
+
+        v1("  {}".format("\n  ".join(mnames)))
+        v1("")
+
+    # If the code is not being compiled then exit early.
+    #
+    if args.nocompile:
+        v1("")
+        v1("pyproject.toml/meson.build have been created. Try either")
+        v1("")
+        v1("  pip install . --verbose")
+        v1("")
+        v1("  pip install -e . --no-build-isolation --verbose")
+        v1("")
+        v1("to build and install the code.")
+        v1("")
+
+        report_models()
+        return
+
     # Compile the code.
     #
     compile_module(verbose=verbose)
@@ -1535,14 +1566,7 @@ def convert_xspec_user_model(modulename,
         v1("from Sherpa.")
         v1("")
 
-        n = len(mnames)
-        if n == 1:
-            v1("The following model is available:")
-        else:
-            v1(f"The following {n} models are available:")
-
-        v1("  {}".format("\n  ".join(mnames)))
-        v1("")
+        report_models()
 
     # report any problems
     if probs:
@@ -1578,10 +1602,14 @@ if __name__ == "__main__":
                         default=False,
                         help="Use the udmget64 routine (needed by some FORTRAN models)")
 
-    # This is now ignored. Unfortunately argparse only added the
-    # deprecated argument in Python 3.13.
+    # Added in CIAO 4.19
+    parser.add_argument("--nocompile", dest="nocompile", action="store_true",
+                        default=False,
+                        help="Do not try to compile the code")
+
+    # This is now ignored.
     #
-    parser.add_argument("--local", "-l",
+    parser.add_argument("--local", "-l", deprecated=True,
                         dest="local", action="store_true", default=False,
                         help="Build the package locally rather than globally?; default is %(default)s")
 
@@ -1639,21 +1667,11 @@ if __name__ == "__main__":
     # base verbose setting for the tool as input verbosity >= 2.
     verbose = args.verbose >= 2
 
-    if args.local:
-        has_color = sys.stdout.isatty() and os.getenv('NO_COLOR') is None
-        if has_color:
-            sys.stderr.write("\033[1;33m")
-
-        sys.stderr.write("WARNING")
-        if has_color:
-            sys.stderr.write("\033[0;0m")
-
-        sys.stderr.write(": --local flag is no-longer supported.\n")
-
     convert_xspec_user_model(args.name,
                              args.modelfile,
                              udmget=args.udmget,
                              udmget64=args.udmget64,
+                             nocompile=args.nocompile,
                              # extrafiles=args.extrafiles,
                              extrafiles=None,
                              clobber=args.clobber,

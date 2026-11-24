@@ -31,6 +31,7 @@
       <LINE/>
       <LINE>--udmget        build with the udmget package (FORTRAN only)</LINE>
       <LINE>--udmget64      build with the udmget64 package (FORTRAN only)</LINE>
+      <LINE>--nocompile     only create the files, does not try to build and install them</LINE>
       <LINE>-p / --prefix   flags are used to control the user model names</LINE>
       <LINE>--pyver         set the version number of the Python module</LINE>
       <LINE>-c / --clobber  will overwrite existing files.</LINE>
@@ -405,7 +406,7 @@ undefined symbol: _gfortran_copy_string
 	of XSPEC than used by CIAO, as well as access to certain parts of
 	the XSPEC build system.
 	Some of these can be worked around - such as removing the problematic
-	models or tweaking how the extension module is built in setup.py -
+	models or tweaking how the extension module is built -
 	and the <HREF link="https://cxc.harvard.edu/help/">CXC HelpDesk</HREF>
 	may be able to help.
       </PARA>
@@ -468,8 +469,7 @@ undefined symbol: _gfortran_copy_string
 	build_xspec_user_model/_models.cxx
 	file. The sherpa.astro.utils.xspec.create_xspec_code
 	routine is used to create the files, although some
-	post-processing is needed to fix up known problems
-	and to integrate it into a full Python module.
+	post-processing is needed to integrate it into a full Python module.
       </PARA>
 
       <PARA title="What files are compiled?">
@@ -486,16 +486,9 @@ undefined symbol: _gfortran_copy_string
 	if you have problems with this file selection.
       </PARA>
 
-      <PARA>
-	The compilation is done by the meson-python build backend
-	(prior to CIAO 4.17 it was a combination of setuptools and
-	internal code to support FORTRAN code). Any improvements to
-	this code would be gratefully received!
-      </PARA>
-
       <PARA title="Creating the python code">
 	The script creates two Python files:
-	build_xspec_user_model/__init.py - which defines the Python classes
+	build_xspec_user_model/__init__.py - which defines the Python classes
 	that represent the models - and
 	build_xspec_user_model/ui.py - which should be used to load the
 	models into a Sherpa session. The build_xpsec_user_model/meson.build
@@ -508,11 +501,31 @@ undefined symbol: _gfortran_copy_string
 	must be capitalised (or, if blank, then the first
 	character of the model name is capitalized).
       </PARA>
+
+      <PARA title="Compiling the code">
+	The compilation is done by the meson-python build backend
+	(prior to CIAO 4.17 it was a combination of setuptools and
+	internal code to support FORTRAN code). Any improvements to
+	this code would be gratefully received! Once the files
+	have been generated then calling
+      </PARA>
+
+      <PARA>
+	<SYNTAX>
+	  <LINE>&upr; pip install . --verbose</LINE>
+	</SYNTAX>
+      </PARA>
+
+      <PARA>
+	should help in identifying problems or improvements.
+      </PARA>
     </ADESC>
 
     <ADESC title="Changes in the scripts 4.19.0 (December 2064) release">
       <PARA>
 	Updated to match Sherpa in CIAO 4.19 and XSPEC version 12.15.1.
+	The --nocompile option has been added to help track down
+	problem installations.
       </PARA>
     </ADESC>
 
